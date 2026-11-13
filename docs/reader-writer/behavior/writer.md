@@ -1,0 +1,358 @@
+# Writer behaviour
+
+This file lists what Quire's source mode, the writer, must do. Each item comes from omarky's
+writer and keeps the ID it has in the extract (`04-writer-behaviour.md`). The item format, the
+status tags and the verify methods are in `README.md`.
+
+- `E` is the editor text size, the Settings body size times the zoom. It is 14 px by default
+  (decision 0002). Sizes in px assume `E` = 14. `S(n)` is a chrome length of n logical px.
+- Keys are written as in the omarky preset (decision 0003). `keymap.md` lists both presets.
+- The chrome is Quire's title bar, the floating formatting toolbar, the status bar and the
+  outline's contents (decision 0001).
+- Colour roles (text, strong, dim, faint, ghost, editor-ghost, accent, link, mark, code, codeBg,
+  error, hover, hairline, hairlineSoft, selection, raised, popup background) are defined in
+  section 14.
+- Some omarky behaviour is an accident of its code that the extract flags, such as an unhandled
+  key case. Where an `in` item corrects one, it says what omarky's code does after "omarky code:".
+  Open questions lists these corrections.
+- Items WR-220 and up are Quire-only. They sit in the section they belong to.
+
+## 1. The live formatting model
+
+### Principles
+
+- **WR-01** [in] [verify: script] The editor text is always the note's Markdown, character for character. Formatting is paint and layout only. Only the editing keys in section 2 and the formatting toolbar (WR-222) change text beyond what the user types (`README.md:75`, `components/Editor.qml:6-10`, `native/markdownhighlighter.h:18-25`)
+- **WR-02** [in] [verify: script] Saving writes exactly the editor text, with no normalisation. A locked note is sealed first, as Quire does today, and opens to the same text (`components/Buffer.qml:23-28`, `writer/ui/app/WriterWindow.qml:81-85`, `quire:desktop/src/app.rs:800-816`)
+- **WR-03** [in] [verify: script] Line layout (line height, hanging indents) is never an undo step. Undo and redo only move text. Typing `- ` at the start of a line turns it into a hanging list item, and one undo removes both characters and the hang in one step, with no second step that reapplies the indent. Decision 0004 keeps Rune's indent and line height outside the undo history (`docs/decisions/0015-layout-outside-undo.md:7-17`, `native/markdownhighlighter.cpp:15-24`, `native/markdownhighlighter.cpp:341-382`)
+- **WR-04** [in] [verify: unit] Formatting is computed per line, live on every keystroke, and carries multi-line state (fenced code, front matter, HTML comments) from line to line. A line whose text and incoming state are unchanged keeps the same spans, so Rune can reuse its paragraph layout (`native/markdownhighlighter.cpp:26-27`, `native/markdownhighlighter.cpp:384-390`)
+- **WR-05** [adapted: 0002] [verify: unit, golden] Every line starts from a base look. It is the source font (iA Writer Quattro S by default, WR-125) at size `E`, the Regular face, upright, in the text colour. omarky: the prose family at `round(12 * 1.2 * zoom)` (`native/markdownhighlighter.cpp:392-397`)
+- **WR-06** [adapted: 0002] [verify: unit] Bold, italic and bold italic runs use the Bold, Italic and Bold Italic face files of the current family, mapped by file and never by numeric weight. A test checks that a plain line uses the Regular face. omarky: faces are picked by style name, because Quattro S gives every face the same weight value (`native/markdownhighlighter.cpp:65-92`, `native/markdownhighlighter.cpp:766-772`)
+- **WR-07** [in] [verify: geometry] Line height is 155 percent of the font's natural line height at that line's own size, for every line type. Paragraphs, headings, list items, quotes, code and blank lines all use it. There is no extra paragraph spacing, so blank lines in the source are the only vertical gaps. Decision 0004's per-line line height lets a heading line use its own size here instead of the body's ratio (`components/Editor.qml:263`, `native/markdownhighlighter.cpp:324-327`)
+- **WR-224** [adapted: 0004] [verify: bench] Typing stays fast with live formatting on. With `dir_by_paragraph` on, the time from a keystroke to the presented frame is measured at 400, 1,000 and 3,000 lines of mixed Markdown. The proposed budget is under 8 ms at 400 and 1,000 lines and under 16 ms at 3,000 lines. omarky has no such check. Quire measured 2.5, 6 and 30 ms at those sizes before live formatting (`quire:desktop/README.md`)
+- **WR-225** [adapted: 0004] [verify: script, geometry] Hanging marks stay real characters. Left and Right step through each mark character one at a time. A selection covers marks like any text. A click on a hanging mark in the margin puts the caret at that character. IME composition at the start of a list item or heading puts the preedit after the mark. omarky gets this from its text engine (`native/markdownhighlighter.cpp:324-333`)
+
+### Line-level rules (first match wins, in this order)
+
+- **WR-08** [in] [verify: unit] Line kinds are tried in this order: inside a fence, inside front matter, inside an HTML comment, front-matter opener, fence opener, HTML comment opener, ATX heading, thematic break, setext underline, block quote, list item, table separator row, reference definition, footnote definition, plain. So a list inside a quote (`> - item`) is styled as a quote and keeps the quote's hang (`native/markdownhighlighter.cpp:438-576`, `native/markdownhighlighter.cpp:537`)
+- **WR-09** [in] [verify: unit, golden] A fence opener is up to 3 spaces, then 3 or more backticks or tildes, then anything. A backtick fence whose info string contains a backtick is not a fence. The whole line is in the code font at `round(E * 0.88)` and faint (`native/markdownhighlighter.cpp:44`, `native/markdownhighlighter.cpp:479-486`, `native/markdownhighlighter.cpp:421-425`)
+- **WR-10** [in] [verify: unit, golden] Inside a fence every line is in the code font at `round(E * 0.88)` in the code colour, with no background and no inline parsing. Quire's current fill behind fenced lines goes. The fence closes on a line of the same character, at least as long as the opener, with only whitespace after. The closing line is faint (`native/markdownhighlighter.cpp:439-453`, `quire:desktop/src/ui/editor.rs:310-312`)
+- **WR-11** [in] [verify: geometry] Fenced code lines do not hang. They start at the text column. Indented (4-space) code has no rule and is painted as plain text (`native/markdownhighlighter.cpp:430-435`, `native/markdownhighlighter.cpp:330-331`)
+- **WR-12** [in] [verify: unit] Front matter exists only when line 1 is exactly `---`. The opener is in the code font and faint. Each following line is in the code font and dim, with the key up to and including the first colon in the mark colour. A line of exactly `---` or `...` closes it and is faint (`native/markdownhighlighter.cpp:454-478`)
+- **WR-13** [in] [verify: unit] A line whose trimmed text starts with `<!--` is faint with no inline parsing. The faint state continues to the following lines until a line that contains `-->` (`native/markdownhighlighter.cpp:467-472`, `native/markdownhighlighter.cpp:487-492`)
+- **WR-14** [in] [verify: unit, geometry] An ATX heading is up to 3 spaces, 1 to 6 `#`, then a space, a tab or the line end. The whole line is in the bold face and the strong colour at `round(E * scale)`, with scale H1 1.5, H2 1.28, H3 1.12, H4 to H6 1.0. This is the writer's own scale. The preview uses the reader's 1.25 scale (`native/markdownhighlighter.cpp:40`, `native/markdownhighlighter.cpp:493-501`)
+- **WR-15** [in] [verify: unit] The heading mark (leading spaces, the `#` run and the spaces after it) is faint and in the Regular face at the heading's size. A closing run of `#` (whitespace, then `#`s at the line end) is styled the same (`native/markdownhighlighter.cpp:502-513`)
+- **WR-16** [in] [verify: geometry] The heading mark hangs. Its width, measured at the heading's size, sits left of the text column, so the heading text starts on the column edge. Decision 0004's negative first-line indent does this (`native/markdownhighlighter.cpp:514-516`, `docs/screenshots/writer/editor.png`)
+- **WR-17** [in] [verify: unit] A thematic break (`---`, `***` or `___`, three or more, spaces allowed) is faint (`native/markdownhighlighter.cpp:41`, `native/markdownhighlighter.cpp:517-520`)
+- **WR-18** [in] [verify: unit] A setext underline (a run of `=` or `-`) under a non-blank line is faint. The text line above it is not styled as a heading. `---` under text is caught first as a thematic break, with the same faint result (`native/markdownhighlighter.cpp:48`, `native/markdownhighlighter.cpp:521-525`)
+- **WR-19** [in] [verify: unit, geometry] A block quote is one or more `>`, each with up to 3 leading spaces and one optional space after. The marks are in the mark colour. The rest of the line is dim and italic. The marks hang, measured at size `E` (`native/markdownhighlighter.cpp:43`, `native/markdownhighlighter.cpp:526-536`)
+- **WR-20** [in] [verify: unit] A list item is leading whitespace, a marker (`-`, `*`, `+`, or 1 to 9 digits followed by `.` or `)`), one or more spaces or tabs, and an optional task box `[ ]`, `[x]` or `[X]`. The marker and the spaces after it are in the mark colour (`native/markdownhighlighter.cpp:42`, `native/markdownhighlighter.cpp:538-543`)
+- **WR-21** [in] [verify: unit, golden] The task box is in the mark colour and the code font. A done box (`x` or `X`) makes the rest of the line faint and struck through (`native/markdownhighlighter.cpp:544-555`, `docs/screenshots/writer/editor.png`)
+- **WR-22** [in] [verify: geometry] In a list item the leading whitespace stays inside the text and indents the item by its own width. Only the marker and its trailing spaces hang into the margin. The task box belongs to the item's text and does not hang. Wrapped lines of an item align with the item's text, not with the marker (`native/markdownhighlighter.cpp:556-562`, `native/markdownhighlighter.cpp:328-332`)
+- **WR-23** [in] [verify: unit] Table separator rows (shapes like `|---|:--:|`) are faint (`native/markdownhighlighter.cpp:45`, `native/markdownhighlighter.cpp:563-566`)
+- **WR-24** [in] [verify: unit] Reference definitions (`[id]: url ...`, not footnotes) are faint (`native/markdownhighlighter.cpp:47`, `native/markdownhighlighter.cpp:567-570`)
+- **WR-25** [in] [verify: unit, geometry] In a footnote definition (`[^x]:`) the label and colon are in the mark colour and hang by their width plus one space. The rest is parsed inline (`native/markdownhighlighter.cpp:46`, `native/markdownhighlighter.cpp:571-576`)
+- **WR-26** [in] [verify: geometry] Every line's left margin is `gutter + leading indent`, and its first line is pulled left by the hang, capped at that left margin. A mark wider than the gutter is clipped at the gutter's outer edge rather than overflowing. `gutter = round(E * 3.2)`, 45 px at 14 px (`native/markdownhighlighter.cpp:324-333`, `components/Editor.qml:27-28`)
+
+### Inline rules (applied after the line rule, from where the line's mark ends)
+
+Inline spans claim characters in this order. A character claimed as literal by an earlier rule
+cannot start a later rule's span (`native/markdownhighlighter.cpp:400-419`).
+
+- **WR-27** [in] [verify: unit] Escapes (`\` before one of ``\ ` * _ { } [ ] ( ) # + - . ! | ~ > =``). The backslash is faint and the escaped character is literal (`native/markdownhighlighter.cpp:62`, `native/markdownhighlighter.cpp:581-587`)
+- **WR-28** [in] [verify: unit, golden] A code span is a run of N backticks, content, and a matching run of N backticks. The whole span, backticks included, is in the code font at `round(E * 0.88)` in the code colour on the codeBg background. The backticks are faint and stay on the chip. Nothing inside is parsed. The chip is a plain background behind the glyphs, with no padding and no rounded corners (`native/markdownhighlighter.cpp:50`, `native/markdownhighlighter.cpp:588-600`, `docs/screenshots/writer/editor.png`)
+- **WR-29** [in] [verify: unit] Inline HTML tags (`<tag ...>`, `</tag>`, `<tag/>`) are faint (`native/markdownhighlighter.cpp:61`, `native/markdownhighlighter.cpp:601-609`)
+- **WR-30** [in] [verify: unit] In an inline link `[text](url "title")` the text is in the link colour. `[` is faint. `](url "title")` is faint at `round(E * 0.86)`. There is no underline (`native/markdownhighlighter.cpp:51`, `native/markdownhighlighter.cpp:610-630`)
+- **WR-31** [in] [verify: unit] In an image `![alt](src)` the alt text is dim and italic, `![` is faint, and `](src)` is faint at `round(E * 0.86)` (`native/markdownhighlighter.cpp:616-629`)
+- **WR-32** [in] [verify: unit] In a reference link `[text][id]` the text is in the link colour and the brackets and label are faint (`native/markdownhighlighter.cpp:52`, `native/markdownhighlighter.cpp:631-640`)
+- **WR-33** [in] [verify: unit] An autolink `<https://...>` or `<mailto:...>` is in the link colour, with the angle brackets faint (`native/markdownhighlighter.cpp:53`, `native/markdownhighlighter.cpp:641-650`)
+- **WR-34** [in] [verify: unit] A bare URL (`http://`, `https://` or `www.` not preceded by `(`, `<`, a word character or `/`) is in the link colour. Trailing `.,;:!?'"` and brackets are left out of the link (`native/markdownhighlighter.cpp:54`, `native/markdownhighlighter.cpp:651-658`)
+- **WR-35** [in] [verify: unit] A footnote reference `[^x]` is in the mark colour (`native/markdownhighlighter.cpp:60`, `native/markdownhighlighter.cpp:659-666`)
+- **WR-36** [in] [verify: unit] Emphasis is matched in this order, so a longer mark is never reused by a shorter pattern. Bold (`**x**` or `__x__`, no space just inside), italic star (`*x*`, not touching another `*` or a backslash), italic underscore (`_x_`, only at word boundaries), strikethrough (`~~x~~`), highlight (`==x==`). In each, both marks are faint and literal (`native/markdownhighlighter.cpp:55-59`, `native/markdownhighlighter.cpp:668-700`)
+- **WR-37** [in] [verify: unit, golden] Bold is the bold face in the strong colour. Italic is the italic face with the colour unchanged. Strikethrough is struck and dim. Highlight is a background of the accent at alpha 0.22 (`native/markdownhighlighter.cpp:684-695`)
+- **WR-38** [in] [verify: unit] In a table row (trimmed line starts with `|`) every unescaped, non-literal `|` is faint (`native/markdownhighlighter.cpp:702-707`)
+- **WR-220** [adapted: 0001] [verify: unit] A note link `[[target]]` or `[[target|alias]]` has faint `[[` and `]]`. The inside is in the link colour when the target names a note, and dim when it does not. An image embed `![[file]]` is dim and italic, like WR-31. There is no underline. Ctrl+click and Ctrl+Enter follow the link (WR-46). omarky has no note links (`quire:desktop/src/ui/editor.rs:542-554`)
+- **WR-221** [adapted: 0001] [verify: unit] A tag (`#word` that is not a heading mark) is in the mark colour with no background. omarky has no tags. Quire's source mode shows them as accent text on a soft chip today (`quire:desktop/src/ui/editor.rs:580-582`)
+
+## 2. Editing keys
+
+The editor handles editing keys itself. Window commands go through the keymap (decision 0003)
+(`components/Editor.qml:47-50`).
+
+### Enter
+
+- **WR-39** [in] [verify: unit] Plain Enter (no Ctrl, Alt or Shift, no selection) on a list item, with the cursor at or after the end of the item's prefix (indent, marker, spaces, task box), inserts a newline plus the same indent, marker and spacing. The cursor lands after the new prefix. Quire's Settings switch "Continue lists" turns WR-39 to WR-43 off (`lib/editing.js:7`, `lib/editing.js:27-40`, `quire:desktop/src/ui/editor.rs:415-451`)
+- **WR-40** [in] [verify: unit] A numbered item counts up and keeps its delimiter. `3.` continues as `4.` and `9)` as `10)`. Example, `1. a` then Enter gives `1. a\n2. ` (`lib/editing.js:35-36`, `writer/tools/check:45-46`)
+- **WR-41** [in] [verify: unit] An item with a task box continues with an empty box `[ ] `, whatever the original's state (`lib/editing.js:37-38`)
+- **WR-42** [in] [verify: unit, script] Enter on an item whose text after the prefix is empty or whitespace, with the cursor at the line end, deletes the line's content, marker included, and leaves the cursor at the start of that empty line. No newline is added. Typing `- one`, Enter, `two`, Enter, Enter, `x` gives `- one\n- two\nx` (`lib/editing.js:31-34`, `writer/tools/check:43-44`)
+- **WR-43** [in] [verify: unit] Enter on a quote line, cursor after the quote marks, inserts a newline plus the same `>` prefix, nesting kept (`> > `). If the text after the marks is empty or whitespace, the line's content is removed instead and the cursor stays at the line start. Quire does not continue quotes today (`lib/editing.js:8`, `lib/editing.js:41-47`)
+- **WR-44** [in] [verify: unit] Enter with the cursor inside a list or quote prefix, or on any other line, is a plain newline (`lib/editing.js:31`, `lib/editing.js:42`, `lib/editing.js:48`, `components/Editor.qml:352-355`)
+- **WR-45** [in] [verify: script] Enter with a selection, or with Shift or Alt held, gets no list handling. It replaces the selection with a newline, and Shift+Enter inserts a newline (`components/Editor.qml:352`)
+- **WR-46** [quire] [verify: -] Ctrl+Enter follows the note link at the caret, as Quire does today. omarky raises an unhandled submit, so Ctrl+Enter does nothing in its writer (`components/Editor.qml:356-357`, `quire:desktop/src/ui/editor.rs:404-407`)
+
+### Tab and Shift+Tab
+
+- **WR-47** [in] [verify: unit] Tab (no Ctrl, no selection) on a list item inserts spaces at the start of the line. A bullet (`-`, `*`, `+`) gets 2. A numbered item gets the width of its marker plus its following spaces (3 for `2. `, 4 for `10. `). The cursor moves right by the same amount. `2. ` becomes `   2. `. This replaces Quire's two spaces at the cursor (`lib/editing.js:53-66`, `writer/tools/check:47-48`, `quire:desktop/src/ui/editor.rs:408-414`)
+- **WR-48** [in] [verify: unit] Tab on a line that is not a list item inserts 4 spaces at the cursor (`components/Editor.qml:358-362`)
+- **WR-49** [in] [verify: script] Tab with a selection is not handled by the editor and falls to the text field's own Tab, which replaces the selection with a tab character. Tab stops are 4 average character widths. See Open questions (`components/Editor.qml:358`, `components/Editor.qml:190`)
+- **WR-50** [in] [verify: unit] Shift+Tab (no Ctrl) on a list item with leading whitespace removes up to the same step (2 for bullets, marker plus spaces for numbers) from the start of the line, never more than the whitespace there. The cursor moves left by the amount removed, never before the line start. On a list item with no indent, or a non-list line, Shift+Tab does nothing and is consumed. Quire swallows Shift+Tab today (`lib/editing.js:59-64`, `components/Editor.qml:363-367`)
+
+### Inline formatting toggles (Ctrl+B, Ctrl+I, Ctrl+E, Ctrl+Shift+X)
+
+- **WR-51** [adapted: 0003] [verify: script] Ctrl+B is `**`, Ctrl+I `*`, Ctrl+E `` ` `` and Ctrl+Shift+X `~~` (omarky preset). In the quire preset Ctrl+E is the mode switch, so inline code gets a free key. The keys and the toolbar run one set of rules, `format.rs`, so the editor's second Ctrl+B and Ctrl+I wrap goes. omarky: the same marks on the same keys, with no toolbar (`components/Editor.qml:369-371`, `quire:desktop/src/ui/editor.rs:394-403`, `quire:desktop/src/format.rs:31-43`)
+- **WR-52** [in] [verify: unit] With no selection the mark goes in twice at the cursor, with the cursor between (`**|**`). `## word` then Ctrl+B at the end gives `## word****` (`lib/editing.js:69-82`, `writer/tools/check:52-53`)
+- **WR-53** [in] [verify: unit] Toggle off, rule 1. A non-empty selection whose text has the mark right outside it on both sides loses those outer marks, and the selection covers the same inner text (`lib/editing.js:75-77`)
+- **WR-54** [in] [verify: unit] Toggle off, rule 2. A selection that itself starts and ends with the mark, and is longer than two marks, has those marks stripped, and the selection covers the bare text (`lib/editing.js:78-81`)
+- **WR-55** [in] [verify: unit] Otherwise the selection is wrapped in the mark and stays selected on the inner text, shifted by the mark length (`lib/editing.js:82`)
+- **WR-56** [quire] [verify: -] The edge cases follow Quire's `format.rs`, which already has unit tests. Ctrl+B with the caret in `**|**` removes the pair. Ctrl+I on a selected `**word**`, or on `word` inside `**word**`, gives bold italic `***word***`. Ctrl+E on a selection across lines makes a fenced block. omarky: two Ctrl+B give eight asterisks, Ctrl+I turns `**word**` into `*word*`, and a multi-line Ctrl+E wraps in backticks (`lib/editing.js:72-83`, `quire:desktop/src/format.rs:44-77`)
+
+### Links and headings
+
+- **WR-57** [in] [verify: unit] Ctrl+K with a selection that is not a URL, or with none, replaces it with `[selection]()` and puts the cursor inside the parentheses, ready for the URL. The toolbar's link button uses the same rule, so `format.rs` drops its selected `url` placeholder (`lib/editing.js:85-95`, `quire:desktop/src/format.rs:79-90`)
+- **WR-58** [in] [verify: unit] Ctrl+K with a selection that is a URL (`http://`, `https://` or `mailto:` followed by non-space text, nothing else) replaces it with `[](url)` and puts the cursor inside the empty brackets, ready for the link text. There is no toggle off for links (`lib/editing.js:88-92`)
+- **WR-59** [in] [verify: unit] Ctrl+1 to Ctrl+6 (no Shift) set the cursor line's heading level. Any existing prefix (up to 3 spaces, 1 to 6 `#`, then spaces or tabs) is replaced by N `#` and one space. The cursor keeps its offset in the heading text. `word` then Ctrl+2 gives `## word`. The toolbar's heading button keeps Quire's cycle of `#`, `##`, `###`, plain (`lib/editing.js:98-109`, `writer/tools/check:50-51`, `quire:desktop/src/format.rs:149-152`)
+- **WR-60** [in] [verify: unit] Pressing the line's current level again clears the heading. Ctrl+0 always clears it (`lib/editing.js:100-106`)
+- **WR-61** [in] [verify: unit] The heading keys count a `#` run as a heading prefix only when a space, a tab or the line end follows it, so a Quire tag such as `#idea` at the line start stays a tag (Ctrl+2 gives `## #idea`). On a list line the `#` prefix goes in front of the marker (`## - item`). omarky code: the prefix match needs no space, so `#tag` counts as level 1 (`lib/editing.js:102`)
+- **WR-62** [adapted: 0003] [verify: script] In the writer context Ctrl+0 clears the heading. Zoom reset belongs to the reader context and to Settings (omarky preset). omarky: the writer has no zoom-reset key (`components/Editor.qml:374`, `writer/ui/app/HelpSheet.qml:19`)
+
+### Undo granularity
+
+- **WR-63** [in] [verify: script] Every key-driven edit (Enter, Tab, Shift+Tab, the toggles, Ctrl+K, the heading keys) and every toolbar action is exactly one undo step, through one Rune undo group as `App::format` does today. omarky code: a wrap with a selection can take two undo steps (`components/Editor.qml:54-62`, `quire:desktop/src/app.rs:1071-1084`)
+
+### Window command keys
+
+- **WR-64** [adapted: 0001] [verify: script] Ctrl+S (omarky preset) writes the note now, without waiting for autosave, and shows the toast "Saved". Every Quire note has a name, so there is no Save As path. omarky: a draft opens the Save As dialog instead (`writer/ui/app/WriterWindow.qml:81-85`)
+- **WR-65** [quire] [verify: -] There is no Save As. A note lives in the notes folder and is renamed in the breadcrumb above the text (`writer/ui/app/WriterWindow.qml:148`, `quire:desktop/src/ui/editor.rs:230-285`)
+- **WR-66** [quire] [verify: -] Ctrl+N makes a note named "Untitled" in the new-notes folder and opens it in a tab, as Quire does today. omarky: a new window on a new draft (`writer/ui/app/WriterWindow.qml:149`, `quire:desktop/src/folders.rs:76-100`)
+- **WR-67** [quire] [verify: -] Ctrl+O opens Quire's quick switcher (`writer/ui/app/WriterWindow.qml:150`, `quire:desktop/src/keys.rs:54`)
+- **WR-68** [adapted: 0001] [verify: script] Ctrl+W (omarky preset) writes any unsaved text and closes the active note's tab. The window stays open. omarky: saves and closes the window, and closing the last window quits (`writer/ui/app/WriterWindow.qml:69-73`, `writer/ui/shell.qml:54-59`)
+- **WR-69** [adapted: 0003] [verify: script] Ctrl+P and Ctrl+Shift+P (omarky preset) switch the note to preview mode and back (section 6). In the quire preset the mode switch is Ctrl+E and Ctrl+P is the command palette (`components/Editor.qml:376-377`, `quire:desktop/src/keys.rs:55-56`)
+- **WR-70** [in] [verify: script] Ctrl+F opens find. Ctrl+G and F3 go to the next match, Shift+F3 to the previous (section 7) (omarky preset) (`components/Editor.qml:378-383`)
+- **WR-71** [adapted: 0001] [verify: script] Ctrl+R (omarky preset) opens Quire's quick switcher, which lists recent notes first. omarky: a recent files and drafts menu (`writer/ui/app/WriterWindow.qml:176`, `writer/ui/app/WriterWindow.qml:450`)
+- **WR-72** [adapted: 0002] [verify: script] Ctrl+= and Ctrl++ zoom in by 0.1, and Ctrl+- zooms out by 0.1 (WR-126) (omarky preset). The keymap matches the character a key produces, so Ctrl+Shift+= also zooms in and Ctrl+? also opens help on a US layout. omarky code: the shifted forms do nothing (`components/Editor.qml:375-380`)
+- **WR-73** [adapted: 0003] [verify: script] Ctrl+/ toggles the help sheet (section 10) (omarky preset) (`writer/ui/app/WriterWindow.qml:173`)
+- **WR-74** [adapted: 0007] [verify: script] Ctrl+\ (omarky preset) toggles Quire's outline panel, on the right. In the quire preset Ctrl+\ toggles the sidebar. omarky: toggles its outline on the left (`writer/ui/app/WriterWindow.qml:153-158`, `quire:desktop/src/keys.rs:59`)
+- **WR-75** [adapted: 0003] [verify: script] Ctrl+Shift+F toggles paragraph focus (WR-79), Ctrl+Shift+T typewriter scrolling (WR-85) and Ctrl+Shift+M the next font (WR-125) (omarky preset). In the quire preset Ctrl+Shift+F searches all notes, so focus gets a free key. Ctrl+Shift+L for spelling waits with spelling (decision 0006) (`writer/ui/app/WriterWindow.qml:159-162`, `quire:desktop/src/keys.rs:49`)
+- **WR-76** [deferred] [verify: -] Ctrl+J rewrites the block or selection with Claude, Ctrl+Shift+J the section (decision 0006) (`components/Editor.qml:373`)
+- **WR-77** [adapted: 0001] [verify: script] Esc closes one thing, in this order. An open menu, the help sheet, the find bar (focus goes back to the editor), then Quire's own overlays as `App::escape` closes them today (palette, settings, rename, new folder), then Quire's focus mode (WR-223). With none open it does nothing. omarky: menu, rewrite line, help sheet, find bar, then preview (`writer/ui/app/WriterWindow.qml:177-183`, `quire:desktop/src/app.rs:1132-1153`)
+- **WR-78** [in] [verify: unit] Ctrl+Alt combinations are not commands (`components/Editor.qml:368`)
+
+## 3. Focus mode
+
+- **WR-79** [in] [verify: state] Paragraph focus (Ctrl+Shift+F, omarky preset) is a remembered on/off setting, default off. It works with or without Quire's focus mode (WR-223). It replaces Quire's "dim other paragraphs" setting, which worked only inside focus mode and was on by default (`writer/ui/app/Settings.qml:22`, `writer/ui/app/WriterWindow.qml:159`, `quire:desktop/src/store.rs:53`)
+- **WR-80** [in] [verify: script] Toggling it shows the toast "Focus on" or "Focus off" (`writer/ui/app/WriterWindow.qml:159`)
+- **WR-81** [in] [verify: unit] The current paragraph is the run of consecutive non-blank lines that holds the cursor's line. On a blank line the current paragraph is that one line, so everything else fades. A heading or list item directly against a paragraph, with no blank line between, counts as the same paragraph. Quire's `md::para_range` already works this way (`native/markdownhighlighter.cpp:216-238`, `quire:desktop/src/md.rs:474-494`)
+- **WR-82** [in] [verify: golden] Every line outside the current paragraph is painted in the editor-ghost colour. The fade swaps the colour and does not use opacity. Backgrounds (code chips, highlights) are cleared. Sizes, weights, italics and strikethrough stay. This replaces Quire's opacity 0.28 on mirror lines, which gives nearly the same text colour (`native/markdownhighlighter.cpp:756-764`, `components/Editor.qml:253`, `docs/screenshots/writer/focus.png`, `quire:desktop/src/ui/editor.rs:306`)
+- **WR-83** [in] [verify: script] The current paragraph keeps full formatting. When the cursor moves to another paragraph, the old and new paragraph lines repaint at once, with no transition. Quire's 200 ms spring on the fade goes (`native/markdownhighlighter.cpp:191-214`)
+- **WR-84** [in] [verify: golden] Paragraph focus does not dim the chrome, the title bar or the outline (`components/Editor.qml:253`)
+- **WR-223** [adapted: 0001] [verify: script] Quire's focus mode (Ctrl+. in both presets, or the title bar's focus button) stays. It hides the sidebar, the outline, the status bar and the toolbar, swaps the title bar for the focus bar, shows the word-count hint, and Esc leaves it. It no longer turns on paragraph dimming or typewriter scrolling, which are WR-79 and WR-85. Its column and padding are the ones in sections 4 and 12, so the text does not move or rewrap on entering it. omarky has no such mode, because its chrome steps aside while typing (`quire:desktop/src/app.rs:1046-1053`, `quire:desktop/src/ui/editor.rs:80-90`)
+
+## 4. Typewriter scrolling and scrolling in general
+
+- **WR-85** [in] [verify: script] Typewriter scrolling (Ctrl+Shift+T, omarky preset) is a remembered setting, default off, independent of Quire's focus mode. Toggling shows "Typewriter on" or "Typewriter off" and then re-centres the cursor line with a 220 ms glide. It replaces Quire's typewriter setting, which worked only in focus mode and was on by default (`writer/ui/app/Settings.qml:23`, `writer/ui/app/WriterWindow.qml:160`, `quire:desktop/src/store.rs:54`)
+- **WR-86** [in] [verify: geometry] With typewriter scrolling on, the top padding is half the editor's height, so the first line can sit at the middle. The bottom padding is always half the editor's height (`components/Editor.qml:38-41`)
+- **WR-87** [in] [verify: geometry] With typewriter scrolling off, the top padding is `max(S(56), 12 percent of the editor height)`. The floating toolbar sits inside this space (`components/Editor.qml:40`)
+- **WR-88** [in] [verify: script, geometry] With typewriter scrolling on, every cursor move scrolls so the centre of the caret's visual line, wrapped lines included, is at the vertical centre of the editor. Ordinary moves glide 120 ms. Forced moves (open at the end, find, outline jump, the toggle) glide 220 ms. This replaces Quire's instant jump to 0.42 of the height, which followed only hard lines and only edits (`components/Editor.qml:99-106`, `quire:desktop/src/ui/editor.rs:352-362`)
+- **WR-89** [in] [verify: script, geometry] With typewriter scrolling off, the caret stays in view with a margin of `min(editor height / 4, 3 caret-line heights)` above and below, plus the toolbar's height at the top while the toolbar shows. Ordinary moves (typing, arrows) jump at once. Forced moves glide 220 ms (`components/Editor.qml:107-110`, `components/Editor.qml:212`, `quire:desktop/src/ui/editor.rs:121-125`)
+- **WR-90** [in] [verify: unit] Every glide eases out cubic and is clamped to the scrollable range. Under reduced motion it jumps (`components/Editor.qml:121-130`, `components/Editor.qml:149`)
+- **WR-91** [adapted: 0001] [verify: script] Mouse-wheel scrolling in source mode is the same as in preview mode (`reader.md`). omarky: each notch glides 120 px over 160 ms, accumulating from the current glide target (`components/Editor.qml:132`, `components/Editor.qml:295-297`)
+- **WR-92** [adapted: 0001] [verify: script, manual] Touchpad scrolling and flings in source mode are the same as in preview mode (`reader.md`), so a swipe travels as far in both modes. omarky: content follows the finger at 12 times the reported delta, and a fling on Chromium's curve starts from the last 3 samples when the lift comes within 200 ms (`components/Editor.qml:286-326`, `docs/decisions/0011-touchpad-scrolling.md`)
+- **WR-93** [in] [verify: state, golden] The scroll thumb is a pill at the right edge, inset `S(4)`, `S(3)` wide, faint, shown only when content is taller than 1.05 times the view. Its height is `max(S(24), view * view / content)`. Its opacity is 0.5 while a glide or fling runs or within 700 ms of any scroll movement, else 0, fading over 300 ms (`components/Editor.qml:328-342`)
+- **WR-94** [in] [verify: script] A press anywhere in the editor area, the margins beside the column included, puts the cursor at the nearest text position and focuses the editor. A press below the text puts it at the end, as Quire does today. The pointer is an I-beam everywhere over the editor area (`components/Editor.qml:151-161`, `quire:desktop/src/ui/editor.rs:93-101`)
+
+## 5. The outline in the writer
+
+- **WR-95** [adapted: 0007] [verify: state] The outline is Quire's right panel. Its open state is remembered, as Quire does today, and Ctrl+\ toggles it (omarky preset). omarky: a left panel, off by default (`writer/ui/app/Settings.qml:25-26`, `writer/ui/app/WriterWindow.qml:153-158`)
+- **WR-96** [quire] [verify: -] Quire's panel rules decide when the outline shows. That is a window at least 1100 wide and not in focus mode, in both modes. It also lists backlinks, so it shows with fewer than two headings. omarky: on, at least `S(960)` wide, two or more headings, preview not shown (`writer/ui/app/WriterWindow.qml:46-47`, `quire:desktop/src/ui/mod.rs:44-52`)
+- **WR-97** [quire] [verify: -] Turning the outline on gives no toast. Quire's panel shows backlinks when there are no headings, and stays hidden on a narrow window (`writer/ui/app/WriterWindow.qml:153-158`, `quire:desktop/src/ui/mod.rs:50-52`)
+- **WR-98** [in] [verify: unit, state] Headings come from the same parser as the preview, so `#` lines inside fenced code are not headings. Quire's `md::headings` already skips fences. The list updates within 400 ms after typing stops (`writer/ui/app/WriterWindow.qml:56`, `lib/ranges.js:132-137`, `quire:desktop/src/md.rs:299-310`)
+- **WR-99** [adapted: 0007] [verify: geometry] The outline keeps Quire's place and width on the right. It slides in and out over 160 ms, ease-out cubic, and the column moves with it (WR-172). omarky: `S(264)` wide at the window's left edge (`writer/ui/app/WriterWindow.qml:328-340`)
+- **WR-100** [in] [verify: state] The current section is the last heading at or before the cursor. Its entry is shaded and scrolled into view in the list. The shade replaces Quire's accent dot (`writer/ui/app/WriterWindow.qml:48-55`, `components/Outline.qml:35-41`, `components/Outline.qml:73`)
+- **WR-101** [in] [verify: state, geometry] Only H1 to H4 are listed, indented by `S(14)` per level below the shallowest level present (`components/Outline.qml:33-34`, `components/Outline.qml:97`)
+- **WR-102** [in] [verify: script] A click on an entry puts the cursor at the start of the heading line, glides that line over 220 ms to `min(top padding, view height / 3)` below the top (the centre with typewriter scrolling on), and focuses the editor. This replaces Quire's instant jump to 120 px (`writer/ui/app/WriterWindow.qml:342`, `components/Editor.qml:112-119`, `quire:desktop/src/app.rs:1156-1168`)
+- **WR-103** [in] [verify: script] The outline's contents step aside with the chrome while typing (section 12). Opacity goes to 0 unless the pointer is over the panel, fading out over 600 ms and back over 160 ms. The panel keeps its width (`writer/ui/app/WriterWindow.qml:337-339`)
+- **WR-104** [adapted: 0007] [verify: golden] The outline looks the same in both modes, and `reader.md` specifies that look once. omarky: a faint panel fill, a hairlineSoft line on its right edge, and a "CONTENTS" title in faint caption caps (`components/Outline.qml:43-59`)
+- **WR-105** [adapted: 0007] [verify: golden] Entry rows, their shade and hover follow the outline look in `reader.md`. omarky: rows of label height plus `S(12)`, a shade inset `S(10)` in the hover colour, the accent at 0.1 when current, colour changes over 120 ms (`components/Outline.qml:61-93`)
+- **WR-106** [adapted: 0007] [verify: golden] Entry text follows the outline look in `reader.md`. omarky: text from `S(22) + depth * S(14)`, top-level entries bold and dim, deeper entries smaller and between dim and faint, the current entry in the text colour, "Untitled" for an empty heading (`components/Outline.qml:95-109`)
+
+## 6. Preview (Ctrl+P)
+
+- **WR-107** [adapted: 0001] [verify: script] Ctrl+P (omarky preset) or the title bar's mode button switches the note to preview mode, Quire's reader page (`reader.md`), in the same sheet. omarky: an overlay preview inside the writer window, rendered by the reader's renderer (`writer/ui/app/WriterWindow.qml:95-106`, `quire:desktop/src/app.rs:1034-1043`)
+- **WR-108** [in] [verify: script, geometry] On switching to preview, the preview scrolls without animation so that the block holding the cursor's line sits at the top. That is the last block whose source start line is at or before the cursor line. If it is the first block, the preview stays at the top (`writer/ui/app/WriterWindow.qml:108-118`)
+- **WR-109** [in] [verify: script] The preview fades in over 160 ms (`writer/ui/app/WriterWindow.qml:373-374`)
+- **WR-110** [adapted: 0001] [verify: script] There is no preview beside the editor to refresh. The preview reads the note's current text when shown, and keeps its place when the text changes on disk (`reader.md`). omarky: refreshes from the editor 200 ms after a change (`writer/ui/app/WriterWindow.qml:230-234`)
+- **WR-111** [adapted: 0001] [verify: script] In preview, Ctrl+P returns to source mode and focuses the editor, and Esc does the same when nothing else takes it. Ctrl+S writes the note. Other keys are the reader's. omarky: the same, from its overlay (`writer/ui/app/WriterWindow.qml:381-385`)
+- **WR-112** [adapted: 0001] [verify: script] Switching back to source keeps the place. If the preview was not scrolled, the editor's scroll and caret are as they were. If it was scrolled, the editor scrolls so the source line of the block at the top of the preview sits at the top, and the caret moves to that line's start only if it would otherwise be off screen. omarky: the editor stays untouched under the overlay (`README.md:93`, `writer/ui/app/WriterWindow.qml:102-105`)
+- **WR-113** [adapted: 0001] [verify: state] In preview the chrome does not step aside, and the progress bar (WR-178) tracks the preview. The outline stays as `reader.md` says. omarky: the outline hides in preview (`writer/ui/app/WriterWindow.qml:47`, `writer/ui/app/WriterWindow.qml:604`)
+- **WR-114** [adapted: 0002] [verify: state] Both modes use one text size, the Settings body size times the zoom. omarky: the preview followed the reader's saved zoom, not the writer's (`services/Reading.qml:13`, `services/Prefs.qml:16-17`)
+
+## 7. Find
+
+- **WR-115** [in] [verify: script] Ctrl+F shows the find bar, focuses its input and selects all of its text. If the editor has a selection, its text becomes the query first. Quire has no find in a note today (`writer/ui/app/WriterWindow.qml:165-170`)
+- **WR-116** [in] [verify: unit] Matching is literal, case-insensitive and non-overlapping, at most 10000 matches (`lib/editing.js:140-148`)
+- **WR-117** [in] [verify: script] Typing in the input searches from the editor's selection start. The current match is the first at or after it, wrapping to the first match (`writer/ui/app/WriterWindow.qml:124-132`, `writer/ui/app/WriterWindow.qml:559`)
+- **WR-118** [in] [verify: script] The current match is selected in the editor and scrolled into view with a forced glide. Other matches are not marked (`writer/ui/app/WriterWindow.qml:140-143`, `components/Editor.qml:94-97`)
+- **WR-119** [in] [verify: script] In the input, Enter goes to the next match and Shift+Enter to the previous, both wrapping. Esc runs the Esc order (WR-77). Ctrl+F selects all of the input (`writer/ui/app/WriterWindow.qml:560-564`)
+- **WR-120** [in] [verify: script] From the editor, Ctrl+G and F3 go to the next match, running a fresh search when there are no matches yet, and Shift+F3 to the previous. They work while the bar is hidden if a query remains (`writer/ui/app/WriterWindow.qml:171-172`)
+- **WR-121** [in] [verify: script] Matches are recomputed on every text change while the bar shows (`writer/ui/app/WriterWindow.qml:364`)
+- **WR-122** [adapted: 0001] [verify: geometry, golden] The bar sits `S(10)` below Quire's title bar, right-aligned `S(16)` from the sheet's right edge, `S(340)` by `S(40)`, radius `max(6, cornerRadius)`, popup background, 1 px hairline border. A faint search icon at x `S(12)`, the input `S(8)` after it at body size in the text colour, the count `S(12)` from the right at caption size. omarky: the same bar under its own header (`writer/ui/app/WriterWindow.qml:526-576`)
+- **WR-123** [in] [verify: state] The count is empty with no query, "none" in the error colour with no matches, else "i of n" in faint (`writer/ui/app/WriterWindow.qml:571-572`)
+- **WR-124** [adapted: 0001] [verify: golden] One find bar serves both modes with one look. In source mode it behaves as WR-115 to WR-123. `reader.md` says how it behaves in preview. omarky: the writer had its own bar, separate from the reader's (`reader/ui/app/ReaderWindow.qml:630`)
+
+## 8. Fonts, size, spelling
+
+- **WR-125** [adapted: 0002] [verify: script] Ctrl+Shift+M (omarky preset) steps the source font through iA Writer Quattro S, iA Writer Duospace and iA Writer Mono S, then back. A toast shows the new family name. The choice is remembered, default Quattro S. When Settings holds one of Quire's other fonts, the cycle starts at Quattro S. The preview keeps the prose font. omarky: the same three families, with a header chip (`writer/ui/app/Settings.qml:19-21`, `writer/ui/app/Settings.qml:38-41`, `writer/ui/app/WriterWindow.qml:162`)
+- **WR-126** [adapted: 0002] [verify: unit, state] Ctrl+= and Ctrl++ add 0.1 to the zoom and Ctrl+- takes 0.1 away (omarky preset), clamped to 0.6 to 2.2 and rounded to two decimals. No toast. The zoom is remembered, default 1.0. The text size is the Settings body size (14 px default) times the zoom, in both modes. The chrome never scales. omarky: the zoom scales a fixed 14 px, and only in the writer (`writer/ui/app/Settings.qml:36`, `writer/ui/app/WriterWindow.qml:163-164`, `components/Editor.qml:24`)
+- **WR-127** [adapted: 0002] [verify: unit] Code spans and fenced code use the code font from Settings (iA Writer Mono S by default), whatever the source font. omarky: Mono S, overridden by an environment variable (`components/Editor.qml:261`, `services/Reading.qml:37-38`)
+- **WR-128** [deferred] [verify: -] Spelling toggle (Ctrl+Shift+L), remembered, default on, with toasts "Spelling on" and "Spelling off" (decision 0006) (`writer/ui/app/Settings.qml:24`, `writer/ui/app/WriterWindow.qml:161`)
+- **WR-129** [deferred] [verify: -] Dictionary language Australian English, fixed (decision 0006) (`native/markdownhighlighter.h:105`, `README.md:87`)
+- **WR-130** [deferred] [verify: -] A misspelt word gets a straight single underline in the error colour (decision 0006) (`native/markdownhighlighter.cpp:748-751`)
+- **WR-131** [deferred] [verify: -] What counts as a word for spelling (decision 0006) (`native/markdownhighlighter.cpp:63`, `native/markdownhighlighter.cpp:714-724`)
+- **WR-132** [deferred] [verify: -] What spelling skips: code, front matter, HTML, URLs, marks, file names, acronyms (decision 0006) (`native/markdownhighlighter.cpp:725-742`)
+- **WR-133** [deferred] [verify: -] The deferred squiggle, never on the word being typed (decision 0006) (`native/markdownhighlighter.cpp:184-190`, `native/markdownhighlighter.cpp:743-745`)
+- **WR-134** [deferred] [verify: -] Spelling suggestions and "Add to dictionary" on right-click (decision 0006) (`components/Editor.qml:216-234`, `native/markdownhighlighter.cpp:301-322`)
+- **WR-135** [in] [verify: script] A right-click in the editor opens a menu with Cut (Ctrl+X) and Copy (Ctrl+C), disabled without a selection, and Paste (Ctrl+V). A right-click with no selection first moves the cursor to the click. The menu is Quire's in-app menu (WR-193), because Rune has no native menu on Linux (`components/Editor.qml:235-240`)
+- **WR-136** [deferred] [verify: -] With no dictionary, no underlines and no spelling items (decision 0006) (`native/markdownhighlighter.cpp:289-299`)
+
+## 9. Files: drafts, untitled, autosave, reload, recent
+
+- **WR-137** [quire] [verify: -] Quire keeps settings and the session in `state.json` in its config folder, and notes in the notes folder. There is no drafts folder (`writer/ui/app/Settings.qml:14-16`, `quire:ARCHITECTURE.md`)
+- **WR-138** [quire] [verify: -] There are no untitled drafts. A new note is a named file in the notes folder (WR-66) (`writer/ui/app/Settings.qml:52-58`, `quire:desktop/src/folders.rs:76-100`)
+- **WR-139** [quire] [verify: -] The tab shows the note's name and the window title is the folder name followed by " · Quire" (`writer/ui/app/WriterWindow.qml:23-30`, `quire:desktop/src/app.rs:699`)
+- **WR-140** [quire] [verify: -] Quire opens notes from its folder only, so a missing path does not arise (`components/Buffer.qml:54-60`)
+- **WR-141** [quire] [verify: -] Quire saves a note 0.5 s after the first change, even while typing. omarky: 900 ms after the last change (`writer/ui/app/WriterWindow.qml:214-224`, `quire:desktop/src/app.rs:612-617`)
+- **WR-142** [quire] [verify: -] Quire's writer thread writes each note to a temporary file and renames it over the note (`components/Buffer.qml:42`, `quire:desktop/src/vault.rs:181-211`)
+- **WR-143** [quire] [verify: -] Quire writes pending notes on its timer and on quit (`App::flush_all`). Empty notes are kept (`writer/ui/app/WriterWindow.qml:67-73`, `quire:desktop/src/app.rs:1086-1090`)
+- **WR-144** [quire] [verify: -] There is no unsaved dot. A failed write shows Quire's notice card in the error colour (`writer/ui/app/WriterWindow.qml:463-468`, `quire:desktop/src/app.rs:421-425`, `quire:desktop/src/ui/mod.rs:124-144`)
+- **WR-145** [quire] [verify: -] Quire's watcher checks file times in the folder every 1.5 s and ignores text that matches the copy in memory (`components/Buffer.qml:43-53`, `quire:desktop/src/app.rs:444-457`)
+- **WR-146** [in] [verify: script] When the open note changes on disk and has no unsaved edits, the new text replaces the editor text and the cursor keeps its offset, clamped to the new length. Quire does this today. The toast "Reloaded from disk" shows when the active note reloads (`writer/ui/app/WriterWindow.qml:199-206`, `writer/tools/check:56-58`, `quire:desktop/src/app.rs:463-468`)
+- **WR-147** [quire] [verify: -] Quire shows no conflict banner. Unsaved edits win and overwrite the outside change when they save, 0.5 s after the first change at most. See Open questions. omarky: a banner with "Load theirs" and "Keep mine" (`writer/ui/app/WriterWindow.qml:487-523`, `quire:ARCHITECTURE.md`)
+- **WR-148** [quire] [verify: -] There are no "Load theirs" and "Keep mine" choices, as WR-147 says (`writer/ui/app/WriterWindow.qml:506-521`)
+- **WR-149** [quire] [verify: -] Autosave runs as always, so the question of pausing it during a conflict does not arise (`writer/ui/app/WriterWindow.qml:216-224`)
+- **WR-150** [quire] [verify: -] Notes open from the sidebar and the quick switcher. There is no open-file dialog (`writer/ui/app/WriterWindow.qml:236-245`)
+- **WR-151** [quire] [verify: -] A note opens in a tab, and an already open note's tab becomes active (`writer/ui/app/WriterWindow.qml:87-93`, `quire:desktop/src/app.rs:825-843`)
+- **WR-152** [quire] [verify: -] There is no Save As dialog (WR-65) (`writer/ui/app/WriterWindow.qml:247-282`)
+- **WR-153** [quire] [verify: -] Quire keeps the 30 most recent notes in the session, newest first (`writer/ui/app/Settings.qml:43-50`, `quire:desktop/src/app.rs:839-841`)
+- **WR-154** [quire] [verify: -] Recent notes show in the quick switcher (WR-71). There is no recent menu (`writer/ui/app/WriterWindow.qml:284-314`)
+- **WR-155** [quire] [verify: -] Quire drops a deleted note from the recent list (`writer/ui/app/WriterWindow.qml:295-300`, `quire:desktop/src/app.rs:912`)
+- **WR-156** [quire] [verify: -] Each tab keeps its caret, scroll and undo history, so a note reopens where it was left (`writer/ui/app/WriterWindow.qml:190-198`, `quire:ARCHITECTURE.md`)
+- **WR-157** [quire] [verify: -] Quire's own window and command line handling applies. omarky: one app instance with a window per file (`writer/ui/shell.qml:13-50`)
+
+## 10. Help sheet (Ctrl+/)
+
+- **WR-158** [adapted: 0003] [verify: script] Ctrl+/ (omarky preset) toggles the sheet. Esc or a click outside the card closes it, and clicks on the card do nothing. Closing focuses the editor. The command palette also lists it. omarky: also a `?` chip in the header (`writer/ui/app/WriterWindow.qml:173`, `writer/ui/app/HelpSheet.qml:37`, `writer/ui/app/HelpSheet.qml:82`)
+- **WR-159** [in] [verify: script] The sheet is modal. Typed characters do not reach the editor while it shows. omarky code: the editor keeps the keyboard under the sheet and typing edits the hidden text (`writer/ui/app/WriterWindow.qml:621-626`)
+- **WR-160** [adapted: 0005] [verify: golden] The scrim is the page background at alpha 0.72 over the whole window (`writer/ui/app/HelpSheet.qml:12`)
+- **WR-161** [in] [verify: geometry] The card is centred, `min(window - S(48), content + S(48))` wide and content plus `S(44)` tall, radius `max(6, cornerRadius)`, popup background, 1 px hairline border. Content starts at `(S(24), S(22))` (`writer/ui/app/HelpSheet.qml:74-97`)
+- **WR-162** [adapted: 0001] [verify: state] "Quire VERSION" sits at the card's top right, `S(24)` from the right and `S(22)` from the top, at caption size in the ghost colour. omarky: "OmarkyWriter VERSION" (`writer/ui/app/HelpSheet.qml:84-92`)
+- **WR-163** [in] [verify: geometry] Two columns when the window is wider than `S(1040)`, else one. Columns are `S(470)` wide and `S(40)` apart. The first column takes the first `ceil(groups / 2)` groups. Groups are `S(18)` apart (`writer/ui/app/HelpSheet.qml:39-42`, `writer/ui/app/HelpSheet.qml:94-108`)
+- **WR-164** [in] [verify: geometry, golden] A group is an uppercase title in the code font, caption size, letter spacing 1, faint, then rows `S(26)` tall with `S(7)` between. Each row is a keycap at x 0 and the description at x `S(170)`, body small, text colour (`writer/ui/app/HelpSheet.qml:44-72`)
+- **WR-165** [in] [verify: geometry, golden] A keycap is its label plus `S(12)` wide and plus `S(6)` tall, radius `max(3, cornerRadius - 2)`, raised fill, 1 px hairline border, caption size, dim text (`components/KeyCap.qml:9-23`)
+- **WR-166** [adapted: 0003] [verify: state] The rows come from the active keymap's writer context, so they always match it. The groups keep omarky's order and wording (Write, View, File). Rows for deferred actions (rewrite, spelling) are left out until those land. Quire's own actions (mode switch, focus mode, command palette, search all notes, sidebar) join View and File with their keys. omarky's fixed rows, in order (`writer/ui/app/HelpSheet.qml:14-28`):
+  - Write. "Ctrl+B  Ctrl+I" Bold, italic. "Ctrl+E" Inline code. "Ctrl+Shift+X" Strikethrough. "Ctrl+K" Link. "Ctrl+1 … Ctrl+6" Heading level. "Ctrl+0" Plain paragraph. "Tab  Shift+Tab" Indent, outdent a list item. "Enter" Continue a list or quote.
+  - Rewrite with Claude (only with Claude Code installed). "Ctrl+J" Rewrite the block or selection. "Ctrl+Shift+J" Rewrite the section. "Ctrl+J again" Take in more. "Enter  Esc" Use the rewrite, drop it. "Alt+↑  Alt+↓" Earlier and later rewrites.
+  - View. "Ctrl+P" Preview. "Ctrl+\" Outline. "Ctrl+Shift+F" Focus on the paragraph. "Ctrl+Shift+T" Typewriter scrolling. "Ctrl+Shift+M" Next font. "Ctrl+Shift+L" Spelling. "Ctrl+=  Ctrl+−" Text size, with U+2212 as the minus.
+  - File. "Ctrl+S" Save (saving is automatic). "Ctrl+Shift+S" Save as. "Ctrl+N" New window. "Ctrl+O" Open. "Ctrl+R" Recent files and drafts. "Ctrl+F  F3" Find, next match. "Ctrl+W" Close.
+
+## 11. Rewrite with Claude (writer entry points only)
+
+- **WR-167** [deferred] [verify: -] Ctrl+J and Ctrl+Shift+J open the rewrite line, with a toast when Claude Code is missing (decision 0006) (`components/Editor.qml:373`, `components/Rewriter.qml:58-59`)
+- **WR-168** [deferred] [verify: -] The rewrite line's keys, with the rewrite taken as one undo step (decision 0006) (`components/Rewriter.qml:201-209`)
+- **WR-169** [deferred] [verify: -] The shade over the range being rewritten (decision 0006) (`components/Editor.qml:163-172`)
+
+## 12. Window, column and chrome
+
+### Window and column
+
+- **WR-170** [quire] [verify: -] Quire's window keeps its size, colours, title (WR-139) and app id (`writer/ui/app/WriterWindow.qml:62-65`)
+- **WR-171** [adapted: 0002] [verify: geometry] The measure is `min(editor width - 2 * gutter, 68 average characters)`, with the average character width measured from the source font at size `E`. It matches the preview's measure, so the column keeps its width across the mode switch. omarky: 66 characters in the writer, "the measure Byword used" (`components/Editor.qml:25-26`)
+- **WR-172** [adapted: 0007] [verify: geometry] With `free = editor area width - measure`, the column's left edge is at `round(max(gutter, free / 2 - shift))`. `lean` is the left panel's width minus the right panel's width. `shift` has the sign of `lean` and the size `min(|lean| / 2, free / 2 - free / 2.618)`. So the column centres in the area between the panels, then leans back toward the window's centre by up to half the difference, stopping at a golden split of the free space. With no panels, or equal panels, it is centred. omarky: only the left outline leans the column (`components/Editor.qml:29-37`, `writer/ui/app/WriterWindow.qml:345-350`)
+- **WR-173** [adapted: 0007] [verify: geometry] The editor area is the sheet between the panels. When a panel opens or closes, the column moves to its new place over the panel's animation. omarky: the editor slides with its outline over 160 ms (`writer/ui/app/WriterWindow.qml:347-348`)
+- **WR-174** [in] [verify: geometry] Text runs from the column edge and wraps at the measure. Marks hang into the gutter on the left. omarky code: each line's margin also leaves one gutter free on the right, so text wraps one gutter past the measure. See Open questions (`components/Editor.qml:174-178`, `native/markdownhighlighter.cpp:330`)
+- **WR-175** [in] [verify: geometry, manual] The caret is `max(2, round(E / 9))` wide with fully rounded ends, in the accent colour, shown only while the editor has focus. It blinks visible 520 ms, fades out 180 ms, stays hidden 340 ms, fades in 180 ms, and repeats. While typing it stays solid and the cycle restarts. Rune's caret may need a width and blink option for this (`components/Editor.qml:191-207`)
+- **WR-176** [adapted: 0005] [verify: golden] The selection colour is behind selected text, and selected text is in the strong colour (`components/Editor.qml:185-186`)
+- **WR-177** [adapted: 0001] [verify: geometry, golden] A `S(28)` band at the top of the sheet, under Quire's title bar, fades from the page colour to transparent. While the toolbar shows, Quire's toolbar fade band does this job instead. A `S(64)` band at the bottom fades from transparent to the page colour by 60 percent of its height. Both span the sheet's width and hide in preview. omarky: the top band sits under its own header (`writer/ui/app/WriterWindow.qml:388-410`, `quire:desktop/src/ui/editor.rs:121-125`)
+- **WR-178** [adapted: 0001] [verify: geometry, state] A 2 px bar in the accent at opacity 0.55 runs along the top edge of the sheet, under the title bar. Its width is the sheet's width times the scroll progress of the editor, or of the preview when it shows. It draws only when wider than 1 px and does not step aside while typing. omarky: along the window's top edge (`writer/ui/app/WriterWindow.qml:601-608`, `components/Editor.qml:45`)
+
+### Header
+
+- **WR-179** [quire] [verify: -] Quire's title bar (tabs and buttons) and the breadcrumb above the text take the header's place. The sheet's top border stays, with no hairline that appears on scroll (`writer/ui/app/WriterWindow.qml:417-431`, `quire:desktop/src/ui/titlebar.rs:15-60`)
+- **WR-180** [quire] [verify: -] The note's name shows in its tab and in the breadcrumb, where a click renames it. The folder shows in the breadcrumb (`writer/ui/app/WriterWindow.qml:433-469`, `quire:desktop/src/ui/editor.rs:230-285`)
+- **WR-181** [quire] [verify: -] The title bar keeps Quire's buttons for the mode switch, focus mode and the outline. Find, font, paragraph focus, typewriter and help have keys and are listed in the command palette. omarky: a row of header chips (`writer/ui/app/WriterWindow.qml:471-484`, `quire:desktop/src/ui/titlebar.rs:36-48`)
+- **WR-182** [quire] [verify: -] Quire's title bar buttons show their state as they do today (`writer/ui/app/WriterWindow.qml:477-483`)
+- **WR-183** [quire] [verify: -] Quire's icon button look applies (`components/ChipButton.qml:13-30`, `quire:desktop/src/ui/widgets.rs`)
+
+### Chrome stepping aside while typing
+
+- **WR-184** [in] [verify: script] Typing means the text changed within the last 1400 ms (`components/Editor.qml:44`, `components/Editor.qml:139`, `components/Editor.qml:209`)
+- **WR-185** [adapted: 0001] [verify: script] The chrome is the title bar, the floating toolbar, the status bar and the outline's contents. It is visible when not typing, while the pointer is over any part of it, and while the preview, the find bar, a menu, the palette or settings is open. omarky: the header, the outline and the word count, also kept up by the conflict banner (`writer/ui/app/WriterWindow.qml:415`)
+- **WR-186** [in] [verify: script] Stepping aside fades to opacity 0 over 600 ms. Coming back fades to 1 over 160 ms. Faded chrome keeps its space, so nothing moves (`writer/ui/app/WriterWindow.qml:423`, `writer/ui/app/WriterWindow.qml:339`, `writer/ui/app/WriterWindow.qml:597`)
+- **WR-187** [in] [verify: script] Any pointer move over the window brings the chrome back, as omarky's README says. omarky code: only the end of the 1400 ms pause or the pointer over the faded header or outline brings it back (`README.md:16`, `README.md:87`, `writer/ui/app/WriterWindow.qml:413-415`)
+- **WR-222** [adapted: 0001] [verify: script] The floating formatting toolbar stays in source mode, behind Quire's toolbar setting. It is part of the chrome, so it steps aside while typing and comes back with it. Its buttons apply the rules in section 2 as one undo step. It hides in Quire's focus mode as today. omarky: no toolbar, a bare page (`quire:desktop/src/ui/editor.rs:136-228`)
+
+### Word count
+
+- **WR-188** [in] [verify: unit] The count updates 250 ms after the last change. Front matter is removed. Characters are all non-whitespace characters, Markdown marks included. For words, fenced code, link and image URLs (link text kept), HTML tags, bare URLs and the characters ``# > * _ ` ~ = | [ ] -`` are removed, then a word is a run of letters or digits that may contain `'`, `’`, `.` or `-`. Hyphenated words count as two. Reading time is `round(words / 230)` minutes, at least 1 when there is a word. This replaces `md::words` for the status bar (`lib/editing.js:9-12`, `lib/editing.js:111-125`, `quire:desktop/src/md.rs:441-460`)
+- **WR-189** [adapted: 0001] [verify: state] Quire's status bar shows "N words" ("1 word" for one), or "S of N words selected" with a selection, then "M min read". Hovering the count adds "C characters". Numbers are grouped as 1,493. The caret's line and column stay on the left as today. omarky: a floating label, "N words · C characters · M min read" on hover (`writer/ui/app/WriterWindow.qml:585-592`, `quire:desktop/src/ui/outline.rs:83-116`)
+- **WR-190** [adapted: 0001] [verify: script] The status bar steps aside with the chrome, but stays while there is a selection. It shows in preview as Quire has it. omarky: a caption centred `S(14)` above the window bottom, hidden in preview (`writer/ui/app/WriterWindow.qml:579-599`)
+
+### Toasts and menus
+
+- **WR-191** [in] [verify: geometry, golden] A toast is a pill centred at the bottom of the sheet, `S(28)` above its bottom edge, sliding up `S(8)` as it appears. Its padding is `S(14)` across and `S(7)` down, radius half its height, popup background, hairline border, body small in the text colour. It fades over 140 ms, moves over 160 ms ease-out cubic, and hides 1600 ms after the last message. Quire has no toasts today (`components/Toast.qml:10-40`)
+- **WR-192** [adapted: 0001] [verify: script] Source-mode toasts are "Saved", "Reloaded from disk", "Focus on", "Focus off", "Typewriter on", "Typewriter off" and the font name. Save errors use Quire's notice card. omarky also toasts "Saved as NAME", "Could not save: ERROR", the spelling toggle and two outline messages (`writer/ui/app/WriterWindow.qml:84`, `writer/ui/app/WriterWindow.qml:156-162`, `writer/ui/app/WriterWindow.qml:206`, `writer/ui/app/WriterWindow.qml:278-280`)
+- **WR-193** [quire] [verify: -] Menus use Quire's in-app menu, the one the sidebar tree uses. omarky: its own popup card (`components/PopupMenu.qml:25-91`, `quire:desktop/src/ui/sidebar.rs:334-401`)
+
+## 13. Settings (there is no settings sheet)
+
+- **WR-194** [quire] [verify: -] Writer settings live in Quire's settings store in `state.json`, written 0.4 s after a change. Settings, Editor shows the ones that have a control. omarky: `settings.json`, changed only by keys and chips (`writer/ui/app/Settings.qml:31-34`, `quire:desktop/src/app.rs:371-373`)
+- **WR-195** [adapted: 0002] [verify: unit] Defaults are source font iA Writer Quattro S, body size 14 px, zoom 1.0 (clamped to 0.6 to 2.2), paragraph focus off and typewriter off. A value that does not parse falls back to its default. The outline's open state is Quire's (`writer/ui/app/Settings.qml:18-26`, `writer/ui/app/Settings.qml:75-88`)
+- **WR-196** [quire] [verify: -] Quire's settings are app-wide, so every open note follows a change at once (`writer/ui/app/WriterWindow.qml:352-356`)
+
+## 14. Colour roles and opacities
+
+These are the same roles as `page-and-typography.md`, derived from the active Quire palette with
+omarky's factors (decision 0005). They follow theme changes.
+
+- **WR-197** [adapted: 0005] [verify: unit] text is the palette's foreground (`services/Theme.qml:44`)
+- **WR-198** [adapted: 0005] [verify: unit] strong is the theme's bright foreground where it has one, else the foreground. It is used for bold, headings and selected text (`services/Theme.qml:45`)
+- **WR-199** [adapted: 0005] [verify: unit] dim is the foreground mixed 34 percent toward the background (`services/Theme.qml:46`)
+- **WR-200** [adapted: 0005] [verify: unit] faint is the foreground mixed 58 percent toward the background. Every faded mark uses it (`services/Theme.qml:47`)
+- **WR-201** [adapted: 0005] [verify: unit] editor-ghost, the paragraph focus fade, is the foreground mixed 72 percent toward the background (`components/Editor.qml:253`)
+- **WR-202** [adapted: 0005] [verify: unit] ghost is the foreground mixed 80 percent toward the background (`services/Theme.qml:48`)
+- **WR-203** [adapted: 0005] [verify: unit] accent is the palette's accent, including a colour from Quire's accent picker. The caret and the progress bar use it (`services/Theme.qml:30`)
+- **WR-204** [adapted: 0005] [verify: unit] link is the accent, unless the accent is within RGB distance 24 of the foreground, then the theme's blue (`services/Theme.qml:40`, `lib/palette.js:11`, `lib/palette.js:25-27`)
+- **WR-205** [adapted: 0005] [verify: unit] mark (list markers, quote marks, task boxes, footnotes, front-matter keys, tags) is the accent mixed 15 percent toward the background (`components/Editor.qml:256`)
+- **WR-206** [adapted: 0005] [verify: unit] code is the text colour mixed 12 percent toward the accent (`components/Editor.qml:257`)
+- **WR-207** [adapted: 0005] [verify: unit] codeBg is the foreground flattened onto the background at 0.07 on light themes or 0.085 on dark ones (`components/Editor.qml:258`, `services/Theme.qml:75-77`)
+- **WR-208** [adapted: 0005] [verify: unit] The highlight wash (`==x==`) is the accent at alpha 0.22 (`native/markdownhighlighter.cpp:692-695`)
+- **WR-209** [adapted: 0005] [verify: unit] error is the theme's red, else its color1, else Quire's error colour (`services/Theme.qml:33`, `components/Editor.qml:259`)
+- **WR-210** [adapted: 0005] [verify: unit] selection is the accent at alpha 0.22 on light themes or 0.3 on dark ones (`services/Theme.qml:60`)
+- **WR-211** [adapted: 0005] [verify: unit] hover is the foreground at alpha 0.06 (`services/Theme.qml:63`)
+- **WR-212** [adapted: 0005] [verify: unit] hairline is the foreground at alpha 0.14 (light) or 0.12 (dark). hairlineSoft is 0.09 (light) or 0.075 (dark) (`services/Theme.qml:58-59`)
+- **WR-213** [adapted: 0005] [verify: unit] raised, for keycaps, is the foreground at alpha 0.045 (light) or 0.04 (dark) (`services/Theme.qml:52`)
+- **WR-214** [adapted: 0005] [verify: unit] popup background (find bar, help card, toasts) is Quire's menu background (`Commons/ShellColor.qml:80`)
+- **WR-215** [adapted: 0005] [verify: unit] Light or dark is the Quire palette's own flag. omarky: the theme's declared mode, else background luminance above 0.5 (`services/Theme.qml:24`)
+- **WR-216** [in] [verify: unit] The opacities in one place. Help scrim 0.72 of the page colour, progress bar 0.55, scroll thumb 0.5 while scrolling, highlight wash 0.22. The outline's opacities are in `reader.md`. The conflict banner is not ported (WR-147) (WR-160, WR-178, WR-93, WR-208)
+
+## 15. Durations (all in one place)
+
+- **WR-217** [adapted: 0001] [verify: state] Timers, not affected by reduced motion. Typing pause 1400 ms, word count 250 ms, outline update 400 ms, scroll-thumb linger 700 ms, toast hold 1600 ms. Autosave and the watcher are Quire's (WR-141, WR-145), and scrolling's sample window is the preview's (WR-92). omarky also has autosave 900 ms, preview refresh 200 ms and disk debounce 150 ms (`components/Editor.qml:139`, `writer/ui/app/WriterWindow.qml:226-234`, `components/Editor.qml:341`, `components/Toast.qml:40`)
+- **WR-218** [in] [verify: script] Animations, all zero under reduced motion. Chrome fade out 600 ms and in 160 ms, outline slide 160 ms ease-out cubic, preview fade-in 160 ms, caret 520, 180, 340 and 180 ms, forced glide 220 ms, typewriter follow 120 ms, scroll-thumb fade 300 ms, toast fade 140 ms and slide 160 ms (WR-186, WR-99, WR-109, WR-175, WR-88, WR-93, WR-191)
+
+## 16. Plain editor fallback
+
+- **WR-219** [dropped] [verify: -] omarky's editor ran without its native formatter when that module was missing. Quire's formatting is part of the app, so there is no unpainted mode (`docs/decisions/0016-the-editor-in-the-library.md:7`, `components/Editor.qml:267-276`)
+
+## Open questions
+
+- Quire's focus mode against omarky's focus. This file splits them. Ctrl+Shift+F (omarky preset) is omarky's paragraph fade, Ctrl+Shift+T is typewriter scrolling, and Ctrl+. keeps Quire's mode that hides the panels (WR-79, WR-85, WR-223). Both words say "focus". Recommended default is to keep "Focus" for the paragraph fade, as omarky does, and rename Quire's Ctrl+. mode, for example to "Zen mode".
+- Existing users have "dim other paragraphs" and typewriter on by default, but only inside focus mode. Recommended default is omarky's defaults (both off) for the new independent toggles, with a line in the release notes.
+- The fade between paragraphs. omarky repaints at once, and Quire fades over 200 ms today (WR-83). Recommended default is omarky's instant repaint.
+- The floating toolbar against omarky's bare page (WR-222). Recommended default is to keep the toolbar on, since it now steps aside while typing, so the page is bare while writing.
+- Whether the file tree also steps aside while typing (WR-185). omarky has no file tree. Recommended default is that its contents fade like the outline's, keeping the panel's width so the column does not move.
+- Outside changes while a note has unsaved edits (WR-147 to WR-149). Quire's edits win, and omarky offers a banner. Quire saves 0.5 s after the first change, so the window for a conflict is short. Recommended default is Quire's policy, revisited if MCP or sync writes are lost in practice.
+- Link and edge-case rules (WR-56, WR-57). This file keeps Quire's `format.rs` edge cases, which beat omarky's (no eight asterisks, bold italic instead of losing bold). It takes omarky's Ctrl+K rule, which changes the toolbar's link button. ARCHITECTURE says a toolbar rule change goes into the Android app too. Recommended default is to change both apps.
+- Tab with a selection (WR-49). omarky lets the field replace the selection with a tab character. Recommended default is that Tab and Shift+Tab indent and outdent every list line the selection touches, and leave other lines alone.
+- The measure and wrap width (WR-171, WR-174). omarky's writer uses 66 characters and wraps one gutter past them. Recommended default is decision 0002's 68 characters in both modes, wrapping at the measure.
+- Esc in preview returning to source (WR-111). Recommended default is yes, as the last step of the Esc order, matching omarky's writer preview.
+- The typing latency budget (WR-224) is a proposal, not a measurement. Recommended default is to measure the current editor with `dir_by_paragraph` first and set the budget from that.
+- Corrections of omarky accidents (WR-61, WR-63, WR-72, WR-159, WR-187). Recommended default is to accept them. Each changes behaviour only where omarky's code loses text, breaks a tag, or contradicts omarky's README.

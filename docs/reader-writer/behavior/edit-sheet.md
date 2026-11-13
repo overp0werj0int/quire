@@ -1,0 +1,108 @@
+# Edit sheet
+
+The edit sheet edits one block, or one section, of the note from the reader (Quire's preview
+mode, decision 0001). It opens with `e` or `E` (RD-78), takes the block's exact source lines,
+and saves them back into the note through Quire's own save path.
+
+The items come from omarky's sheet (`05-edit-sheet-and-rewrite.md` in the extraction). Rewrite
+with Claude is deferred by decision 0006. Its items are in `../deferred/rewrite-with-claude.md`.
+Notes on reading them:
+
+- "The note's text" is the text Quire holds for the open note. That is the vault copy, or
+  for a locked note that is open, the plain text in `App.unlocked`. The sheet reads and writes only
+  this text and never touches the disk itself.
+- Colour names (text, dim, faint, ghost, accent, hover, hairline, raised, red) are the page
+  roles, derived from Quire's palette by decision 0005. An item that only names roles is `in`.
+- Sizes are px at the default size. `B` is the body size, 14 px by default (decision 0002).
+  "Rounding" is Quire's corner radius for the role.
+- Keys are written as they are in the omarky preset (decision 0003).
+
+## Opening the sheet
+
+- **SHEET-001** [adapted: 0003] [verify: script] `e` (no modifiers) opens the sheet on one block. `E` (Shift+e) opens it on the block's whole section (omarky preset) (`reader/ui/app/ReaderWindow.qml:447-448`).
+- **SHEET-002** [in] [verify: script] The block chosen is, in order of preference, the block under the pointer, else the block holding the current text selection, else the block at the top of the view (`reader/ui/app/ReaderWindow.qml:311-317`).
+- **SHEET-003** [adapted: 0001] [verify: state] Nothing opens unless a note is open in preview mode. A locked note shows Quire's lock panel instead of the page, so its sheet opens only while it is unlocked. omarky: nothing opens when the window has no file, the file has not loaded, or the file has been deleted (`reader/ui/app/ReaderWindow.qml:346`).
+- **SHEET-004** [deferred] [verify: -] In changes mode, when the newer side is a past version, the sheet refuses with the toast "Compare with Now to edit the file" (`reader/ui/app/ReaderWindow.qml:347`).
+- **SHEET-005** [deferred] [verify: -] In changes mode a fold row cannot be edited, with the toast "Open the fold to edit what is in it" (`reader/ui/app/ReaderWindow.qml:351`).
+- **SHEET-006** [deferred] [verify: -] In changes mode a removed block cannot be edited, with the toast "That text is not in the file now" (`reader/ui/app/ReaderWindow.qml:352`).
+- **SHEET-007** [adapted: 0001] [verify: unit] A block is edited as its exact source lines, from its first line up to its end line (not included), taken from the note's text as it is when the sheet opens. Front matter, a horizontal rule and the footnotes block edit the same way. omarky: the lines come from the document's source as loaded from the file (`reader/ui/app/EditSheet.qml:49-59`, `services/Doc.qml:88-91`, `docs/superpowers/specs/2026-10-26-block-editing-sheet.md:18`).
+- **SHEET-008** [in] [verify: state] In block mode the nearest block before and the nearest block after are shown faint as context. A missing neighbour (first or last block) shows no context box on that side. In changes mode (deferred) the neighbour search also skips fold rows and removed blocks (`reader/ui/app/ReaderWindow.qml:320-326`, `reader/ui/app/ReaderWindow.qml:361`, `reader/ui/app/EditSheet.qml:52-53`, `reader/ui/app/EditSheet.qml:187`, `reader/ui/app/EditSheet.qml:261`).
+- **SHEET-009** [in] [verify: unit] In section mode the range runs from the nearest heading at or above the chosen block's first line to the line before the next heading of the same or a higher level (a smaller or equal level number). With no such later heading, the range runs to the end line of the last block in the note. In changes mode (deferred) removed headings and removed or folded blocks are ignored (`reader/ui/app/ReaderWindow.qml:331-343`).
+- **SHEET-010** [in] [verify: unit] In section mode, when the chosen block sits before the first heading, the range is line 0 up to the first heading's line. There is no "before" context, and the "after" context is the first heading. With no headings at all the range is the whole note (`reader/ui/app/ReaderWindow.qml:338`).
+- **SHEET-011** [in] [verify: unit] In section mode the "before" context is the heading just before the section's heading in the heading list, of any level. The "after" context is the heading that ends the section. Either is absent when there is none (`reader/ui/app/ReaderWindow.qml:341-342`).
+- **SHEET-012** [deferred] [verify: -] A reworded block opened in changes mode also shows its older wording (SHEET-040). Section mode never shows older wording (`reader/ui/app/ReaderWindow.qml:353-361`).
+- **SHEET-013** [in] [verify: state] On open the editor holds the block's source text, the caret is at position 0, the editor is scrolled to its top, and keyboard focus goes to the editor. Any earlier problem message and any armed discard are cleared (`reader/ui/app/EditSheet.qml:55-63`).
+- **SHEET-014** [in] [verify: script] While the sheet is shown, the reader's keys are inert. Every key goes to the sheet's editor (`reader/ui/app/ReaderWindow.qml:395`).
+
+## Layout
+
+- **SHEET-015** [adapted: 0001] [verify: script] The sheet is modal. A scrim in the page background colour at alpha 0.72 covers the whole window, the tabs and the file tree included. Clicks of any button and wheel scrolling on the scrim do nothing, and clicking the scrim does not close the sheet. Only the window's own controls (close, minimise, move) stay live. omarky: the scrim covers the reader window, which has no tabs or tree (`reader/ui/app/EditSheet.qml:128-130`, `docs/superpowers/specs/2026-10-26-block-editing-sheet.md:22`).
+- **SHEET-016** [in] [verify: geometry] The card is centred in the window. Its width is min(window width - 48, reading column width + 2 × editor gutter + 2 × 22). The editor gutter is round(editor font size × 3.2), 45 px with a 14 px editor font (`reader/ui/app/EditSheet.qml:141-142`, `components/Editor.qml:24`, `components/Editor.qml:28`).
+- **SHEET-017** [in] [verify: geometry] The card has corner radius max(6, rounding), the popup background colour and a 1 px hairline border. Inner padding is 22 px on all sides (`reader/ui/app/EditSheet.qml:132`, `reader/ui/app/EditSheet.qml:144-147`, `reader/ui/app/EditSheet.qml:152-154`).
+- **SHEET-018** [in] [verify: geometry] The content stacks top to bottom with 10 px between items. The order is the title row, the "before" context, the editor, the "after" context and the key row. In changes mode (deferred) the older-wording row sits between the "before" context and the editor (`reader/ui/app/EditSheet.qml:150-311`).
+- **SHEET-019** [in] [verify: geometry] The card's height is its chrome plus the editor's height. The editor's height is max(90, min(editor text height, round(0.7 × window height) - chrome)), so the card grows with its text up to about 70% of the window and the editor scrolls inside after that. Chrome is 2 × 22 + title height + 10 + key row height + 14, plus each visible context box and 10 px for each. omarky's spec said "about two thirds" and its code used 0.7. Quire follows the code (`reader/ui/app/EditSheet.qml:133-137`, `reader/ui/app/EditSheet.qml:143`, `docs/superpowers/specs/2026-10-26-block-editing-sheet.md:22`).
+- **SHEET-020** [in] [verify: geometry] The title row has 8 px spacing. It holds the note's name in the UI family at bodySmall, bold, in text colour, then the line span in faint at bodySmall. The span reads "line N" for one line or "lines A to B" otherwise, with A the first line and B the last line, both counted from 1 (`reader/ui/app/EditSheet.qml:157-174`).
+- **SHEET-021** [dropped] [verify: -] omarky ended the title row with "plain editor" when its optional native highlighter was missing. Quire's editor is always the same Rust widget, so there is no fallback to report (`reader/ui/app/EditSheet.qml:175-181`, `docs/decisions/0018-a-sheet-edits-one-block.md:22`).
+- **SHEET-022** [in] [verify: geometry] Context blocks are drawn by the reader's own block renderer in the dim text tier, at the reading column width, indented by the editor's gutter so they line up with the editor's text (`reader/ui/app/EditSheet.qml:191-200`, `reader/ui/app/EditSheet.qml:265-273`).
+- **SHEET-023** [in] [verify: geometry] Each context box is clipped to at most three reading lines, round(B × 1.6 × 3), 67 px at the default size (`reader/ui/app/EditSheet.qml:133`, `reader/ui/app/EditSheet.qml:189`, `reader/ui/app/EditSheet.qml:263`).
+- **SHEET-024** [in] [verify: geometry, golden] The "before" box is bottom-aligned, so it shows the last lines of the preceding block. When the block is taller than the box, a 28 px gradient at the top fades from the popup background to transparent (`reader/ui/app/EditSheet.qml:196`, `reader/ui/app/EditSheet.qml:202-209`).
+- **SHEET-025** [in] [verify: geometry, golden] The "after" box is top-aligned, so it shows the first lines of the following block. When the block is taller than the box, a 28 px gradient at the bottom fades from transparent to the popup background (`reader/ui/app/EditSheet.qml:265-283`).
+- **SHEET-026** [in] [verify: state] Both context boxes are drawn at opacity 0.55 on top of the dim text tier (`reader/ui/app/EditSheet.qml:210`, `reader/ui/app/EditSheet.qml:284`).
+- **SHEET-027** [adapted: 0006] [verify: state] The sheet's editor is the writer's editor widget, with the writer's prose font (iA Writer Quattro S Regular by default, decision 0002) at the reader's current body size. Focus mode and typewriter scrolling are off, and it has 6 px top and bottom padding instead of a page's padding. There is no spell checking until spelling is specified. omarky: the same, with spelling check on (`reader/ui/app/EditSheet.qml:246-256`, `components/Editor.qml:19-24`, `components/Editor.qml:40-41`).
+- **SHEET-028** [adapted: 0004] [verify: geometry] The editor's text measure is min(width - 2 × gutter, round(average char width × 66)), about 66 characters. Heading marks, list markers and quote marks hang in the gutter through the patched Rune text field (decision 0004). omarky: the marks hang through a paragraph format (`components/Editor.qml:25-28`).
+- **SHEET-029** [in] [verify: script] The editor caret is the accent colour, max(2, round(font size / 9)) px wide and fully rounded. It blinks. It is visible for 520 ms, fades out over 180 ms, stays hidden for 340 ms and fades in over 180 ms. It stays solid while typing, which means any keystroke within the last 1400 ms (`components/Editor.qml:139`, `components/Editor.qml:191-207`).
+- **SHEET-030** [adapted: 0003] [verify: geometry] The key row is 24 px tall with 8 px spacing. It holds a key cap for cancel with "cancels", a 10 px gap, then a key cap for save with "saves". The key names come from the active keymap, "Esc" and "Ctrl+Enter" in the omarky preset. Labels are caption in faint (`reader/ui/app/EditSheet.qml:287-300`).
+- **SHEET-031** [in] [verify: geometry] A key cap is the key name in the UI family at caption, dim, on a raised fill with a 1 px hairline border, 12 px wider and 6 px taller than its label, corner radius max(3, rounding - 2) (`components/KeyCap.qml:8-23`).
+- **SHEET-032** [adapted: 0006] [verify: script] A right-click in the editor opens Quire's in-app menu with Cut, Copy and Paste and their shortcuts. Cut and Copy are disabled with no selection. Closing the menu returns focus to the editor. The spelling entries (suggestions, "No suggestions", "Add "word" to dictionary" and the separator) wait for spell checking. omarky: a native menu that starts with the spelling entries for a misspelt word (`components/Editor.qml:218-241`, `reader/ui/app/EditSheet.qml:255`, `reader/ui/app/EditSheet.qml:328`).
+
+## Keys inside the sheet
+
+- **SHEET-033** [adapted: 0003] [verify: script] `Ctrl+Enter` and `Ctrl+S` both save (omarky preset) (`components/Editor.qml:357`, `components/Editor.qml:377`, `reader/ui/app/EditSheet.qml:87`).
+- **SHEET-034** [deferred] [verify: -] `Ctrl+J` opens the rewrite line on the block or selection and `Ctrl+Shift+J` on the section, inside the sheet's text. See `../deferred/rewrite-with-claude.md` (`components/Editor.qml:373`, `reader/ui/app/EditSheet.qml:88-89`).
+- **SHEET-035** [adapted: 0003] [verify: script] The editor's text-editing keys work as in the writer. Enter continues lists and quotes, Tab and Shift+Tab indent list items, Ctrl+B, Ctrl+I, Ctrl+E (inline code), Ctrl+Shift+X (strike) and Ctrl+K (link) wrap, and Ctrl+0 to Ctrl+6 set heading levels (omarky preset, sheet context) (`components/Editor.qml:352-374`).
+- **SHEET-036** [adapted: 0001] [verify: script] Every other window command is ignored while the sheet is open. That covers omarky's list (find, preview, new, open, close, zoom, help, outline, font, focus, typewriter, spelling, save as, recent) and Quire's own (the command palette, the quick switcher, search all notes, settings, the mode switch, the sidebar, tab switching, new note and lock). omarky: only omarky's list (`reader/ui/app/EditSheet.qml:86-96`, `docs/decisions/0018-a-sheet-edits-one-block.md:24`).
+- **SHEET-037** [adapted: 0006] [verify: script] `Esc` acts in this order. Close the context menu if it is open, else close the sheet at once if the text is unchanged from what it opened with, else arm a discard. omarky also dismissed an open rewrite line before closing, which is deferred with rewrite (`reader/ui/app/EditSheet.qml:90-95`).
+- **SHEET-038** [in] [verify: script] With a discard armed, the key row's "cancels" changes to "again to discard your edit" in the text colour. A second `Esc` within 2000 ms closes the sheet without saving. After 2000 ms the arm lapses and the row returns to "cancels" (`reader/ui/app/EditSheet.qml:94`, `reader/ui/app/EditSheet.qml:117`, `reader/ui/app/EditSheet.qml:296`).
+- **SHEET-039** [adapted: 0006] [verify: script] Closing without saving changes nothing and returns keyboard focus to the page. omarky also closed any open rewrite line (`reader/ui/app/EditSheet.qml:66-70`, `reader/ui/app/ReaderWindow.qml:692`).
+
+## Older wording in changes mode
+
+- **SHEET-040** [deferred] [verify: -] For a reworded block in changes mode, a row above the editor shows the block's wording on the older side of the comparison, from the paired block's older start line to its older end line (`reader/ui/app/ReaderWindow.qml:358-360`, `lib/diff/changes.js:110-113`).
+- **SHEET-041** [deferred] [verify: -] The older row is a red wash, flat(red, 0.06) in light themes and flat(red, 0.1) in dark, corner radius max(4, rounding - 2). Its text sits 12 px from the left and 8 px from the top, and the row is the text height plus 16 px. The text is plain, wrapped, at most 4 lines with an ellipsis, in dim, in the reading prose face at bodySmall (`reader/ui/app/EditSheet.qml:214-234`).
+- **SHEET-042** [deferred] [verify: -] A "Use this" chip sits at the row's right, 8 px in, vertically centred, at bodySmall. It replaces the editor's whole text with the older wording and refocuses the editor, so saving restores the old wording (`reader/ui/app/EditSheet.qml:81-84`, `reader/ui/app/EditSheet.qml:235-243`).
+- **SHEET-043** [deferred] [verify: -] A chip is its label in the reading mono face, dim (text on hover), height round(size × 2), width the label plus round(size × 1.3), radius max(3, min(rounding, height / 3)), with a hover fill and hairline border on hover and colour changes animated over 120 ms (`components/ChipButton.qml:16-38`).
+
+## Saving
+
+- **SHEET-044** [adapted: 0001] [verify: script] Before saving, the sheet compares the note's current text with the text captured when the sheet opened. The text can change underneath from the watcher, a sync download, or an outside change to a locked note. If it differs, nothing is saved, the sheet stays open with its text intact, and the problem line reads "The file changed while you were editing. Copy your text and open it again." omarky: the comparison is against the document's source as reloaded from the file (`reader/ui/app/EditSheet.qml:72-76`).
+- **SHEET-045** [adapted: 0001] [verify: unit, script] Saving replaces the opened source lines with the editor's lines (split on newline) in the note's text. All lines outside the range are untouched, so the note's final newline is kept. The new text goes through Quire's save path like any edit. For an unlocked note it is sealed first, so only sealed text reaches the folder copy and the disk. The note is marked dirty and sent to the Writer thread at once, which writes it with a temporary file and a rename. omarky: the window wrote the whole file atomically itself (`reader/ui/app/EditSheet.qml:77-78`, `reader/ui/app/EditSheet.qml:119-123`, final newline inferred from the split and join).
+- **SHEET-046** [adapted: 0001] [verify: script] The Writer thread writes after the sheet has closed, so a failed write shows in Quire's error notice, as every failed note write does. The text stays in memory and the next save retries it. omarky: a failed write kept the sheet open with "Could not save: " and the error (`reader/ui/app/EditSheet.qml:125`).
+- **SHEET-047** [in] [verify: geometry] The problem line replaces the key row. It is one line in red at caption, elided at the right. It stays until the sheet is next opened (`reader/ui/app/EditSheet.qml:292`, `reader/ui/app/EditSheet.qml:301-310`, `reader/ui/app/EditSheet.qml:55`).
+- **SHEET-048** [adapted: 0001] [verify: script] After a save the sheet closes, a toast says "Saved", and focus returns to the page. The page draws from the note's text, so it shows the edit at once and keeps its place by RD-11. omarky: the page showed the edit when its file watcher reloaded, and in changes mode the comparison re-ran. The changes-mode part is deferred (`reader/ui/app/EditSheet.qml:124`, `reader/ui/app/ReaderWindow.qml:691-692`, `docs/decisions/0018-a-sheet-edits-one-block.md:21`).
+- **SHEET-049** [in] [verify: geometry] The toast is a pill centred at the bottom of the window, 28 px above the bottom edge, with text at bodySmall in text colour on the popup background, a hairline border, and 28 px more width and 14 px more height than its text. It fades in over 140 ms while rising 8 px over 160 ms, and hides after 1600 ms (RD-98) (`components/Toast.qml:10-40`).
+- **SHEET-050** [adapted: 0001] [verify: script] The page never edits text in place. In preview mode the sheet is the only way to change text, apart from ticking task boxes (RD-73). Quire's source mode stays the other editing path. omarky: the reader never held the file open for writing (`docs/decisions/0018-a-sheet-edits-one-block.md:7`, `reader/ui/app/ReaderWindow.qml:364-377`).
+
+## Help sheet entries
+
+- **SHEET-111** [adapted: 0003] [verify: unit] The help sheet's Edit group lists "Edit the block under the mouse", "Edit its section" and "Save to the file / cancel", with keys from the active keymap (`E`, `Shift+E`, `Ctrl+Enter  Esc` in the omarky preset). The row "In the sheet, rewrite with Claude" (`Ctrl+J`) is deferred with rewrite (`reader/ui/app/ShortcutSheet.qml:24-25`).
+
+## Quire additions
+
+- **SHEET-112** [adapted: 0001] [verify: script] On a locked note the sheet edits the plain text and saves sealed text. While the sheet is open the note cannot be locked from Quire, because the palette and every other command are inert (SHEET-036). If the note's lock changes from outside (a password removed or changed elsewhere), the text changes underneath and SHEET-044 refuses the save. omarky has no locked notes.
+- **SHEET-113** [adapted: 0001] [verify: script] If the note is deleted or moved outside Quire while the sheet is open, the sheet stays open with its text. Saving is refused with the problem line "The note was deleted or moved. Copy your text." The note's tab closes as usual (RD-16), and the sheet stays until it is closed. omarky had no case for this, because a missing file kept its window.
+
+## Spec and code divergences
+
+omarky's spec and its code disagree in three places. Quire follows the code in each.
+
+- The spec put the rewrite line in room left under the sheet's editor, and the code floats a card over the sheet anchored to the range. This is deferred with rewrite.
+- The spec said "Esc again to discard" for two seconds, and the code shows "again to discard your edit" (SHEET-038). Quire uses the code's wording.
+- The spec said Claude sees the whole document, and in the reader's sheet it sees only the sheet's text. This is deferred with rewrite.
+
+## Open questions
+
+- Whether a sheet save writes at once or on the usual 0.5 s save timer (SHEET-045). Recommended default. Send it to the Writer at once, so "Saved" is true by the time a person could check the file.
+- Whether a sheet save is an undo step in the note's source-mode history. Recommended default. Make it one step, so switching to source mode and pressing undo takes the sheet's edit back.
+- How far the scrim reaches (SHEET-015). Recommended default. The whole window, tabs and file tree included, with the window controls live. Closing the window with a changed sheet discards the sheet's text, as `Esc` twice does.
+- Whether `Ctrl+S` should save in the sheet in the quire preset too, where it has no window action today. Recommended default. Bind it in both presets.
+- Whether the sheet should follow the outside change and offer a merge instead of refusing (SHEET-044). Recommended default. Refuse, as omarky does, since the text stays in the sheet to copy.
