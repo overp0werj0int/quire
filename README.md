@@ -156,4 +156,6 @@ Each notes folder syncs to its own remote folder, `quire/<folder name>/` unless 
 | [`design/`](design) | The design prototype that both apps follow. |
 | [`assets/`](assets) | The brand marks and the fonts, which keep their SIL Open Font License. |
 
+To change the code, start with [`ARCHITECTURE.md`](ARCHITECTURE.md). It explains how both apps are built.
+
 Quire is MIT licensed.
