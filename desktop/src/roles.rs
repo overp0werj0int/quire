@@ -253,10 +253,12 @@ mod tests {
     fn page_41_named_colours_fall_back_in_order() {
         let nord = Roles::new(theme_pal("nord", true));
         assert_eq!((hx(nord.green), hx(nord.magenta), hx(nord.orange)), ("#a3be8c".into(), "#b48ead".into(), "#d5967a".into()));
-        let paper = theme_pal("paper", false);
-        let r = Roles::new(paper);
-        assert_eq!((hx(r.green), hx(r.cyan)), (hx(paper.acc), hx(paper.acc)), "no named colours: the accent");
-        assert_eq!((hx(r.red), hx(r.orange)), (hx(paper.err), hx(paper.err)), "red and orange: the error colour");
+        let paper = Roles::new(theme_pal("paper", false));
+        assert_eq!((hx(paper.green), hx(paper.blue)), ("#5f7a3a".into(), "#3d6a9c".into()), "paper has its own");
+        let bare = crate::theme::Pal { named: Default::default(), ..*theme_pal("paper", false) };
+        let r = Roles::new(&bare);
+        assert_eq!((hx(r.green), hx(r.cyan)), (hx(bare.acc), hx(bare.acc)), "no named colours: the accent");
+        assert_eq!((hx(r.red), hx(r.orange)), (hx(bare.err), hx(bare.err)), "red and orange: the error colour");
         assert_eq!(hx(Roles::new(theme_pal("rose-pine", true)).orange), "#f6c177", "no orange: the theme's yellow");
         // Omarchy: the named key, else the numbered colour; orange, else yellow, else color3.
         let om = omarchy_pal("background = \"#000000\"\nforeground = \"#ffffff\"\naccent = \"#3366ff\"\ncolor2 = \"#00ff00\"\nred = \"#ff0000\"\ncolor1 = \"#880000\"\ncolor3 = \"#ffff00\"").unwrap();

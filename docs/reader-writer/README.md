@@ -115,6 +115,8 @@ phase 5 with the code blocks that use it. See `decisions.tsv`.
 
 ### Phase 4. Block model and parser
 
+Status: done on branch `rw/phase-3-typography`, with pulldown-cmark as the parser.
+
 - Choose the parser: extend `md.rs`, or use a crate such as pulldown-cmark or comrak, with the
   `architect` skill. It must give source line maps for every block.
 - The flat block list with source maps and stable keys (a content hash plus an ordinal), so
@@ -124,6 +126,9 @@ phase 5 with the code blocks that use it. See `decisions.tsv`.
 - omarky's parser test tables, ported (VER-38).
 
 ### Phase 5. The reader page
+
+Status: done on branch `rw/phase-3-typography`, except virtualization, the edge fades and the
+hover-only details listed in `decisions.tsv`. Code colours come from `rune-highlights`.
 
 - The measure, gutter and lean (PAGE-21 to PAGE-31).
 - The vertical rhythm table (PAGE-54 to PAGE-69).
@@ -174,7 +179,7 @@ most:
   edits win (`behavior/writer.md`).
 - The floating formatting toolbar. Recommended: keep it, and let it step aside while typing
   (`behavior/writer.md`).
-- Code colours on Quire's built-in themes, which have no named colours. Recommended: give each
-  theme its upstream palette's colours (`behavior/page-and-typography.md`).
+- Code colours on Quire's built-in themes. Resolved in phase 5: each theme carries its upstream
+  palette's colours, and Paper, White, Ink and Black have their own set (`decisions.tsv`).
 - `format.rs` rules are shared with Android. Recommended: a `Ctrl+K` change lands in both apps,
   so the toolbar rules stay the same (`behavior/writer.md`).

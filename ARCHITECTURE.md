@@ -210,6 +210,8 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `watch.rs` | The watcher thread, plus the Omarchy theme watcher. |
 | `md.rs` | Markdown analysis: names, links, tags, headings, backlinks, search. |
 | `blocks.rs` | The preview's block model: a note parsed with pulldown-cmark into omarky's blocks, each with its source lines and a stable key, plus the headings, anchors and find index (`docs/reader-writer/`, phase 4). |
+| `page.rs` | The reader page's geometry as pure functions: the type steps, the measure, gutter and lean, the vertical rhythm between blocks and table column widths (`docs/reader-writer/`, phase 5). |
+| `highlight.rs` | Code colours: the `rune-highlights` lexers, with omarky's language aliases, mapped to the theme's syntax roles and cached per block. |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
 | `folders.rs` | The folder tree, moving notes by drag, the tree menu. |
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |
@@ -220,7 +222,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets` and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008). |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets` and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. |
 
 ## The Android app
 

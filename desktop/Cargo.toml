@@ -24,6 +24,8 @@ rsa = { version = "0.9", features = ["sha2"] }
 getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
+# Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
+rune-highlights = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
 
 [build-dependencies]
 embed-resource = "3"

@@ -146,11 +146,9 @@ All values are round(B × factor). (`services/Reading.qml:92-113`)
 
 ## Open questions
 
-- Built-in themes have no named colours. Quire's 14 themes carry only background, sidebar, inks,
-  accent and error, so under PAGE-41 every code colour except red falls back to the accent and
-  code becomes one colour. The recommended default is to give each built-in theme the seven named colours
-  of its upstream palette (Solarized, Gruvbox, Catppuccin, Rosé Pine, Nord, Tokyo Night), and
-  choose a set for Paper, White, Ink and Black by side-by-side shots with omarky.
+- Resolved in phase 5: built-in themes carry named colours. The upstream palettes keep their own
+  (Solarized, Gruvbox, Catppuccin, Rosé Pine, Nord, Tokyo Night), and Paper, White, Ink and Black
+  have a muted set picked to sit beside their accent (`theme.rs`, `decisions.tsv`).
 - Light and dark thresholds differ. For an Omarchy theme without `mode`, omarky calls it light
   above luminance 0.5 and Quire calls it dark below 0.25, so a mid-grey background can disagree.
   The recommended default is to follow Quire's flag (PAGE-32), so the page and Quire's chrome always

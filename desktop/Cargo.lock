@@ -2725,6 +2725,7 @@ dependencies = [
  "pulldown-cmark",
  "rsa",
  "rune",
+ "rune-highlights",
  "serde",
  "serde_json",
  "sha2",
@@ -3019,6 +3020,15 @@ dependencies = [
  "xkbcommon",
  "zbus 6.2.1",
  "zeroize",
+]
+
+[[package]]
+name = "rune-highlights"
+version = "0.0.1"
+source = "git+https://github.com/anomalyco/rune?rev=bf3f9d4a0459af5071cd352df816b610dda7f3a6#bf3f9d4a0459af5071cd352df816b610dda7f3a6"
+dependencies = [
+ "unicode-ident",
+ "wasmparser",
 ]
 
 [[package]]
@@ -3973,6 +3983,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.245.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f08c9adee0428b7bddf3890fc27e015ac4b761cc608c822667102b8bfd6995e"
+dependencies = [
+ "bitflags 2.13.2",
+ "indexmap",
 ]
 
 [[package]]

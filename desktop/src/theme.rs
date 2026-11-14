@@ -203,6 +203,17 @@ pub struct Named {
     pub panel: Option<Color>,
 }
 
+/// A built-in theme's named colours (PAGE-41).
+fn named(t: &ThemeDef) -> Named {
+    let [green, red, yellow, blue, magenta, cyan, orange] = t.named.map(|h| rune::color::hex(h));
+    Named { green, red, yellow, blue, magenta, cyan, orange: orange.or(yellow), strong: None, panel: None }
+}
+
+/// Paper's or Ink's named colours, from their THEMES rows.
+fn named_of(id: &str) -> Named {
+    THEMES.iter().find(|t| t.id == id).map(named).unwrap_or_default()
+}
+
 pub fn pal(dark: bool) -> &'static Pal {
     static L: OnceLock<Pal> = OnceLock::new();
     static D: OnceLock<Pal> = OnceLock::new();
@@ -232,7 +243,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             sel_editor: rgba("#8a5fc9", 0.26),
             scrim_palette: rgba("#281e0f", 0.16),
             scrim_settings: rgba("#281e0f", 0.22),
-            named: Named::default(),
+            named: named_of("ink"),
         })
     } else {
         L.get_or_init(|| Pal {
@@ -260,7 +271,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             sel_editor: rgba("#8a5fc9", 0.26),
             scrim_palette: rgba("#281e0f", 0.16),
             scrim_settings: rgba("#281e0f", 0.22),
-            named: Named::default(),
+            named: named_of("paper"),
         })
     }
 }
@@ -471,14 +482,14 @@ pub struct ThemeDef {
 }
 
 pub const THEMES: &[ThemeDef] = &[
-    ThemeDef { id: "paper", name: "Paper", dark: false, colors: ["#f8f5ef", "#efebe3", "#2a2723", "#5b554d", "#776f64", "#b2a999", "#7a4fba", "#b0432f"], named: ["", "", "", "", "", "", ""] },
-    ThemeDef { id: "white", name: "White", dark: false, colors: ["#ffffff", "#f5f5f3", "#1f1e1c", "#474540", "#6b6863", "#aeaaa3", "#7a4fba", "#b0432f"], named: ["", "", "", "", "", "", ""] },
+    ThemeDef { id: "paper", name: "Paper", dark: false, colors: ["#f8f5ef", "#efebe3", "#2a2723", "#5b554d", "#776f64", "#b2a999", "#7a4fba", "#b0432f"], named: ["#5f7a3a", "#b0432f", "#a2741b", "#3d6a9c", "#9a4d8f", "#2f7f78", "#b8622a"] },
+    ThemeDef { id: "white", name: "White", dark: false, colors: ["#ffffff", "#f5f5f3", "#1f1e1c", "#474540", "#6b6863", "#aeaaa3", "#7a4fba", "#b0432f"], named: ["#5f7a3a", "#b0432f", "#a2741b", "#3d6a9c", "#9a4d8f", "#2f7f78", "#b8622a"] },
     ThemeDef { id: "solarized-light", name: "Solarized Light", dark: false, colors: ["#fdf6e3", "#eee8d5", "#073642", "#586e75", "#657b83", "#93a1a1", "#268bd2", "#dc322f"], named: ["#859900", "#dc322f", "#b58900", "#268bd2", "#d33682", "#2aa198", "#cb4b16"] },
     ThemeDef { id: "gruvbox-light", name: "Gruvbox Light", dark: false, colors: ["#fbf1c7", "#f2e5bc", "#3c3836", "#504945", "#7c6f64", "#a89984", "#af3a03", "#9d0006"], named: ["#79740e", "#9d0006", "#b57614", "#076678", "#8f3f71", "#427b58", "#af3a03"] },
     ThemeDef { id: "catppuccin-latte", name: "Catppuccin Latte", dark: false, colors: ["#eff1f5", "#e6e9ef", "#4c4f69", "#5c5f77", "#6c6f85", "#9ca0b0", "#8839ef", "#d20f39"], named: ["#40a02b", "#d20f39", "#df8e1d", "#1e66f5", "#ea76cb", "#179299", "#d84e2b"] },
     ThemeDef { id: "rose-pine-dawn", name: "Rosé Pine Dawn", dark: false, colors: ["#faf4ed", "#f2e9e1", "#575279", "#686388", "#797593", "#9893a5", "#907aa9", "#b4637a"], named: ["#286983", "#b4637a", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#cf8057"] },
-    ThemeDef { id: "ink", name: "Ink", dark: true, colors: ["#1f1d1a", "#181715", "#e9e3d8", "#bdb5a7", "#948c7f", "#5f584e", "#b597e8", "#e8907c"], named: ["", "", "", "", "", "", ""] },
-    ThemeDef { id: "black", name: "Black", dark: true, colors: ["#000000", "#0a0a0a", "#e8e6e3", "#b8b5b0", "#8c8984", "#4a4845", "#b597e8", "#e8907c"], named: ["", "", "", "", "", "", ""] },
+    ThemeDef { id: "ink", name: "Ink", dark: true, colors: ["#1f1d1a", "#181715", "#e9e3d8", "#bdb5a7", "#948c7f", "#5f584e", "#b597e8", "#e8907c"], named: ["#a8c181", "#e8907c", "#e3c07a", "#8fb3e0", "#d6a0dc", "#86c9c0", "#e8a46d"] },
+    ThemeDef { id: "black", name: "Black", dark: true, colors: ["#000000", "#0a0a0a", "#e8e6e3", "#b8b5b0", "#8c8984", "#4a4845", "#b597e8", "#e8907c"], named: ["#a8c181", "#e8907c", "#e3c07a", "#8fb3e0", "#d6a0dc", "#86c9c0", "#e8a46d"] },
     ThemeDef { id: "nord", name: "Nord", dark: true, colors: ["#2e3440", "#272c36", "#eceff4", "#d8dee9", "#9aa3b5", "#4c566a", "#88c0d0", "#bf616a"], named: ["#a3be8c", "#bf616a", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#d5967a"] },
     ThemeDef { id: "gruvbox-dark", name: "Gruvbox Dark", dark: true, colors: ["#282828", "#1d2021", "#ebdbb2", "#d5c4a1", "#a89984", "#665c54", "#fe8019", "#fb4934"], named: ["#b8bb26", "#fb4934", "#fabd2f", "#83a598", "#d3869b", "#8ec07c", "#fe8019"] },
     ThemeDef { id: "catppuccin-mocha", name: "Catppuccin Mocha", dark: true, colors: ["#1e1e2e", "#181825", "#cdd6f4", "#bac2de", "#9399b2", "#585b70", "#cba6f7", "#f38ba8"], named: ["#a6e3a1", "#f38ba8", "#f9e2af", "#89b4fa", "#f5c2e7", "#94e2d5", "#f6b6ab"] },
@@ -567,10 +578,7 @@ fn build(t: &ThemeDef) -> Pal {
         sel_editor: acc,
         scrim_palette: if dark { Color::BLACK.alpha(0.3) } else { rgba("#281e0f", 0.16) },
         scrim_settings: if dark { Color::BLACK.alpha(0.38) } else { rgba("#281e0f", 0.22) },
-        named: {
-            let [green, red, yellow, blue, magenta, cyan, orange] = t.named.map(|h| rune::color::hex(h));
-            Named { green, red, yellow, blue, magenta, cyan, orange: orange.or(yellow), strong: None, panel: None }
-        },
+        named: named(t),
     };
     with_accent(&base, acc)
 }

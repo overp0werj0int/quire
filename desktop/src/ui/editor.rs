@@ -83,12 +83,16 @@ fn doc_scroll(v: V) -> El {
         let bar = shows_toolbar(v);
         let (pad_t, pad_b) = if focus { (v.vh * 0.16, v.vh * 0.48) } else { (if bar { TOOLBAR_TOP } else { 34.0 }, v.vh * 0.38) };
         let ch = if focus { 68.0 } else { 72.0 };
+        let locked = s.active.as_deref().is_some_and(|a| s.note_locked(a));
+        // The reader page sets its own column, gutter and room below (PAGE-21 to PAGE-29).
+        let reader = s.mode == Mode::Preview && !locked;
+        let page = preview::column(v);
         let mut column = col()
             .key("doc-col")
             .w_full()
             .pt(pad_t)
-            .pb(pad_b)
-            .px(pad_x)
+            .pb(if reader { crate::page::bottom_room(v.vh) } else { pad_b })
+            .px(if reader { 0.0 } else { pad_x })
             .on_press_tx(|s: &mut App, tx| {
                 // A click below the text puts the caret at the end, as the design's column does.
                 if s.mode == Mode::Source {
@@ -98,22 +102,23 @@ fn doc_scroll(v: V) -> El {
                     s.focus_editor(tx);
                 }
             });
-        if s.settings().width == "readable" {
+        if reader {
+            column = column.pl(page.gutter);
+        } else if s.settings().width == "readable" {
             column = column.max_w(size * 0.6 * ch + 2.0 * pad_x);
         }
         if bar {
             column = column.child(toolbar(v));
         }
         if !focus {
-            column = column.child(crumb(v));
+            column = column.child(if reader { crumb(v).w(page.width).mb(crate::page::TOP_ROOM) } else { crumb(v) });
         }
-        let locked = s.active.as_deref().is_some_and(|a| s.note_locked(a));
         column = column.child(if locked {
             super::lock::panel(v)
         } else if s.mode == Mode::Source {
             source(v)
         } else {
-            preview::preview(v)
+            preview::preview(v).w(page.width)
         });
         content = content.child(column);
     } else if s.files().is_empty() {

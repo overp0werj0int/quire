@@ -3,6 +3,7 @@
 mod editor;
 mod lock;
 mod outline;
+mod octicons;
 mod panel;
 mod palette;
 mod preview;
