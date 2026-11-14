@@ -6,7 +6,6 @@ use super::V;
 use super::widgets::{CLOSE_THIN, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
-use crate::keys::{k, mod_click};
 use crate::theme::{self, EDITOR_FONTS, mono, sans};
 
 pub fn settings(v: V) -> El {
@@ -467,44 +466,42 @@ fn files(v: V) -> El {
 }
 
 fn keys(v: V) -> El {
+    use crate::keymap::{self, Ctx, Preset, Status};
     let p = v.p;
-    let rows: [(&str, &[&str]); 15] = [
-        ("Quick switcher", &["Mod", "O"]),
-        ("Command palette", &["Mod", "P"]),
-        ("New note", &["Mod", "N"]),
-        ("Source / preview", &["Mod", "E"]),
-        ("Search all notes", &["Mod", "Shift", "F"]),
-        ("Focus mode", &["Mod", "."]),
-        ("Toggle sidebar", &["Mod", "\\"]),
-        ("Settings", &["Mod", ","]),
-        ("Bold", &["Mod", "B"]),
-        ("Italic", &["Mod", "I"]),
-        ("Link", &["Mod", "K"]),
-        ("Insert an image", &["Mod", "Shift", "I"]),
-        ("Larger text", &["Mod", "="]),
-        ("Smaller text", &["Mod", "-"]),
-        ("Text size 14 px", &["Mod", "0"]),
-    ];
-    let mut c = col().key("keys").w_full();
-    let mut all: Vec<(String, String)> = rows.iter().map(|(l, ks)| (l.to_string(), k(ks))).collect();
-    if !cfg!(target_os = "macos") {
-        all.push(("Quit".into(), k(&["Mod", "Q"])));
-    }
-    all.push(("Follow a [[link]]".into(), mod_click()));
-    for (i, (l, kb)) in all.into_iter().enumerate() {
-        c = c.child(
-            row()
-                .key(format!("key-{i}"))
-                .w_full()
-                .gap(16.0)
-                .py(11.0)
-                .center_y()
-                .justify_between()
-                .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
-                .border_layout()
-                .child(label(l, sans(13.5, 400.0), p.ink))
-                .child(super::widgets::padded(kb, mono(11.5, 400.0), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
-        );
+    let preset = v.s.preset();
+    let pick = |pr: Preset, name: &str| {
+        seg(name, preset == pr, move |s: &mut App, _: &mut Tx| s.settings_mut().keymap = pr.id().into())
+    };
+    let mut c = col().key("keys").w_full().child(row_(
+        v,
+        "preset",
+        "Keys",
+        Some("omarky's keys, or the keys Quire used before. Every label in the app follows."),
+        settings_seg(p, "preset-seg", vec![pick(Preset::Omarky, "omarky"), pick(Preset::Quire, "Quire")]),
+    ));
+    // Only keys whose feature is built: the rest arrive with the reader and writer work.
+    let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor")];
+    for (ctx, title) in groups {
+        c = c.child(label(title, mono(11.0, 400.0), p.mute).key(format!("keys-{title}")).pt(18.0).pb(6.0));
+        let shown = keymap::TABLE.iter().filter(|a| {
+            a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape" && crate::keys::handler(a.id).is_some()
+        });
+        for a in shown {
+            let kb = keymap::labels(preset, a.id);
+            c = c.child(
+                row()
+                    .key(format!("key-{}", a.id))
+                    .w_full()
+                    .gap(16.0)
+                    .py(11.0)
+                    .center_y()
+                    .justify_between()
+                    .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
+                    .border_layout()
+                    .child(label(a.name, sans(13.5, 400.0), p.ink))
+                    .child(super::widgets::padded(kb, mono(11.5, 400.0), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
+            );
+        }
     }
     c
 }

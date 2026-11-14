@@ -278,6 +278,11 @@ fn seed_sample(p: &mut Persist) {
 }
 
 impl App {
+    /// The keymap preset the settings pick.
+    pub fn preset(&self) -> crate::keymap::Preset {
+        crate::keymap::Preset::from_id(&self.settings().keymap)
+    }
+
     pub fn settings(&self) -> &Settings {
         &self.persist.settings
     }

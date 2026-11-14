@@ -202,7 +202,8 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `main.rs` | The entry point. It builds the Rune app, or runs a CLI subcommand. Also the headless scenes. |
 | `cli.rs` | Subcommands: `quire mcp`. |
 | `app.rs` | `App`, `init`, `poll` and most actions. |
-| `keys.rs` | Window shortcuts. |
+| `keymap.rs` | The keymap table: every key as a context, chord and action, in the omarky and Quire presets. |
+| `keys.rs` | Routes window keys through the keymap to each action's handler. |
 | `commands.rs` | The command palette and the quick switcher. |
 | `vault.rs` | `Vault`, `Op`, `Writer`: reading the folder and writing to it. |
 | `store.rs` | `Persist`, `Settings`, `state.json`. |

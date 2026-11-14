@@ -39,12 +39,12 @@ fn bar(v: V) -> El {
     if v.has_doc() {
         // One button flips between source and preview. Its icon shows where it goes.
         let (glyph, help) = if s.mode == Mode::Source {
-            (&EYE, format!("Show preview ({})", crate::keys::k(&["Mod", "E"])))
+            (&EYE, format!("Show preview ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
         } else {
-            (&CODE, format!("Show source ({})", crate::keys::k(&["Mod", "E"])))
+            (&CODE, format!("Show source ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
         };
         right = right.child(icon_button(p, "mode", glyph, 16.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(|s: &mut App, tx| s.toggle_mode(tx)));
-        let help = format!("Focus mode ({})", crate::keys::k(&["Mod", "."]));
+        let help = format!("Focus mode ({})", crate::keymap::label(s.preset(), "app.focus-mode"));
         right = right.child(icon_button(p, "focus", &FOCUS, 16.0, &help).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
     }
     right = right.child(icon_button(p, "toggle-right", &SIDEBAR_RIGHT, 16.0, "Toggle outline").on_press(|s: &mut App| s.toggle_right()));

@@ -8,7 +8,6 @@ use super::V;
 use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, FOLDER, FOLDER_OPEN, FOLDER_PLUS, PLUS, SEARCH, label};
 use crate::folders::{MenuOn, row_key};
 use crate::app::{App, Panel, Sel};
-use crate::keys::k;
 use crate::md;
 use crate::theme::{self, mono, sans};
 
@@ -100,8 +99,8 @@ pub fn sidebar(v: V) -> El {
         .pt(6.0)
         .px(8.0)
         .pb(10.0)
-        .child(foot_btn("foot-new", "New note", k(&["Mod", "N"]), |s, tx| s.new_note(None, tx)))
-        .child(foot_btn("foot-settings", "Settings", k(&["Mod", ","]), |s, _| s.open_settings()));
+        .child(foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx)))
+        .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
 
     let mut side = col().key("sidebar").w(248.0).h_full().min_h(0.0).child(head).child(tabs).child(list).child(foot);
     if s.vault_menu {

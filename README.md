@@ -26,12 +26,12 @@ Each note is a <code>.md</code> file on your disk, so any other app can open it.
 
 Quire opens a folder and edits the Markdown files in it. There is no database, no import step and no lock-in.
 
-- **Write in Markdown.** Source mode highlights the syntax as you type, in iA Writer Quattro S by default. `Ctrl+E` switches to a preview that reads like a printed page.
+- **Write in Markdown.** Source mode highlights the syntax as you type, in iA Writer Quattro S by default. `Ctrl+P` switches to a preview that reads like a printed page.
 - **Format with a click.** A floating toolbar at the top of the note stays in view while you scroll. It makes text bold, italic or struck through, adds headings, links, lists, tasks, quotes and code, and inserts images. `Ctrl+B`, `Ctrl+I` and `Ctrl+K` work too. Settings, Editor can hide it.
 - **Lock a note.** The lock button in the toolbar encrypts a note with its own password. A locked note shows nothing until you enter the password, and it syncs encrypted.
 - **Add images.** Drag an image onto a note, paste one, or use the image button in the toolbar. Quire copies it into `attachments/` and links it. The preview shows `![alt](path)` and `![[name.png]]` images, and web images too.
 - **Link notes.** Write `[[Note name]]` and `Ctrl`-click to follow it. A link to a missing note creates the note. Renaming a note rewrites the links to it.
-- **Find anything.** `Ctrl+O` opens any note by a fuzzy name. `Ctrl+P` runs any command. `Ctrl+Shift+F` searches every note. Tags (`#idea`) get their own list.
+- **Find anything.** `Ctrl+O` opens any note by a fuzzy name. `Ctrl+Shift+K` runs any command. `Ctrl+Shift+G` searches every note. Tags (`#idea`) get their own list. These are omarky's keys; Settings, Shortcuts switches to the keys Quire used before (`Ctrl+E`, `Ctrl+P`, `Ctrl+Shift+F`).
 - **Keep folders tidy.** Make folders in the file tree, drag notes into them, and use the `+` on a folder to make a note there. To delete a folder, right-click it. The folder moves to `.trash` with its files. In the quick switcher, `Drafts/Idea` makes the note in `Drafts`.
 - **Sync your devices.** Keep a notes folder the same on your computers and your phone, through object storage that you control, with optional encryption.
 - **Focus.** `Ctrl+.` or the focus button hides everything but the text, dims the other paragraphs and keeps the line you type near the middle.

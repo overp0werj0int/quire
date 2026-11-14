@@ -9,7 +9,6 @@ use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, Span, TextEdit, Tex
 use super::widgets::label;
 use super::{V, outline, preview, sidebar};
 use crate::app::{App, Mode};
-use crate::keys::k;
 use crate::md::{self, Tok};
 use crate::theme::{self, Pal, mono, sans};
 
@@ -177,7 +176,7 @@ fn toolbar(v: V) -> El {
     use super::widgets::{BOLD, BULLETS, CODE, HEADING, IMAGE, ITALIC, LINK, NUMBERS, QUOTE, STRIKE, TASK, WIKI, icon_button};
     use crate::format::Fmt;
     let p = v.p;
-    let k = crate::keys::k;
+    let key = |id| crate::keymap::label(v.s.preset(), id);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).on_press_tx(move |s: &mut App, tx| s.format(f, tx));
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
     // No border. At rest the toolbar has no background, as the text around it. The background
@@ -209,12 +208,12 @@ fn toolbar(v: V) -> El {
         .role("toolbar")
         .label("Formatting")
         .child(back)
-        .child(btn("fmt-bold", &BOLD, format!("Bold ({})", k(&["Mod", "B"])), Fmt::Bold))
-        .child(btn("fmt-italic", &ITALIC, format!("Italic ({})", k(&["Mod", "I"])), Fmt::Italic))
+        .child(btn("fmt-bold", &BOLD, format!("Bold ({})", key("writer.bold")), Fmt::Bold))
+        .child(btn("fmt-italic", &ITALIC, format!("Italic ({})", key("writer.italic")), Fmt::Italic))
         .child(btn("fmt-strike", &STRIKE, "Strikethrough".into(), Fmt::Strike))
         .child(btn("fmt-heading", &HEADING, "Heading".into(), Fmt::Heading))
         .child(sep("sep-1"))
-        .child(btn("fmt-link", &LINK, format!("Link ({})", k(&["Mod", "K"])), Fmt::Link))
+        .child(btn("fmt-link", &LINK, format!("Link ({})", key("writer.link")), Fmt::Link))
         .child(btn("fmt-wiki", &WIKI, "Note link".into(), Fmt::Wiki))
         .child(sep("sep-2"))
         .child(btn("fmt-bullets", &BULLETS, "Bulleted list".into(), Fmt::Bullet))
@@ -223,7 +222,7 @@ fn toolbar(v: V) -> El {
         .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
         .child(btn("fmt-code", &CODE, "Code".into(), Fmt::Code))
         .child(sep("sep-3"))
-        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &format!("Insert an image ({})", k(&["Mod", "Shift", "I"]))).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
+        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &format!("Insert an image ({})", key("app.insert-image"))).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
         .child(lock_button(v))
 }
@@ -616,14 +615,10 @@ pub fn group(n: usize) -> String {
 
 fn no_tab(v: V) -> El {
     let p = v.p;
-    let hints: [(&str, &[&str], fn(&mut App, &mut Tx)); 4] = [
-        ("Open a note", &["Mod", "O"], |s, tx| s.open_palette(crate::app::PalMode::Files, tx)),
-        ("New note", &["Mod", "N"], |s, tx| s.new_note(None, tx)),
-        ("All commands", &["Mod", "P"], |s, tx| s.open_palette(crate::app::PalMode::Commands, tx)),
-        ("Search", &["Mod", "Shift", "F"], |s, tx| s.open_search(tx)),
-    ];
+    let hints = [("Open a note", "app.quick-switcher"), ("New note", "app.new-note"), ("All commands", "app.command-palette"), ("Search", "app.search-notes")];
     let mut c = col().key("hints").w(260.0).gap(12.0);
-    for (i, (l, keys, run)) in hints.into_iter().enumerate() {
+    for (i, (l, id)) in hints.into_iter().enumerate() {
+        let Some(run) = crate::keys::handler(id) else { continue };
         c = c.child(
             row()
                 .key(format!("hint-{i}"))
@@ -633,7 +628,7 @@ fn no_tab(v: V) -> El {
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| run(s, tx))
                 .child(label(l, mono(12.5, 400.0), p.ink2).group_color(p.acc))
-                .child(label(k(keys), mono(12.5, 400.0), p.mute)),
+                .child(label(crate::keymap::label(v.s.preset(), id), mono(12.5, 400.0), p.mute)),
         );
     }
     c
@@ -663,6 +658,6 @@ fn empty_vault(v: V) -> El {
                 .role("button")
                 .on_press_tx(|s: &mut App, tx| s.new_note(None, tx))
                 .child(label("Create your first note", sans(13.5, 500.0), p.on_acc))
-                .child(label(k(&["Mod", "N"]), mono(11.0, 400.0), p.on_acc.alpha(0.8))),
+                .child(label(crate::keymap::label(v.s.preset(), "app.new-note"), mono(11.0, 400.0), p.on_acc.alpha(0.8))),
         )
 }

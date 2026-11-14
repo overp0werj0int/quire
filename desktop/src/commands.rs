@@ -3,76 +3,76 @@
 use rune::Tx;
 
 use crate::app::{App, Mode, PalMode};
-use crate::keys::k;
 use crate::md;
 
 pub type Run = fn(&mut App, &mut Tx);
 
 pub struct Cmd {
     pub label: String,
-    pub keys: &'static [&'static str],
+    /// The keymap action whose chord the palette shows, or "".
+    pub action: &'static str,
     pub run: Run,
 }
 
-fn cmd(label: impl Into<String>, keys: &'static [&'static str], run: Run) -> Cmd {
-    Cmd { label: label.into(), keys, run }
+fn cmd(label: impl Into<String>, action: &'static str, run: Run) -> Cmd {
+    Cmd { label: label.into(), action, run }
 }
 
 pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     let has = s.active.is_some();
     let mut v = vec![
-        cmd("New note", &["Mod", "N"], |s, tx| s.new_note(None, tx)),
-        cmd("New folder", &[], |s, tx| s.start_new_folder("", tx)),
-        cmd("Open today's journal entry", &[], |s, tx| s.open_today(tx)),
-        cmd("Open quick switcher", &["Mod", "O"], |s, tx| s.open_palette(PalMode::Files, tx)),
+        cmd("New note", "app.new-note", |s, tx| s.new_note(None, tx)),
+        cmd("New folder", "", |s, tx| s.start_new_folder("", tx)),
+        cmd("Open today's journal entry", "", |s, tx| s.open_today(tx)),
+        cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.open_palette(PalMode::Files, tx)),
     ];
     if has {
         let label = if s.mode == Mode::Source { "Show preview" } else { "Show source" };
-        v.push(cmd(label, &["Mod", "E"], |s, tx| s.toggle_mode(tx)));
+        v.push(cmd(label, "app.toggle-mode", |s, tx| s.toggle_mode(tx)));
     }
-    v.push(cmd("Search all notes", &["Mod", "Shift", "F"], |s, tx| s.open_search(tx)));
+    v.push(cmd("Search all notes", "app.search-notes", |s, tx| s.open_search(tx)));
     if has {
         let label = if s.focus { "Leave focus mode" } else { "Enter focus mode" };
-        v.push(cmd(label, &["Mod", "."], |s, tx| s.toggle_focus(tx)));
+        v.push(cmd(label, "app.focus-mode", |s, tx| s.toggle_focus(tx)));
     }
     let left = if s.persist.left_open { "Hide sidebar" } else { "Show sidebar" };
-    v.push(cmd(left, &["Mod", "\\"], |s, _| s.toggle_left()));
+    v.push(cmd(left, "app.toggle-sidebar", |s, _| s.toggle_left()));
     let right = if s.persist.right_open { "Hide outline" } else { "Show outline" };
-    v.push(cmd(right, &[], |s, _| s.toggle_right()));
+    v.push(cmd(right, "app.toggle-outline", |s, _| s.toggle_right()));
     if dark {
-        v.push(cmd("Use light theme", &[], |s, _| s.set_theme("light")));
+        v.push(cmd("Use light theme", "", |s, _| s.set_theme("light")));
     } else {
-        v.push(cmd("Use dark theme", &[], |s, _| s.set_theme("dark")));
+        v.push(cmd("Use dark theme", "", |s, _| s.set_theme("dark")));
     }
     if has {
-        v.push(cmd("Rename note", &[], |s, tx| s.start_rename(tx)));
-        v.push(cmd("Delete note", &[], |s, _| s.delete_note()));
-        v.push(cmd("Close tab", &[], |s, _| {
+        v.push(cmd("Rename note", "", |s, tx| s.start_rename(tx)));
+        v.push(cmd("Delete note", "", |s, _| s.delete_note()));
+        v.push(cmd("Close tab", "app.close-tab", |s, _| {
             if let Some(a) = s.active.clone() {
                 s.close_tab(&a);
             }
         }));
     }
     if s.sync_ready() {
-        v.push(cmd("Sync now", &[], |s, _| s.sync_now()));
+        v.push(cmd("Sync now", "", |s, _| s.sync_now()));
     }
     if s.active.is_some() {
-        v.push(cmd("Insert image…", &["Mod", "Shift", "I"], |s, tx| s.pick_image(tx)));
+        v.push(cmd("Insert image…", "app.insert-image", |s, tx| s.pick_image(tx)));
     }
     if let Some(a) = s.active.as_deref() {
         if s.note_unlocked(a) {
-            v.push(cmd("Lock note now", &[], |s, _| s.relock()));
-            v.push(cmd("Remove password", &[], |s, tx| s.remove_password(tx)));
+            v.push(cmd("Lock note now", "", |s, _| s.relock()));
+            v.push(cmd("Remove password", "", |s, tx| s.remove_password(tx)));
         } else if !s.note_locked(a) {
-            v.push(cmd("Lock note with a password…", &[], |s, tx| s.ask_lock(tx)));
+            v.push(cmd("Lock note with a password…", "", |s, tx| s.ask_lock(tx)));
         }
     }
-    v.push(cmd("Open settings", &["Mod", ","], |s, _| s.open_settings()));
+    v.push(cmd("Open settings", "app.settings", |s, _| s.open_settings()));
     if !cfg!(target_os = "macos") {
-        v.push(cmd("Quit", &["Mod", "Q"], |s, tx| s.quit(tx)));
+        v.push(cmd("Quit", "app.quit", |s, tx| s.quit(tx)));
     }
-    v.push(cmd("Switch folder…", &[], |s, tx| s.go_welcome(tx)));
-    v.push(cmd("Restore sample notes", &[], |s, tx| s.reset_sample(tx)));
+    v.push(cmd("Switch folder…", "", |s, tx| s.go_welcome(tx)));
+    v.push(cmd("Restore sample notes", "", |s, tx| s.reset_sample(tx)));
     v
 }
 
@@ -156,7 +156,7 @@ pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
             list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         }
         for (_, c, idx) in list {
-            let sub = if c.keys.is_empty() { String::new() } else { k(c.keys) };
+            let sub = crate::keymap::label(s.preset(), c.action);
             items.push(Item { segs: segs(&c.label, &idx), sub, action: Action::Cmd(c.run) });
         }
     }

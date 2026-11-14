@@ -1,8 +1,9 @@
 //! Shortcut labels and the window's shortcuts.
 
-use rune::{Key, KeyEvent, Tx};
+use rune::{KeyEvent, Tx};
 
 use crate::app::{App, Screen};
+use crate::keymap::{self, Ctx};
 
 pub fn is_mac() -> bool {
     cfg!(target_os = "macos")
@@ -30,38 +31,82 @@ pub fn mod_click() -> String {
 }
 
 /// The window's shortcuts (`AppSpec::on_key`). Keys reach this when the focused control
-/// does not take them.
+/// does not take them. Each context on top of the window gets the key in turn (KEY-02), and
+/// the first action with a handler runs.
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if ev.key == Key::Escape {
-        return s.escape(tx);
+    let preset = s.preset();
+    let vault = s.screen == Screen::Vault;
+    let stack: &[Ctx] = if !vault || s.settings_open {
+        &[Ctx::Global]
+    } else if s.palette.is_some() {
+        // An editing key never changes the note behind the palette.
+        &[Ctx::Palette, Ctx::Global]
+    } else if s.mode == crate::app::Mode::Preview {
+        &[Ctx::Reader, Ctx::Global]
+    } else {
+        &[Ctx::Writer, Ctx::Global]
+    };
+    for ctx in stack {
+        for a in keymap::lookup(preset, *ctx, ev) {
+            // Away from the notes, only Esc and Quit act.
+            if !vault && !matches!(a.id, "app.escape" | "app.quit") {
+                continue;
+            }
+            if a.id == "app.escape" {
+                return s.escape(tx);
+            }
+            if let Some(run) = handler(a.id) {
+                run(s, tx);
+                return true;
+            }
+        }
     }
-    // macOS quits from its app menu.
-    if !cfg!(target_os = "macos") && ev.mods.cmd && !ev.mods.shift && ev.key == Key::Command('q') {
-        s.quit(tx);
-        return true;
+    false
+}
+
+type Run = fn(&mut App, &mut Tx);
+
+/// What an action does, or None while the feature it belongs to is not built yet, so its key
+/// falls through. Mouse-only actions run from their pointer handlers instead.
+pub fn handler(id: &str) -> Option<Run> {
+    use crate::app::PalMode;
+    use crate::format::Fmt;
+    fn close_tab(s: &mut App, _: &mut Tx) {
+        if let Some(a) = s.active.clone() {
+            s.close_tab(&a);
+        }
     }
-    if !ev.mods.cmd || s.screen != Screen::Vault {
-        return false;
-    }
-    let shift = ev.mods.shift;
-    let Key::Command(c) = ev.key else { return false };
-    match (c, shift) {
-        ('f', true) => s.open_search(tx),
-        ('b', false) => s.format(crate::format::Fmt::Bold, tx),
-        ('i', false) => s.format(crate::format::Fmt::Italic, tx),
-        ('k', false) => s.format(crate::format::Fmt::Link, tx),
-        ('i', true) => s.pick_image(tx),
-        ('o', false) => s.open_palette(crate::app::PalMode::Files, tx),
-        ('p', false) => s.open_palette(crate::app::PalMode::Commands, tx),
-        ('e', false) => s.toggle_mode(tx),
-        (',', false) => s.toggle_settings(tx),
-        ('.', false) => s.toggle_focus(tx),
-        ('\\', false) => s.toggle_left(),
-        ('n', false) => s.new_note(None, tx),
-        ('=' | '+', _) => s.zoom(Some(true)),
-        ('-', false) => s.zoom(Some(false)),
-        ('0', false) => s.zoom(None),
-        _ => return false,
-    }
-    true
+    Some(match id {
+        "app.command-palette" => |s, tx| s.open_palette(PalMode::Commands, tx),
+        "app.quick-switcher" | "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
+        "app.search-notes" => |s, tx| s.open_search(tx),
+        "app.toggle-sidebar" => |s, _| s.toggle_left(),
+        "app.toggle-outline" | "reader.toggle-outline" => |s, _| s.toggle_right(),
+        "app.toggle-mode" => |s, tx| s.toggle_mode(tx),
+        "app.settings" => |s, tx| s.toggle_settings(tx),
+        "app.focus-mode" => |s, tx| s.toggle_focus(tx),
+        "app.new-note" => |s, tx| s.new_note(None, tx),
+        // macOS quits from its app menu.
+        "app.quit" if !cfg!(target_os = "macos") => |s, tx| s.quit(tx),
+        "app.insert-image" => |s, tx| s.pick_image(tx),
+        "app.save" => |s, _| {
+            s.flush_notes();
+            s.notice = Some("Saved".into());
+        },
+        "app.close-tab" | "reader.close-tab" => close_tab,
+        "app.zoom-in" => |s, _| s.zoom(Some(true)),
+        "app.zoom-out" => |s, _| s.zoom(Some(false)),
+        "reader.zoom-reset" => |s, _| s.zoom(None),
+        "app.escape" => |s, tx| {
+            s.escape(tx);
+        },
+        "writer.bold" => |s, tx| s.format(Fmt::Bold, tx),
+        "writer.italic" => |s, tx| s.format(Fmt::Italic, tx),
+        "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),
+        "writer.strikethrough" => |s, tx| s.format(Fmt::Strike, tx),
+        "writer.link" => |s, tx| s.format(Fmt::Link, tx),
+        // The editor follows a Ctrl-clicked link itself; this entry lists it in Settings.
+        "writer.follow-link-click" => |_, _| {},
+        _ => return None,
+    })
 }

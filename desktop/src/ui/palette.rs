@@ -6,7 +6,6 @@ use super::V;
 use super::widgets::label;
 use crate::app::{App, PalMode};
 use crate::commands::{self, pal_data};
-use crate::keys::k;
 use crate::theme::{self, mono, sans};
 
 pub fn palette(v: V) -> El {
@@ -101,7 +100,7 @@ pub fn palette(v: V) -> El {
         .child(label(if cmds { "↵ run" } else { "↵ open" }, foot_style, p.mute))
         .child(label("esc close", foot_style, p.mute))
         .child(el().grow(1.0))
-        .child(label(if cmds { format!("{} for notes", k(&["Mod", "O"])) } else { "type > for commands".into() }, foot_style, p.mute));
+        .child(label(if cmds { format!("{} for notes", crate::keymap::label(v.s.preset(), "app.quick-switcher")) } else { "type > for commands".into() }, foot_style, p.mute));
 
     let [a, b] = theme::palette_shadows();
     let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).box_shadow(a).box_shadow(b).child(

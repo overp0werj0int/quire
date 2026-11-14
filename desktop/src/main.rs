@@ -9,6 +9,7 @@ mod commands;
 mod folders;
 mod format;
 mod images;
+mod keymap;
 mod keys;
 mod lock;
 mod lock_app;
@@ -42,6 +43,10 @@ fn scene_focus(s: &mut App) {
 }
 fn scene_settings(s: &mut App) {
     s.settings_open = true;
+}
+fn scene_keys(s: &mut App) {
+    s.settings_open = true;
+    s.set_sec = app::Sec::Keys;
 }
 
 /// Text rasterization. `QUIRE_SMOOTHING` picks another mode, for comparing renders.
@@ -88,7 +93,7 @@ fn main() {
         on_key: Some(keys::on_key),
         poll: Some(|s: &mut App, t, tx| s.poll(t, tx)),
         setup: Some(|s: &mut App, waker| s.set_waker(waker)),
-        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings)],
+        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys)],
         ..AppSpec::new("Quire", (1280.0, 800.0), app::init, ui::view)
     };
     rune::App::new(spec)

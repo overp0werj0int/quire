@@ -30,6 +30,8 @@ pub struct Settings {
     pub preview_font: String,
     /// Code in both modes, an id in `theme::CODE_FONTS`.
     pub code_font: String,
+    /// The keymap preset, "omarky" or "quire" (`docs/reader-writer/behavior/keymap.md`).
+    pub keymap: String,
     pub spellcheck: bool,
     pub continue_lists: bool,
     pub dim_focus: bool,
@@ -54,6 +56,7 @@ impl Default for Settings {
             width: "readable".into(),
             preview_font: "quattro".into(),
             code_font: "ia-mono".into(),
+            keymap: "omarky".into(),
             spellcheck: false,
             continue_lists: true,
             dim_focus: true,
