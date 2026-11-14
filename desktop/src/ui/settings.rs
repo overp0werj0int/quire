@@ -137,7 +137,11 @@ pub fn block(v: V, key: &str, title: &str, desc: Option<&str>) -> El {
 fn appearance(v: V) -> El {
     let set = v.s.settings();
     let theme_seg = |id: &'static str, l: &str| seg(l, set.theme == id, move |s, _| s.set_theme(id));
-    let prev = |id: &'static str, l: &str| seg(l, set.preview_font == id, move |s, _| s.settings_mut().preview_font = id.into());
+    let prose_id = theme::pick(&theme::PROSE_FONTS, &set.preview_font).id;
+    let prev = |f: &theme::FontChoice| {
+        let id = f.id;
+        seg(f.label, prose_id == id, move |s, _| s.settings_mut().preview_font = id.into())
+    };
     let mode_desc = if theme::omarchy().is_some() {
         "Match system follows the light or dark mode of your Omarchy theme."
     } else {
@@ -150,7 +154,7 @@ fn appearance(v: V) -> El {
         .child(theme_grid(v, false))
         .child(theme_grid(v, true))
         .child(accent_block(v))
-        .child(row_(v, "prev-font", "Preview typeface", Some("Used when reading a note in preview."), settings_seg(v.p, "prev-seg", vec![prev("serif", "Serif"), prev("sans", "Sans")])))
+        .child(row_(v, "prev-font", "Preview typeface", Some("Used when reading a note in preview."), settings_seg(v.p, "prev-seg", theme::PROSE_FONTS.iter().map(prev).collect())))
 }
 
 /// The themes for light or dark mode as cards, each with a small picture of its colours.
@@ -303,9 +307,11 @@ fn accent_block(v: V) -> El {
 fn editor(v: V) -> El {
     let p = v.p;
     let set = v.s.settings();
-    let mut cards = row().key("font-cards").w_full().gap(10.0).mt(14.0);
-    for f in &EDITOR_FONTS {
-        let on = set.font == f.id;
+    let editor_id = theme::editor_font(&set.font).id;
+    let mut cards = col().key("font-cards").w_full().gap(10.0).mt(14.0);
+    let mut card_row = row().w_full().gap(10.0);
+    for (i, f) in EDITOR_FONTS.iter().enumerate() {
+        let on = editor_id == f.id;
         let id = f.id;
         let mut b = col()
             .key(format!("font-{id}"))
@@ -322,9 +328,8 @@ fn editor(v: V) -> El {
             .role("radio")
             .checked(on)
             .label(f.label)
-            .on_press_tx(move |s: &mut App, tx: &mut Tx| {
+            .on_press(move |s: &mut App| {
                 s.settings_mut().font = id.into();
-                tx.set_font_families("Instrument Sans", theme::editor_font(id).name);
             })
             .child(label(f.label, sans(11.5, 400.0), if on { p.acc } else { p.mute }))
             .child(label("## Field notes", rune::TextStyle::new(15.0, 400.0).family(f.family).lh(22.5), p.ink))
@@ -332,8 +337,19 @@ fn editor(v: V) -> El {
         if on {
             b = b.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
         }
-        cards = cards.child(b);
+        card_row = card_row.child(b);
+        if i % 3 == 2 {
+            cards = cards.child(std::mem::replace(&mut card_row, row().w_full().gap(10.0)));
+        }
     }
+    let code_id = theme::pick(&theme::CODE_FONTS, &set.code_font).id;
+    let code = |f: &theme::FontChoice| {
+        let id = f.id;
+        seg(f.label, code_id == id, move |s: &mut App, tx: &mut Tx| {
+            s.settings_mut().code_font = id.into();
+            tx.set_font_families("Instrument Sans", theme::pick(&theme::CODE_FONTS, id).name);
+        })
+    };
     let size = set.size;
     let step = |key: &str, t: &str, d: i32| {
         row()
@@ -345,7 +361,7 @@ fn editor(v: V) -> El {
             .role("button")
             .label(if d < 0 { "Smaller" } else { "Larger" })
             .on_press(move |s: &mut App| {
-                let n = (s.settings().size as i32 + d).clamp(12, 24) as u32;
+                let n = (s.settings().size as i32 + d).clamp(crate::store::SIZE_MIN as i32, crate::store::SIZE_MAX as i32) as u32;
                 s.settings_mut().size = n;
             })
             .child(label(t, sans(15.0, 400.0), p.ink2))
@@ -364,8 +380,9 @@ fn editor(v: V) -> El {
     let mut c = col()
         .key("editor-set")
         .w_full()
-        .child(block(v, "font", "Editor font", Some("Monospaced, so Markdown syntax lines up as you type.")).child(cards))
-        .child(row_(v, "size", "Font size", None, size_ctl))
+        .child(block(v, "font", "Editor font", Some("The font of a note in source mode.")).child(cards))
+        .child(row_(v, "code-font", "Code font", Some("Code blocks and inline code, in both modes."), settings_seg(p, "code-seg", theme::CODE_FONTS.iter().map(code).collect())))
+        .child(row_(v, "size", "Font size", Some("The size of the note's text. Headings and code scale with it."), size_ctl))
         .child(row_(v, "width", "Line width", Some("Readable keeps lines to about 72 characters."), settings_seg(p, "width-seg", vec![width("readable", "Readable"), width("full", "Full width")])));
     type Get = fn(&crate::store::Settings) -> bool;
     type Set = fn(&mut crate::store::Settings);

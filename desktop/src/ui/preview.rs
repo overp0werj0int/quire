@@ -179,17 +179,18 @@ pub fn preview(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let set = s.settings();
-    let serif = set.preview_font == "serif";
-    let size = set.size as f32 + if serif { 3.0 } else { 1.0 };
+    let prose = theme::pick(&theme::PROSE_FONTS, &set.preview_font);
+    let size = set.size as f32;
+    let (asc, desc) = theme::metrics(prose.family);
     let look = Look {
-        serif,
+        serif: prose.family == theme::SERIF,
         size,
-        lh: if serif { 1.62 } else { 1.65 },
-        family: if serif { theme::SERIF } else { theme::SANS },
-        mono: theme::editor_font(&set.font).family,
+        lh: 1.6,
+        family: prose.family,
+        mono: theme::pick(&theme::CODE_FONTS, &set.code_font).family,
         mono_w: 0.6,
-        asc: if serif { 0.735 } else { 0.97 },
-        desc: if serif { 0.265 } else { 0.25 },
+        asc,
+        desc,
     };
     let em = size;
     let names = &s.names;

@@ -21,10 +21,15 @@ pub struct Settings {
     pub dark_theme: Option<String>,
     /// `#rrggbb`, or empty for the theme's own accent.
     pub accent: String,
+    /// The source-mode font, an id in `theme::EDITOR_FONTS`.
     pub font: String,
+    /// The body size in px, 9 to 32.
     pub size: u32,
     pub width: String,
+    /// The preview's prose font, an id in `theme::PROSE_FONTS`.
     pub preview_font: String,
+    /// Code in both modes, an id in `theme::CODE_FONTS`.
+    pub code_font: String,
     pub spellcheck: bool,
     pub continue_lists: bool,
     pub dim_focus: bool,
@@ -44,10 +49,11 @@ impl Default for Settings {
             light_theme: None,
             dark_theme: None,
             accent: String::new(),
-            font: "plex".into(),
-            size: 16,
+            font: "quattro".into(),
+            size: 14,
             width: "readable".into(),
-            preview_font: "serif".into(),
+            preview_font: "quattro".into(),
+            code_font: "ia-mono".into(),
             spellcheck: false,
             continue_lists: true,
             dim_focus: true,
@@ -213,9 +219,14 @@ fn state_path() -> Option<PathBuf> {
     dirs().map(|d| d.config().join("state.json"))
 }
 
+pub const SIZE_MIN: u32 = 9;
+pub const SIZE_MAX: u32 = 32;
+
 pub fn load() -> Persist {
     let Some(p) = state_path() else { return Persist::default() };
-    std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    let mut st: Persist = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    st.settings.size = st.settings.size.clamp(SIZE_MIN, SIZE_MAX);
+    st
 }
 
 /// Writes the state file atomically, readable only by the user (it can hold sync keys).
@@ -261,5 +272,28 @@ pub fn tilde(p: &std::path::Path) -> String {
             if rest.as_os_str().is_empty() { "~".into() } else { format!("~/{}", rest.to_string_lossy()) }
         }
         _ => p.to_string_lossy().into_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// PAGE-10, PAGE-20: the body is 14 px by default, and a stored size outside 9 to 32 is
+    /// clamped on load.
+    #[test]
+    fn page_20_stored_size_is_clamped_on_load() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(super::Settings::default().size, 14);
+        let path = std::env::temp_dir().join(format!("quire-size-{}.json", std::process::id()));
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe { std::env::set_var("QUIRE_STATE", &path) };
+        for (stored, loaded) in [(40, 32), (4, 9), (20, 20)] {
+            std::fs::write(&path, format!(r#"{{"settings":{{"size":{stored},"font":"plex"}}}}"#)).unwrap();
+            let st = super::load();
+            assert_eq!(st.settings.size, loaded, "size {stored} loads as {loaded}");
+            assert_eq!(st.settings.font, "plex");
+            assert_eq!(st.settings.code_font, "ia-mono", "a missing code font takes the default");
+        }
+        unsafe { std::env::remove_var("QUIRE_STATE") };
+        let _ = std::fs::remove_file(&path);
     }
 }

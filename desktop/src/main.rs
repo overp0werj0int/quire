@@ -82,7 +82,7 @@ fn main() {
     }
     let spec = AppSpec {
         min_size: Some((520.0, 400.0)),
-        fonts: theme::FONTS,
+        fonts: theme::fonts(),
         families: ("Instrument Sans", "IBM Plex Mono"),
         on_key: Some(keys::on_key),
         poll: Some(|s: &mut App, t, tx| s.poll(t, tx)),

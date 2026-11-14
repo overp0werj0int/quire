@@ -9,7 +9,20 @@ pub const SERIF: Family = Family::Named("Newsreader");
 pub const MONO: Family = Family::Named("IBM Plex Mono");
 
 
-pub const FONTS: &[&[u8]] = &[
+/// The bundled font files, as shipped. `fonts()` is what the app registers.
+const FONT_FILES: &[&[u8]] = &[
+    include_bytes!("../../assets/fonts/iAWriterQuattroS-Regular.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterQuattroS-Bold.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterQuattroS-Italic.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterQuattroS-BoldItalic.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterDuospace-Regular.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterDuospace-Bold.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterDuospace-Italic.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterDuospace-BoldItalic.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterMonoS-Regular.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterMonoS-Bold.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterMonoS-Italic.ttf"),
+    include_bytes!("../../assets/fonts/iAWriterMonoS-BoldItalic.ttf"),
     include_bytes!("../../assets/fonts/InstrumentSans-VF.ttf"),
     include_bytes!("../../assets/fonts/InstrumentSans-Italic-VF.ttf"),
     include_bytes!("../../assets/fonts/Newsreader-VF.ttf"),
@@ -29,22 +42,103 @@ pub const FONTS: &[&[u8]] = &[
     include_bytes!("../../assets/fonts/SplineSansMono-Italic-VF.ttf"),
 ];
 
-/// An editor font choice: its id in settings, its label and its family.
-pub struct EditorFont {
+/// The fonts to register. iA Writer Quattro S Bold and Bold Italic declare weight 400 in
+/// their OS/2 table, so a bold run would match them and the Regular file alike. Their weight
+/// is corrected in memory; the files stay as shipped, as the Reserved Font Name requires.
+pub fn fonts() -> &'static [&'static [u8]] {
+    static FONTS: OnceLock<Vec<&'static [u8]>> = OnceLock::new();
+    FONTS.get_or_init(|| {
+        FONT_FILES
+            .iter()
+            .map(|&f| {
+                let (bold, _) = face_style(f);
+                if bold && weight_class(f) != Some(700) {
+                    let fixed: &'static [u8] = Box::leak(with_weight_class(f, 700).into_boxed_slice());
+                    fixed
+                } else {
+                    f
+                }
+            })
+            .collect()
+    })
+}
+
+/// Finds a table's byte range in an OpenType file.
+fn table(font: &[u8], tag: &[u8; 4]) -> Option<std::ops::Range<usize>> {
+    let n = u16::from_be_bytes(font.get(4..6)?.try_into().ok()?) as usize;
+    (0..n).find_map(|i| {
+        let rec = font.get(12 + 16 * i..28 + 16 * i)?;
+        (&rec[..4] == tag).then(|| {
+            let off = u32::from_be_bytes(rec[8..12].try_into().unwrap()) as usize;
+            let len = u32::from_be_bytes(rec[12..16].try_into().unwrap()) as usize;
+            off..off + len
+        })
+    })
+}
+
+fn weight_class(font: &[u8]) -> Option<u16> {
+    let os2 = table(font, b"OS/2")?;
+    Some(u16::from_be_bytes(font.get(os2.start + 4..os2.start + 6)?.try_into().ok()?))
+}
+
+/// Bold and italic from `head.macStyle`, which every bundled static face sets right.
+fn face_style(font: &[u8]) -> (bool, bool) {
+    let mac = table(font, b"head").and_then(|h| font.get(h.start + 44..h.start + 46)).map_or(0, |b| u16::from_be_bytes([b[0], b[1]]));
+    (mac & 1 != 0, mac & 2 != 0)
+}
+
+fn with_weight_class(font: &[u8], w: u16) -> Vec<u8> {
+    let mut out = font.to_vec();
+    if let Some(os2) = table(font, b"OS/2") {
+        out[os2.start + 4..os2.start + 6].copy_from_slice(&w.to_be_bytes());
+    }
+    out
+}
+
+/// A font choice: its id in settings, its label and its family.
+pub struct FontChoice {
     pub id: &'static str,
     pub label: &'static str,
     pub family: Family,
     pub name: &'static str,
 }
 
-pub const EDITOR_FONTS: [EditorFont; 3] = [
-    EditorFont { id: "plex", label: "IBM Plex Mono", family: Family::Named("IBM Plex Mono"), name: "IBM Plex Mono" },
-    EditorFont { id: "courier", label: "Courier Prime", family: Family::Named("Courier Prime"), name: "Courier Prime" },
-    EditorFont { id: "spline", label: "Spline Sans Mono", family: Family::Named("Spline Sans Mono"), name: "Spline Sans Mono" },
+const fn choice(id: &'static str, label: &'static str, name: &'static str) -> FontChoice {
+    FontChoice { id, label, family: Family::Named(name), name }
+}
+
+/// The source-mode fonts. The first three are omarky's writer cycle.
+pub const EDITOR_FONTS: [FontChoice; 6] = [
+    choice("quattro", "iA Writer Quattro S", "iA Writer Quattro S"),
+    choice("duospace", "iA Writer Duospace", "iA Writer Duospace"),
+    choice("ia-mono", "iA Writer Mono S", "iA Writer Mono S"),
+    choice("plex", "IBM Plex Mono", "IBM Plex Mono"),
+    choice("courier", "Courier Prime", "Courier Prime"),
+    choice("spline", "Spline Sans Mono", "Spline Sans Mono"),
 ];
 
-pub fn editor_font(id: &str) -> &'static EditorFont {
-    EDITOR_FONTS.iter().find(|f| f.id == id).unwrap_or(&EDITOR_FONTS[0])
+/// The preview's prose fonts. Older settings stored `serif` and `sans`.
+pub const PROSE_FONTS: [FontChoice; 3] = [
+    choice("quattro", "Quattro S", "iA Writer Quattro S"),
+    choice("serif", "Newsreader", "Newsreader"),
+    choice("sans", "Instrument Sans", "Instrument Sans"),
+];
+
+/// Code blocks and inline code.
+pub const CODE_FONTS: [FontChoice; 4] = [
+    choice("ia-mono", "Mono S", "iA Writer Mono S"),
+    choice("plex", "Plex Mono", "IBM Plex Mono"),
+    choice("courier", "Courier", "Courier Prime"),
+    choice("spline", "Spline", "Spline Sans Mono"),
+];
+
+/// The choice with `id`, or the slot's default (the first) for an id Quire does not know.
+pub fn pick<'a>(list: &'a [FontChoice], id: &str) -> &'a FontChoice {
+    list.iter().find(|f| f.id == id).unwrap_or(&list[0])
+}
+
+pub fn editor_font(id: &str) -> &'static FontChoice {
+    pick(&EDITOR_FONTS, id)
 }
 
 /// sRGB hex with a straight alpha, as CSS `rgba()` writes it.
@@ -495,5 +589,44 @@ mod theme_tests {
         assert!(parse_accent("#abc").is_some() && parse_accent("12ab9f").is_some());
         assert!(parse_accent("#12ab9").is_none() && parse_accent("blue").is_none());
         assert!(std::ptr::eq(themed("nord", true, ""), theme_pal("nord", true)));
+    }
+}
+
+#[cfg(test)]
+mod font_tests {
+    use super::*;
+
+    /// PAGE-02: a bold run must never match a Regular file, so every face Quire registers
+    /// declares the weight its style says, whatever the shipped file declares.
+    #[test]
+    fn page_02_each_face_declares_its_own_weight() {
+        let fonts = fonts();
+        assert_eq!(fonts.len(), FONT_FILES.len());
+        for (shipped, registered) in FONT_FILES.iter().zip(fonts) {
+            let (bold, _) = face_style(shipped);
+            let w = weight_class(registered).unwrap();
+            if bold {
+                assert_eq!(w, 700, "a bold face registers as weight 700");
+            } else if weight_class(shipped) != Some(w) {
+                panic!("a face that is not bold keeps the weight it ships with");
+            }
+        }
+        let quattro_bold = FONT_FILES[1];
+        assert_eq!(weight_class(quattro_bold), Some(400), "the shipped Quattro S Bold file still declares 400");
+        assert_eq!(fonts[1].len(), quattro_bold.len(), "only the weight changes");
+    }
+
+    /// PAGE-01, PAGE-04, PAGE-07: iA fonts are the defaults, and an unknown stored id falls
+    /// back to the slot's default.
+    #[test]
+    fn page_07_unknown_font_ids_fall_back_to_the_default() {
+        let set = crate::store::Settings::default();
+        assert_eq!(pick(&PROSE_FONTS, &set.preview_font).name, "iA Writer Quattro S");
+        assert_eq!(pick(&CODE_FONTS, &set.code_font).name, "iA Writer Mono S");
+        assert_eq!(editor_font(&set.font).name, "iA Writer Quattro S");
+        assert_eq!(pick(&PROSE_FONTS, "comic").id, "quattro");
+        assert_eq!(pick(&CODE_FONTS, "").id, "ia-mono");
+        assert_eq!(editor_font("plex").name, "IBM Plex Mono", "older choices stay selectable");
+        assert_eq!(pick(&PROSE_FONTS, "serif").name, "Newsreader");
     }
 }
