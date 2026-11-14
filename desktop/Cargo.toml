@@ -38,8 +38,11 @@ accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a
 [profile.dev]
 opt-level = 1
 
+# Dependencies build at a low level and without debug info, so a debug build fits in a few
+# gigabytes of memory. Debug builds run slower than release builds; measure in release.
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 1
+debug = false
 
 [profile.release]
 lto = "thin"
