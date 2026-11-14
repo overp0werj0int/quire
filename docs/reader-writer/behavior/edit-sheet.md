@@ -101,8 +101,8 @@ omarky's spec and its code disagree in three places. Quire follows the code in e
 
 ## Open questions
 
-- Whether a sheet save writes at once or on the usual 0.5 s save timer (SHEET-045). Recommended default. Send it to the Writer at once, so "Saved" is true by the time a person could check the file.
-- Whether a sheet save is an undo step in the note's source-mode history. Recommended default. Make it one step, so switching to source mode and pressing undo takes the sheet's edit back.
-- How far the scrim reaches (SHEET-015). Recommended default. The whole window, tabs and file tree included, with the window controls live. Closing the window with a changed sheet discards the sheet's text, as `Esc` twice does.
-- Whether `Ctrl+S` should save in the sheet in the quire preset too, where it has no window action today. Recommended default. Bind it in both presets.
-- Whether the sheet should follow the outside change and offer a merge instead of refusing (SHEET-044). Recommended default. Refuse, as omarky does, since the text stays in the sheet to copy.
+- Whether a sheet save writes at once or on the usual 0.5 s save timer (SHEET-045). Recommended default. Send it to the Writer at once, so "Saved" is true by the time a person could check the file. Resolved in phase 8 as recommended.
+- Whether a sheet save is an undo step in the note's source-mode history. Recommended default. Make it one step, so switching to source mode and pressing undo takes the sheet's edit back. Resolved in phase 8 as recommended.
+- How far the scrim reaches (SHEET-015). Recommended default. The whole window, tabs and file tree included, with the window controls live. Closing the window with a changed sheet discards the sheet's text, as `Esc` twice does. Resolved in phase 8 as recommended. The scrim's top 42 px moves the window, and it carries the window dots where Quire draws them (macOS and Windows; on Linux the window manager closes the window).
+- Whether `Ctrl+S` should save in the sheet in the quire preset too, where it has no window action today. Recommended default. Bind it in both presets. Resolved in phase 8 as recommended (keymap item 75).
+- Whether the sheet should follow the outside change and offer a merge instead of refusing (SHEET-044). Recommended default. Refuse, as omarky does, since the text stays in the sheet to copy. Resolved in phase 8 as recommended.

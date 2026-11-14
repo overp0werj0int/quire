@@ -162,6 +162,10 @@ the round trip between modes keeping the position, the font cycle, the help shee
 
 ### Phase 8. The edit sheet
 
+Status: done on branch `rw/phase-3-typography`, except hanging marks in the sheet's editor
+(SHEET-028, as in phase 7), the caret's width and blink (SHEET-029) and the right-click menu
+(SHEET-032), listed in `decisions.tsv`.
+
 `E` and `Shift+E` in the reader, the sheet over the page, saving through Quire's save path,
 locked notes, and refusing to write over a change that landed while the sheet was open
 (`behavior/edit-sheet.md`).

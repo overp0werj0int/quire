@@ -1,0 +1,152 @@
+//! The edit sheet over the reader (`behavior/edit-sheet.md`, SHEET-015 to SHEET-031): a scrim
+//! over the whole window, and a card with the note's name, the block's neighbours faint, the
+//! writer's editor and the key row. Its behaviour is `crate::sheet`.
+
+use rune::{Key, KeyEvent, ScrollFade, ScrollSpec, TextHighlight, Tx, col, el, row, text, text_input};
+
+use super::V;
+use super::panel::{BODY_SMALL, CAPTION, font};
+use super::reader::{cap, popup};
+use crate::app::App;
+use crate::keymap::{self, Ctx};
+use crate::page::r;
+use crate::roles::Roles;
+use crate::sheet::{EDITOR, Scope};
+use crate::theme;
+
+const PAD: f32 = 22.0;
+const GAP: f32 = 10.0;
+const FADE: f32 = 28.0;
+const KEY_ROW: f32 = 24.0;
+/// The title row's height: one line of bodySmall.
+const TITLE: f32 = 18.0;
+
+pub fn sheet(v: V) -> rune::El {
+    let s = v.s;
+    let Some(sh) = &s.sheet else { return el() };
+    let c = Roles::new(v.p);
+    let b = s.settings().size as f32;
+    let style = super::editor::ed_style(v);
+    let e = style.size;
+    // SHEET-016, SHEET-028: the editor's gutter, the reading column and the editor's measure.
+    let gutter = r(e * 3.2);
+    let colw = super::preview::column(v).width;
+    let w = (v.vw - 48.0).min(colw + 2.0 * gutter + 2.0 * PAD);
+    let inner = w - 2.0 * PAD;
+    let avg = crate::page::avg_char(theme::editor_font(&s.settings().font).family);
+    let measure = (inner - 2.0 * gutter).min(r(avg * e * 66.0)).max(0.0);
+    let ctx_w = (inner - gutter).min(colw).max(0.0);
+    let ctx_h = r(b * 1.6 * 3.0);
+
+    // SHEET-020: the note's name and the line span, counted from 1.
+    let (a, z) = (sh.pick.lines.start + 1, sh.pick.lines.end.max(sh.pick.lines.start + 1));
+    let span = if a == z { format!("line {a}") } else { format!("lines {a} to {z}") };
+    let title = row()
+        .key("sheet-title")
+        .gap(8.0)
+        .center_y()
+        .child(text(crate::md::base(&sh.rel).to_string()).font(font(BODY_SMALL, true)).color(c.text).truncate().shrink().min_w(0.0))
+        .child(text(span).key("sheet-span").font(font(BODY_SMALL, false)).color(c.faint));
+
+    // SHEET-022 to SHEET-026: a neighbour, clipped to three reading lines, fading at the edge
+    // where it is cut.
+    let context = |key: &str, i: usize, before: bool| {
+        let fade = if before { ScrollFade::strength(FADE).full_at(0.5).linear() } else { ScrollFade::strength(0.0).with_end(ScrollFade::strength(FADE).full_at(0.5).linear()) };
+        col()
+            .key(key)
+            .w(ctx_w)
+            .ml(gutter)
+            .max_h(ctx_h)
+            .min_h(0.0)
+            .scroll(ScrollSpec { stick_bottom: before })
+            .scroll_fade(fade)
+            .opacity(0.55)
+            .child(super::preview::context(v, &sh.doc, i))
+    };
+    let shown = sh.pick.before.is_some() as u8 + sh.pick.after.is_some() as u8;
+
+    // SHEET-019: the card grows with its text to 70% of the window, then the editor scrolls.
+    let chrome = 2.0 * PAD + TITLE + GAP + KEY_ROW + 14.0 + shown as f32 * (ctx_h + GAP);
+    let limit = (r(0.7 * v.vh) - chrome).max(90.0);
+    let ink = crate::writer::Ink::new(&c);
+    let (spans, strikes) = s.sheet_spans(&sh.edit.text, e, &ink);
+    let input = text_input(&sh.edit, style)
+        .key(EDITOR)
+        .w(measure)
+        .color(ink.text)
+        .caret(c.accent, c.selection)
+        .label("Edit the block")
+        .spans(spans)
+        .strikes(strikes)
+        .text_highlights(Vec::<TextHighlight>::new())
+        .on_edit(|s: &mut App| s.sheet_field())
+        .on_input_key(on_sheet_key);
+    let editor = col()
+        .key("sheet-scroll")
+        .w_full()
+        .min_h(90.0)
+        .max_h(limit)
+        .scroll(ScrollSpec { stick_bottom: false })
+        .child(el().key("sheet-pad").w_full().pl(gutter).py(6.0).child(input));
+
+    // SHEET-030, SHEET-038, SHEET-047: the key row, or the problem in its place.
+    let preset = s.preset();
+    let key_of = |id: &str| keymap::action(id).and_then(|a| a.chords(preset).first().copied()).map(keymap::label_of).unwrap_or_default();
+    let foot = match sh.problem {
+        Some(p) => row().key("sheet-problem").h(KEY_ROW).w_full().center_y().child(text(p).font(font(CAPTION, false)).color(c.red).truncate().shrink().min_w(0.0)),
+        None => {
+            let armed = sh.armed.is_some();
+            let (cancel, tone) = if armed { ("again to discard your edit", c.text) } else { ("cancels", c.faint) };
+            row()
+                .key("sheet-keys")
+                .h(KEY_ROW)
+                .gap(8.0)
+                .center_y()
+                .child(cap(key_of("sheet.cancel"), &c))
+                .child(text(cancel).key("sheet-cancel").font(font(CAPTION, false)).color(tone))
+                .child(el().w(10.0 - 8.0))
+                .child(cap(key_of("sheet.save"), &c))
+                .child(text("saves").font(font(CAPTION, false)).color(c.faint))
+        }
+    };
+
+    let mut card = col().key("sheet-card").w(w).padding(PAD).gap(GAP).on_press(|_: &mut App| {}).child(title);
+    if let Some(i) = sh.pick.before {
+        card = card.child(context("sheet-before", i, true));
+    }
+    card = card.child(editor);
+    if let Some(i) = sh.pick.after {
+        card = card.child(context("sheet-after", i, false));
+    }
+    card = card.child(foot.mt(14.0 - GAP));
+    let card = popup(&c).key("sheet-pop").radius(6.0).child(card);
+
+    // SHEET-015: the scrim takes every click and wheel, and only moving the window stays live.
+    col()
+        .key("sheet-scrim")
+        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+        .fill(c.bg.alpha(0.72))
+        .center()
+        .paint_order(75)
+        .label(if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" })
+        .modal_tx(false, |s: &mut App, tx| s.sheet_escape(tx))
+        .on_press(|_: &mut App| {})
+        .child(row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(42.0).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(15.0)))
+        .child(card)
+}
+
+/// Keys in the sheet's editor (SHEET-033 to SHEET-037): the sheet's own, then the writer's
+/// editing keys; every other key is the field's.
+fn on_sheet_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if matches!(ev.key, Key::Escape) && !ev.mods.shift {
+        s.sheet_escape(tx);
+        return true;
+    }
+    match keymap::lookup(s.preset(), Ctx::Sheet, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
+        Some(run) => {
+            run(s, tx);
+            true
+        }
+        None => false,
+    }
+}

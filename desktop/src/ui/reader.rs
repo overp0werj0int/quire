@@ -11,7 +11,7 @@ use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
 use crate::theme;
 
-fn popup(c: &Roles) -> El {
+pub(super) fn popup(c: &Roles) -> El {
     el().fill(c.bg).border(1.0, c.hairline).radius(6.0).box_shadow(theme::menu_shadows()[0]).box_shadow(theme::menu_shadows()[1])
 }
 
@@ -181,7 +181,7 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
 
 /// A key cap (RD-91): caption text in dim on a raised fill, hairline border, 12 by 6 px of
 /// padding in all.
-fn cap(t: String, c: &Roles) -> El {
+pub(super) fn cap(t: String, c: &Roles) -> El {
     row().px(6.0).py(3.0).radius(3.0).fill(c.raised).border(1.0, c.hairline).child(text(t).font(font(CAPTION, false)).color(c.dim))
 }
 

@@ -9,6 +9,7 @@ mod palette;
 mod preview;
 mod reader;
 mod settings;
+mod sheet;
 mod settings_mcp;
 pub mod settings_sync;
 mod sidebar;
@@ -119,6 +120,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     }
     if v.is_vault() && s.reader.help {
         root = root.child(reader::help_sheet(v));
+    }
+    if v.is_vault() && s.sheet.is_some() {
+        root = root.child(sheet::sheet(v));
     }
     root
 }

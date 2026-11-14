@@ -127,7 +127,8 @@ flowchart LR
 2. `App::after_edit` puts the new text into `vault.files` and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you
-   keep typing.
+   keep typing. It also wakes the app, because `poll` only runs before a frame, and an edit
+   such as an undo may bring no frame of its own to start the wait.
 4. When the save time comes, `poll` calls `flush_notes`. It sends one `Op::Write` for each
    dirty note.
 5. If "When to sync" is "On save", `sync_after_save` starts a sync 1.5 s later.
@@ -135,6 +136,12 @@ flowchart LR
    barrier and then runs `sync::run`, which reads the folder from disk.
 7. `apply_sync` takes the result. Downloads are written through the `Writer`, and the new
    last-sync record is saved with `Op::SaveSyncBase`.
+
+The edit sheet (`sheet.rs`, `e` and `E` in the reader) is the other way text changes in
+preview mode. It holds the block's source lines in its own `TextEdit`. On save it checks the
+note's text is still what it opened on, splices the lines back, applies the change to the
+note's editor as one undo step, and calls `set_text`, then `flush_notes` at once rather than
+waiting 0.5 s. A locked note goes through the same `set_text`, so it is sealed first.
 
 ### Locked notes
 
@@ -215,6 +222,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `page.rs` | The reader page's geometry as pure functions: the type steps, the measure, gutter and lean, the vertical rhythm between blocks and table column widths (`docs/reader-writer/`, phase 5). |
 | `reader.rs` | The reader's behaviour on `App` (`docs/reader-writer/`, phase 6): the parsed note cached per text (`App::doc`), key scrolling and its glide, the reading position per tab, find, links, copying a block's source, toasts and the help flag. Preview blocks are keyed by their content key (`block_key`), so jumps and Rune's scroll anchoring survive edits and reloads. |
 | `writer.rs` | The writer's pure rules (`docs/reader-writer/behavior/writer.md`, phase 7): the per-line formatting spans with the state one line hands the next, the paragraph fade, the word count, and the Enter, Tab, Shift+Tab and Ctrl+1 to Ctrl+6 edits. |
+| `sheet.rs` | The edit sheet (`docs/reader-writer/behavior/edit-sheet.md`, phase 8): which block `e` and `E` pick, the block and section ranges, splicing the edited lines back, the refusal when the note changed or went away underneath, and the Esc order with its armed discard. While the sheet is open the writer's editing keys act on its editor (`App::target_edit`), and the window's other keys stop (`keys::on_key`). |
 | `writer_app.rs` | The writer on `App`: the span cache, the editing keys, paragraph focus, typewriter scrolling, the font cycle, find in the source, the mode switch that keeps the place, and the chrome that steps aside while you type (`App::poll_writer`). Scrolls find their target through keyed transparent highlights in the field (`CARET`, `LINE_AT`). |
 | `highlight.rs` | Code colours: the `rune-highlights` lexers, with omarky's language aliases, mapped to the theme's syntax roles and cached per block. |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
@@ -227,7 +235,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font. |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark), `sheet` (the edit sheet's modal scrim and card, its context boxes drawn by `preview::context`) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font. |
 
 ## The Android app
 

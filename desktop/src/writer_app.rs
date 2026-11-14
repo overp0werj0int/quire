@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
 
-use rune::{Color, Span, Tx};
+use rune::{Color, Span, TextEdit, Tx};
 
 use crate::app::{App, Mode};
 use crate::format::Edit;
@@ -98,10 +98,32 @@ pub fn find_in(text: &str, q: &str) -> Vec<Range<usize>> {
     out
 }
 
+/// Spans and strike lines for a whole text.
+pub type Spans = (Vec<Span>, Vec<(usize, usize, Option<Color>)>);
+
+/// Styles `text` line by line, carrying the block state from each line to the next, and
+/// places each line's spans at its offset.
+fn spans_by(text: &str, mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
+    let mut spans = Vec::new();
+    let mut strikes = Vec::new();
+    let mut st = State::default();
+    let mut at = 0;
+    for (i, ln) in text.split('\n').enumerate() {
+        let styled = style(i, ln, st);
+        st = styled.1;
+        for s in &styled.0.spans {
+            spans.push(Span { start: s.start + at as u32, end: s.end + at as u32, ..s.clone() });
+        }
+        strikes.extend(styled.0.strikes.iter().map(|&(a, b, c)| (a + at, b + at, Some(c))));
+        at += ln.len() + 1;
+    }
+    (spans, strikes)
+}
+
 impl App {
     /// The source's spans and strike lines for the whole note (section 1), with the lines
     /// outside `focus` (first and last line) faded (WR-82).
-    pub fn source_spans(&self, e: f32, ink: &Ink, focus: Option<(usize, usize)>) -> (Vec<Span>, Vec<(usize, usize, Option<Color>)>) {
+    pub fn source_spans(&self, e: f32, ink: &Ink, focus: Option<(usize, usize)>) -> Spans {
         let text = self.active_text();
         let with = (e.to_bits(), ink_bits(ink), self.names_gen as u64);
         let mut cache = self.wstate.cache.borrow_mut();
@@ -109,32 +131,26 @@ impl App {
             cache.lines.clear();
             cache.with = Some(with);
         }
-        let mut spans = Vec::new();
-        let mut strikes = Vec::new();
-        let mut st = State::default();
-        let mut at = 0;
         let names = &self.names;
         let resolves = |t: &str| names.resolve(t).is_some();
-        for (i, ln) in text.split('\n').enumerate() {
+        spans_by(text, |i, ln, st| {
             let faded = focus.is_some_and(|(a, b)| i < a || i > b);
             let key = (hash(ln), st, i == 0, faded);
-            let hit = cache.lines.get(&key).cloned();
-            let styled = hit.unwrap_or_else(|| {
-                let (s, next) = writer::line(ln, i == 0, st, e, ink, &resolves);
-                let s = if faded { writer::fade(&s, ln.len(), ink.ghost) } else { s };
-                let v = Rc::new((s, next));
-                cache.lines.insert(key, v.clone());
-                v
-            });
-            let (styled, next) = (&styled.0, styled.1);
-            st = next;
-            for s in &styled.spans {
-                spans.push(Span { start: s.start + at as u32, end: s.end + at as u32, ..s.clone() });
+            if let Some(hit) = cache.lines.get(&key) {
+                return hit.clone();
             }
-            strikes.extend(styled.strikes.iter().map(|&(a, b, c)| (a + at, b + at, Some(c))));
-            at += ln.len() + 1;
-        }
-        (spans, strikes)
+            let (s, next) = writer::line(ln, i == 0, st, e, ink, &resolves);
+            let s = if faded { writer::fade(&s, ln.len(), ink.ghost) } else { s };
+            let v = Rc::new((s, next));
+            cache.lines.insert(key, v.clone());
+            v
+        })
+    }
+
+    /// The same styling for the edit sheet's few lines, uncached (SHEET-027).
+    pub fn sheet_spans(&self, text: &str, e: f32, ink: &Ink) -> Spans {
+        let resolves = |t: &str| self.names.resolve(t).is_some();
+        spans_by(text, |i, ln, st| Rc::new(writer::line(ln, i == 0, st, e, ink, &resolves)))
     }
 
     /// The word count of the open note, kept until its text changes (WR-188).
@@ -151,24 +167,44 @@ impl App {
         c
     }
 
-    fn writing(&self) -> bool {
-        self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a))
+    /// The writer's editing keys act: in the edit sheet, or on an open note in source mode.
+    pub(crate) fn writing(&self) -> bool {
+        self.sheet.is_some() || (self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a)))
+    }
+
+    /// The editor the editing keys change: the edit sheet's while it is open (SHEET-035), else
+    /// the open note's.
+    pub(crate) fn target_edit(&mut self) -> &mut TextEdit {
+        if self.sheet.is_some() {
+            return self.sheet_edit().expect("the sheet is open");
+        }
+        self.cur_edit()
+    }
+
+    /// The target editor's text changed: the note saves soon, and the sheet keeps its text
+    /// until it saves.
+    pub(crate) fn target_changed(&mut self, tx: &mut Tx) {
+        if self.sheet.is_some() {
+            tx.focus(crate::sheet::EDITOR, false);
+        } else {
+            self.after_edit();
+            self.focus_editor(tx);
+        }
     }
 
     /// One edit as one undo step (WR-63).
     pub fn apply_edit(&mut self, ed: Edit, tx: &mut Tx) {
-        let e = self.cur_edit();
+        let e = self.target_edit();
         e.undo_group(|e| {
             e.set_selection(ed.start, ed.end);
             e.insert(&ed.insert);
             e.set_selection(ed.sel.0, ed.sel.1);
         });
-        self.after_edit();
-        self.focus_editor(tx);
+        self.target_changed(tx);
     }
 
     fn sel(&mut self) -> (String, usize, usize) {
-        let e = self.cur_edit();
+        let e = self.target_edit();
         (e.text.clone(), e.anchor, e.focus)
     }
 
@@ -182,8 +218,8 @@ impl App {
         match writer::enter(&text, a.min(b), a.max(b)).filter(|_| cont) {
             Some(ed) => self.apply_edit(ed, tx),
             None => {
-                self.cur_edit().insert("\n");
-                self.after_edit();
+                self.target_edit().insert("\n");
+                self.target_changed(tx);
             }
         }
     }

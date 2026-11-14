@@ -36,7 +36,11 @@ pub fn mod_click() -> String {
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let preset = s.preset();
     let vault = s.screen == Screen::Vault;
-    let stack: &[Ctx] = if !vault || s.settings_open {
+    let stack: &[Ctx] = if s.sheet.is_some() {
+        // The sheet is modal: only its own keys act, and every other key stops here
+        // (SHEET-014, SHEET-036).
+        &[Ctx::Sheet]
+    } else if !vault || s.settings_open {
         &[Ctx::Global]
     } else if s.palette.is_some() {
         // An editing key never changes the note behind the palette.
@@ -79,13 +83,17 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             if a.id == "writer.escape" {
                 return s.writer_escape(tx);
             }
+            if a.id == "sheet.cancel" {
+                s.sheet_escape(tx);
+                return true;
+            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
             }
         }
     }
-    s.reader.help
+    s.reader.help || s.sheet.is_some()
 }
 
 type Run = fn(&mut App, &mut Tx);
@@ -149,6 +157,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.copy-all" => |s, tx| s.copy_all(tx),
         "reader.read-from-disk" => |s, _| s.read_from_disk(),
         "reader.help" => |s, _| s.reader.help = true,
+        "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
+        "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
+        "sheet.save" => |s, tx| s.sheet_save(tx),
+        "sheet.cancel" => |s, tx| s.sheet_escape(tx),
         "help.close" => |s, _| s.reader.help = false,
         "writer.bold" => |s, tx| s.format(Fmt::Bold, tx),
         "writer.italic" => |s, tx| s.format(Fmt::Italic, tx),

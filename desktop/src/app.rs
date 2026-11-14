@@ -152,6 +152,8 @@ pub struct App {
     pub reader: crate::reader::Reader,
     /// The writer's state: typing, the chrome, typewriter scrolling (`crate::writer_app`).
     pub wstate: crate::writer_app::WriterState,
+    /// The edit sheet over the reader, while it is open (`crate::sheet`).
+    pub sheet: Option<crate::sheet::Sheet>,
 }
 
 /// A locked note while it is open.
@@ -220,6 +222,7 @@ pub fn init() -> App {
         unlock_error: None,
         reader: Default::default(),
         wstate: Default::default(),
+        sheet: None,
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -427,6 +430,7 @@ impl App {
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
+        changed |= self.expire_sheet(t);
         changed |= self.poll_writer(t, tx);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
@@ -629,6 +633,11 @@ impl App {
         self.dirty.insert(rel.to_string());
         if self.save_at.is_none() {
             self.save_at = Some(self.now.get() + 0.5);
+            // `poll` writes the note and only runs before a frame, so wake it: an edit that
+            // brings no frame of its own (an undo) would otherwise wait for the next one.
+            if let Some(w) = &self.waker {
+                w();
+            }
         }
     }
 
@@ -1093,18 +1102,17 @@ impl App {
 
     /// A toolbar action on the active note's selection, as one undo step.
     pub fn format(&mut self, f: crate::format::Fmt, tx: &mut Tx) {
-        if self.active.is_none() || self.mode != Mode::Source || self.active.as_deref().is_some_and(|a| self.note_locked(a)) {
+        if !self.writing() {
             return;
         }
-        let e = self.cur_edit();
+        let e = self.target_edit();
         let ed = crate::format::apply(&e.text, e.anchor, e.focus, f);
         e.undo_group(|e| {
             e.set_selection(ed.start, ed.end);
             e.insert(&ed.insert);
             e.set_selection(ed.sel.0, ed.sel.1);
         });
-        self.after_edit();
-        self.focus_editor(tx);
+        self.target_changed(tx);
     }
 
     /// Saves everything, then closes the window.

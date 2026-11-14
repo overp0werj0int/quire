@@ -24,6 +24,7 @@ mod writer_app;
 mod md;
 mod roles;
 mod sample;
+mod sheet;
 mod store;
 mod sync;
 mod theme;

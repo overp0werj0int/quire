@@ -212,15 +212,15 @@ fn on_link(s: &mut App, id: &str, tx: &mut Tx) {
     }
 }
 
-pub fn preview(v: V) -> El {
-    let s = v.s;
-    let set = s.settings();
+/// The page's look at the reader's size and column.
+fn look(v: V) -> Look {
+    let set = v.s.settings();
     let prose = theme::pick(&theme::PROSE_FONTS, &set.preview_font);
     let mono = theme::pick(&theme::CODE_FONTS, &set.code_font).family;
     let b = set.size as f32;
     let (asc, desc) = theme::metrics(prose.family);
     let (mono_asc, mono_desc) = theme::metrics(mono);
-    let look = Look {
+    Look {
         b,
         family: prose.family,
         mono,
@@ -233,15 +233,30 @@ pub fn preview(v: V) -> El {
         width: column(v).width,
         dark: v.p.dark,
         c: Roles::new(v.p),
-    };
+    }
+}
+
+pub fn preview(v: V) -> El {
+    let s = v.s;
+    let look = look(v);
     let doc = s.doc();
     let find = s.find_query().map(|q| {
         let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
         Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur }
     });
     let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
-    let tone = Tone { color: look.c.text, size: b, lead: 1.6, contained: false, quote_depth: 0 };
+    let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
     cx.stack(&doc.blocks, tone, true, false).key("preview").w_full()
+}
+
+/// Top-level block `i` of `doc` drawn by the page's renderer in the dim tier, for the edit
+/// sheet's context (SHEET-022).
+pub fn context(v: V, doc: &Doc, i: usize) -> El {
+    let look = look(v);
+    let Some(bl) = doc.blocks.get(i) else { return el() };
+    let cx = Cx { v, look: &look, doc, find: None };
+    let tone = Tone { color: look.c.dim, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
+    cx.block(bl, tone).w_full()
 }
 
 /// The rhythm's view of a block (PAGE-58).
