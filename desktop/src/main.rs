@@ -14,6 +14,7 @@ mod keys;
 mod lock;
 mod lock_app;
 mod mcp;
+mod motion;
 mod md;
 mod roles;
 mod sample;

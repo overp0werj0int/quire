@@ -66,6 +66,9 @@ pub fn baseline_shift(big: TextStyle, small: TextStyle) -> f32 {
 
 pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     theme::set_scale(cx.env().scale);
+    let reduced = cx.system_reduced_motion() || crate::motion::forced();
+    cx.reduced_motion(reduced);
+    crate::motion::set(reduced);
     let p = s.palette(cx.system_dark());
     let dark = p.dark;
     s.sys_dark.set(cx.system_dark());
