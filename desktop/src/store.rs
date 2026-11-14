@@ -50,7 +50,7 @@ impl Default for Settings {
             dark_theme: None,
             accent: String::new(),
             font: "quattro".into(),
-            size: 14,
+            size: SIZE_DEFAULT,
             width: "readable".into(),
             preview_font: "quattro".into(),
             code_font: "ia-mono".into(),
@@ -221,6 +221,20 @@ fn state_path() -> Option<PathBuf> {
 
 pub const SIZE_MIN: u32 = 9;
 pub const SIZE_MAX: u32 = 32;
+pub const SIZE_DEFAULT: u32 = 14;
+
+/// omarky's zoom ladder: round(14.4 × z) for z from 0.6 to 2.2 in steps of 0.1.
+const ZOOM_LADDER: [u32; 17] = [9, 10, 12, 13, 14, 16, 17, 19, 20, 22, 23, 24, 26, 27, 29, 30, 32];
+
+/// The next size on the zoom ladder above (`up`) or below the current one. A size set off
+/// the ladder in Settings joins it here.
+pub fn zoom_step(size: u32, up: bool) -> u32 {
+    if up {
+        ZOOM_LADDER.iter().copied().find(|&z| z > size).unwrap_or(SIZE_MAX)
+    } else {
+        ZOOM_LADDER.iter().rev().copied().find(|&z| z < size).unwrap_or(SIZE_MIN)
+    }
+}
 
 pub fn load() -> Persist {
     let Some(p) = state_path() else { return Persist::default() };
@@ -295,5 +309,17 @@ mod tests {
         }
         unsafe { std::env::remove_var("QUIRE_STATE") };
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// PAGE-19: the zoom keys walk omarky's ladder, and an off-ladder size joins it.
+    #[test]
+    fn page_19_zoom_follows_the_ladder() {
+        use super::zoom_step;
+        let ladder: Vec<u32> = (6..=22).map(|z| (14.4 * z as f64 / 10.0).round() as u32).collect();
+        assert_eq!(ladder, super::ZOOM_LADDER, "the ladder is round(14.4 × z)");
+        assert_eq!((zoom_step(14, true), zoom_step(14, false)), (16, 13));
+        assert_eq!((zoom_step(15, true), zoom_step(15, false)), (16, 14));
+        assert_eq!((zoom_step(32, true), zoom_step(9, false)), (32, 9), "the ends hold");
+        assert_eq!((zoom_step(11, true), zoom_step(11, false)), (12, 10));
     }
 }

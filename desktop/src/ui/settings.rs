@@ -468,7 +468,7 @@ fn files(v: V) -> El {
 
 fn keys(v: V) -> El {
     let p = v.p;
-    let rows: [(&str, &[&str]); 12] = [
+    let rows: [(&str, &[&str]); 15] = [
         ("Quick switcher", &["Mod", "O"]),
         ("Command palette", &["Mod", "P"]),
         ("New note", &["Mod", "N"]),
@@ -481,6 +481,9 @@ fn keys(v: V) -> El {
         ("Italic", &["Mod", "I"]),
         ("Link", &["Mod", "K"]),
         ("Insert an image", &["Mod", "Shift", "I"]),
+        ("Larger text", &["Mod", "="]),
+        ("Smaller text", &["Mod", "-"]),
+        ("Text size 14 px", &["Mod", "0"]),
     ];
     let mut c = col().key("keys").w_full();
     let mut all: Vec<(String, String)> = rows.iter().map(|(l, ks)| (l.to_string(), k(ks))).collect();

@@ -1043,6 +1043,12 @@ impl App {
     }
 
 
+    /// The zoom keys: a step up or down omarky's ladder, or `None` back to 14 px.
+    pub fn zoom(&mut self, up: Option<bool>) {
+        let size = self.settings().size;
+        self.settings_mut().size = up.map_or(crate::store::SIZE_DEFAULT, |up| crate::store::zoom_step(size, up));
+    }
+
     pub fn toggle_focus(&mut self, tx: &mut Tx) {
         if self.active.is_none() {
             return;

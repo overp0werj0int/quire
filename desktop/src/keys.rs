@@ -58,6 +58,9 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         ('.', false) => s.toggle_focus(tx),
         ('\\', false) => s.toggle_left(),
         ('n', false) => s.new_note(None, tx),
+        ('=' | '+', _) => s.zoom(Some(true)),
+        ('-', false) => s.zoom(Some(false)),
+        ('0', false) => s.zoom(None),
         _ => return false,
     }
     true
