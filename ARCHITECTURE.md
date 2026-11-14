@@ -219,7 +219,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`. |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets` and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008). |
 
 ## The Android app
 

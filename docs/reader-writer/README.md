@@ -30,6 +30,7 @@ only.
 - In scope: the page, every block, reader behaviour, the writer, the edit sheet, the keymap.
   Changes mode, rewrite with Claude and spell checking come later (decision 0006).
 - Quire's panels stay where they are, and the column leans from both sides (decision 0007).
+- Both side panels take omarky's outline type, spacing and text colours (decision 0008).
 
 ## How Quire knows it is done
 

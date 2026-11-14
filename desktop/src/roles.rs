@@ -55,6 +55,9 @@ pub struct Roles {
     /// The fill of code and diff blocks.
     pub panel: Color,
     pub card: Color,
+    /// The side panel's fill, a faint wash of the text colour (decision 0008).
+    pub wash: Color,
+    /// The colour of a panel row under the pointer.
     pub hover: Color,
     pub hairline: Color,
     pub hairline_soft: Color,
@@ -98,6 +101,7 @@ impl Roles {
             sunken: (if dark { Color::BLACK } else { fg }).alpha(ld(0.035, 0.22)),
             panel: n.panel.unwrap_or_else(|| darker(bg, ld(1.04, 1.2))),
             card: fg.alpha(0.035),
+            wash: fg.alpha(ld(0.025, 0.02)),
             hover: fg.alpha(0.06),
             hairline: fg.alpha(ld(0.14, 0.12)),
             hairline_soft: fg.alpha(ld(0.09, 0.075)),

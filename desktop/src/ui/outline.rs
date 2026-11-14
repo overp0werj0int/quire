@@ -1,18 +1,20 @@
 //! The right panel (outline and backlinks) and the status bar.
 
-use rune::{Color, El, ScrollSpec, col, el, row, text};
+use rune::{El, ScrollSpec, col, el, row, text};
 
-use super::V;
+use super::{V, panel};
 use super::editor::{group, link_at_caret};
 use super::widgets::label;
 use crate::app::{App, Mode};
 use crate::keys::mod_click;
 use crate::md;
-use crate::theme::{mono, sans};
+use crate::roles::Roles;
+use crate::theme::mono;
 
 pub fn outline(v: V) -> El {
     let p = v.p;
     let s = v.s;
+    let c = Roles::new(p);
     let doc = s.active_text();
     let heads = md::headings(doc);
     let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
@@ -24,60 +26,61 @@ pub fn outline(v: V) -> El {
     } else {
         Some(v.prev_head.min(heads.len() - 1))
     };
-    let min_lv = heads.iter().map(|h| h.level).min().unwrap_or(6);
-    let mut c = col().key("outline-list").w_full().pt(24.0).px(10.0).pb(24.0).child(text("outline").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(8.0));
-    for (i, h) in heads.iter().enumerate() {
-        let on = cur == Some(i);
+    // omarky lists h1 to h4. Under a deeper heading, the h1 to h4 above it is current.
+    let shown: Vec<usize> = (0..heads.len()).filter(|&i| heads[i].level <= 4).collect();
+    let cur = cur.and_then(|c| shown.iter().rposition(|&i| i <= c));
+    let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
+    let mut list = col().key("outline-list").w_full().pb(12.0).child(panel::caption("Contents", &c).pl(panel::CAPTION_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
+    for (n, &i) in shown.iter().enumerate() {
+        let h = &heads[i];
+        let on = cur == Some(n);
+        let depth = h.level - min_lv;
         let line = h.line;
-        c = c.child(
-            row()
-                .key(format!("ol-{i}"))
-                .gap(8.0)
-                .pt(4.0)
-                .pb(4.0)
-                .pr(8.0)
-                .pl(8.0 + (h.level - min_lv) as f32 * 14.0)
-                .center_y()
-                .radius(6.0)
-                .hover(p.hover)
+        let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
+        let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
+        list = list.child(
+            panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on)
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| s.jump(line, tx))
-                .child(el().key("dot").size(5.0, 5.0).radius(2.5).fill(if on { p.acc } else { Color::TRANSPARENT }))
-                .child(text(h.text.clone()).font(sans(13.0, if on { 500.0 } else { 400.0 }).lh(13.0 * 1.35)).color(if on { p.ink } else { p.ink2 }).truncate().shrink().min_w(0.0)),
+                .child(text(text_).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0)),
         );
     }
-    if heads.is_empty() {
-        c = c.child(label("No headings in this note.", sans(12.5, 400.0), p.mute).py(2.0).px(10.0));
+    if shown.is_empty() {
+        list = list.child(text("No headings in this note.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
-    c = c.child(text("linked from").font(mono(11.0, 400.0)).color(p.mute).pt(26.0).px(10.0).pb(8.0));
+    list = list.child(panel::caption("Linked from", &c).pl(panel::CAPTION_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
     let mut back = s.active.as_ref().map(|a| md::backlinks(s.files(), a)).unwrap_or_default();
     if let Some(vault) = &s.vault {
         back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
     }
-    let name_style = sans(13.0, 400.0);
-    let small = mono(10.5, 400.0);
+    let name_style = panel::font(panel::BODY, false);
+    let small = panel::font(panel::CAPTION, false);
     let shift = super::baseline_shift(name_style, small);
     for (i, (bp, _)) in back.iter().enumerate() {
         let path = bp.clone();
-        c = c.child(
-            row()
-                .key(format!("bl-{i}"))
+        list = list.child(
+            panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false)
                 .gap(8.0)
-                .py(4.0)
-                .px(10.0)
-                .radius(6.0)
-                .hover(p.hover)
                 .hover_group()
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
-                .child(text(md::base(bp)).font(name_style).color(p.ink2).group_color(p.ink).truncate().shrink().min_w(0.0))
-                .child(text(md::dir(bp)).font(small).color(p.mute).truncate().grow(1.0).shrink().min_w(0.0).mt(shift)),
+                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0))
+                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift)),
         );
     }
     if back.is_empty() {
-        c = c.child(text("No notes link here yet.").font(sans(12.5, 400.0).lh(12.5 * 1.45)).color(p.mute).py(2.0).px(10.0));
+        list = list.child(text("No notes link here yet.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
-    col().key("outline").w(236.0).h_full().min_h(0.0).border_sides([0.0, 0.0, 0.0, 1.0], p.line).border_layout().scroll(ScrollSpec { stick_bottom: false }).child(c)
+    col()
+        .key("outline")
+        .w(236.0)
+        .h_full()
+        .min_h(0.0)
+        .fill(c.wash)
+        .border_sides([0.0, 0.0, 0.0, 1.0], c.hairline_soft)
+        .border_layout()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .child(list)
 }
 
 pub fn status(v: V) -> El {
