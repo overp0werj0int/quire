@@ -41,8 +41,17 @@ pub fn body(v: V) -> El {
     if top + side > 0.0 {
         sheet = sheet.border_sides([top, 0.0, 0.0, side], p.line).border_layout();
     }
-    let area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full();
-    let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area.child(doc_scroll(v)));
+    let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
+    if super::reading(v.s) {
+        let [offset, max, vh, _] = v.s.reader.scroll.get();
+        let doc = v.s.doc();
+        let top_line = doc.blocks.get(v.s.reader.top.get()).map_or(0, |b| b.lines.start);
+        area = area.child(super::reader::progress(v, crate::reader::progress(top_line, doc.line_count, offset, max, vh))).child(super::reader::find_bar(v));
+    }
+    if let Some((msg, _)) = &v.s.reader.toast {
+        area = area.child(super::reader::toast(v, msg));
+    }
+    let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     if v.right_visible() {
         inner = inner.child(outline::outline(v));
     }
@@ -128,7 +137,21 @@ fn doc_scroll(v: V) -> El {
     }
     // A scroll viewport is a column: in a row its content would stretch to the viewport's
     // height and leave nothing to scroll.
-    let mut scroll = col().key("doc-scroll").grow(1.0).min_w(0.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false });
+    let live = s.reader.scroll.clone();
+    let mut scroll = col()
+        .key("doc-scroll")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .on_scroll_offset(move |at| {
+            live.set([at.offset[1], at.max[1], at.viewport[1], 0.0]);
+        });
+    if super::reading(s) {
+        // The page holds its top block in place when text above it changes (RD-11, RD-13).
+        scroll = scroll.scroll_anchor();
+    }
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar floats on a clear band. The caret stays
         // below the toolbar while you type.
@@ -242,7 +265,7 @@ fn crumb(v: V) -> El {
     if !dir.is_empty() {
         r = r.child(label(dir, style, p.mute)).child(label("/", style, p.mark));
     }
-    match &s.renaming {
+    let r = match &s.renaming {
         None => r.child(
             row()
                 .key("crumb-file")
@@ -288,7 +311,9 @@ fn crumb(v: V) -> El {
                     .child(label(".md", style, p.mark).ml(5.0)),
             )
         }
-    }
+    };
+    // After an outside change (RD-33).
+    if s.reader.reloaded.is_some() && s.mode == Mode::Preview { r.child(super::reader::reloaded(v)) } else { r }
 }
 
 fn source(v: V) -> El {

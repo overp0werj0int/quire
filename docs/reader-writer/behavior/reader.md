@@ -177,9 +177,9 @@ reading them:
 - Where the preview-mode buttons go (RD-34). Recommended default. The right group of the title bar, shown only in preview mode, so source mode keeps its current bar.
 - Outline width (RD-39). Recommended default. Keep Quire's 236 px, because decision 0007 keeps Quire's layout and the column lean depends on both panel widths.
 - Whether the omarky outline styling (RD-42 to RD-47) also applies to the outline in source mode, and where backlinks go. Recommended default. One outline styled the omarky way in both modes, with backlinks kept below the headings.
-- How `W` relates to Quire's Settings width ("readable" or full). Recommended default. The setting picks the measure a note opens with, and `W` toggles it for the session without saving.
-- Whether `q` should close the tab (RD-84), since a single letter now closes something in a multi-tab window. Recommended default. Keep it in the omarky preset. Closing a tab loses nothing, and the note stays in the folder.
-- A relative `.md` link that points outside the notes folder (RD-64). Recommended default. Open it in the system default app, as for other local files (RD-66).
+- How `W` relates to Quire's Settings width ("readable" or full). Recommended default. The setting picks the measure a note opens with, and `W` toggles it for the session without saving. Resolved in phase 6 as recommended.
+- Whether `q` should close the tab (RD-84), since a single letter now closes something in a multi-tab window. Recommended default. Keep it in the omarky preset. Closing a tab loses nothing, and the note stays in the folder. Resolved in phase 6 as recommended.
+- A relative `.md` link that points outside the notes folder (RD-64). Recommended default. Open it in the system default app, as for other local files (RD-66). Resolved in phase 6 as recommended.
 - `[[note#Heading]]` links (RD-102). Quire ignores the fragment today. Recommended default. Travel to the heading, by RD-04.
-- What the heading `#` copies (RD-71). A `[[Note#Heading]]` wiki link would paste better inside Quire. Recommended default. The relative path with `#slug`, as in omarky, because it works in any Markdown tool.
+- What the heading `#` copies (RD-71). A `[[Note#Heading]]` wiki link would paste better inside Quire. Recommended default. The relative path with `#slug`, as in omarky, because it works in any Markdown tool. Resolved in phase 6 as recommended.
 - Whether a note deleted outside Quire should stay on screen as in omarky (RD-16) instead of closing its tab. Recommended default. Keep Quire's behaviour, because the file tree already shows the note is gone.

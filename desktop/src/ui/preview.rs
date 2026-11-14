@@ -6,7 +6,7 @@ mod front;
 mod list;
 mod table;
 
-use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextStyle, Tx, col, el, icon, rich, row, text};
+use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextHighlight, TextStyle, Tx, col, el, icon, rich, row, text};
 
 use super::V;
 use super::octicons;
@@ -77,7 +77,7 @@ pub fn column(v: V) -> page::Column {
     let prose = theme::pick(&theme::PROSE_FONTS, &set.preview_font);
     let left = if v.left_visible() { 249.0 } else { 0.0 };
     let right = if v.right_visible() { 236.0 } else { 0.0 };
-    page::column(v.vw - left - right, set.size as f32, page::avg_char(prose.family), set.width != "readable", left - right)
+    page::column(v.vw - left - right, set.size as f32, page::avg_char(prose.family), v.s.wide(), left - right)
 }
 
 /// Rich text for one block: its string, spans, struck ranges and links.
@@ -87,6 +87,8 @@ struct Rich {
     spans: Vec<Span>,
     strikes: Vec<(usize, usize, Option<Color>)>,
     links: Vec<(std::ops::Range<usize>, String, Color)>,
+    /// Find matches painted over the text (RD-59).
+    marks: Vec<TextHighlight>,
 }
 
 /// Digits as superscript characters, for footnote references (PAGE-78).
@@ -189,6 +191,7 @@ impl Rich {
         for (a, b, c) in self.strikes {
             e = e.strike(a, b, c);
         }
+        e = e.text_highlights(self.marks);
         for (range, id, color) in self.links {
             // Links underline only under the pointer (PAGE-73).
             e = e.link(rune::Link::new(range, id).hover(LinkPaint::new().underline(color)));
@@ -205,9 +208,7 @@ fn on_link(s: &mut App, id: &str, tx: &mut Tx) {
     } else if let Some(t) = id.strip_prefix("tag:") {
         s.search_tag(t);
     } else if let Some(u) = id.strip_prefix("url:") {
-        if let Err(e) = tx.open_url(u) {
-            s.notice = Some(format!("Could not open {u}: {e}"));
-        }
+        s.follow(u, tx);
     }
 }
 
@@ -233,8 +234,12 @@ pub fn preview(v: V) -> El {
         dark: v.p.dark,
         c: Roles::new(v.p),
     };
-    let doc = crate::blocks::build(s.active_text());
-    let cx = Cx { v, look: &look, doc: &doc };
+    let doc = s.doc();
+    let find = s.find_query().map(|q| {
+        let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
+        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur }
+    });
+    let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
     let tone = Tone { color: look.c.text, size: b, lead: 1.6, contained: false, quote_depth: 0 };
     cx.stack(&doc.blocks, tone, true, false).key("preview").w_full()
 }
@@ -252,12 +257,22 @@ fn rk(k: &Kind) -> Rk {
     }
 }
 
-/// What every block needs: the view, the page's look and the whole document (for anchors).
+/// The find query, lower-cased, and the current match as (piece, match in the piece).
+struct Hl {
+    q: String,
+    /// For text whose lower case changes its length, where byte offsets would not line up.
+    q_ascii: String,
+    cur: Option<(usize, usize)>,
+}
+
+/// What every block needs: the view, the page's look, the whole document (for anchors) and
+/// the find query.
 #[derive(Clone, Copy)]
 struct Cx<'a> {
     v: V<'a>,
     look: &'a Look,
     doc: &'a Doc,
+    find: Option<&'a Hl>,
 }
 
 impl Cx<'_> {
@@ -272,6 +287,37 @@ impl Cx<'_> {
         r
     }
 
+    /// `rich`, with the find matches of piece `pid` marked.
+    fn rich_at(&self, runs: &[Run], tone: Tone, pid: Option<usize>) -> Rich {
+        let mut r = self.rich(runs, tone);
+        r.marks = self.marks(pid, &r.text, 0).0;
+        r
+    }
+
+    /// Find highlights over `text`, piece `pid`, numbering matches from `k0` (RD-59): the find
+    /// colour, and the current match solid accent with its key for scrolling. Returns the
+    /// highlights and the number of matches.
+    fn marks(&self, pid: Option<usize>, text: &str, k0: usize) -> (Vec<TextHighlight>, usize) {
+        let (Some(h), Some(pid)) = (self.find, pid) else { return (Vec::new(), 0) };
+        let lower = text.to_lowercase();
+        let (hay, q) = if lower.len() == text.len() { (lower, &h.q) } else { (text.to_ascii_lowercase(), &h.q_ascii) };
+        let c = &self.look.c;
+        let mut out = Vec::new();
+        let mut at = 0;
+        let mut k = k0;
+        while let Some(f) = hay[at..].find(q.as_str()) {
+            let (a, b) = (at + f, at + f + q.len());
+            out.push(if h.cur == Some((pid, k)) {
+                TextHighlight::new(a..b, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR)
+            } else {
+                TextHighlight::new(a..b, c.find)
+            });
+            k += 1;
+            at = b.max(a + 1);
+        }
+        (out, k - k0)
+    }
+
     /// Blocks one under another, each with the gap the rhythm gives it (PAGE-54 to PAGE-67).
     /// `top` keys each block by its first line, so the outline and links can scroll to it.
     fn stack(&self, blocks: &[Block], tone: Tone, top: bool, tight: bool) -> El {
@@ -281,8 +327,25 @@ impl Cx<'_> {
         for (i, bl) in blocks.iter().enumerate() {
             let k = rk(&bl.kind);
             let gap = if top { page::gap(b, prev, k) } else { page::inner_gap(b, prev, k, tight) };
-            let key = if top { format!("pv-{}", bl.lines.start) } else { format!("b-{i}") };
-            out = out.child(self.block(bl, tone).key(key).mt(gap));
+            let mut e = self.block(bl, tone).mt(gap);
+            if top {
+                // The block under the pointer, for Ctrl+Shift+C and e (RD-100); a right-click
+                // copies its Markdown (RD-68).
+                let line = bl.lines.start;
+                e = e
+                    .key(crate::reader::block_key(bl))
+                    .on_hover_change(move |s: &mut App, on, _| {
+                        if on {
+                            s.reader.hover = Some(line);
+                        } else if s.reader.hover == Some(line) {
+                            s.reader.hover = None;
+                        }
+                    })
+                    .on_secondary_press(move |s: &mut App, _, tx| s.copy_block(line, tx));
+            } else {
+                e = e.key(format!("b-{i}"));
+            }
+            out = out.child(e);
             prev = Some(k);
         }
         out
@@ -291,14 +354,14 @@ impl Cx<'_> {
     fn block(&self, bl: &Block, tone: Tone) -> El {
         match &bl.kind {
             Kind::FrontMatter { title, fields } => front::card(self, title, fields),
-            Kind::Heading { level, runs, text: t, .. } => self.heading(*level, runs, t, tone),
+            Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone),
             Kind::Paragraph { runs } if is_tag_line(runs) => tag_line(self, runs, tone),
-            Kind::Paragraph { runs } => self.rich(runs, tone).el(self.look.prose(tone.size, tone.lead), tone.color).w_full(),
+            Kind::Paragraph { runs } => self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color).w_full(),
             Kind::List(l) => list::list(self, l, tone),
             Kind::Quote { blocks } => self.quote(blocks, tone),
             Kind::Alert { kind, blocks } => self.alert(*kind, blocks, tone),
-            Kind::Code { lang, text: t } => code::code(self, lang, t),
-            Kind::Diff { lang, lines, added, removed, .. } => code::diff(self, lang, lines, *added, *removed),
+            Kind::Code { lang, text: t } => code::code(self, lang, t, bl.pid),
+            Kind::Diff { lang, lines, added, removed, .. } => code::diff(self, lang, lines, *added, *removed, bl.pid),
             Kind::Table(t) => table::table(self, t, tone),
             Kind::Rule => self.rule(),
             Kind::Image { img, .. } => self.image(img),
@@ -309,7 +372,7 @@ impl Cx<'_> {
     }
 
     /// PAGE-03, PAGE-14, PAGE-15, BLK-11 to BLK-14.
-    fn heading(&self, level: usize, runs: &[Run], label: &str, tone: Tone) -> El {
+    fn heading(&self, level: usize, runs: &[Run], label: &str, slug: &str, pid: Option<usize>, tone: Tone) -> El {
         let look = self.look;
         let level = level.clamp(1, 6);
         let size = step(look.b, [3.0, 2.0, 1.0, 0.5, 0.0, 0.0][level - 1]);
@@ -319,11 +382,30 @@ impl Cx<'_> {
         if level == 6 {
             style = style.tracking(0.6);
         }
-        let mut e = self.rich(runs, Tone { size, ..tone }).el(style, color).w_full().role("heading").level(level as u32).label(label.to_string());
+        let mut e = self.rich_at(runs, Tone { size, ..tone }, pid).el(style, color).w_full().role("heading").level(level as u32).label(label.to_string());
         if level == 6 {
             e = e.text_case(TextCase::Uppercase);
         }
-        e
+        if tone.quote_depth > 0 || tone.contained || slug.is_empty() {
+            return e;
+        }
+        // The `#` in the margin while the pointer is over the heading (BLK-15, BLK-16).
+        let hs = r(look.b * 0.95);
+        let hash_style = TextStyle::new(hs, 400.0).family(look.mono).lh(line(hs, 1.2));
+        let w = rune::text::advance("#", hash_style).ceil();
+        let top = ((line(size, lead) - line(hs, 1.2)) / 2.0).max(0.0);
+        let slug = slug.to_string();
+        let hash = text("#")
+            .key("anchor")
+            .font(hash_style)
+            .color(look.c.faint)
+            .group_opacity(0.0, 1.0)
+            .cursor(rune::Cursor::Pointer)
+            .role("button")
+            .label("Copy a link to this heading")
+            .on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
+            .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
+        el().w_full().hover_group().child(e).child(hash)
     }
 
     /// Three faint dots (BLK-17).

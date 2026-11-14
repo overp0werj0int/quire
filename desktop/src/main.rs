@@ -18,6 +18,7 @@ mod mcp;
 mod highlight;
 mod motion;
 mod page;
+mod reader;
 mod md;
 mod roles;
 mod sample;

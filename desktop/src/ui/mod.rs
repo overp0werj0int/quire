@@ -7,6 +7,7 @@ mod octicons;
 mod panel;
 mod palette;
 mod preview;
+mod reader;
 mod settings;
 mod settings_mcp;
 pub mod settings_sync;
@@ -78,6 +79,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
     let prev_head = preview_head(s, cx);
+    s.reader.top.set(reader_top(s, cx));
     let v = V { s, p, dark, vw, vh, trailing, prev_head };
     cx.caption_color(p.ink2);
 
@@ -106,7 +108,34 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if let Some(n) = &s.notice {
         root = root.child(notice(v, n));
     }
+    if v.is_vault() && s.reader.help {
+        root = root.child(reader::help_sheet(v));
+    }
     root
+}
+
+/// The reader is on screen: a note open in preview, not locked.
+fn reading(s: &App) -> bool {
+    s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
+}
+
+/// The index of the top-level block at the top of the view, found by halving over the blocks'
+/// laid-out tops: the last whose top is at or above 21 points under the viewport's top.
+fn reader_top(s: &App, cx: &mut Cx<App>) -> usize {
+    if !reading(s) {
+        return 0;
+    }
+    let Some(top) = cx.window_layout("doc-scroll").map(|r| r[1] + 21.0) else { return 0 };
+    let doc = s.doc();
+    let (mut lo, mut hi) = (0usize, doc.blocks.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        match cx.window_layout(&crate::reader::block_key(&doc.blocks[mid])) {
+            Some(r) if r[1] <= top => lo = mid + 1,
+            _ => hi = mid,
+        }
+    }
+    lo.saturating_sub(1)
 }
 
 /// The last preview heading whose top is above the viewport's top plus 100 points.
@@ -115,9 +144,11 @@ fn preview_head(s: &App, cx: &mut Cx<App>) -> usize {
         return 0;
     }
     let Some(top) = cx.window_layout("doc-scroll").map(|r| r[1]) else { return 0 };
+    let doc = s.doc();
     let mut cur = 0;
     for (i, h) in crate::md::headings(s.active_text()).iter().enumerate() {
-        if let Some(r) = cx.window_layout(&format!("pv-{}", h.line)) {
+        let Some(b) = doc.blocks.iter().find(|b| b.lines.start == h.line) else { continue };
+        if let Some(r) = cx.window_layout(&crate::reader::block_key(b)) {
             if r[1] <= top + 100.0 {
                 cur = i;
             }

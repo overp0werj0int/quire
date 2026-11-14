@@ -39,7 +39,7 @@ fn badge(cx: &Cx, lang: &str) -> El {
     text(lang.to_lowercase()).key("badge").font(TextStyle::new(10.0, 400.0).family(cx.look.mono).lh(20.0).tracking(0.4)).color(cx.look.c.faint)
 }
 
-pub(super) fn code(cx: &Cx, lang: &str, src: &str) -> El {
+pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>) -> El {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -68,17 +68,35 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str) -> El {
         let numw = rune::text::advance(&n.to_string(), style);
         body = body.child(text(nums).key("nums").font(style.features("'tnum' 1")).color(c.ghost).align(rune::Align::End).w(numw.ceil()).mr(r(size * 1.4)));
     }
-    body = body.child(rich(if src.is_empty() { " ".to_string() } else { src }, spans).key("code").font(style).color(c.text));
+    let marks = cx.marks(pid, &src, 0).0;
+    let copy = src.clone();
+    body = body.child(rich(if src.is_empty() { " ".to_string() } else { src }, spans).key("code").font(style).color(c.text).text_highlights(marks));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    el().w_full()
-        .radius(4.0)
-        .fill(c.panel)
+    let top = 2f32.max(r((r(b * 1.25) - 20.0) / 2.0) - 1.0);
+    // Over the block the badge gives way to a Copy chip (BLK-51).
+    let chip = row()
+        .key("copy")
+        .h(20.0)
+        .px(6.0)
+        .radius(3.0)
+        .center_y()
+        .fill(c.raised)
         .border(1.0, c.hairline_soft)
-        .child(el().key("scroll").w_full().scroll_x().child(body))
-        .child(if lang.is_empty() { el() } else { badge(cx, lang).pin(None, Some(2f32.max(r((r(b * 1.25) - 20.0) / 2.0) - 1.0)), Some(pad_r), None) })
+        .group_opacity(0.0, 1.0)
+        .cursor(rune::Cursor::Pointer)
+        .role("button")
+        .label("Copy the code")
+        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&copy, tx))
+        .child(text("Copy").font(TextStyle::new(10.0, 400.0).family(look.mono).lh(14.0).tracking(0.4)).color(c.dim))
+        .pin(None, Some(top), Some(pad_r - 6.0), None);
+    let mut out = el().w_full().hover_group().radius(4.0).fill(c.panel).border(1.0, c.hairline_soft).child(el().key("scroll").w_full().scroll_x().child(body));
+    if !lang.is_empty() {
+        out = out.child(badge(cx, lang).group_opacity(1.0, 0.0).pin(None, Some(top), Some(pad_r), None));
+    }
+    out.child(chip)
 }
 
-pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, removed: usize) -> El {
+pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, removed: usize, pid: Option<usize>) -> El {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -100,6 +118,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
         .child(if lang.is_empty() { el() } else { badge(cx, lang) });
     // Bands run the full width of the panel, or of the longest line when it scrolls.
     let mut body = col().key("lines").min_w(look.width - 2.0).py(r(b * 0.7));
+    let mut k = 0;
     for (i, l) in lines.iter().enumerate() {
         let (band, ink) = match l.kind {
             DiffKind::Add => (Some(c.green.alpha(0.14)), mix(c.text, c.green, 0.3)),
@@ -109,11 +128,13 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
             DiffKind::Ctx => (None, c.text),
         };
         let t = expand_tabs(&l.text);
+        let (marks, n) = cx.marks(pid, &t, k);
+        k += n;
         let mut rw = row()
             .key(format!("l-{i}"))
             .px(pad_x)
             .child(text(l.sign).key("sign").font(style).color(ink).w(r(size * 1.6)))
-            .child(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink));
+            .child(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink).text_highlights(marks));
         if let Some(f) = band {
             rw = rw.fill(f);
         }

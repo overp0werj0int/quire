@@ -41,12 +41,30 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     } else if s.palette.is_some() {
         // An editing key never changes the note behind the palette.
         &[Ctx::Palette, Ctx::Global]
+    } else if s.reader.help {
+        // Only the keys that close the sheet act; the rest are swallowed (RD-80).
+        &[Ctx::Help]
     } else if s.mode == crate::app::Mode::Preview {
         &[Ctx::Reader, Ctx::Global]
     } else {
         &[Ctx::Writer, Ctx::Global]
     };
     for ctx in stack {
+        if *ctx == Ctx::Reader {
+            // The second key of `g g` (RD-23).
+            let now = s.now.get();
+            if let Some((first, at)) = s.reader.pending.take()
+                && now - at < 0.9
+                && let Some(run) = keymap::lookup_seq(preset, Ctx::Reader, &first, ev).iter().find_map(|a| handler(a.id))
+            {
+                run(s, tx);
+                return true;
+            }
+            if keymap::starts_seq(preset, Ctx::Reader, ev) {
+                s.reader.pending = Some((ev.clone(), now));
+                return true;
+            }
+        }
         for a in keymap::lookup(preset, *ctx, ev) {
             // Away from the notes, only Esc and Quit act.
             if !vault && !matches!(a.id, "app.escape" | "app.quit") {
@@ -55,13 +73,16 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             if a.id == "app.escape" {
                 return s.escape(tx);
             }
+            if a.id == "reader.escape" {
+                return s.reader_escape(tx);
+            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
             }
         }
     }
-    false
+    s.reader.help
 }
 
 type Run = fn(&mut App, &mut Tx);
@@ -100,6 +121,35 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.escape" => |s, tx| {
             s.escape(tx);
         },
+        "reader.scroll-down" => |s, tx| s.scroll_lines(true, tx),
+        "reader.scroll-up" => |s, tx| s.scroll_lines(false, tx),
+        "reader.page-down" => |s, tx| s.scroll_page(true, tx),
+        "reader.page-up" => |s, tx| s.scroll_page(false, tx),
+        "reader.top" => |s, tx| s.scroll_top(tx),
+        "reader.bottom" => |s, tx| s.scroll_bottom(tx),
+        "reader.toggle-wide" => |s, _| s.toggle_wide(),
+        "reader.find" => |s, tx| s.open_find(tx),
+        // n and N step only while a query exists (RD-58).
+        "reader.find-next" => |s, tx| {
+            if s.find_query().is_some() {
+                s.find_step(true, tx);
+            }
+        },
+        "reader.find-previous" => |s, tx| {
+            if s.find_query().is_some() {
+                s.find_step(false, tx);
+            }
+        },
+        "find.next" => |s, tx| s.find_step(true, tx),
+        "find.previous" => |s, tx| s.find_step(false, tx),
+        "find.close" => |s, tx| s.close_find(tx),
+        "find.select-all" => |s, tx| s.open_find(tx),
+        "reader.copy-selection" => |s, tx| s.copy_selection(tx),
+        "reader.copy-block-under-pointer" => |s, tx| s.copy_block_here(tx),
+        "reader.copy-all" => |s, tx| s.copy_all(tx),
+        "reader.read-from-disk" => |s, _| s.read_from_disk(),
+        "reader.help" => |s, _| s.reader.help = true,
+        "help.close" => |s, _| s.reader.help = false,
         "writer.bold" => |s, tx| s.format(Fmt::Bold, tx),
         "writer.italic" => |s, tx| s.format(Fmt::Italic, tx),
         "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),

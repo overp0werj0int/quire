@@ -344,6 +344,23 @@ pub fn lookup(p: Preset, ctx: Ctx, ev: &KeyEvent) -> Vec<&'static Action> {
         .collect()
 }
 
+/// The actions whose two-key chord is `first` then `ev` in `ctx` (`g g`, RD-23).
+pub fn lookup_seq(p: Preset, ctx: Ctx, first: &KeyEvent, ev: &KeyEvent) -> Vec<&'static Action> {
+    TABLE
+        .iter()
+        .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
+        .filter(|a| a.chords(p).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], first) && matches(&seq[1], ev)))
+        .collect()
+}
+
+/// Whether `ev` starts a two-key chord in `ctx`.
+pub fn starts_seq(p: Preset, ctx: Ctx, ev: &KeyEvent) -> bool {
+    TABLE
+        .iter()
+        .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
+        .any(|a| a.chords(p).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], ev)))
+}
+
 /// A chord's label on this platform: as the spec writes it, or with ⌘⇧⌥ run together on macOS.
 pub fn label_of(spec: &str) -> String {
     if !cfg!(target_os = "macos") {

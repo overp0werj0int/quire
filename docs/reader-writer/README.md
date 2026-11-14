@@ -140,6 +140,10 @@ PNGs.
 
 ### Phase 6. Reader behaviour
 
+Status: done on branch `rw/phase-3-typography`, except touchpad fling, the find debounce and
+band, two-part anchor glides, hover fades and the preview toolbar buttons listed in
+`decisions.tsv`.
+
 Key scrolling and its glide, touchpad scrolling (measured, not copied), the outline that follows
 the reading position, find, the wide measure, zoom, live reload that keeps the position, links,
 copy source, task ticking, the heading anchor, the help sheet, toasts and banners

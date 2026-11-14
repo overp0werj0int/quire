@@ -17,6 +17,7 @@ svg!(CLOSE, 8.0, r#"<path d="M1 1l6 6M7 1L1 7" fill="none" stroke="currentColor"
 svg!(CLOSE_THIN, 8.0, r#"<path d="M1 1l6 6M7 1L1 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>"#);
 svg!(PLUS, 12.0, r#"<path d="M6 1.5v9M1.5 6h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
 svg!(CHEVRON_DOWN, 10.0, r#"<path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
+svg!(CHEVRON_UP, 10.0, r#"<path d="M2 6.5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 svg!(CHEVRON_RIGHT, 8.0, r#"<path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>"#);
 svg!(FOLDER_PLUS, 16.0, r#"<path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.5 1.6h4.9A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8 7v4M6 9h4" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>"#);
 svg!(SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>"#);

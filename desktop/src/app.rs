@@ -129,7 +129,7 @@ pub struct App {
     /// A key reached the editor since the last frame.
     pub key_moved: bool,
     pub(crate) waker: Option<rune::Waker>,
-    watcher: Option<crate::watch::Watcher>,
+    pub(crate) watcher: Option<crate::watch::Watcher>,
     /// Counts name lookups rebuilt, so cached lines redraw when a link's target appears.
     pub names_gen: u64,
     /// Set by the theme watcher when Omarchy switches themes.
@@ -148,6 +148,8 @@ pub struct App {
     pub lock_dialog: Option<String>,
     /// Why the last unlock failed.
     pub unlock_error: Option<String>,
+    /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
+    pub reader: crate::reader::Reader,
 }
 
 /// A locked note while it is open.
@@ -214,6 +216,7 @@ pub fn init() -> App {
         unlocked: HashMap::new(),
         lock_dialog: None,
         unlock_error: None,
+        reader: Default::default(),
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -420,6 +423,7 @@ impl App {
         changed |= self.apply_outside_changes();
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
+        changed |= self.expire_reader(t);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
         }
@@ -460,6 +464,7 @@ impl App {
             if self.dirty.contains(&rel) || self.files().get(&rel) == Some(&text) {
                 continue;
             }
+            self.note_reloaded(&rel);
             if self.unlocked.contains_key(&rel) {
                 self.outside_locked_text(&rel, text);
                 any = true;
@@ -835,7 +840,7 @@ impl App {
             self.tabs.push(path.to_string());
         }
         let changed = self.active.as_deref() != Some(path);
-        self.active = Some(path.to_string());
+        let from = self.active.replace(path.to_string());
         let mut d = md::dir(path).to_string();
         while !d.is_empty() {
             self.expanded.insert(d.clone());
@@ -862,7 +867,7 @@ impl App {
                 tx.scroll_key_to(format!("ln-{line}"), 120.0);
             }
         } else if changed {
-            tx.scroll_to_instant("doc-scroll", 0.0, 0.0);
+            self.switch_reading(from.as_deref(), path, tx);
         }
         self.focus_editor(tx);
         self.persist_later();
@@ -1176,7 +1181,7 @@ impl App {
             tx.scroll_key_to(format!("ln-{line}"), 120.0);
             self.focus_editor(tx);
         } else {
-            tx.scroll_key_to(format!("pv-{line}"), 32.0);
+            self.jump_block(line, tx);
         }
     }
 

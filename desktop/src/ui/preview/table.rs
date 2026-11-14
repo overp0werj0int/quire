@@ -24,7 +24,12 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
 
     // Each column's natural width and minimum (BLK-63, BLK-64), padding included.
     let heads: Vec<String> = (0..n).map(|i| t.header.get(i).map_or(String::new(), |h| crate::blocks::plain(h).to_uppercase())).collect();
-    let body: Vec<Vec<Rich>> = t.rows.iter().map(|rw| (0..n).map(|i| rw.get(i).map_or_else(Rich::default, |runs| cx.rich(runs, cell_tone))).collect()).collect();
+    let body: Vec<Vec<Rich>> = t
+        .rows
+        .iter()
+        .enumerate()
+        .map(|(ri, rw)| (0..n).map(|i| rw.get(i).map_or_else(Rich::default, |runs| cx.rich_at(runs, cell_tone, t.row_pids.get(ri).and_then(|p| p.get(i)).copied()))).collect())
+        .collect();
     let mut natural = vec![0f32; n];
     let mut min = vec![0f32; n];
     for i in 0..n {
@@ -46,7 +51,8 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
     let mut head = row().key("head").fill(c.raised).border_sides([0.0, 0.0, 1.0, 0.0], c.hairline);
     for (i, w) in widths.iter().enumerate() {
         let label = t.header.get(i).map_or(String::new(), |h| crate::blocks::plain(h));
-        let cell = text(label).font(head_style).color(c.dim).text_case(TextCase::Uppercase).wrap().align(align(i)).w_full();
+        let marks = cx.marks(t.header_pids.get(i).copied(), &label, 0).0;
+        let cell = text(label).font(head_style).color(c.dim).text_case(TextCase::Uppercase).wrap().align(align(i)).w_full().text_highlights(marks);
         head = head.child(el().key(format!("c-{i}")).w(*w).px(px).py(py).child(cell));
     }
     let zebra = c.text.alpha(look.ld(0.022, 0.018));
