@@ -1,11 +1,12 @@
-//! The preview: a note drawn as a page, as the design's `renderPreview` draws it.
+//! The preview: a note drawn as a page from `crate::blocks`, as omarky's reader draws it.
 
-use rune::{Color, El, Family, Link, Span, TextStyle, Tx, col, el, icon, rich, row, text};
+use rune::{Color, El, Family, Span, TextStyle, Tx, col, el, icon, rich, row, text};
 
 use super::V;
 use super::widgets::{CHECK, label};
 use crate::app::App;
-use crate::md::{self, Block, Tok};
+use crate::blocks::{self as bk, Alert, Align, Block, DiffKind, Doc, FieldKind, Kind, Link, Run, Task};
+use crate::md;
 use crate::roles::Roles;
 use crate::theme::{self, Pal};
 
@@ -42,95 +43,80 @@ struct Rich {
     links: Vec<(std::ops::Range<usize>, String)>,
 }
 
-#[derive(Clone, Copy, Default)]
-struct Ctx {
-    bold: bool,
+/// How a container sets the text inside it: a quote's dim italic, a done task's strike.
+#[derive(Clone, Copy)]
+struct Tone {
+    color: Color,
     italic: bool,
+    strike: bool,
 }
 
 impl Rich {
-    fn push(&mut self, s: &str, cx: Ctx, color: Option<Color>) {
+    fn push(&mut self, s: &str, sp: Span) {
         let a = self.text.len();
         self.text.push_str(s);
         let b = self.text.len();
-        if a < b && (cx.bold || cx.italic || color.is_some()) {
-            self.spans.push(Span { weight: cx.bold.then_some(600.0), italic: cx.italic, color, ..Span::new(a, b) });
+        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some()) {
+            self.spans.push(Span { start: a as u32, end: b as u32, ..sp });
         }
     }
 
-    /// The design's `inl()`: inline Markdown to styled runs.
-    fn inline(&mut self, s: &str, cx: Ctx, p: &Pal, look: &Look, names: &md::Names, base_color: Option<Color>) {
-        let mut last = 0;
-        for (t, r) in md::inline_tokens(s) {
-            // `![alt](src)` inside a sentence shows its alt text. Lines of images are blocks.
-            let image = t == Tok::Link && r.start > last && s[..r.start].ends_with('!');
-            let pre_end = if image { r.start - 1 } else { r.start };
-            if pre_end > last {
-                self.push(&s[last..pre_end], cx, base_color);
+    /// Runs (`crate::blocks::Run`) to styled text.
+    fn runs(&mut self, runs: &[Run], p: &Pal, look: &Look, names: &md::Names, doc: &Doc) {
+        for r in runs {
+            let base = Span { weight: r.b.then_some(600.0), italic: r.i, color: r.b.then_some(look.c.strong), ..Span::default() };
+            let a = self.text.len();
+            if r.br {
+                self.text.push('\n');
+                continue;
             }
-            let tok = &s[r.clone()];
-            match t {
-                Tok::Code => {
-                    // `padding: .12em .38em` at .8em: the background grows by the vertical
-                    // padding, and spaces sized to the rest of the horizontal padding take room.
-                    let size = look.size * 0.8;
-                    self.chip(&tok[1..tok.len() - 1], size, look.mono_w, 0.12 * size, 0.38 * size, base_color.or(Some(look.c.code_text)), look.c.code_bg);
-                }
-                Tok::Wiki => {
-                    let inner = &tok[2..tok.len() - 2];
-                    let mut parts = inner.splitn(2, '|');
-                    let target = parts.next().unwrap_or("").replace('\u{a0}', " ");
-                    let alias = parts.next();
-                    let shown = alias.unwrap_or(&target).trim().to_string();
-                    let ok = names.resolve(&target).is_some();
-                    let a = self.text.len();
-                    self.text.push_str(&shown);
-                    let b = self.text.len();
-                    self.spans.push(Span {
-                        weight: cx.bold.then_some(600.0),
-                        italic: cx.italic,
-                        color: Some(if ok { look.c.link } else { look.c.faint }),
-                        underline: Some(if ok { look.c.link.alpha(0.4) } else { look.c.ghost }),
-                        ..Span::new(a, b)
-                    });
-                    self.links.push((a..b, format!("wiki:{}", target.trim())));
-                }
-                Tok::Bold => self.inline(&tok[2..tok.len() - 2], Ctx { bold: true, ..cx }, p, look, names, base_color),
-                Tok::Italic => self.inline(&tok[1..tok.len() - 1], Ctx { italic: true, ..cx }, p, look, names, base_color),
-                Tok::Strike => {
-                    let a = self.text.len();
-                    self.push(&tok[2..tok.len() - 2], cx, Some(look.c.dim));
-                    let b = self.text.len();
-                    self.strikes.push((a, b, Some(look.c.dim)));
-                }
-                Tok::Link if image => {
-                    let j = tok.find("](").unwrap_or(tok.len());
-                    let a = self.text.len();
-                    self.text.push_str(if j > 1 { &tok[1..j] } else { "image" });
-                    let b = self.text.len();
-                    self.spans.push(Span { color: Some(look.c.dim), italic: true, ..Span::new(a, b) });
-                }
-                Tok::Link => {
-                    let j = tok.find("](").unwrap_or(tok.len());
-                    let url = tok[j + 2..tok.len() - 1].to_string();
-                    let a = self.text.len();
-                    self.text.push_str(&tok[1..j]);
-                    let b = self.text.len();
-                    self.spans.push(Span { color: Some(look.c.link), underline: Some(look.c.link), weight: cx.bold.then_some(600.0), italic: cx.italic, ..Span::new(a, b) });
-                    self.links.push((a..b, format!("url:{url}")));
-                }
-                Tok::Tag => {
+            if r.code {
+                // `padding: .12em .38em` at .8em: the background grows by the vertical
+                // padding, and spaces sized to the rest of the horizontal padding take room.
+                let size = look.size * 0.8;
+                self.chip(&r.t, size, look.mono_w, 0.12 * size, 0.38 * size, Some(look.c.code_text), look.c.code_bg);
+                continue;
+            }
+            if r.raw {
+                self.spans.push(Span { mono: true, size: Some(look.size * 0.8), color: Some(look.c.dim), ..Span::new(a, a + r.t.len()) });
+                self.text.push_str(&r.t);
+                continue;
+            }
+            match &r.link {
+                Some(Link::Tag(tag)) => {
                     let size = look.size * 0.72;
-                    let a = self.text.len();
-                    self.chip(tok, size, look.mono_w, 0.18 * size, 0.45 * size, Some(p.acc), p.soft);
+                    self.chip(&r.t, size, look.mono_w, 0.18 * size, 0.45 * size, Some(p.acc), p.soft);
                     let b = self.text.len();
-                    self.links.push((a..b, format!("tag:{}", &tok[1..])));
+                    self.links.push((a..b, format!("tag:{tag}")));
+                    continue;
                 }
+                Some(Link::Wiki(target)) => {
+                    let ok = names.resolve(target).is_some();
+                    let color = if ok { look.c.link } else { look.c.faint };
+                    self.push(&r.t, Span { color: Some(color), underline: Some(if ok { look.c.link.alpha(0.4) } else { look.c.ghost }), ..base });
+                    self.links.push((a..self.text.len(), format!("wiki:{}", target.trim())));
+                }
+                Some(Link::Url(u)) if r.img.is_none() => {
+                    self.push(&r.t, Span { color: Some(look.c.link), underline: Some(look.c.link), ..base });
+                    self.links.push((a..self.text.len(), format!("url:{u}")));
+                }
+                Some(Link::Anchor(an)) => {
+                    let line = doc.anchors.get(an).and_then(|&i| doc.blocks.get(i)).map(|b| b.lines.start);
+                    let size = if r.note { Some(look.size * 0.7) } else { None };
+                    self.push(&r.t, Span { color: Some(look.c.link), size, ..base });
+                    if let Some(l) = line {
+                        self.links.push((a..self.text.len(), format!("line:{l}")));
+                    }
+                }
+                // An image inside a sentence shows its alt text.
+                _ if r.img.is_some() => self.push(&r.t, Span { color: Some(look.c.dim), italic: true, ..base }),
+                _ => self.push(&r.t, base),
             }
-            last = r.end;
-        }
-        if last < s.len() {
-            self.push(&s[last..], cx, base_color);
+            if r.s {
+                let b = self.text.len();
+                self.spans.push(Span { color: Some(look.c.dim), ..Span::new(a, b) });
+                self.strikes.push((a, b, Some(look.c.dim)));
+            }
         }
     }
 
@@ -160,7 +146,7 @@ impl Rich {
             e = e.strike(a, b, c);
         }
         for (r, id) in self.links {
-            e = e.link(Link::new(r, id));
+            e = e.link(rune::Link::new(r, id));
         }
         e.on_link(on_link)
     }
@@ -169,6 +155,8 @@ impl Rich {
 fn on_link(s: &mut App, id: &str, tx: &mut Tx) {
     if let Some(t) = id.strip_prefix("wiki:") {
         s.open_link(t, tx);
+    } else if let Some(l) = id.strip_prefix("line:").and_then(|l| l.parse().ok()) {
+        s.jump(l, tx);
     } else if let Some(t) = id.strip_prefix("tag:") {
         s.search_tag(t);
     } else if let Some(u) = id.strip_prefix("url:") {
@@ -196,92 +184,171 @@ pub fn preview(v: V) -> El {
         desc,
         c: Roles::new(p),
     };
-    let em = size;
-    let names = &s.names;
-    let doc = s.active_text();
-    let blocks = md::blocks(doc);
+    let doc = bk::build(s.active_text());
+    let cx = Cx { v, look: &look, doc: &doc };
     // Collapsed top margin left after the breadcrumb's 30 px bottom margin.
-    let mut prev_mb: f32 = if v.focus() { 0.0 } else { 30.0 };
-    let mut first = true;
-    let mut out = col().key("preview").w_full();
-    for b in blocks {
-        let (mt, mb, el_) = block(v, &look, names, b);
-        let gap = if first { (mt - prev_mb).max(0.0) } else { mt.max(prev_mb) };
-        first = false;
-        out = out.child(el_.mt(gap));
-        prev_mb = mb;
-    }
-    let _ = (em, p);
-    out
+    let prev = if v.focus() { 0.0 } else { 30.0 };
+    cx.stack(&doc.blocks, cx.plain(), prev, true).key("preview").w_full()
 }
 
-/// One block with its CSS top and bottom margins (collapsed by the caller).
-fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
-    let p = v.p;
-    let em = look.size;
-    let body = look.body();
-    match b {
-        Block::Image { line, images } => {
-            let mut c = col().key(format!("pv-{line}")).w_full().gap(em * 0.6);
-            for (i, img) in images.iter().enumerate() {
-                c = c.child(picture(v, img, look).key(format!("img-{i}")));
+/// What every block needs: the view, the page's look and the whole document (for anchors).
+#[derive(Clone, Copy)]
+struct Cx<'a> {
+    v: V<'a>,
+    look: &'a Look,
+    doc: &'a Doc,
+}
+
+impl Cx<'_> {
+    fn plain(&self) -> Tone {
+        Tone { color: self.look.c.text, italic: false, strike: false }
+    }
+
+    fn rich(&self, runs: &[Run]) -> Rich {
+        let mut r = Rich::default();
+        r.runs(runs, self.v.p, self.look, &self.v.s.names, self.doc);
+        r
+    }
+
+    /// Runs as one wrapped text in the container's tone.
+    fn para(&self, runs: &[Run], style: TextStyle, tone: Tone) -> El {
+        let r = self.rich(runs);
+        let n = r.text.len();
+        let mut e = r.el(if tone.italic { style.italic() } else { style }, tone.color);
+        if tone.strike {
+            e = e.strike(0, n, Some(self.look.c.faint));
+        }
+        e
+    }
+
+    /// Blocks one under another with collapsed CSS margins. `top` keys each block by its
+    /// first line so the outline and links can scroll to it.
+    fn stack(&self, blocks: &[Block], tone: Tone, prev_mb: f32, top: bool) -> El {
+        let mut prev = prev_mb;
+        let mut out = col().w_full();
+        for (i, b) in blocks.iter().enumerate() {
+            let (mt, mb, e) = self.block(b, tone);
+            let gap = if i == 0 { (mt - prev).max(0.0) } else { mt.max(prev) };
+            let key = if top { format!("pv-{}", b.lines.start) } else { format!("b-{i}") };
+            out = out.child(e.key(key).mt(gap));
+            prev = mb;
+        }
+        out
+    }
+
+    /// One block with its CSS top and bottom margins (collapsed by `stack`).
+    fn block(&self, b: &Block, tone: Tone) -> (f32, f32, El) {
+        let look = self.look;
+        let c = &look.c;
+        let em = look.size;
+        let body = look.body();
+        match &b.kind {
+            Kind::FrontMatter { title, fields } => (0.0, em * 1.4, self.front_matter(title, fields)),
+            Kind::Heading { level, runs, text: t, .. } => {
+                let level = *level;
+                let (k, lh, w, mt, mb, track) = match level {
+                    1 => (1.72, 1.15, if look.serif { 500.0 } else { 600.0 }, 0.0, 0.7, -0.012),
+                    2 => (1.3, 1.25, 600.0, 1.7, 0.55, 0.0),
+                    _ => (1.08, 1.3, 600.0, 1.5, 0.45, 0.0),
+                };
+                let size = em * k;
+                let style = TextStyle::new(size, w).family(look.family).lh(size * lh).tracking(size * track);
+                let color = if level <= 4 { c.strong } else { c.dim };
+                let e = self.para(runs, style, Tone { color, ..tone }).w_full().role("heading").level(level as u32).label(t.clone());
+                (size * mt, size * mb, e)
             }
-            (em * 0.4, em * 0.95, c)
-        }
-        Block::Pre { line, text: t } => {
-            let style = TextStyle::new((em * 0.74).round(), 400.0).family(look.mono).lh((em * 0.74).round() * 1.65);
-            let e = el()
-                .key(format!("pv-{line}"))
-                .w_full()
-                .radius(4.0)
-                .fill(look.c.panel)
-                .border(1.0, look.c.hairline_soft)
-                .scroll_x()
-                .child(el().py(14.0).px(18.0).child(text(if t.is_empty() { " ".into() } else { t }).font(style).color(look.c.text)));
-            (em * 1.2, em * 1.3, e)
-        }
-        Block::Heading { line, level, index, text: t } => {
-            let (k, lh, w, mt, mb, track) = match level {
-                1 => (1.72, 1.15, if look.serif { 500.0 } else { 600.0 }, 0.0, 0.7, -0.012),
-                2 => (1.3, 1.25, 600.0, 1.7, 0.55, 0.0),
-                _ => (1.08, 1.3, 600.0, 1.5, 0.45, 0.0),
-            };
-            let size = em * k;
-            let style = TextStyle::new(size, w).family(look.family).lh(size * lh).tracking(size * track);
-            let mut r = Rich::default();
-            r.inline(&t, Ctx::default(), p, look, names, None);
-            let e = r.el(style, if level <= 4 { look.c.strong } else { look.c.dim }).key(format!("pv-{line}")).w_full().role("heading").level(level as u32).label(t.clone());
-            let _ = index;
-            (size * mt, size * mb, e)
-        }
-        Block::Rule => (em * 2.2, em * 2.2, el().h(1.0).w_full().fill(look.c.hairline)),
-        Block::Quote { line, text: t } => {
-            let mut r = Rich::default();
-            r.inline(&md::pretty(&t), Ctx { italic: true, bold: false }, p, look, names, None);
-            let e = el()
-                .key(format!("pv-{line}"))
-                .w_full()
-                .pt(em * 0.1)
-                .pb(em * 0.1)
-                .pl(em * 1.1 + 2.0)
-                .border_sides([0.0, 0.0, 0.0, 2.0], look.c.accent)
-                .child(r.el(body.italic(), look.c.dim).w_full());
-            (em * 1.3, em * 1.3, e)
-        }
-        Block::List { line, items } => {
-            let mut c = col().key(format!("pv-{line}")).w_full().role("list");
-            let gap = em * 0.25;
-            let text_base = look.baseline(em, em * look.lh, look.asc, look.desc);
-            for (i, it) in items.into_iter().enumerate() {
-                let mut r = Rich::default();
-                let base_color = if it.done { Some(look.c.dim) } else { None };
-                r.inline(&md::pretty(&it.text), Ctx::default(), p, look, names, base_color);
-                let n = r.text.len();
-                let mut te = r.el(body, look.c.text).grow(1.0).shrink().min_w(0.0);
-                if it.done {
-                    te = te.strike(0, n, Some(look.c.faint));
+            Kind::Paragraph { runs } if is_tag_line(runs) => (0.0, em * 0.95, tag_line(self.v, look, runs)),
+            Kind::Paragraph { runs } => (0.0, em * 0.95, self.para(runs, body, tone).w_full()),
+            Kind::List(l) => (if l.depth == 0 { 0.0 } else { em * 0.25 }, if l.depth == 0 { em } else { 0.0 }, self.list(l, tone)),
+            Kind::Quote { blocks } => {
+                let inner = self.stack(blocks, Tone { color: c.dim, italic: true, ..tone }, 0.0, false);
+                let e = el().w_full().py(em * 0.1).pl(em * 1.1 + 2.0).border_sides([0.0, 0.0, 0.0, 2.0], c.accent).child(inner);
+                (em * 1.3, em * 1.3, e)
+            }
+            Kind::Alert { kind, blocks } => {
+                let color = match kind {
+                    Alert::Note => c.blue,
+                    Alert::Tip => c.green,
+                    Alert::Important => c.magenta,
+                    Alert::Warning => c.yellow,
+                    Alert::Caution => c.red,
+                };
+                let title = text(kind.title()).font(TextStyle::new(em * 0.8, 600.0).family(look.family).lh(em * 1.4)).color(color);
+                let inner = self.stack(blocks, tone, 0.0, false);
+                let e = col()
+                    .w_full()
+                    .gap(em * 0.3)
+                    .py(em * 0.5)
+                    .pl(em * 1.1 + 2.0)
+                    .pr(em)
+                    .radius(4.0)
+                    .fill(color.alpha(0.06))
+                    .border_sides([0.0, 0.0, 0.0, 2.0], color)
+                    .child(title)
+                    .child(inner);
+                (em * 1.3, em * 1.3, e)
+            }
+            Kind::Code { text: t, .. } => (em * 1.2, em * 1.3, self.code(t.split('\n').map(|l| (l.to_string(), c.code_text)).collect())),
+            Kind::Diff { lines, .. } => {
+                let ls = lines
+                    .iter()
+                    .map(|l| {
+                        let color = match l.kind {
+                            DiffKind::Add => c.green,
+                            DiffKind::Del => c.red,
+                            DiffKind::Hunk => c.cyan,
+                            DiffKind::Meta => c.faint,
+                            DiffKind::Ctx => c.code_text,
+                        };
+                        (format!("{}{}", l.sign, l.text), color)
+                    })
+                    .collect();
+                (em * 1.2, em * 1.3, self.code(ls))
+            }
+            Kind::Table(t) => (em * 1.2, em * 1.3, self.table(t, tone)),
+            Kind::Rule => {
+                let dot = || el().size(3.0, 3.0).radius(1.5).fill(c.faint);
+                (em * 2.2, em * 2.2, row().w_full().justify_center().gap(em * 0.9).child(dot()).child(dot()).child(dot()))
+            }
+            Kind::Image { img, .. } => (em * 0.4, em * 0.95, picture(self.v, img, look)),
+            Kind::Gallery { items } => {
+                let mut r = row().w_full().flex_wrap().gap(em * 0.6);
+                for (i, it) in items.iter().enumerate() {
+                    let w = if it.w > 0.0 { it.w } else { 240.0 };
+                    r = r.child(el().key(format!("img-{i}")).max_w(w).grow(1.0).min_w(0.0).child(picture(self.v, &it.img, look)));
                 }
-                let marker = if it.task {
+                (em * 0.4, em * 0.95, r)
+            }
+            Kind::Html { text: t } => {
+                let style = TextStyle::new((em * 0.8).round(), 400.0).family(look.mono).lh((em * 0.8).round() * 1.5);
+                (0.0, em * 0.95, text(t.clone()).font(style).color(c.dim).wrap().w_full())
+            }
+            Kind::Footnotes { items } => (em * 2.0, 0.0, self.footnotes(items, tone)),
+        }
+    }
+
+    fn list(&self, l: &bk::List, tone: Tone) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let em = look.size;
+        let body = look.body();
+        let text_base = look.baseline(em, em * look.lh, look.asc, look.desc);
+        let gap = if l.tight { em * 0.25 } else { em * 0.6 };
+        let mut out = col().w_full().role("list");
+        for (i, it) in l.items.iter().enumerate() {
+            let done = it.task == Task::Done;
+            let marker = match it.task {
+                Task::None if l.ordered => {
+                    let ns = em * 0.78;
+                    let nlh = ns * look.lh;
+                    let shift = text_base - look.baseline(ns, nlh, 1.025, 0.275);
+                    el().key("num").min_w(ns * 1.3 + 2.0).mt(shift).child(text(format!("{}.", it.number)).font(TextStyle::new(ns, 400.0).family(look.mono).lh(nlh)).color(c.faint))
+                }
+                Task::None => {
+                    let bullet = ["•", "◦", "▪"][l.depth.min(2)];
+                    row().key("bullet").w(em).justify_center().child(text(bullet).font(body).color(c.dim))
+                }
+                _ => {
                     let sz = em * 0.85;
                     let top = text_base - sz + em * 0.1;
                     let line_no = it.line;
@@ -291,41 +358,122 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
                         .mt(top)
                         .center()
                         .radius(3.0)
-                        .border(1.5, if it.done { look.c.accent } else { look.c.faint })
+                        .border(1.5, if done { c.accent } else { c.faint })
                         .role("checkbox")
-                        .checked(it.done)
+                        .checked(done)
                         .cursor(rune::Cursor::Pointer)
-                        .on_press(move |s: &mut App| s.toggle_task(line_no));
-                    if it.done {
-                        bx = bx.fill(look.c.accent).child(icon(&CHECK, 9.0).color(look.c.bg));
+                        .on_press(move |s: &mut App| s.toggle_task(line_no, !done));
+                    if done {
+                        bx = bx.fill(c.accent).child(icon(&CHECK, 9.0).color(c.bg));
                     }
                     bx
-                } else if it.marker.as_bytes()[0].is_ascii_digit() {
-                    let ns = em * 0.78;
-                    let nlh = ns * look.lh;
-                    let shift = text_base - look.baseline(ns, nlh, 1.025, 0.275);
-                    el().key("num").min_w(ns * 1.3).mt(shift).child(text(it.marker.clone()).font(TextStyle::new(ns, 400.0).family(look.mono).lh(nlh)).color(look.c.faint))
-                } else {
-                    row().key("bullet").w(em).justify_center().child(text("•").font(body).color(look.c.dim))
-                };
-                let li = row()
-                    .key(format!("li-{}", it.line))
-                    .w_full()
-                    .gap(em * 0.65)
-                    .ml((it.indent / 2) as f32 * 1.5 * em)
-                    .mt(if i == 0 { 0.0 } else { gap })
-                    .child(marker)
-                    .child(te);
-                c = c.child(li);
+                }
+            };
+            let t = if done { Tone { color: c.dim, strike: true, ..tone } } else { tone };
+            let mut inner = col().w_full().grow(1.0).shrink().min_w(0.0);
+            let mut prev = 0.0;
+            for (j, b) in it.blocks.iter().enumerate() {
+                // Inside an item, paragraphs sit tight; a loose list spaces them like the page.
+                let (mt, mb, e) = self.block(b, t);
+                let mb = if l.tight && matches!(b.kind, Kind::Paragraph { .. }) { 0.0 } else { mb };
+                let g = if j == 0 { 0.0 } else { mt.max(prev) };
+                inner = inner.child(e.key(format!("b-{j}")).mt(g));
+                prev = mb;
             }
-            (gap, em, c)
+            let li = row().key(format!("li-{}", it.line)).w_full().gap(em * 0.65).mt(if i == 0 { 0.0 } else { gap }).child(marker).child(inner);
+            out = out.child(li);
         }
-        Block::Para { line, text: t } if is_tag_line(&t) => (0.0, em * 0.95, tag_line(v, look, line, &t)),
-        Block::Para { line, text: t } => {
-            let mut r = Rich::default();
-            r.inline(&md::pretty(&t), Ctx::default(), p, look, names, None);
-            (0.0, em * 0.95, r.el(body, look.c.text).key(format!("pv-{line}")).w_full())
+        if l.depth > 0 { out.pl(em * 0.2) } else { out }
+    }
+
+    /// Monospace lines on a panel: code, or a diff with each line in its colour.
+    fn code(&self, lines: Vec<(String, Color)>) -> El {
+        let look = self.look;
+        let size = (look.size * 0.74).round();
+        let style = TextStyle::new(size, 400.0).family(look.mono).lh(size * 1.65);
+        let mut c = col();
+        for (i, (l, color)) in lines.into_iter().enumerate() {
+            c = c.child(text(if l.is_empty() { " ".into() } else { l }).key(format!("l-{i}")).font(style).color(color));
         }
+        el().w_full().radius(4.0).fill(look.c.panel).border(1.0, look.c.hairline_soft).scroll_x().child(el().py(14.0).px(18.0).child(c))
+    }
+
+    fn table(&self, t: &bk::Table, tone: Tone) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let size = look.size * 0.9;
+        let style = TextStyle::new(size, 400.0).family(look.family).lh(size * 1.5);
+        let cell = |runs: &[Run], col_i: usize, head: bool| {
+            let numeric = t.numeric.get(col_i).copied().unwrap_or(false);
+            let align = match t.aligns.get(col_i) {
+                Some(Align::Right) => rune::Align::End,
+                Some(Align::Center) => rune::Align::Center,
+                Some(Align::Left) => rune::Align::Start,
+                _ if numeric => rune::Align::End,
+                _ => rune::Align::Start,
+            };
+            let st = if head { TextStyle { weight: 600.0, ..style } } else { style };
+            let e = self.para(runs, st, Tone { color: if head { c.strong } else { tone.color }, ..tone }).align(align).w_full();
+            el().key(format!("c-{col_i}")).w_frac(1.0 / t.aligns.len().max(1) as f32).min_w(0.0).px(size * 0.6).py(size * 0.35).child(e)
+        };
+        let mut out = col().w_full();
+        let mut head = row().key("head").w_full().border_sides([0.0, 0.0, 1.0, 0.0], c.hairline);
+        for (i, h) in t.header.iter().enumerate() {
+            head = head.child(cell(h, i, true));
+        }
+        out = out.child(head);
+        for (ri, r) in t.rows.iter().enumerate() {
+            let mut rw = row().key(format!("r-{ri}")).w_full().border_sides([0.0, 0.0, 1.0, 0.0], c.hairline_soft);
+            for (i, x) in r.iter().enumerate() {
+                rw = rw.child(cell(x, i, false));
+            }
+            out = out.child(rw);
+        }
+        out
+    }
+
+    fn footnotes(&self, items: &[bk::Footnote], tone: Tone) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let em = look.size;
+        let size = em * 0.85;
+        let mut out = col().w_full().gap(em * 0.4).pt(em).border_sides([1.0, 0.0, 0.0, 0.0], c.hairline);
+        for f in items {
+            let num = text(format!("{}.", f.number)).font(TextStyle::new(size, 400.0).family(look.mono).lh(size * 1.6)).color(c.faint);
+            let inner = self.stack(&f.blocks, Tone { color: c.dim, ..tone }, 0.0, false);
+            out = out.child(row().key(format!("fn-{}", f.number)).w_full().gap(em * 0.5).child(el().min_w(em * 1.5).child(num)).child(el().grow(1.0).min_w(0.0).child(inner)));
+        }
+        out
+    }
+
+    /// The front matter as a card: the title, then each field on its own line.
+    fn front_matter(&self, title: &str, fields: &[bk::Field]) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let em = look.size;
+        let small = TextStyle::new(em * 0.8, 400.0).family(look.family).lh(em * 1.3);
+        let mut card = col().w_full().gap(em * 0.35).px(em).py(em * 0.8).radius(6.0).fill(c.card).border(1.0, c.hairline_soft);
+        if !title.is_empty() {
+            card = card.child(text(title.to_string()).key("title").font(TextStyle::new(em * 1.1, 600.0).family(look.family).lh(em * 1.5)).color(c.strong).wrap());
+        }
+        for (i, f) in fields.iter().enumerate() {
+            let key = text(f.key.clone()).font(small).color(c.faint);
+            let value: El = match f.kind {
+                FieldKind::Pill | FieldKind::List => {
+                    let vals: Vec<String> = if f.items.is_empty() { vec![f.value.clone()] } else { f.items.clone() };
+                    let mut r = row().flex_wrap().gap(em * 0.3);
+                    for (j, v) in vals.into_iter().enumerate() {
+                        r = r.child(el().key(format!("v-{j}")).px(em * 0.4).py(em * 0.1).radius(4.0).fill(c.chip_fill).child(text(v).font(small).color(c.dim)));
+                    }
+                    r
+                }
+                FieldKind::Link => text(f.value.clone()).font(small).color(c.link).wrap().w_full(),
+                FieldKind::Empty => text("—").font(small).color(c.ghost),
+                FieldKind::Text => text(f.value.clone()).font(small).color(c.text).wrap().w_full(),
+            };
+            card = card.child(row().key(format!("f-{i}")).w_full().gap(em * 0.8).items_start().child(el().w(em * 7.0).child(key)).child(el().grow(1.0).min_w(0.0).child(value)));
+        }
+        card
     }
 }
 
@@ -368,13 +516,12 @@ fn picture(v: V, img: &md::Img, look: &Look) -> El {
 }
 
 /// A paragraph of nothing but `#tags`.
-fn is_tag_line(t: &str) -> bool {
-    let words: Vec<&str> = t.split_whitespace().collect();
-    !words.is_empty() && words.iter().all(|w| md::inline_tokens(w).first().is_some_and(|(k, r)| *k == Tok::Tag && r.start == 0 && r.end == w.len()))
+fn is_tag_line(runs: &[Run]) -> bool {
+    runs.iter().any(|r| matches!(r.link, Some(Link::Tag(_)))) && runs.iter().all(|r| matches!(r.link, Some(Link::Tag(_))) || (r.link.is_none() && r.t.trim().is_empty()))
 }
 
 /// Tags drawn as chips with CSS's exact padding, on the paragraph's baseline.
-fn tag_line(v: V, look: &Look, line: usize, t: &str) -> El {
+fn tag_line(v: V, look: &Look, runs: &[Run]) -> El {
     let p = v.p;
     let em = look.size;
     let lh = em * look.lh;
@@ -385,9 +532,10 @@ fn tag_line(v: V, look: &Look, line: usize, t: &str) -> El {
     let (ca, cd) = (theme::px(ma * size), theme::px(md_ * size));
     let pad_y = 0.18 * size;
     let space = em * 0.25;
-    let mut r = row().key(format!("pv-{line}")).w_full().h(lh).flex_wrap().gap(space).items_start();
-    for (i, w) in t.split_whitespace().enumerate() {
-        let tag = w[1..].to_string();
+    let mut r = row().w_full().h(lh).flex_wrap().gap(space).items_start();
+    for (i, run) in runs.iter().enumerate() {
+        let Some(Link::Tag(tag)) = &run.link else { continue };
+        let tag = tag.clone();
         r = r.child(
             row()
                 .key(format!("tag-{i}"))
@@ -398,12 +546,10 @@ fn tag_line(v: V, look: &Look, line: usize, t: &str) -> El {
                 .fill(p.soft)
                 .cursor(rune::Cursor::Pointer)
                 .role("link")
-                .label(w.to_string())
+                .label(run.t.clone())
                 .on_press(move |s: &mut App| s.search_tag(&tag))
-                .child(text(w).font(TextStyle::new(size, 400.0).family(look.mono).lh(ca + cd)).color(p.acc)),
+                .child(text(run.t.clone()).font(TextStyle::new(size, 400.0).family(look.mono).lh(ca + cd)).color(p.acc)),
         );
     }
     r
 }
-
-

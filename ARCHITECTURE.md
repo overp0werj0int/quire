@@ -209,6 +209,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `store.rs` | `Persist`, `Settings`, `state.json`. |
 | `watch.rs` | The watcher thread, plus the Omarchy theme watcher. |
 | `md.rs` | Markdown analysis: names, links, tags, headings, backlinks, search. |
+| `blocks.rs` | The preview's block model: a note parsed with pulldown-cmark into omarky's blocks, each with its source lines and a stable key, plus the headings, anchors and find index (`docs/reader-writer/`, phase 4). |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
 | `folders.rs` | The folder tree, moving notes by drag, the tree menu. |
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |

@@ -22,6 +22,8 @@ aes-gcm = "0.10"
 base64 = "0.22"
 rsa = { version = "0.9", features = ["sha2"] }
 getrandom = "0.2"
+# The reader's Markdown parser (docs/reader-writer, phase 4).
+pulldown-cmark = { version = "0.13", default-features = false }
 
 [build-dependencies]
 embed-resource = "3"

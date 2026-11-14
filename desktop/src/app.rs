@@ -958,10 +958,12 @@ impl App {
         }
     }
 
-    pub fn toggle_task(&mut self, line: usize) {
+    /// Ticks (`done`) or clears the task box on 0-based `line`.
+    pub fn toggle_task(&mut self, line: usize, done: bool) {
         let Some(a) = self.active.clone() else { return };
-        let t = md::toggle_task(self.active_text(), line);
-        self.set_text(&a, t);
+        if let Some(t) = crate::blocks::toggle_task(self.active_text(), line, done) {
+            self.set_text(&a, t);
+        }
     }
 
     pub fn start_rename(&mut self, tx: &mut Tx) {

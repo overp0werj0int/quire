@@ -230,8 +230,6 @@ pub struct ListLine {
     /// The task box `[ ] ` byte range, with one trailing space.
     pub task: Option<std::ops::Range<usize>>,
     pub done: bool,
-    /// Where the item's text starts.
-    pub text: usize,
     /// The number of an ordered marker and its closing `.` or `)`.
     pub number: Option<(u64, char)>,
 }
@@ -264,7 +262,6 @@ pub fn list_line(ln: &str) -> Option<ListLine> {
     let after = i + sp;
     let mut task = None;
     let mut done = false;
-    let mut text = after;
     if b.get(after) == Some(&b'[') && b.get(after + 2) == Some(&b']') {
         if let Some(&m) = b.get(after + 1) {
             if matches!(m, b' ' | b'x' | b'X') {
@@ -272,13 +269,12 @@ pub fn list_line(ln: &str) -> Option<ListLine> {
                     if c.is_whitespace() {
                         task = Some(after..after + 3 + c.len_utf8());
                         done = m != b' ';
-                        text = after + 3 + c.len_utf8();
                     }
                 }
             }
         }
     }
-    Some(ListLine { indent, marker, after, task, done, text, number })
+    Some(ListLine { indent, marker, after, task, done, number })
 }
 
 /// A fence line opens or closes a code block: `^\s*(```|~~~)`.
@@ -610,24 +606,6 @@ pub fn line_start(text: &str, line: usize) -> usize {
     pos
 }
 
-/// Flips the first task box on line `line`.
-pub fn toggle_task(text: &str, line: usize) -> String {
-    let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
-    if let Some(l) = lines.get_mut(line) {
-        if let Some(i) = l.find('[') {
-            let b = l.as_bytes();
-            if b.get(i + 2) == Some(&b']') {
-                match b.get(i + 1) {
-                    Some(b' ') => l.replace_range(i + 1..i + 2, "x"),
-                    Some(b'x' | b'X') => l.replace_range(i + 1..i + 2, " "),
-                    _ => {}
-                }
-            }
-        }
-    }
-    lines.join("\n")
-}
-
 /// Rewrites `[[old]]` and `[[old|alias]]` links to `new`, case-insensitively.
 pub fn rewrite_links(text: &str, old: &str, new: &str) -> String {
     let old_l = old.to_lowercase();
@@ -662,39 +640,6 @@ pub fn rewrite_links(text: &str, old: &str, new: &str) -> String {
     out
 }
 
-// ---------- Preview blocks ----------
-
-#[derive(Clone, Debug)]
-pub struct Item {
-    pub indent: usize,
-    pub marker: String,
-    pub task: bool,
-    pub done: bool,
-    pub text: String,
-    pub line: usize,
-}
-
-#[derive(Clone, Debug)]
-pub enum Block {
-    /// A line of nothing but images.
-    Image { line: usize, images: Vec<Img> },
-    Pre { line: usize, text: String },
-    Heading { line: usize, level: usize, index: usize, text: String },
-    Rule,
-    Quote { line: usize, text: String },
-    List { line: usize, items: Vec<Item> },
-    Para { line: usize, text: String },
-}
-
-fn is_list(l: &str) -> bool {
-    list_line(l).is_some()
-}
-
-fn is_block_start(l: &str) -> bool {
-    let t = l.trim_start();
-    t.starts_with("```") || heading_line(l).is_some() || t.starts_with('>') || is_list(l) || is_hr(l) || image_line(l).is_some()
-}
-
 /// The file types the preview shows as images, and that sync carries next to the notes.
 pub const IMAGE_EXT: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"];
 
@@ -710,48 +655,6 @@ pub struct Img {
     pub src: String,
     /// Written as `![[name]]`: `src` is a file name to find anywhere in the folder.
     pub embed: bool,
-}
-
-/// The images of a line that holds only images, with spaces between them.
-pub fn image_line(l: &str) -> Option<Vec<Img>> {
-    let mut rest = l.trim();
-    if !rest.starts_with("![") {
-        return None;
-    }
-    let mut out = Vec::new();
-    while !rest.is_empty() {
-        let (img, used) = image_at(rest)?;
-        out.push(img);
-        rest = rest[used..].trim_start();
-    }
-    Some(out)
-}
-
-/// One image at the start of `s`, and how many bytes it takes.
-pub fn image_at(s: &str) -> Option<(Img, usize)> {
-    if let Some(inner) = s.strip_prefix("![[") {
-        let end = inner.find("]]")?;
-        let name = inner[..end].split('|').next().unwrap_or("").trim();
-        if name.is_empty() || !is_image(name) {
-            return None;
-        }
-        let alt = name.rsplit('/').next().unwrap_or(name);
-        let alt = alt.rsplit_once('.').map_or(alt, |(b, _)| b).to_string();
-        return Some((Img { alt, src: name.to_string(), embed: true }, 3 + end + 2));
-    }
-    let inner = s.strip_prefix("![")?;
-    let close = inner.find("](")?;
-    let alt = &inner[..close];
-    if alt.contains(['[', ']', '\n']) {
-        return None;
-    }
-    let after = &inner[close + 2..];
-    let end = if after.starts_with('<') { after.find(">)").map(|i| i + 1)? } else { after.find(')')? };
-    let src = image_src(&after[..end]);
-    if src.is_empty() {
-        return None;
-    }
-    Some((Img { alt: alt.to_string(), src, embed: false }, 2 + close + 2 + end + 1))
 }
 
 /// The path or URL of `![alt](…)`: without `<…>`, without a `"title"`, with `%20` and the
@@ -771,7 +674,7 @@ pub fn image_src(raw: &str) -> String {
     percent_decode(t)
 }
 
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
@@ -831,83 +734,6 @@ pub fn resolve(dir: &str, rel: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// Splits a note into preview blocks, as the prototype's `renderPreview` does.
-pub fn blocks(text: &str) -> Vec<Block> {
-    let lines: Vec<&str> = text.split('\n').collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    let mut hi = 0;
-    while i < lines.len() {
-        let ln = lines[i];
-        let start = i;
-        if ln.trim().is_empty() {
-            i += 1;
-            continue;
-        }
-        if ln.trim_start().starts_with("```") {
-            let mut buf = Vec::new();
-            i += 1;
-            while i < lines.len() && !lines[i].trim_start().starts_with("```") {
-                buf.push(lines[i]);
-                i += 1;
-            }
-            i += 1;
-            out.push(Block::Pre { line: start, text: buf.join("\n") });
-            continue;
-        }
-        if let Some((h, s)) = heading_line(ln) {
-            out.push(Block::Heading { line: start, level: h, index: hi, text: ln[s..].to_string() });
-            hi += 1;
-            i += 1;
-            continue;
-        }
-        if is_hr(ln) {
-            out.push(Block::Rule);
-            i += 1;
-            continue;
-        }
-        if let Some(images) = image_line(ln) {
-            out.push(Block::Image { line: start, images });
-            i += 1;
-            continue;
-        }
-        if ln.trim_start().starts_with('>') {
-            let mut buf = Vec::new();
-            while i < lines.len() && lines[i].trim_start().starts_with('>') {
-                let p = quote_prefix(lines[i]).unwrap_or(0);
-                buf.push(&lines[i][p..]);
-                i += 1;
-            }
-            out.push(Block::Quote { line: start, text: buf.join(" ") });
-            continue;
-        }
-        if is_list(ln) {
-            let mut items = Vec::new();
-            while i < lines.len() {
-                let Some(l) = list_line(lines[i]) else { break };
-                let raw = lines[i];
-                // A task box needs one or more spaces after it in the preview.
-                let (task, done, text_at) = match &l.task {
-                    Some(_) => (true, l.done, l.text + raw[l.text..].len() - raw[l.text..].trim_start().len()),
-                    None => (false, false, l.after),
-                };
-                let indent = raw[..l.indent].chars().map(|c| if c == '\t' { 2 } else { 1 }).sum();
-                items.push(Item { indent, marker: raw[l.marker.clone()].to_string(), task, done, text: raw[text_at..].to_string(), line: i });
-                i += 1;
-            }
-            out.push(Block::List { line: start, items });
-            continue;
-        }
-        let mut buf = Vec::new();
-        while i < lines.len() && !lines[i].trim().is_empty() && (buf.is_empty() || !is_block_start(lines[i])) {
-            buf.push(lines[i]);
-            i += 1;
-        }
-        out.push(Block::Para { line: start, text: buf.join(" ") });
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -955,25 +781,17 @@ mod image_tests {
     use super::*;
 
     #[test]
-    fn image_lines_parse() {
-        let one = image_line("![A cat](attachments/My%20cat.png)").unwrap();
-        assert_eq!(one, vec![Img { alt: "A cat".into(), src: "attachments/My cat.png".into(), embed: false }]);
-        let two = image_line("  ![](a.png \"Title\")  ![[Photos/b.jpg|300]]").unwrap();
-        assert_eq!(two[0].src, "a.png");
-        assert_eq!(two[1], Img { alt: "b".into(), src: "Photos/b.jpg".into(), embed: true });
-        assert_eq!(image_line("![x](<with space.png>)").unwrap()[0].src, "with space.png");
-        assert_eq!(image_line("![x](https://example.com/a%20b.png)").unwrap()[0].src, "https://example.com/a%20b.png");
-        assert!(image_line("text ![x](a.png)").is_none());
-        assert!(image_line("![x](a.png) and text").is_none());
-        assert!(image_line("![[Note]]").is_none(), "an embed of a note is not an image");
+    fn image_sources_decode() {
+        assert_eq!(image_src("attachments/My%20cat.png"), "attachments/My cat.png");
+        assert_eq!(image_src("a.png \"Title\""), "a.png");
+        assert_eq!(image_src("<with space.png>"), "with space.png");
+        assert_eq!(image_src("https://example.com/a%20b.png"), "https://example.com/a%20b.png");
         assert_eq!(percent_decode("%E2%9C%93 100%"), "✓ 100%");
         assert_eq!(percent_decode("%é"), "%é");
     }
 
     #[test]
-    fn image_blocks_and_paths() {
-        let b = blocks("Text\n![a](a.png)\nmore");
-        assert!(matches!(&b[..], [Block::Para { .. }, Block::Image { .. }, Block::Para { .. }]), "{b:?}");
+    fn image_paths() {
         assert_eq!(relative("Drafts/Old", "attachments/a.png"), "../../attachments/a.png");
         assert_eq!(relative("", "attachments/a.png"), "attachments/a.png");
         assert_eq!(resolve("Drafts", "../attachments/a.png").as_deref(), Some("attachments/a.png"));
