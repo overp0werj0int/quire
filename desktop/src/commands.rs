@@ -32,7 +32,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     }
     v.push(cmd("Search all notes", "app.search-notes", |s, tx| s.open_search(tx)));
     if has {
-        let label = if s.focus { "Leave focus mode" } else { "Enter focus mode" };
+        let label = if s.focus { "Leave zen mode" } else { "Enter zen mode" };
         v.push(cmd(label, "app.focus-mode", |s, tx| s.toggle_focus(tx)));
     }
     let left = if s.persist.left_open { "Hide sidebar" } else { "Show sidebar" };

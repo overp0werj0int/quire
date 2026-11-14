@@ -27,7 +27,7 @@ Quire edits a folder of plain Markdown files. Each note is a `.md` file on your 
 
 - [x] Open this note
 - [ ] Rename it by clicking its name above
-- [ ] Turn on focus mode with {}
+- [ ] Turn on zen mode with {}
 - [ ] Switch to the dark theme in settings
 
 > A link to a note that doesn't exist yet, like [[Someday]], creates it when you follow it.

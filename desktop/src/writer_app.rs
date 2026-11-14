@@ -386,7 +386,7 @@ impl App {
             self.mode = Mode::Preview;
             self.jump_block(line, tx);
         } else {
-            let top = self.reader.top.get();
+            let top = self.top();
             let line = self.doc().blocks.get(top).map_or(0, |b| b.lines.start);
             self.mode = Mode::Source;
             // Not scrolled: the top block is the one placed there, or the page sits clamped at

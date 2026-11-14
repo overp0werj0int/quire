@@ -45,6 +45,9 @@ pub struct Images {
     files: std::cell::RefCell<HashMap<(PathBuf, u128), rune::Image>>,
     /// How many kept images had loaded at the last poll.
     done: std::cell::Cell<usize>,
+    /// Counts what changes the pictures the reader page shows: a load, or the folder's image
+    /// files. Part of the page's memo version (`ui::preview`).
+    pub epoch: std::cell::Cell<u64>,
 }
 
 impl Images {
@@ -71,12 +74,16 @@ impl Images {
             + self.remote.lock().unwrap_or_else(std::sync::PoisonError::into_inner).values().filter(|r| !matches!(r, Remote::Loading)).count();
         let changed = n != self.done.get();
         self.done.set(n);
+        if changed {
+            self.epoch.set(self.epoch.get() + 1);
+        }
         changed
     }
 
     /// The folder's image files changed: the next embed lookup lists them again.
     pub fn forget_index(&self) {
         *self.index.borrow_mut() = None;
+        self.epoch.set(self.epoch.get() + 1);
     }
 
     /// A web image, downloaded once on another thread. Later calls get it from memory.

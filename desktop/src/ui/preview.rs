@@ -238,15 +238,30 @@ fn look(v: V) -> Look {
 
 pub fn preview(v: V) -> El {
     let s = v.s;
-    let look = look(v);
     let doc = s.doc();
     let find = s.find_query().map(|q| {
         let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
         Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur }
     });
-    let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
-    let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
-    cx.stack(&doc.blocks, tone, true, false).key("preview").w_full()
+    // The page is built again only when something it draws from changes, so a scroll, which
+    // re-runs the view to find the top block, reuses it (VER-32).
+    let set = s.settings();
+    let version = (
+        s.doc_hash(),
+        s.active.as_deref(),
+        s.vault.as_ref().map(|v| &v.path),
+        (set.size, &set.preview_font, &set.code_font),
+        format!("{:?}{:?}", v.p, column(v)),
+        find.as_ref().map(|f| (&f.q, f.cur)),
+        &s.names,
+        s.images.epoch.get(),
+    );
+    rune::memo("reader-page", version, || {
+        let look = look(v);
+        let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
+        let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
+        cx.stack(&doc.blocks, tone, true, false).key("preview").w_full()
+    })
 }
 
 /// Top-level block `i` of `doc` drawn by the page's renderer in the dim tier, for the edit
@@ -349,12 +364,15 @@ impl Cx<'_> {
                 let line = bl.lines.start;
                 e = e
                     .key(crate::reader::block_key(bl))
-                    .on_hover_change(move |s: &mut App, on, _| {
+                    .on_hover_change(move |s: &mut App, on, tx| {
                         if on {
                             s.reader.hover = Some(line);
                         } else if s.reader.hover == Some(line) {
                             s.reader.hover = None;
                         }
+                        // Nothing on the page draws the hover, so a scroll that moves blocks
+                        // under the pointer runs no view.
+                        tx.live_only();
                     })
                     .on_secondary_press(move |s: &mut App, _, tx| s.copy_block(line, tx));
             } else {

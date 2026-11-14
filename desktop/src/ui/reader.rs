@@ -250,9 +250,9 @@ pub fn toast(v: V, msg: &str) -> El {
 }
 
 /// The reading progress line (RD-37, RD-38): 2 px of accent along the top of the note area.
-pub fn progress(v: V, k: f32) -> El {
+pub fn progress(v: V) -> El {
     let c = Roles::new(v.p);
-    el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w_frac(k.clamp(0.0, 1.0)).fill(c.accent).paint_order(30)
+    el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).paint_order(30).live_rect(&v.s.reader.bar)
 }
 
 /// The "reloaded" mark after the note's name (RD-33): a 6 px accent dot and caption text.

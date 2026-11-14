@@ -2,11 +2,11 @@
 //! and its glide, the wide measure, find, copy, links, the help sheet, toasts and the reading
 //! progress. The page itself is `ui/preview.rs`; its chrome is `ui/reader.rs`.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use rune::{KeyEvent, Live, Spring, TextEdit, Tx};
+use rune::{Color, KeyEvent, Live, Spring, TextEdit, Tx};
 
 use crate::app::{App, Mode};
 use crate::blocks::{self, Doc, Match};
@@ -36,9 +36,10 @@ pub struct Reader {
     pub reloaded: Option<f64>,
     /// The first source line of the top-level block under the pointer (RD-100).
     pub hover: Option<usize>,
-    /// The index of the top-level block at the top of the view, as the last view saw it.
-    pub top: Cell<usize>,
-    /// The viewport's offset, scroll range and height, from its scroll handler.
+    /// Where the page's blocks sit, from the last view. Shared with the scroll handler, which
+    /// draws the reading progress from it without running the view (VER-32).
+    pub map: Rc<RefCell<PageMap>>,
+    /// The viewport's offset, scroll range, height and width, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
     /// The writer's progress bar, [x, y, w, h], set with the scroll in the frame it draws (WR-178).
     pub bar: Live<[f32; 4]>,
@@ -61,7 +62,7 @@ impl Default for Reader {
             toast: None,
             reloaded: None,
             hover: None,
-            top: Cell::new(0),
+            map: Rc::default(),
             scroll: Live::new([0.0; 4]),
             bar: Live::new([0.0; 4]),
             pending: None,
@@ -69,6 +70,70 @@ impl Default for Reader {
             positions: HashMap::new(),
             doc: RefCell::new(None),
         }
+    }
+}
+
+/// Where each top-level block of the page sits, unscrolled (`Cx::layout`), so the block at the
+/// top of the view follows from the scroll offset alone.
+#[derive(Default)]
+pub struct PageMap {
+    /// The page is on screen.
+    pub reading: bool,
+    /// The viewport's top, and each top-level block's, in window points as if unscrolled.
+    pub origin: f32,
+    pub tops: Vec<f32>,
+    /// Each top-level block's first source line, and the note's line count.
+    pub starts: Vec<usize>,
+    pub lines: usize,
+    /// The outline's rows, when it shows: each heading's top as `tops` has it and its row,
+    /// the row current above the first, and each row's colours.
+    pub heads: Vec<(f32, Option<usize>)>,
+    pub first_row: Option<usize>,
+    pub marks: Vec<Mark>,
+    pub marked: Option<usize>,
+}
+
+/// An outline row's live colours, [fill, text], and their values when current and not.
+pub struct Mark {
+    pub fill: Live<Color>,
+    pub ink: Live<Color>,
+    pub on: [Color; 2],
+    pub off: [Color; 2],
+}
+
+impl PageMap {
+    /// The last block whose top is at or above 21 points under the viewport's top, at
+    /// `offset`.
+    pub fn top(&self, offset: f32) -> usize {
+        let y = self.origin + offset + 21.0;
+        self.tops.partition_point(|&t| t <= y).saturating_sub(1)
+    }
+
+    /// The outline row current at `offset`: the last heading whose top is above the viewport's
+    /// top plus 100 points.
+    pub fn head_row(&self, offset: f32) -> Option<usize> {
+        let y = self.origin + offset + 100.0;
+        self.heads.iter().rev().find(|(t, _)| *t <= y).map_or(self.first_row, |(_, row)| *row)
+    }
+
+    /// Moves the outline's highlight to the row current at `offset`, without a view run.
+    pub fn mark(&mut self, offset: f32) {
+        let row = self.head_row(offset);
+        if row == self.marked {
+            return;
+        }
+        for (n, m) in self.marks.iter().enumerate() {
+            let [fill, ink] = if Some(n) == row { m.on } else { m.off };
+            m.fill.set(fill);
+            m.ink.set(ink);
+        }
+        self.marked = row;
+    }
+
+    /// The reading progress (RD-38) at the scroll `[offset, max, height, _]`.
+    pub fn progress(&self, [offset, max, vh, _]: [f32; 4]) -> f32 {
+        let line = self.starts.get(self.top(offset)).copied().unwrap_or(0);
+        progress(line, self.lines, offset, max, vh)
     }
 }
 
@@ -232,6 +297,16 @@ impl App {
         d
     }
 
+    /// The hash of the text `doc` was parsed from: it names the blocks' version.
+    pub fn doc_hash(&self) -> Option<u64> {
+        self.reader.doc.borrow().as_ref().map(|(h, _)| *h)
+    }
+
+    /// The index of the top-level block at the top of the view.
+    pub fn top(&self) -> usize {
+        self.reader.map.borrow().top(self.reader.scroll.get()[0])
+    }
+
     pub fn wide(&self) -> bool {
         self.reader.wide.unwrap_or(self.settings().width != "readable")
     }
@@ -296,7 +371,7 @@ impl App {
         let doc = self.doc();
         let b = match self.reader.hover {
             Some(l) => doc.blocks.iter().find(|b| b.lines.start == l),
-            None => doc.blocks.get(self.reader.top.get()),
+            None => doc.blocks.get(self.top()),
         }?;
         Some(b.lines.clone())
     }
@@ -424,7 +499,7 @@ impl App {
             return self.source_found(tx);
         }
         let m = self.find_matches();
-        let top = self.reader.top.get();
+        let top = self.top();
         self.reader.find.cur = first_match(&m, top);
         if !m.is_empty() {
             tx.scroll_center(FIND_CUR);

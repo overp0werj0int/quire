@@ -32,7 +32,7 @@ fn is_word(c: char) -> bool {
 }
 
 /// Lowercased lookup from a note name (or a path without `.md`) to its path.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Hash)]
 pub struct Names(BTreeMap<String, String>);
 
 impl Names {

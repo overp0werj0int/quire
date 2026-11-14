@@ -27,6 +27,10 @@ pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
 rune-highlights = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
 
+[features]
+# Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
+profile = ["rune/frame-profile"]
+
 [build-dependencies]
 embed-resource = "3"
 

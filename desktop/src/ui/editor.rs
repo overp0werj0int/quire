@@ -45,10 +45,7 @@ pub fn body(v: V) -> El {
     }
     let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
     if super::reading(v.s) {
-        let [offset, max, vh, _] = v.s.reader.scroll.get();
-        let doc = v.s.doc();
-        let top_line = doc.blocks.get(v.s.reader.top.get()).map_or(0, |b| b.lines.start);
-        area = area.child(super::reader::progress(v, crate::reader::progress(top_line, doc.line_count, offset, max, vh))).child(super::reader::find_bar(v));
+        area = area.child(super::reader::progress(v)).child(super::reader::find_bar(v));
     } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
         // The writer's progress bar is how far the view has scrolled (WR-178), drawn from the
         // scroll in the frame it moves.
@@ -162,6 +159,7 @@ fn doc_scroll(v: V) -> El {
     // height and leave nothing to scroll.
     let live = s.reader.scroll.clone();
     let bar = s.reader.bar.clone();
+    let map = s.reader.map.clone();
     let mut scroll = col()
         .key("doc-scroll")
         .grow(1.0)
@@ -170,9 +168,22 @@ fn doc_scroll(v: V) -> El {
         .w_full()
         .scroll(ScrollSpec { stick_bottom: false })
         .on_scroll_offset(move |at| {
-            live.set([at.offset[1], at.max[1], at.viewport[1], 0.0]);
-            let k = if at.max[1] > 0.0 { (at.offset[1] / at.max[1]).clamp(0.0, 1.0) } else { 0.0 };
-            bar.set([0.0, 0.0, at.viewport[0] * k, 2.0]);
+            let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];
+            live.set(now);
+            // The reader's progress follows its top block (RD-38); the writer's is how far the
+            // view has scrolled (WR-178).
+            let mut map = map.borrow_mut();
+            if map.reading {
+                map.mark(at.offset[1]);
+            }
+            let k = if map.reading {
+                map.progress(now)
+            } else if at.max[1] > 0.0 {
+                (at.offset[1] / at.max[1]).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            bar.set([0.0, 0.0, at.viewport[0] * k.clamp(0.0, 1.0), 2.0]);
         });
     if super::reading(s) {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).
@@ -467,7 +478,7 @@ fn focus_hint(v: V) -> El {
         .pin(Some(0.0), None, Some(0.0), Some(14.0))
         .justify_center()
         .inert()
-        .child(super::widgets::padded(format!("{} words · esc to leave focus", group(wc)), mono(11.5, 400.0), p.mute, 10.0, 4.0, 0.0).radius(6.0).fill(p.bg))
+        .child(super::widgets::padded(format!("{} words · esc to leave zen mode", group(wc)), mono(11.5, 400.0), p.mute, 10.0, 4.0, 0.0).radius(6.0).fill(p.bg))
 }
 
 /// 1234 as "1,234", as `toLocaleString` writes it in English.

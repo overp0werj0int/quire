@@ -72,8 +72,13 @@ pub fn shade(key: impl Into<String>, size: f32, depth: usize, lead: f32, c: &Rol
         .pr(RIGHT - INSET)
         .center_y()
         .radius(RADIUS)
-        .fill(if current { c.accent.alpha(0.1) } else { Color::TRANSPARENT })
+        .fill(shade_fill(c, current))
         .hover(c.hover)
+}
+
+/// A row's fill: a wash of the accent when current.
+pub fn shade_fill(c: &Roles, current: bool) -> Color {
+    if current { c.accent.alpha(0.1) } else { Color::TRANSPARENT }
 }
 
 /// The text colour of a row: the text colour when current, dim at the top level, between dim

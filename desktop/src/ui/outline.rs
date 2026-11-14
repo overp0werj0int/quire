@@ -1,6 +1,6 @@
 //! The right panel (outline and backlinks) and the status bar.
 
-use rune::{El, ScrollSpec, col, el, row, text};
+use rune::{El, Live, ScrollSpec, col, el, row, text};
 
 use super::{V, panel};
 use super::editor::{group, link_at_caret};
@@ -19,16 +19,32 @@ pub fn outline(v: V) -> El {
     let heads = md::headings(doc);
     let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
     let (line, _) = md::line_col(doc, caret);
-    let cur = if s.mode == Mode::Source {
-        heads.iter().rposition(|h| h.line <= line)
-    } else if heads.is_empty() {
-        None
-    } else {
-        Some(v.prev_head.min(heads.len() - 1))
-    };
     // omarky lists h1 to h4. Under a deeper heading, the h1 to h4 above it is current.
     let shown: Vec<usize> = (0..heads.len()).filter(|&i| heads[i].level <= 4).collect();
-    let cur = cur.and_then(|c| shown.iter().rposition(|&i| i <= c));
+    let row_of = |i: usize| shown.iter().rposition(|&j| j <= i);
+    // In the reader the scroll handler moves the highlight (`reader::PageMap::mark`), so a
+    // scroll runs no view (VER-32).
+    let mut map = s.reader.map.borrow_mut();
+    let live = map.reading;
+    let cur = if s.mode == Mode::Source {
+        heads.iter().rposition(|h| h.line <= line).and_then(row_of)
+    } else if live && !heads.is_empty() {
+        let blocks = s.doc();
+        map.heads = heads
+            .iter()
+            .enumerate()
+            .filter_map(|(i, h)| {
+                let k = blocks.blocks.iter().position(|b| b.lines.start == h.line)?;
+                map.tops[k].is_finite().then(|| (map.tops[k], row_of(i)))
+            })
+            .collect();
+        map.first_row = row_of(0);
+        let cur = map.head_row(s.reader.scroll.get()[0]);
+        map.marked = cur;
+        cur
+    } else {
+        None
+    };
     let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
     let mut list = col().key("outline-list").w_full().pb(12.0).child(panel::caption("Contents", &c).pl(panel::CAPTION_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
     for (n, &i) in shown.iter().enumerate() {
@@ -38,12 +54,20 @@ pub fn outline(v: V) -> El {
         let line = h.line;
         let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
         let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
-        list = list.child(
-            panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on)
-                .role("button")
-                .on_press_tx(move |s: &mut App, tx| s.jump(line, tx))
-                .child(text(text_).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0)),
-        );
+        let mut name = text(text_).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0);
+        let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on);
+        if live {
+            let mark = crate::reader::Mark {
+                on: [panel::shade_fill(&c, true), panel::ink(&c, depth, true)],
+                off: [panel::shade_fill(&c, false), panel::ink(&c, depth, false)],
+                fill: Live::new(panel::shade_fill(&c, on)),
+                ink: Live::new(panel::ink(&c, depth, on)),
+            };
+            shade = shade.live_fill(&mark.fill);
+            name = name.live_text_color(&mark.ink);
+            map.marks.push(mark);
+        }
+        list = list.child(shade.role("button").on_press_tx(move |s: &mut App, tx| s.jump(line, tx)).child(name));
     }
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));

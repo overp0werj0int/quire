@@ -128,7 +128,7 @@ impl App {
         {
             return Some(i);
         }
-        Some(self.reader.top.get()).filter(|&i| i < doc.blocks.len())
+        Some(self.top()).filter(|&i| i < doc.blocks.len())
     }
 
     /// Ctrl+Enter and Ctrl+S (SHEET-033, SHEET-044 to SHEET-048).

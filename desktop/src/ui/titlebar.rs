@@ -44,7 +44,7 @@ fn bar(v: V) -> El {
             (&CODE, format!("Show source ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
         };
         right = right.child(icon_button(p, "mode", glyph, 16.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(|s: &mut App, tx| s.toggle_mode(tx)));
-        let help = format!("Focus mode ({})", crate::keymap::label(s.preset(), "app.focus-mode"));
+        let help = format!("Zen mode ({})", crate::keymap::label(s.preset(), "app.focus-mode"));
         right = right.child(icon_button(p, "focus", &FOCUS, 16.0, &help).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
     }
     right = right.child(icon_button(p, "toggle-right", &SIDEBAR_RIGHT, 16.0, "Toggle outline").on_press(|s: &mut App| s.toggle_right()));
@@ -134,7 +134,7 @@ fn focus_bar(v: V) -> El {
                 .hover_group()
                 .role("button")
                 .on_press_tx(|s: &mut App, tx| s.toggle_focus(tx))
-                .child(label("leave focus · esc", mono(11.5, 400.0), p.mute).group_color(p.ink)),
+                .child(label("leave zen mode · esc", mono(11.5, 400.0), p.mute).group_color(p.ink)),
         )
         .child(el().w(v.trailing));
     el().key("titlebar").h(42.0).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(inner)

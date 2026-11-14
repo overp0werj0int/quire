@@ -220,7 +220,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `md.rs` | Markdown analysis: names, links, tags, headings, backlinks, search. |
 | `blocks.rs` | The preview's block model: a note parsed with pulldown-cmark into omarky's blocks, each with its source lines and a stable key, plus the headings, anchors and find index (`docs/reader-writer/`, phase 4). |
 | `page.rs` | The reader page's geometry as pure functions: the type steps, the measure, gutter and lean, the vertical rhythm between blocks and table column widths (`docs/reader-writer/`, phase 5). |
-| `reader.rs` | The reader's behaviour on `App` (`docs/reader-writer/`, phase 6): the parsed note cached per text (`App::doc`), key scrolling and its glide, the reading position per tab, find, links, copying a block's source, toasts and the help flag. Preview blocks are keyed by their content key (`block_key`), so jumps and Rune's scroll anchoring survive edits and reloads. |
+| `reader.rs` | The reader's behaviour on `App` (`docs/reader-writer/`, phase 6): the parsed note cached per text (`App::doc`), key scrolling and its glide, the reading position per tab, find, links, copying a block's source, toasts and the help flag. Preview blocks are keyed by their content key (`block_key`), so jumps and Rune's scroll anchoring survive edits and reloads. A scroll in the reader runs no view: the view keeps each block's unscrolled top in `PageMap` (`Cx::layout` does not move with scrolling), the block at the top follows from the scroll offset (`App::top`), and the scroll handler draws the progress line and moves the outline's highlight through live values. The page itself is a `rune::memo`, built again only when the note, theme, column, find or images change. |
 | `writer.rs` | The writer's pure rules (`docs/reader-writer/behavior/writer.md`, phase 7): the per-line formatting spans with the state one line hands the next, the paragraph fade, the word count, and the Enter, Tab, Shift+Tab and Ctrl+1 to Ctrl+6 edits. |
 | `sheet.rs` | The edit sheet (`docs/reader-writer/behavior/edit-sheet.md`, phase 8): which block `e` and `E` pick, the block and section ranges, splicing the edited lines back, the refusal when the note changed or went away underneath, and the Esc order with its armed discard. While the sheet is open the writer's editing keys act on its editor (`App::target_edit`), and the window's other keys stop (`keys::on_key`). |
 | `writer_app.rs` | The writer on `App`: the span cache, the editing keys, paragraph focus, typewriter scrolling, the font cycle, find in the source, the mode switch that keeps the place, and the chrome that steps aside while you type (`App::poll_writer`). Scrolls find their target through keyed transparent highlights in the field (`CARET`, `LINE_AT`). |
@@ -312,6 +312,10 @@ Desktop:
 - Tests that run the UI use `rune::Runtime` without a window, as in the tests in `main.rs`.
   They set `HOME` and the XDG folders to a temporary folder, and hold the
   `scroll_tests::ENV` lock while they do.
+- `src/bench.rs` holds the budgets as ignored tests: the reader scroll (VER-32) and typing
+  latency (WR-224). Run them on a release build with
+  `cargo test --release bench -- --ignored --nocapture --test-threads 1`; add
+  `--features profile` for Rune's view, commit, layout, text and paint split.
 - `cargo run -- --snap shot.png` renders one frame without a window. `--scene` picks a scene
   from `main.rs`, and `--script events.json` plays input first.
 - `desktop/ref/*.rects.txt` are element boxes from Chromium renders of the design prototype.

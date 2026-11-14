@@ -34,8 +34,6 @@ pub struct V<'a> {
     pub vh: f32,
     /// Space the platform's own window buttons take at the trailing edge (Windows).
     pub trailing: f32,
-    /// The heading at the top of the preview, for the outline's dot.
-    pub prev_head: usize,
 }
 
 impl V<'_> {
@@ -79,9 +77,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let [vw, vh] = cx.layout_size("root").unwrap_or([1280.0, 800.0]);
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
-    let prev_head = preview_head(s, cx);
-    s.reader.top.set(reader_top(s, cx));
-    let v = V { s, p, dark, vw, vh, trailing, prev_head };
+    map_page(s, cx);
+    let v = V { s, p, dark, vw, vh, trailing };
     cx.caption_color(p.ink2);
 
     let focus = v.focus();
@@ -132,42 +129,26 @@ fn reading(s: &App) -> bool {
     s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
 }
 
-/// The index of the top-level block at the top of the view, found by halving over the blocks'
-/// laid-out tops: the last whose top is at or above 21 points under the viewport's top.
-fn reader_top(s: &App, cx: &mut Cx<App>) -> usize {
-    if !reading(s) {
-        return 0;
+/// Where the page's blocks sit (`reader::PageMap`). The reads are unscrolled, so a scroll runs no
+/// view (VER-32).
+fn map_page(s: &App, cx: &mut Cx<App>) {
+    let mut map = s.reader.map.borrow_mut();
+    map.reading = reading(s);
+    map.tops.clear();
+    map.starts.clear();
+    map.heads.clear();
+    map.marks.clear();
+    map.marked = None;
+    if !map.reading {
+        return;
     }
-    let Some(top) = cx.window_layout("doc-scroll").map(|r| r[1] + 21.0) else { return 0 };
     let doc = s.doc();
-    let (mut lo, mut hi) = (0usize, doc.blocks.len());
-    while lo < hi {
-        let mid = (lo + hi) / 2;
-        match cx.window_layout(&crate::reader::block_key(&doc.blocks[mid])) {
-            Some(r) if r[1] <= top => lo = mid + 1,
-            _ => hi = mid,
-        }
+    map.origin = cx.layout(crate::reader::SCROLL).map_or(0.0, |r| r[1]);
+    map.lines = doc.line_count;
+    for b in &doc.blocks {
+        map.tops.push(cx.layout(&crate::reader::block_key(b)).map_or(f32::INFINITY, |r| r[1]));
+        map.starts.push(b.lines.start);
     }
-    lo.saturating_sub(1)
-}
-
-/// The last preview heading whose top is above the viewport's top plus 100 points.
-fn preview_head(s: &App, cx: &mut Cx<App>) -> usize {
-    if s.screen != Screen::Vault || s.mode != crate::app::Mode::Preview || !s.persist.right_open {
-        return 0;
-    }
-    let Some(top) = cx.window_layout("doc-scroll").map(|r| r[1]) else { return 0 };
-    let doc = s.doc();
-    let mut cur = 0;
-    for (i, h) in crate::md::headings(s.active_text()).iter().enumerate() {
-        let Some(b) = doc.blocks.iter().find(|b| b.lines.start == h.line) else { continue };
-        if let Some(r) = cx.window_layout(&crate::reader::block_key(b)) {
-            if r[1] <= top + 100.0 {
-                cur = i;
-            }
-        }
-    }
-    cur
 }
 
 fn notice(v: V, msg: &str) -> El {

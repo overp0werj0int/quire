@@ -96,8 +96,6 @@ pub struct App {
     pub vault_menu: bool,
     pub renaming: Option<TextEdit>,
     pub creating: Option<TextEdit>,
-    /// The heading at the top of the preview, for the outline's dot.
-    pub prev_head: usize,
     /// One editor per open note, so each keeps its caret and undo history.
     pub edits: HashMap<String, TextEdit>,
     /// Single-line fields in settings, by key.
@@ -185,7 +183,6 @@ pub fn init() -> App {
         vault_menu: false,
         renaming: None,
         creating: None,
-        prev_head: 0,
         edits: HashMap::new(),
         fields: HashMap::new(),
         reveal: BTreeSet::new(),
@@ -870,7 +867,6 @@ impl App {
         self.palette = None;
         self.renaming = None;
         self.vault_menu = false;
-        self.prev_head = 0;
         if sel.is_some_and(|s| s.force_source) {
             self.mode = Mode::Source;
         }
