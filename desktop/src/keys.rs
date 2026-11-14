@@ -76,6 +76,9 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             if a.id == "reader.escape" {
                 return s.reader_escape(tx);
             }
+            if a.id == "writer.escape" {
+                return s.writer_escape(tx);
+            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
@@ -110,10 +113,7 @@ pub fn handler(id: &str) -> Option<Run> {
         // macOS quits from its app menu.
         "app.quit" if !cfg!(target_os = "macos") => |s, tx| s.quit(tx),
         "app.insert-image" => |s, tx| s.pick_image(tx),
-        "app.save" => |s, _| {
-            s.flush_notes();
-            s.notice = Some("Saved".into());
-        },
+        "app.save" => |s, tx| s.save_now(tx),
         "app.close-tab" | "reader.close-tab" => close_tab,
         "app.zoom-in" => |s, _| s.zoom(Some(true)),
         "app.zoom-out" => |s, _| s.zoom(Some(false)),
@@ -155,6 +155,27 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),
         "writer.strikethrough" => |s, tx| s.format(Fmt::Strike, tx),
         "writer.link" => |s, tx| s.format(Fmt::Link, tx),
+        "writer.heading-1" => |s, tx| s.writer_heading(1, tx),
+        "writer.heading-2" => |s, tx| s.writer_heading(2, tx),
+        "writer.heading-3" => |s, tx| s.writer_heading(3, tx),
+        "writer.heading-4" => |s, tx| s.writer_heading(4, tx),
+        "writer.heading-5" => |s, tx| s.writer_heading(5, tx),
+        "writer.heading-6" => |s, tx| s.writer_heading(6, tx),
+        "writer.plain-paragraph" => |s, tx| s.writer_heading(0, tx),
+        "writer.indent" => |s, tx| s.writer_tab(false, tx),
+        "writer.outdent" => |s, tx| s.writer_tab(true, tx),
+        "writer.continue-block" => |s, tx| s.writer_enter(tx),
+        "writer.follow-link" => |s, tx| crate::ui::editor::follow_link_at_caret(s, tx),
+        "writer.find" => |s, tx| s.writer_find(tx),
+        "writer.find-next" => |s, tx| s.source_step(true, tx),
+        "writer.find-previous" => |s, tx| s.source_step(false, tx),
+        "writer.help" => |s, _| s.reader.help = !s.reader.help,
+        "writer.paragraph-focus" => |s, tx| s.toggle_paragraph_focus(tx),
+        "writer.typewriter" => |s, tx| s.toggle_typewriter(tx),
+        "writer.next-font" => |s, tx| s.next_font(tx),
+        "writer.escape" => |s, tx| {
+            s.writer_escape(tx);
+        },
         // The editor follows a Ctrl-clicked link itself; this entry lists it in Settings.
         "writer.follow-link-click" => |_, _| {},
         _ => return None,

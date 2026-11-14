@@ -19,6 +19,8 @@ mod highlight;
 mod motion;
 mod page;
 mod reader;
+mod writer;
+mod writer_app;
 mod md;
 mod roles;
 mod sample;

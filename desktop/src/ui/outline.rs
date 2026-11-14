@@ -102,13 +102,15 @@ pub fn status(v: V) -> El {
     } else {
         format!("Ln {}, Col {}", line + 1, col_ + 1)
     };
-    let wc = md::words(doc);
+    // The writer's count (WR-188, WR-189): front matter, code fences and link targets left out.
+    let count = s.word_count();
+    let wc = count.words;
     let word_label = if !sel.is_empty() {
-        format!("{} of {} words", group(md::words(sel)), group(wc))
+        format!("{} of {} words selected", group(crate::writer::count_words(sel)), group(wc))
     } else {
         format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
     };
-    let read = format!("{} min read", ((wc as f32 / 230.0).round() as usize).max(1));
+    let read = format!("{} min read", count.minutes);
     let mut r = row().key("status").h(29.0).w_full().gap(18.0).px(16.0).center_y().border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().clip_rounded(0.0).child(label(pos_label, style, p.mute));
     if !preview {
         if let Some(t) = link_at_caret(doc, pos) {
@@ -116,7 +118,7 @@ pub fn status(v: V) -> El {
             r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(p.acc).truncate().shrink().min_w(0.0));
         }
     }
-    r = r.child(el().grow(1.0)).child(label(word_label, style, p.mute)).child(label(read, style, p.mute));
+    r = r.child(el().grow(1.0)).child(label(word_label, style, p.mute).key("word-count").help(format!("{} characters", group(count.chars)))).child(label(read, style, p.mute));
     if let Some((lbl, busy, failed)) = s.sync_label() {
         let dot = if failed { p.err } else if busy { p.acc } else { p.mark };
         let mut sync = row()

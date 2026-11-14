@@ -4,13 +4,15 @@
 //! with transparent text lies over them and takes the typing. Both lay out the same text in the
 //! same font at the same width, so the caret and selection land on the drawn glyphs.
 
-use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, Span, TextEdit, TextStyle, Tx, col, el, icon, rich, row, text, text_input};
+use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, TextEdit, TextHighlight, TextStyle, Tx, col, el, icon, row, text, text_input};
 
 use super::widgets::label;
 use super::{V, outline, preview, sidebar};
 use crate::app::{App, Mode};
+use crate::keymap::{self, Ctx};
+use crate::roles::Roles;
 use crate::md::{self, Tok};
-use crate::theme::{self, Pal, mono, sans};
+use crate::theme::{self, mono, sans};
 
 pub fn body(v: V) -> El {
     let p = v.p;
@@ -47,33 +49,38 @@ pub fn body(v: V) -> El {
         let doc = v.s.doc();
         let top_line = doc.blocks.get(v.s.reader.top.get()).map_or(0, |b| b.lines.start);
         area = area.child(super::reader::progress(v, crate::reader::progress(top_line, doc.line_count, offset, max, vh))).child(super::reader::find_bar(v));
+    } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
+        // The writer's progress bar is how far the view has scrolled (WR-178), drawn from the
+        // scroll in the frame it moves.
+        let c = Roles::new(v.p);
+        let bar = el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).opacity(0.55).paint_order(30).live_rect(&v.s.reader.bar);
+        area = area.child(bar).child(super::reader::find_bar(v));
     }
     if let Some((msg, _)) = &v.s.reader.toast {
         area = area.child(super::reader::toast(v, msg));
     }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
+    let (o, fade) = v.s.chrome_fade();
     if v.right_visible() {
-        inner = inner.child(outline::outline(v));
+        inner = inner.child(outline::outline(v).opacity(o).opacity_motion(fade));
     }
     sheet = sheet.child(inner);
     if v.has_doc() && !focus {
-        sheet = sheet.child(outline::status(v));
+        // The status bar stays while there is a selection (WR-190).
+        let sel = v.s.active.as_ref().and_then(|a| v.s.edits.get(a)).is_some_and(|e| e.anchor != e.focus);
+        let o = if sel { 1.0 } else { o };
+        sheet = sheet.child(outline::status(v).opacity(o).opacity_motion(fade));
     }
     if focus {
         sheet = sheet.child(focus_hint(v));
     }
     let mut r = row().key("body").grow(1.0).min_h(0.0).w_full();
     if left {
-        r = r.child(sidebar::sidebar(v));
+        // The file tree's contents step aside with the chrome; the panel keeps its width, so
+        // the column stays put (writer.md, open questions).
+        r = r.child(sidebar::sidebar(v).opacity(o).opacity_motion(fade));
     }
     r.child(sheet)
-}
-
-/// The editor font at the configured size, with the design's 1.75 line height.
-pub fn ed_style(v: V) -> TextStyle {
-    let set = v.s.settings();
-    let size = set.size as f32;
-    TextStyle::new(size, 400.0).family(theme::editor_font(&set.font).family).lh(size * 1.75).features("'liga' 0, 'clig' 0, 'calt' 0")
 }
 
 fn clamp(lo: f32, x: f32, hi: f32) -> f32 {
@@ -85,23 +92,34 @@ fn doc_scroll(v: V) -> El {
     let focus = v.focus();
     let mut content = col().key("doc-content").w_full().items_center();
     if v.has_doc() {
-        let size = s.settings().size as f32;
         let pad_x = if focus { clamp(20.0, v.vw * 0.06, 64.0) } else { clamp(20.0, v.vw * 0.05, 56.0) };
         // The toolbar floats TOOLBAR_TOP below the title bar, and the breadcrumb starts 64
         // points down, as far as it did under the old full-width bar.
         let bar = shows_toolbar(v);
-        let (pad_t, pad_b) = if focus { (v.vh * 0.16, v.vh * 0.48) } else { (if bar { TOOLBAR_TOP } else { 34.0 }, v.vh * 0.38) };
-        let ch = if focus { 68.0 } else { 72.0 };
         let locked = s.active.as_deref().is_some_and(|a| s.note_locked(a));
-        // The reader page sets its own column, gutter and room below (PAGE-21 to PAGE-29).
+        // The reader page sets its own column, gutter and room below (PAGE-21 to PAGE-29), and
+        // the writer the same column measured in its own font (WR-171).
         let reader = s.mode == Mode::Preview && !locked;
-        let page = preview::column(v);
+        let writer = s.mode == Mode::Source && !locked;
+        let page = if writer { source_column(v) } else { preview::column(v) };
+        // Above the text: the toolbar's room, or with typewriter scrolling half the view
+        // (WR-86, WR-87). Below it: half the view (WR-86).
+        let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { 34.0 };
+        let pad_b = if reader {
+            crate::page::bottom_room(v.vh)
+        } else if writer {
+            v.vh * 0.5
+        } else if focus {
+            v.vh * 0.48
+        } else {
+            v.vh * 0.38
+        };
         let mut column = col()
             .key("doc-col")
             .w_full()
             .pt(pad_t)
-            .pb(if reader { crate::page::bottom_room(v.vh) } else { pad_b })
-            .px(if reader { 0.0 } else { pad_x })
+            .pb(pad_b)
+            .px(if reader || writer { 0.0 } else { pad_x })
             .on_press_tx(|s: &mut App, tx| {
                 // A click below the text puts the caret at the end, as the design's column does.
                 if s.mode == Mode::Source {
@@ -111,21 +129,26 @@ fn doc_scroll(v: V) -> El {
                     s.focus_editor(tx);
                 }
             });
-        if reader {
+        if reader || writer {
             column = column.pl(page.gutter);
-        } else if s.settings().width == "readable" {
-            column = column.max_w(size * 0.6 * ch + 2.0 * pad_x);
         }
         if bar {
-            column = column.child(toolbar(v));
+            let (o, fade) = s.chrome_fade();
+            column = column.child(toolbar(v).opacity(o).opacity_motion(fade));
         }
         if !focus {
-            column = column.child(if reader { crumb(v).w(page.width).mb(crate::page::TOP_ROOM) } else { crumb(v) });
+            column = column.child(if reader {
+                crumb(v).w(page.width).mb(crate::page::TOP_ROOM)
+            } else if writer {
+                crumb(v).w(page.width)
+            } else {
+                crumb(v)
+            });
         }
         column = column.child(if locked {
             super::lock::panel(v)
         } else if s.mode == Mode::Source {
-            source(v)
+            source(v).w(page.width)
         } else {
             preview::preview(v).w(page.width)
         });
@@ -138,6 +161,7 @@ fn doc_scroll(v: V) -> El {
     // A scroll viewport is a column: in a row its content would stretch to the viewport's
     // height and leave nothing to scroll.
     let live = s.reader.scroll.clone();
+    let bar = s.reader.bar.clone();
     let mut scroll = col()
         .key("doc-scroll")
         .grow(1.0)
@@ -147,6 +171,8 @@ fn doc_scroll(v: V) -> El {
         .scroll(ScrollSpec { stick_bottom: false })
         .on_scroll_offset(move |at| {
             live.set([at.offset[1], at.max[1], at.viewport[1], 0.0]);
+            let k = if at.max[1] > 0.0 { (at.offset[1] / at.max[1]).clamp(0.0, 1.0) } else { 0.0 };
+            bar.set([0.0, 0.0, at.viewport[0] * k, 2.0]);
         });
     if super::reading(s) {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).
@@ -316,78 +342,81 @@ fn crumb(v: V) -> El {
     if s.reader.reloaded.is_some() && s.mode == Mode::Preview { r.child(super::reader::reloaded(v)) } else { r }
 }
 
+/// The source font at size `E`. Each line is 155 percent of the iA fonts' natural 1.3 em
+/// (WR-07); a heading's span keeps that ratio at its own size.
+pub fn ed_style(v: V) -> TextStyle {
+    let set = v.s.settings();
+    let size = set.size as f32;
+    TextStyle::new(size, 400.0).family(theme::editor_font(&set.font).family).lh(line_h(size)).features("'liga' 0, 'clig' 0, 'calt' 0")
+}
+
+/// The source's line height at size `e` (WR-07).
+pub fn line_h(e: f32) -> f32 {
+    (e * 1.3 * 1.55).round()
+}
+
+/// The source column (WR-171, WR-172): the preview's rule with the source font's measure.
+pub fn source_column(v: V) -> crate::page::Column {
+    let set = v.s.settings();
+    let left = if v.left_visible() { 249.0 } else { 0.0 };
+    let right = if v.right_visible() { 236.0 } else { 0.0 };
+    let avg = crate::page::avg_char(theme::editor_font(&set.font).family);
+    crate::page::column(v.vw - left - right, set.size as f32, avg, v.s.wide(), left - right)
+}
+
+/// The writer (`behavior/writer.md`): one field, painted with the formatting spans of
+/// `crate::writer`. The text is the note's Markdown, character for character (WR-01).
 fn source(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
     let style = ed_style(v);
+    let e = style.size;
+    let c = Roles::new(p);
+    let ink = crate::writer::Ink::new(&c);
     let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
     let caret = edit.map_or(0, |e| e.focus.min(doc.len()));
-    let dim = if v.focus() && s.settings().dim_focus { Some(md::para_range(doc, caret)) } else { None };
-
-    let mut mirror = col().key("hl").w_full().a11y_hidden();
-    let mut fence = false;
-    // Each line is cached: typing inside a line builds only that line again.
-    let theme_id = (v.dark, s.settings().font.clone(), s.settings().size, s.names_gen);
-    for (i, ln) in doc.split('\n').enumerate() {
-        let is_f = md::is_fence(ln);
-        let in_code = is_f || fence;
-        let opacity = dim.map(|(a, b)| if i < a || i > b { 0.28f32 } else { 1.0 });
-        let version = (ln, in_code, is_f, opacity.map(f32::to_bits), &theme_id);
-        let names = &s.names;
-        mirror = mirror.child(rune::memo(format!("ln-{i}"), version, || {
-            let mut line_el;
-            if in_code {
-                let spans = if is_f { vec![Span { color: Some(p.mark), ..Span::new(0, ln.len()) }] } else { Vec::new() };
-                line_el = rich(if ln.is_empty() { " ".to_string() } else { ln.to_string() }, spans).fill(p.code).color(p.ink2);
-            } else {
-                let (spans, strikes) = hl_line(p, ln, names);
-                line_el = rich(if ln.is_empty() { " ".to_string() } else { ln.to_string() }, spans).color(p.ink).span_radius(3.0);
-                for (a, b, c) in strikes {
-                    line_el = line_el.strike(a, b, Some(c));
-                }
-            }
-            line_el = line_el.font(style).wrap().w_full();
-            if let Some(o) = opacity {
-                line_el = line_el.opacity(o).opacity_motion(rune::Spring::new(0.2, 0.0));
-            }
-            line_el
-        }));
-        if is_f {
-            fence = !fence;
+    let focus = s.settings().paragraph_focus.then(|| md::para_range(doc, caret));
+    let (spans, strikes) = s.source_spans(e, &ink, focus);
+    let mut marks = Vec::new();
+    // Typewriter scrolling centres this character's line (WR-88).
+    let at = if caret < doc.len() {
+        Some(caret..caret + doc[caret..].chars().next().map_or(1, char::len_utf8))
+    } else {
+        doc[..caret].chars().next_back().map(|ch| caret - ch.len_utf8()..caret)
+    };
+    if let Some(r) = at {
+        marks.push(TextHighlight::new(r, Color::TRANSPARENT).key(crate::writer_app::CARET));
+    }
+    if let Some((line, _)) = s.wstate.top_line {
+        let a = md::line_start(doc, line);
+        if let Some(ch) = doc[a..].chars().next() {
+            marks.push(TextHighlight::new(a..a + ch.len_utf8(), Color::TRANSPARENT).key(crate::writer_app::LINE_AT));
         }
     }
-
+    if s.find_query().is_some()
+        && let Some(r) = s.source_matches().get(s.reader.find.cur).cloned()
+    {
+        marks.push(TextHighlight::new(r, c.selection).key(crate::reader::FIND_CUR));
+    }
     let empty = TextEdit::new("");
+    let pad_top = if s.settings().typewriter_scroll { v.vh * 0.5 } else { 0.0 };
     let input = text_input(edit.unwrap_or(&empty), style)
         .key("editor")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .color(Color::TRANSPARENT)
-        .caret(p.acc, p.sel_editor)
-        .placeholder("Start writing…", theme::hex("#9a9184"))
+        .w_full()
+        .color(ink.text)
+        .caret(c.accent, c.selection)
+        .placeholder("Start writing…", c.ghost)
         .spellcheck(s.settings().spellcheck)
         .label("Note")
+        .spans(spans)
+        .strikes(strikes)
+        .text_highlights(marks)
         .on_edit(|s: &mut App| s.cur_edit())
-        .on_input_change(|s: &mut App, tx: &mut Tx| {
-            s.after_edit();
-            typewriter(s, tx);
-        })
+        .on_input_change(|s: &mut App, _: &mut Tx| s.after_edit())
         .on_input_paste(|s: &mut App, content, tx| s.paste_content(content, tx))
         .on_input_key(on_editor_key);
-    el().key("source").w_full().child(mirror).child(input)
-}
-
-/// In focus mode, keeps the line being typed near the middle of the window.
-fn typewriter(s: &mut App, tx: &mut Tx) {
-    if !(s.focus && s.settings().typewriter) {
-        return;
-    }
-    let text = s.active_text().to_string();
-    let caret = s.cur_edit().focus.min(text.len());
-    let (line, _) = md::line_col(&text, caret);
-    let lh = s.settings().size as f32 * 1.75;
-    let vh = s.view_h.get();
-    tx.scroll_key_to(format!("ln-{line}"), (vh * 0.42 - lh / 2.0).max(0.0));
+    el().key("source").w_full().pt(pad_top).child(input)
 }
 
 /// The `[[link]]` around the caret, if any.
@@ -416,207 +445,18 @@ pub fn follow_link_at_caret(s: &mut App, tx: &mut Tx) {
 fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // A caret move that follows a key is not a click (see `App::check_link_click`).
     s.key_moved = true;
-    let m = ev.mods;
-    match &ev.key {
-        // The field would keep Escape, so focus mode and open menus take it here.
-        Key::Escape => s.escape(tx),
-        Key::Command(c) if (*c == 'b' || *c == 'i') && !m.shift && !m.alt => {
-            let mk = if *c == 'b' { "**" } else { "*" };
-            let e = s.cur_edit();
-            let (a, b) = (e.anchor.min(e.focus), e.anchor.max(e.focus));
-            let sel = e.text[a..b].to_string();
-            e.insert(&format!("{mk}{sel}{mk}"));
-            e.set_selection(a + mk.len(), a + mk.len() + sel.len());
-            s.after_edit();
+    // The field would keep Escape, so the writer's Esc order runs here (WR-77).
+    if matches!(ev.key, Key::Escape) && !ev.mods.shift {
+        return s.writer_escape(tx);
+    }
+    // The writer's editing keys come from the keymap, so a preset changes them here too.
+    match keymap::lookup(s.preset(), Ctx::Writer, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
+        Some(run) => {
+            run(s, tx);
             true
         }
-        Key::Enter if m.cmd => {
-            follow_link_at_caret(s, tx);
-            true
-        }
-        Key::Tab if !m.cmd && !m.alt => {
-            if !m.shift {
-                s.cur_edit().insert("  ");
-                s.after_edit();
-            }
-            true
-        }
-        Key::Enter if !m.shift && !m.alt => {
-            let cont = s.settings().continue_lists;
-            let e = s.cur_edit();
-            if e.anchor == e.focus && cont {
-                let pos = e.focus;
-                let ls = e.text[..pos].rfind('\n').map_or(0, |i| i + 1);
-                let le = e.text[pos..].find('\n').map_or(e.text.len(), |i| pos + i);
-                let line = e.text[ls..le].to_string();
-                if let Some(l) = md::list_line(&line) {
-                    let text_at = match &l.task {
-                        Some(t) => t.end + line[t.end..].len() - line[t.end..].trim_start().len(),
-                        None => l.after,
-                    };
-                    if pos - ls >= text_at {
-                        if line[text_at..].trim().is_empty() {
-                            e.set_selection(ls, le);
-                            e.insert("");
-                        } else {
-                            let mk = match l.number {
-                                Some((n, d)) => format!("{}{d}", n + 1),
-                                None => line[l.marker.clone()].to_string(),
-                            };
-                            let spaces = &line[l.marker.end..l.after];
-                            let task = if l.task.is_some() { "[ ] " } else { "" };
-                            e.insert(&format!("\n{}{mk}{spaces}{task}", &line[..l.indent]));
-                        }
-                        s.after_edit();
-                        typewriter(s, tx);
-                        return true;
-                    }
-                }
-            }
-            s.cur_edit().insert("\n");
-            s.after_edit();
-            typewriter(s, tx);
-            true
-        }
-        _ => false,
+        None => false,
     }
-}
-
-/// Source highlighting for one line: spans and strikethrough ranges, as the design's `hlLine`.
-pub fn hl_line(p: &Pal, ln: &str, names: &md::Names) -> (Vec<Span>, Vec<(usize, usize, Color)>) {
-    let mut spans = Vec::new();
-    let mut strikes = Vec::new();
-    let mk = |a: usize, b: usize| Span { color: Some(p.mark), weight: Some(400.0), ..Span::new(a, b) };
-    if let Some((_, start)) = md::heading_line(ln) {
-        spans.push(Span { color: Some(p.acc.alpha(0.6)), ..Span::new(0, start) });
-        let base = Base { weight: Some(600.0), color: Some(p.ink), italic: false, strike: false };
-        hl_inline(p, ln, start, base, names, &mut spans, &mut strikes);
-        return (spans, strikes);
-    }
-    if md::is_hr(ln) {
-        spans.push(mk(0, ln.len()));
-        return (spans, strikes);
-    }
-    if let Some(q) = md::quote_prefix(ln) {
-        spans.push(Span { color: Some(p.acc), ..Span::new(0, q) });
-        hl_inline(p, ln, q, Base { weight: None, color: Some(p.ink2), italic: true, strike: false }, names, &mut spans, &mut strikes);
-        return (spans, strikes);
-    }
-    if let Some(l) = md::list_line(ln) {
-        spans.push(Span { color: Some(p.acc), ..Span::new(l.marker.start, l.after) });
-        let mut base = Base::default();
-        let from = match &l.task {
-            Some(t) => {
-                // The design's box match takes exactly one whitespace character after `]`.
-                spans.push(Span { color: Some(if l.done { p.mute } else { p.acc }), ..Span::new(t.start, t.end) });
-                if l.done {
-                    base = Base { weight: None, color: Some(p.mute), italic: false, strike: true };
-                }
-                t.end
-            }
-            None => l.after,
-        };
-        hl_inline(p, ln, from, base, names, &mut spans, &mut strikes);
-        return (spans, strikes);
-    }
-    hl_inline(p, ln, 0, Base::default(), names, &mut spans, &mut strikes);
-    (spans, strikes)
-}
-
-#[derive(Clone, Copy, Default)]
-struct Base {
-    weight: Option<f32>,
-    color: Option<Color>,
-    italic: bool,
-    strike: bool,
-}
-
-fn hl_inline(p: &Pal, ln: &str, from: usize, base: Base, names: &md::Names, spans: &mut Vec<Span>, strikes: &mut Vec<(usize, usize, Color)>) {
-    let s = &ln[from..];
-    let plain = |a: usize, b: usize, spans: &mut Vec<Span>, strikes: &mut Vec<(usize, usize, Color)>| {
-        if a >= b {
-            return;
-        }
-        spans.push(Span { weight: base.weight, color: base.color, italic: base.italic, ..Span::new(from + a, from + b) });
-        if base.strike {
-            strikes.push((from + a, from + b, p.mark));
-        }
-    };
-    let styled = |a: usize, b: usize, sp: Span, spans: &mut Vec<Span>, strikes: &mut Vec<(usize, usize, Color)>| {
-        if a >= b {
-            return;
-        }
-        let mut x = Span { start: (from + a) as u32, end: (from + b) as u32, ..sp };
-        if x.weight.is_none() {
-            x.weight = base.weight;
-        }
-        if x.color.is_none() {
-            x.color = base.color;
-        }
-        x.italic = x.italic || base.italic;
-        spans.push(x);
-        if base.strike {
-            strikes.push((from + a, from + b, p.mark));
-        }
-    };
-    let mk = |a: usize, b: usize, spans: &mut Vec<Span>| {
-        if a < b {
-            spans.push(Span { color: Some(p.mark), weight: Some(400.0), ..Span::new(from + a, from + b) });
-        }
-    };
-    let mut last = 0;
-    for (t, r) in md::inline_tokens(s) {
-        plain(last, r.start, spans, strikes);
-        let (a, b) = (r.start, r.end);
-        match t {
-            Tok::Code => {
-                mk(a, a + 1, spans);
-                styled(a + 1, b - 1, Span { bg: Some(p.code), color: Some(p.ink2), ..Span::default() }, spans, strikes);
-                mk(b - 1, b, spans);
-            }
-            Tok::Wiki => {
-                let inner = &s[a + 2..b - 2];
-                let image = md::is_image(&md::link_target(inner));
-                let ok = names.resolve(&md::link_target(inner)).is_some();
-                mk(a, a + 2, spans);
-                // An image embed is no note link: it gets the second ink and no underline.
-                let sp = if image {
-                    Span { color: Some(p.ink2), ..Span::default() }
-                } else {
-                    Span { color: Some(if ok { p.acc } else { p.mute }), underline: Some(if ok { p.link_line } else { p.mark }), ..Span::default() }
-                };
-                styled(a + 2, b - 2, sp, spans, strikes);
-                mk(b - 2, b, spans);
-            }
-            Tok::Bold => {
-                mk(a, a + 2, spans);
-                styled(a + 2, b - 2, Span { weight: Some(600.0), color: Some(p.ink), ..Span::default() }, spans, strikes);
-                mk(b - 2, b, spans);
-            }
-            Tok::Italic => {
-                mk(a, a + 1, spans);
-                styled(a + 1, b - 1, Span { italic: true, ..Span::default() }, spans, strikes);
-                mk(b - 1, b, spans);
-            }
-            Tok::Strike => {
-                mk(a, a + 2, spans);
-                styled(a + 2, b - 2, Span { color: Some(p.mute), ..Span::default() }, spans, strikes);
-                strikes.push((from + a + 2, from + b - 2, p.mute));
-                mk(b - 2, b, spans);
-            }
-            Tok::Link => {
-                let j = s[a..b].find("](").map_or(b, |j| a + j);
-                mk(a, a + 1, spans);
-                styled(a + 1, j, Span { color: Some(p.acc), ..Span::default() }, spans, strikes);
-                mk(j, b, spans);
-            }
-            Tok::Tag => {
-                styled(a, b, Span { color: Some(p.acc), bg: Some(p.soft), ..Span::default() }, spans, strikes);
-            }
-        }
-        last = b;
-    }
-    plain(last, s.len(), spans, strikes);
 }
 
 fn focus_hint(v: V) -> El {

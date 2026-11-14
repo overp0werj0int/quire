@@ -72,6 +72,10 @@ pub struct Roles {
     pub cyan: Color,
     pub orange: Color,
     pub link: Color,
+    /// List markers, quote marks, task boxes, footnotes and tags in the source (WR-205).
+    pub mark: Color,
+    /// The paragraph focus fade in the source (WR-201).
+    pub editor_ghost: Color,
     pub code_text: Color,
     pub code_bg: Color,
     /// Code's own dim and faint, a little stronger than the page's (PAGE-51).
@@ -116,6 +120,8 @@ impl Roles {
             cyan: named(n.cyan),
             orange: n.orange.unwrap_or(p.err),
             link: if distance(accent, fg) <= 24.0 { blue } else { accent },
+            mark: mix(accent, bg, 0.15),
+            editor_ghost: mix(fg, bg, 0.72),
             code_text: mix(fg, accent, 0.12),
             code_bg: flat(fg, ld(0.07, 0.085)),
             code_dim: mix(fg, bg, 0.3),

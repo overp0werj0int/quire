@@ -77,17 +77,16 @@ fn fence(text: &str, s: usize, e: usize) -> Edit {
     Edit { start: s, end: e, sel: (start_body, start_body + body.len()), insert }
 }
 
+/// Ctrl+K and the link button (WR-57, WR-58): a selected URL becomes `[](url)` with the caret
+/// in the brackets; anything else becomes `[text]()` with the caret in the parentheses.
 fn link(text: &str, s: usize, e: usize) -> Edit {
     let sel = &text[s..e];
-    if sel.starts_with("http://") || sel.starts_with("https://") {
+    let url = ["http://", "https://", "mailto:"].iter().any(|p| sel.len() > p.len() && sel.starts_with(p)) && !sel.contains(char::is_whitespace);
+    if url {
         return Edit { start: s, end: e, insert: format!("[]({sel})"), sel: (s + 1, s + 1) };
     }
-    let insert = format!("[{sel}](url)");
     let u = s + 1 + sel.len() + 2;
-    if sel.is_empty() {
-        return Edit { start: s, end: e, insert, sel: (s + 1, s + 1) };
-    }
-    Edit { start: s, end: e, insert, sel: (u, u + 3) }
+    Edit { start: s, end: e, insert: format!("[{sel}]()"), sel: (u, u) }
 }
 
 fn wiki(text: &str, s: usize, e: usize) -> Edit {
@@ -212,9 +211,11 @@ mod tests {
 
     #[test]
     fn links() {
-        assert_eq!(run("see |docs|", Fmt::Link), "see [docs](|url|)");
+        assert_eq!(run("see |docs|", Fmt::Link), "see [docs](|)");
         assert_eq!(run("|https://x.io|", Fmt::Link), "[|](https://x.io)");
-        assert_eq!(run("|", Fmt::Link), "[|](url)");
+        assert_eq!(run("|", Fmt::Link), "[](|)");
+        assert_eq!(run("|mailto:a@b.c|", Fmt::Link), "[|](mailto:a@b.c)");
+        assert_eq!(run("|https://x.io and|", Fmt::Link), "[https://x.io and](|)");
         assert_eq!(run("|Plan|", Fmt::Wiki), "[[|Plan|]]");
         assert_eq!(run("[[|Plan|]]", Fmt::Wiki), "|Plan|");
     }

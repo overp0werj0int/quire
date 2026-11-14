@@ -34,8 +34,10 @@ pub struct Settings {
     pub keymap: String,
     pub spellcheck: bool,
     pub continue_lists: bool,
-    pub dim_focus: bool,
-    pub typewriter: bool,
+    /// Lines outside the paragraph being written fade (WR-79).
+    pub paragraph_focus: bool,
+    /// The caret line stays at the middle of the view (WR-85).
+    pub typewriter_scroll: bool,
     /// The formatting toolbar above the note, in source mode.
     pub toolbar: bool,
     pub update_links: bool,
@@ -59,8 +61,8 @@ impl Default for Settings {
             keymap: "omarky".into(),
             spellcheck: false,
             continue_lists: true,
-            dim_focus: true,
-            typewriter: true,
+            paragraph_focus: false,
+            typewriter_scroll: false,
             toolbar: true,
             update_links: true,
             new_folder: String::new(),

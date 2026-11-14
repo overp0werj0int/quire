@@ -150,6 +150,8 @@ pub struct App {
     pub unlock_error: Option<String>,
     /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
     pub reader: crate::reader::Reader,
+    /// The writer's state: typing, the chrome, typewriter scrolling (`crate::writer_app`).
+    pub wstate: crate::writer_app::WriterState,
 }
 
 /// A locked note while it is open.
@@ -217,6 +219,7 @@ pub fn init() -> App {
         lock_dialog: None,
         unlock_error: None,
         reader: Default::default(),
+        wstate: Default::default(),
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -424,6 +427,7 @@ impl App {
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
+        changed |= self.poll_writer(t, tx);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
         }
@@ -476,6 +480,8 @@ impl App {
                 e.replace_text(text.clone());
                 e.set_selection(a, b);
             }
+            // A reload is not typing: the chrome stays (WR-184).
+            self.wstate.seen = None;
             if let Some(v) = &mut self.vault {
                 if new {
                     v.born.insert(rel.clone(), now_ns());
@@ -808,6 +814,9 @@ impl App {
 
     /// The editor's text changed: keep the folder copy in step and save soon.
     pub fn after_edit(&mut self) {
+        // Typing, for the chrome that steps aside (WR-184). The next poll stamps the time,
+        // because the app clock only moves in `poll`.
+        self.wstate.typed = true;
         let Some(a) = self.active.clone() else { return };
         let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) else { return };
         if self.unlocked.contains_key(&a) {
@@ -863,8 +872,8 @@ impl App {
                 e.set_selection(s.start.min(n), s.end.min(n));
                 e.break_history_group();
             }
-            if let Some(line) = s.line {
-                tx.scroll_key_to(format!("ln-{line}"), 120.0);
+            if let Some(line) = s.line.filter(|_| self.mode == Mode::Source) {
+                self.place_line(line, tx);
             }
         } else if changed {
             self.switch_reading(from.as_deref(), path, tx);
@@ -1047,10 +1056,7 @@ impl App {
         if self.active.is_none() {
             return;
         }
-        self.mode = if self.mode == Mode::Source { Mode::Preview } else { Mode::Source };
-        if self.mode == Mode::Source {
-            self.focus_editor(tx);
-        }
+        self.switch_mode(tx);
         self.persist_later();
     }
 
@@ -1173,13 +1179,7 @@ impl App {
     /// Moves the caret, or the preview, to line `line`.
     pub fn jump(&mut self, line: usize, tx: &mut Tx) {
         if self.mode == Mode::Source {
-            let pos = md::line_start(self.active_text(), line);
-            if let Some(e) = self.cur_edit_opt() {
-                e.set_selection(pos, pos);
-                e.break_history_group();
-            }
-            tx.scroll_key_to(format!("ln-{line}"), 120.0);
-            self.focus_editor(tx);
+            self.source_jump(line, tx);
         } else {
             self.jump_block(line, tx);
         }

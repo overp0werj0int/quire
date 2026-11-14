@@ -120,8 +120,10 @@ flowchart LR
 
 ### What happens when you type
 
-1. The editor is a Rune text field. Each open note has its own `TextEdit` in `App.edits`, so
-   each tab keeps its caret and undo history.
+1. The editor is one Rune text field. Each open note has its own `TextEdit` in `App.edits`, so
+   each tab keeps its caret and undo history. The field paints the note's Markdown with
+   formatting spans from `writer.rs` (`App::source_spans`, cached per line). The spans are
+   paint only: the text stays the note's Markdown, character for character.
 2. `App::after_edit` puts the new text into `vault.files` and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you
@@ -212,6 +214,8 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `blocks.rs` | The preview's block model: a note parsed with pulldown-cmark into omarky's blocks, each with its source lines and a stable key, plus the headings, anchors and find index (`docs/reader-writer/`, phase 4). |
 | `page.rs` | The reader page's geometry as pure functions: the type steps, the measure, gutter and lean, the vertical rhythm between blocks and table column widths (`docs/reader-writer/`, phase 5). |
 | `reader.rs` | The reader's behaviour on `App` (`docs/reader-writer/`, phase 6): the parsed note cached per text (`App::doc`), key scrolling and its glide, the reading position per tab, find, links, copying a block's source, toasts and the help flag. Preview blocks are keyed by their content key (`block_key`), so jumps and Rune's scroll anchoring survive edits and reloads. |
+| `writer.rs` | The writer's pure rules (`docs/reader-writer/behavior/writer.md`, phase 7): the per-line formatting spans with the state one line hands the next, the paragraph fade, the word count, and the Enter, Tab, Shift+Tab and Ctrl+1 to Ctrl+6 edits. |
+| `writer_app.rs` | The writer on `App`: the span cache, the editing keys, paragraph focus, typewriter scrolling, the font cycle, find in the source, the mode switch that keeps the place, and the chrome that steps aside while you type (`App::poll_writer`). Scrolls find their target through keyed transparent highlights in the field (`CARET`, `LINE_AT`). |
 | `highlight.rs` | Code colours: the `rune-highlights` lexers, with omarky's language aliases, mapped to the theme's syntax roles and cached per block. |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
 | `folders.rs` | The folder tree, moving notes by drag, the tree menu. |
@@ -223,7 +227,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheet, toasts, progress line and reloaded mark) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font. |
 
 ## The Android app
 

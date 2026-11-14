@@ -1,6 +1,6 @@
 //! The window's view.
 
-mod editor;
+pub(crate) mod editor;
 mod lock;
 mod outline;
 mod octicons;
@@ -88,7 +88,16 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let mut root = col().key("root").w_full().h_full().fill(win_bg);
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),
-        Screen::Vault => root.child(titlebar::titlebar(v)).child(editor::body(v)),
+        Screen::Vault => {
+            // The title bar steps aside while you type (WR-185), and any pointer move brings
+            // it back (WR-187).
+            let (o, fade) = s.chrome_fade();
+            root.child(titlebar::titlebar(v).opacity(o).opacity_motion(fade)).child(editor::body(v)).on_pointer_move_local(|s: &mut App, _, tx| {
+                if !s.pointer_moved() {
+                    tx.live_only();
+                }
+            })
+        }
     };
     if s.tree_menu.is_some() {
         root = root.child(sidebar::tree_menu(v));

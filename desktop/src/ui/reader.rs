@@ -24,7 +24,7 @@ pub fn find_bar(v: V) -> El {
     if !f.open {
         return el();
     }
-    let n = s.find_matches().len();
+    let n = s.find_count();
     let (count, tone) = match (f.q.text.is_empty(), n) {
         (true, _) => (String::new(), c.faint),
         (false, 0) => ("No matches".to_string(), c.red),
@@ -139,17 +139,62 @@ const HELP: &[(&str, &[HelpRow])] = &[
     ("File", &[h("Open a note", &["app.quick-switcher"]), h("Read from disk", &["reader.read-from-disk"]), h("Close the tab", &["reader.close-tab"]), h("This sheet", &["reader.help"])]),
 ];
 
+/// The writer's help groups (WR-166), in omarky's order and wording.
+const WRITER_HELP: &[(&str, &[HelpRow])] = &[
+    (
+        "Write",
+        &[
+            h("Bold / italic", &["writer.bold", "writer.italic"]),
+            h("Inline code", &["writer.inline-code"]),
+            h("Strikethrough", &["writer.strikethrough"]),
+            h("Link", &["writer.link"]),
+            h("Heading 1 to 6 / paragraph", &["writer.heading-1", "writer.heading-6", "writer.plain-paragraph"]),
+            h("Indent / outdent", &["writer.indent", "writer.outdent"]),
+            h("Follow the link", &["writer.follow-link"]),
+        ],
+    ),
+    (
+        "View",
+        &[
+            h("Preview", &["app.toggle-mode"]),
+            h("Find", &["writer.find"]),
+            h("Next / previous match", &["writer.find-next", "writer.find-previous"]),
+            h("Paragraph focus", &["writer.paragraph-focus"]),
+            h("Typewriter scrolling", &["writer.typewriter"]),
+            h("Next font", &["writer.next-font"]),
+            h("Outline", &["app.toggle-outline"]),
+            h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
+        ],
+    ),
+    (
+        "File",
+        &[
+            h("Save", &["app.save"]),
+            h("New note", &["app.new-note"]),
+            h("Open a note", &["app.quick-switcher"]),
+            h("Recent notes", &["writer.recent-notes"]),
+            h("Close the tab", &["app.close-tab"]),
+            h("This sheet", &["writer.help"]),
+        ],
+    ),
+];
+
 /// A key cap (RD-91): caption text in dim on a raised fill, hairline border, 12 by 6 px of
 /// padding in all.
 fn cap(t: String, c: &Roles) -> El {
     row().px(6.0).py(3.0).radius(3.0).fill(c.raised).border(1.0, c.hairline).child(text(t).font(font(CAPTION, false)).color(c.dim))
 }
 
-/// The help sheet (RD-86 to RD-91).
+/// The help sheet (RD-86 to RD-91; in the writer WR-158 to WR-166).
 pub fn help_sheet(v: V) -> El {
     let c = Roles::new(v.p);
     let preset = v.s.preset();
-    let w = (v.vw - 48.0).min(520.0);
+    let writer = v.s.mode == crate::app::Mode::Source;
+    let (groups, row_h, row_gap, keys_w, col_w) = if writer { (WRITER_HELP, 26.0, 7.0, 170.0, 470.0) } else { (HELP, 24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0) };
+    // The writer's sheet sets its groups in two columns on a wide window (WR-163).
+    let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
+    let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
+    let w = (v.vw - 48.0).min(content + 48.0);
     let mut card = col().key("help-card").w(w).px(24.0).py(22.0).gap(18.0).on_press(|_: &mut App| {});
     card = card.child(
         text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
@@ -158,23 +203,31 @@ pub fn help_sheet(v: V) -> El {
             .color(c.ghost)
             .pin(None, Some(22.0), Some(24.0), None),
     );
-    for (title, rows) in HELP {
-        let mut g = col().key(format!("help-{title}")).w_full().child(
+    let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
+    for (gi, (title, rows)) in groups.iter().enumerate() {
+        let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
             text(title.to_string()).font(font(CAPTION, true).tracking(1.0)).color(c.faint).text_case(TextCase::Uppercase).mb(6.0),
         );
         for (i, r) in rows.iter().enumerate() {
-            let mut keys = row().gap(4.0).w(190.0 - 24.0).center_y();
+            let mut keys = row().gap(4.0).w(keys_w).center_y();
             for id in r.ids {
                 let first = keymap::action(id).and_then(|a| a.chords(preset).first().copied());
                 if let Some(k) = first {
                     keys = keys.child(cap(keymap::label_of(k), &c));
                 }
             }
-            g = g.child(row().key(format!("r-{i}")).h(24.0).w_full().center_y().child(keys).child(text(r.what.to_string()).font(font(BODY_SMALL, false)).color(c.text)));
+            g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(font(BODY_SMALL, false)).color(c.text)));
         }
-        card = card.child(g);
+        // The first group fills the left column; the rest go to the right one.
+        let k = if cols == 2 && gi > 0 { 1 } else { 0 };
+        let slot = std::mem::replace(&mut columns[k], el());
+        columns[k] = slot.child(g);
     }
-    let card = popup(&c).child(card);
+    let mut body = row().key("help-cols").gap(40.0).items_start();
+    for column in columns {
+        body = body.child(column);
+    }
+    let card = popup(&c).child(card.child(body));
     col()
         .key("help-scrim")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))

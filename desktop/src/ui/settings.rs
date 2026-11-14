@@ -389,8 +389,8 @@ fn editor(v: V) -> El {
         ("toolbar", "Formatting toolbar", "Buttons for bold, links, lists and images above the note.", |s| s.toolbar, |s| s.toolbar = !s.toolbar),
         ("spell", "Spell check", "Underline misspelled words while you type.", |s| s.spellcheck, |s| s.spellcheck = !s.spellcheck),
         ("lists", "Continue lists", "Pressing Enter in a list starts the next item.", |s| s.continue_lists, |s| s.continue_lists = !s.continue_lists),
-        ("dim", "Dim other paragraphs in focus mode", "Only the paragraph you are writing stays at full strength.", |s| s.dim_focus, |s| s.dim_focus = !s.dim_focus),
-        ("typewriter", "Typewriter scrolling in focus mode", "Keeps the line you are typing near the middle of the window.", |s| s.typewriter, |s| s.typewriter = !s.typewriter),
+        ("dim", "Paragraph focus", "Only the paragraph you are writing stays at full strength.", |s| s.paragraph_focus, |s| s.paragraph_focus = !s.paragraph_focus),
+        ("typewriter", "Typewriter scrolling", "Keeps the line you are typing at the middle of the window.", |s| s.typewriter_scroll, |s| s.typewriter_scroll = !s.typewriter_scroll),
     ];
     for (key, t, d, get, flip) in toggles {
         c = c.child(row_(v, key, t, Some(d), switch(p, &format!("{key}-switch"), get(set), t, move |s, _| flip(s.settings_mut()))));

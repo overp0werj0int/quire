@@ -151,6 +151,10 @@ copy source, task ticking, the heading anchor, the help sheet, toasts and banner
 
 ### Phase 7. The writer
 
+Status: done on branch `rw/phase-3-typography`, except hanging marks (phase 2 was skipped),
+the caret's width and blink, the scroll thumb, the fade bands, the right-click menu, glides on
+jumps, and the typing bench, listed in `decisions.tsv`.
+
 Live formatting per line, hanging marks and leading through the phase 2 patch, the editing keys,
 the paragraph fade, typewriter scrolling, the chrome that steps aside while typing, word count,
 the round trip between modes keeping the position, the font cycle, the help sheet

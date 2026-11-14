@@ -40,6 +40,8 @@ pub struct Reader {
     pub top: Cell<usize>,
     /// The viewport's offset, scroll range and height, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
+    /// The writer's progress bar, [x, y, w, h], set with the scroll in the frame it draws (WR-178).
+    pub bar: Live<[f32; 4]>,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -61,6 +63,7 @@ impl Default for Reader {
             hover: None,
             top: Cell::new(0),
             scroll: Live::new([0.0; 4]),
+            bar: Live::new([0.0; 4]),
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -405,6 +408,11 @@ impl App {
         Some(f.q.text.as_str()).filter(|q| f.open && !q.is_empty())
     }
 
+    /// How many matches the find bar counts, in either mode.
+    pub fn find_count(&self) -> usize {
+        if self.mode == crate::app::Mode::Source { self.source_matches().len() } else { self.find_matches().len() }
+    }
+
     /// The matches of the find query in the open note.
     pub fn find_matches(&self) -> Vec<Match> {
         self.find_query().map_or_else(Vec::new, |q| blocks::find_all(&self.doc(), q))
@@ -412,6 +420,9 @@ impl App {
 
     /// The query changed: pick the first match from the top of the view (RD-57).
     pub fn find_changed(&mut self, tx: &mut Tx) {
+        if self.mode == crate::app::Mode::Source {
+            return self.source_found(tx);
+        }
         let m = self.find_matches();
         let top = self.reader.top.get();
         self.reader.find.cur = first_match(&m, top);
@@ -422,6 +433,9 @@ impl App {
 
     /// Enter / n and Shift+Enter / N (RD-58).
     pub fn find_step(&mut self, forward: bool, tx: &mut Tx) {
+        if self.mode == crate::app::Mode::Source {
+            return self.source_step(forward, tx);
+        }
         let n = self.find_matches().len();
         let f = &mut self.reader.find;
         f.cur = step(f.cur, n, forward);
@@ -438,8 +452,12 @@ impl App {
             self.close_find(tx);
         } else if tx.text_selection().is_some() {
             tx.clear_text_selection();
-        } else {
-            return self.escape(tx);
+        } else if !self.escape(tx) {
+            // Nothing else takes Esc: back to the writer (WR-111).
+            if self.active.is_none() {
+                return false;
+            }
+            self.toggle_mode(tx);
         }
         true
     }

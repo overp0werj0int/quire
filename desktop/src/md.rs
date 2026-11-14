@@ -196,29 +196,6 @@ pub fn heading_line(ln: &str) -> Option<(usize, usize)> {
     Some((h, h + sp))
 }
 
-/// `^\s*([-*_])(\s*\1){2,}\s*$`
-pub fn is_hr(ln: &str) -> bool {
-    let t: Vec<char> = ln.chars().filter(|c| !c.is_whitespace()).collect();
-    t.len() >= 3 && matches!(t[0], '-' | '*' | '_') && t.iter().all(|&c| c == t[0])
-}
-
-/// `^(\s*>+\s?)`: the length of the quote prefix.
-pub fn quote_prefix(ln: &str) -> Option<usize> {
-    let ws = ln.len() - ln.trim_start().len();
-    let rest = &ln[ws..];
-    let g = rest.bytes().take_while(|&c| c == b'>').count();
-    if g == 0 {
-        return None;
-    }
-    let mut end = ws + g;
-    if let Some(c) = ln[end..].chars().next() {
-        if c.is_whitespace() {
-            end += c.len_utf8();
-        }
-    }
-    Some(end)
-}
-
 /// A list line: `^(\s*)([-*+]|\d+[.)])(\s+)(\[[ xX]\]\s)?(.*)$`.
 #[derive(Clone, Debug)]
 pub struct ListLine {
@@ -275,12 +252,6 @@ pub fn list_line(ln: &str) -> Option<ListLine> {
         }
     }
     Some(ListLine { indent, marker, after, task, done, number })
-}
-
-/// A fence line opens or closes a code block: `^\s*(```|~~~)`.
-pub fn is_fence(ln: &str) -> bool {
-    let t = ln.trim_start();
-    t.starts_with("```") || t.starts_with("~~~")
 }
 
 // ---------- Document facts ----------
