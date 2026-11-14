@@ -302,12 +302,10 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
 /// The tree's menu, at the pointer: new notes and folders, rename or delete for a note, and
 /// delete for a folder.
 pub fn tree_menu(v: V) -> El {
-    let p = v.p;
     let Some(m) = &v.s.tree_menu else { return el() };
     if let (MenuOn::Folder(f), true) = (&m.on, m.confirm) {
         return confirm_delete_folder(v, f, m.x, m.y);
     }
-    type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
     let mut items: Vec<(&str, Run)> = Vec::new();
     match m.on.clone() {
         MenuOn::Folder(f) => {
@@ -341,32 +339,66 @@ pub fn tree_menu(v: V) -> El {
             items.push(("New folder", Box::new(|s, tx| s.start_new_folder("", tx))));
         }
     }
+    let items = items.into_iter().map(|(t, run)| Item { label: t, keys: None, enabled: true, run }).collect();
+    menu(v, "tree-menu", (m.x, m.y), items, |s, _| s.tree_menu = None).paint_order(55)
+}
+
+type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
+
+/// A row of Quire's in-app menu (WR-193): its name, its shortcut, and what it does.
+pub struct Item {
+    pub label: &'static str,
+    pub keys: Option<&'static str>,
+    pub enabled: bool,
+    pub run: Run,
+}
+
+/// Quire's in-app menu at `at`, kept inside the window: the tree's and the editor's. `close`
+/// runs before a picked item's action, and on Esc or a click outside.
+pub fn menu(v: V, key: &str, at: (f32, f32), items: Vec<Item>, close: fn(&mut App, &mut rune::Tx)) -> El {
+    let p = v.p;
     let w = 200.0;
     let h = 10.0 + 30.0 * items.len() as f32;
-    let x = m.x.min(v.vw - w - 8.0).max(8.0);
-    let y = m.y.min(v.vh - h - 8.0).max(8.0);
+    let x = at.0.min(v.vw - w - 8.0).max(8.0);
+    let y = at.1.min(v.vh - h - 8.0).max(8.0);
     let [a, b] = theme::menu_shadows();
-    let mut panel = col().key("tree-menu").absolute(x, y).w(w).padding(5.0).radius(9.0).fill(p.bg).box_shadow(a).box_shadow(b).role("menu").modal(true, |s: &mut App| s.tree_menu = None);
-    for (i, (t, run)) in items.into_iter().enumerate() {
-        panel = panel.child(
-            row()
-                .key(format!("tm-{i}"))
-                .w_full()
-                .h(30.0)
-                .px(10.0)
-                .center_y()
-                .radius(6.0)
-                .hover(p.hover)
-                .role("menuitem")
-                .label(t)
-                .on_press_tx(move |s: &mut App, tx| {
-                    s.tree_menu = None;
-                    run(s, tx);
-                })
-                .child(label(t, sans(13.0, 400.0), p.ink)),
-        );
+    let mut panel = col().key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).fill(p.bg).box_shadow(a).box_shadow(b).role("menu").modal_tx(true, close);
+    for (i, it) in items.into_iter().enumerate() {
+        let ink = if it.enabled { p.ink } else { p.mute };
+        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, sans(13.0, 400.0), ink).grow(1.0));
+        if let Some(k) = it.keys {
+            r = r.child(label(k, sans(12.0, 400.0), p.mute));
+        }
+        if it.enabled {
+            let run = it.run;
+            r = r.hover(p.hover).on_press_tx(move |s: &mut App, tx| {
+                close(s, tx);
+                run(s, tx);
+            });
+        } else {
+            r = r.disabled(true);
+        }
+        panel = panel.child(r);
     }
-    el().key("tree-menu-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(55).child(panel)
+    el().key(format!("{key}-layer")).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).child(panel)
+}
+
+/// The editor's menu (WR-135, SHEET-032): Cut and Copy, with nothing selected greyed out, and
+/// Paste, each sent to the field as its key would be. Over the edit sheet as well.
+pub fn edit_menu(v: V) -> El {
+    let Some(m) = &v.s.edit_menu else { return el() };
+    let selected = v.s.edit_menu_selected();
+    let send = |c: char| -> Run {
+        // As Rune's own field menu sends them.
+        let mods = rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..rune::Mods::default() };
+        Box::new(move |_, tx| tx.send_key(rune::KeyEvent { key: rune::Key::Command(c), mods }))
+    };
+    let items = vec![
+        Item { label: "Cut", keys: Some("Ctrl+X"), enabled: selected, run: send('x') },
+        Item { label: "Copy", keys: Some("Ctrl+C"), enabled: selected, run: send('c') },
+        Item { label: "Paste", keys: Some("Ctrl+V"), enabled: true, run: send('v') },
+    ];
+    menu(v, "edit-menu", (m.x, m.y), items, |s, tx| s.close_edit_menu(tx)).paint_order(80)
 }
 
 /// The tree menu's second step for a folder with notes: what moves to the trash, and two buttons.

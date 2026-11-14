@@ -255,6 +255,7 @@ pub fn preview(v: V) -> El {
         find.as_ref().map(|f| (&f.q, f.cur)),
         &s.names,
         s.images.epoch.get(),
+        s.reader.copied.map(|(l, _)| l),
     );
     rune::memo("reader-page", version, || {
         let look = look(v);
@@ -393,7 +394,7 @@ impl Cx<'_> {
             Kind::List(l) => list::list(self, l, tone),
             Kind::Quote { blocks } => self.quote(blocks, tone),
             Kind::Alert { kind, blocks } => self.alert(*kind, blocks, tone),
-            Kind::Code { lang, text: t } => code::code(self, lang, t, bl.pid),
+            Kind::Code { lang, text: t } => code::code(self, lang, t, bl.pid, bl.lines.start),
             Kind::Diff { lang, lines, added, removed, .. } => code::diff(self, lang, lines, *added, *removed, bl.pid),
             Kind::Table(t) => table::table(self, t, tone),
             Kind::Rule => self.rule(),

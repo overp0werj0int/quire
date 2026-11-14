@@ -1,8 +1,9 @@
 //! Code blocks (BLK-43 to BLK-50) and diff blocks (BLK-53 to BLK-58).
 
-use rune::{El, Span, TextStyle, col, el, rich, row, text};
+use rune::{El, Span, TextStyle, col, el, icon, rich, row, text};
 
 use super::Cx;
+use crate::ui::octicons;
 use crate::blocks::{DiffKind, DiffLine};
 use crate::page::{line, r};
 use crate::roles::mix;
@@ -39,7 +40,7 @@ fn badge(cx: &Cx, lang: &str) -> El {
     text(lang.to_lowercase()).key("badge").font(TextStyle::new(10.0, 400.0).family(cx.look.mono).lh(20.0).tracking(0.4)).color(cx.look.c.faint)
 }
 
-pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>) -> El {
+pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -73,7 +74,10 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>) -> El {
     body = body.child(rich(if src.is_empty() { " ".to_string() } else { src }, spans).key("code").font(style).color(c.text).text_highlights(marks));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
     let top = 2f32.max(r((r(b * 1.25) - 20.0) / 2.0) - 1.0);
-    // Over the block the badge gives way to a Copy chip (BLK-51).
+    // Over the block the badge gives way to a Copy chip, which says Copied in green for a
+    // moment after a click, with or without the pointer (BLK-51).
+    let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
+    let (glyph, label, tint) = if copied { (&octicons::CHECK, "Copied", c.green) } else { (&octicons::COPY, "Copy", c.dim) };
     let chip = row()
         .key("copy")
         .h(20.0)
@@ -82,16 +86,18 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>) -> El {
         .center_y()
         .fill(c.raised)
         .border(1.0, c.hairline_soft)
-        .group_opacity(0.0, 1.0)
+        .gap(5.0)
+        .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
         .cursor(rune::Cursor::Pointer)
         .role("button")
         .label("Copy the code")
-        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&copy, tx))
-        .child(text("Copy").font(TextStyle::new(10.0, 400.0).family(look.mono).lh(14.0).tracking(0.4)).color(c.dim))
+        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&copy, at, tx))
+        .child(icon(glyph, 10.0).color(tint))
+        .child(text(label).font(TextStyle::new(10.0, 400.0).family(look.mono).lh(14.0).tracking(0.4)).color(tint))
         .pin(None, Some(top), Some(pad_r - 6.0), None);
     let mut out = el().w_full().hover_group().radius(4.0).fill(c.panel).border(1.0, c.hairline_soft).child(el().key("scroll").w_full().scroll_x().child(body));
     if !lang.is_empty() {
-        out = out.child(badge(cx, lang).group_opacity(1.0, 0.0).pin(None, Some(top), Some(pad_r), None));
+        out = out.child(badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }
     out.child(chip)
 }

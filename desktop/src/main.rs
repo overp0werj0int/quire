@@ -317,3 +317,158 @@ mod a11y_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod chip_tests {
+    use rune::{Env, Runtime};
+
+    const DT: f64 = 1.0 / 60.0;
+
+    /// BLK-51: a click on a code block's chip copies the code and the chip says Copied for
+    /// 1400 ms, shown with the pointer gone, then gives way to the badge again.
+    #[test]
+    fn blk_51_the_chip_says_copied_for_1400_ms() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-chip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(DT);
+        rt.update(|s, _| {
+            s.mode = crate::app::Mode::Preview;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, "Text\n\n```rust\nfn main() {}\n```\n".into());
+        });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let (x, y) = rt.find("copy").expect("the chip");
+        rt.pointer_move(x, y);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(DT);
+        let mut at = 0.0;
+        rt.update_if(|s, _| {
+            at = s.reader.copied.expect("the chip says Copied").1;
+            assert_eq!(s.reader.copied.map(|c| c.0), Some(2), "the block's first source line");
+            false
+        });
+        rt.pointer_leave();
+        // The app's clock is `poll`'s, which a windowless runtime does not call: set it.
+        let mut copied = None;
+        rt.update(move |s, tx| {
+            s.poll(at + 1.399, tx);
+        });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            copied = s.reader.copied;
+            false
+        });
+        assert!(copied.is_some(), "still Copied at 1399 ms");
+        let shown = rt.presented("copy").map(|p| p.1).unwrap_or(0.0);
+        assert!(shown > 0.99, "the chip stays shown with the pointer gone: opacity {shown}");
+        rt.update(move |s, tx| {
+            s.poll(at + 1.401, tx);
+        });
+        rt.update_if(|s, _| {
+            copied = s.reader.copied;
+            false
+        });
+        assert!(copied.is_none(), "gone at 1401 ms");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod edit_menu_tests {
+    use rune::{Env, Key, KeyEvent, Mods, Runtime};
+
+    const DT: f64 = 1.0 / 60.0;
+
+    /// WR-135: a right-click with no selection moves the caret to the click and opens Quire's
+    /// menu with Cut and Copy off; one in the selection keeps it, Cut takes the text out, and
+    /// focus is back in the editor after.
+    #[test]
+    fn wr_135_the_editor_menu_cuts_the_selection() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-edit-menu-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(DT);
+        let text = "alpha beta gamma\n";
+        rt.update(move |s, tx| {
+            s.mode = crate::app::Mode::Source;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, text.into());
+            s.focus_editor(tx);
+            s.cur_edit().set_selection(text.len(), text.len());
+        });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let ([x, y, _, _], _) = rt.presented("editor").expect("the editor");
+        let (px, py) = (x + 2.0, y + 8.0);
+        let right_click = |rt: &mut Runtime<crate::app::App>| {
+            rt.secondary_down(px, py);
+            rt.secondary_up(px, py);
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+        };
+        right_click(&mut rt);
+        let mut seen = (false, false, 99);
+        rt.update_if(|s, _| {
+            let caret = s.cur_edit().focus;
+            seen = (s.edit_menu.is_some(), s.edit_menu_selected(), caret);
+            false
+        });
+        assert_eq!(seen, (true, false, 0), "menu open, nothing selected, caret moved to the click");
+        rt.update(|s, tx| s.close_edit_menu(tx));
+        rt.frame(DT);
+        // "alpha" selected; a right-click at its start keeps it.
+        rt.update(|s, _| s.cur_edit().set_selection(0, 5));
+        rt.frame(DT);
+        right_click(&mut rt);
+        rt.update_if(|s, _| {
+            seen = (s.edit_menu.is_some(), s.edit_menu_selected(), 0);
+            false
+        });
+        assert_eq!(seen, (true, true, 0), "menu open over the selection");
+        let (cx, cy) = rt.find("edit-menu/tm-0").expect("Cut");
+        rt.pointer_move(cx, cy);
+        rt.frame(DT);
+        rt.pointer_down(cx, cy);
+        rt.pointer_up(cx, cy);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Text("Z".into()), mods: Mods::default() });
+        rt.frame(DT);
+        let mut now = String::new();
+        let mut open = true;
+        rt.update_if(|s, _| {
+            now = s.active_text().to_string();
+            open = s.edit_menu.is_some();
+            false
+        });
+        assert!(!open, "the menu closed");
+        assert_eq!(now, "Z beta gamma\n", "Cut took \"alpha\" out, and the key after it went to the editor");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -100,6 +100,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if s.tree_menu.is_some() {
         root = root.child(sidebar::tree_menu(v));
     }
+    if s.edit_menu.is_some() {
+        root = root.child(sidebar::edit_menu(v));
+    }
     if s.lock_dialog.is_some() {
         root = root.child(lock::dialog(v));
     }

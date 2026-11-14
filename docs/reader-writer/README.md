@@ -152,8 +152,8 @@ copy source, task ticking, the heading anchor, the help sheet, toasts and banner
 ### Phase 7. The writer
 
 Status: done on branch `rw/phase-3-typography`, except hanging marks (phase 2 was skipped),
-the caret's width and blink, the scroll thumb, the fade bands, the right-click menu, glides on
-jumps, and the typing bench, listed in `decisions.tsv`.
+the caret's width and blink, the scroll thumb, the fade bands and glides on jumps, listed in
+`decisions.tsv`. The right-click menu and the typing budget landed in phase 9.
 
 Live formatting per line, hanging marks and leading through the phase 2 patch, the editing keys,
 the paragraph fade, typewriter scrolling, the chrome that steps aside while typing, word count,
@@ -163,14 +163,20 @@ the round trip between modes keeping the position, the font cycle, the help shee
 ### Phase 8. The edit sheet
 
 Status: done on branch `rw/phase-3-typography`, except hanging marks in the sheet's editor
-(SHEET-028, as in phase 7), the caret's width and blink (SHEET-029) and the right-click menu
-(SHEET-032), listed in `decisions.tsv`.
+(SHEET-028, as in phase 7) and the caret's width and blink (SHEET-029), listed in
+`decisions.tsv`. The right-click menu (SHEET-032) landed in phase 9.
 
 `E` and `Shift+E` in the reader, the sheet over the page, saving through Quire's save path,
 locked notes, and refusing to write over a change that landed while the sheet was open
 (`behavior/edit-sheet.md`).
 
 ### Phase 9. Parity pass
+
+Status: in progress on branch `rw/phase-3-typography`. Done: the zen mode rename, the budgets
+as benches (`desktop/src/bench.rs`), typing within budget (through a local Rune branch), the
+editor's right-click menu and the code chip's Copied state. Left: the side-by-side shots for
+the user's sign-off (VER-30). The scroll bench's mean (about 5 ms against 1 ms) waits for paint
+culling or virtualization in Rune.
 
 Every sample under the review themes, side by side with omarky. The user signs off the `manual`
 items. Budgets are checked again. `README.md`, `desktop/README.md` and `ARCHITECTURE.md` are

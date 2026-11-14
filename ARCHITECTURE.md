@@ -129,7 +129,8 @@ flowchart LR
    character. That needs Rune's fixes on its `quire/by-paragraph-fixes` branch, which
    `desktop/Cargo.toml` takes from a local checkout at `../rune-quire` until it is pushed:
    before them a blank line doubled the next line's first letter in the accessible text, and
-   long notes typed slowly.
+   long notes typed slowly. The same branch moves the caret to a right-click before the
+   editor's own menu opens.
 2. `App::after_edit` puts the new text into `vault.files` and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you
@@ -241,7 +242,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark), `sheet` (the edit sheet's modal scrim and card, its context boxes drawn by `preview::context`) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert and image icons. `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font. |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets`, `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark), `sheet` (the edit sheet's modal scrim and card, its context boxes drawn by `preview::context`) and `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `octicons`, the alert, image and copy icons. `sidebar::menu` is Quire's in-app menu, used by the tree and by the editor's right-click menu (`sidebar::edit_menu`, WR-135), which sends Ctrl+X, C or V to its field; it is attached only where Rune has no native menu (`editor::with_edit_menu`). `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font. |
 
 ## The Android app
 

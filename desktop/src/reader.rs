@@ -22,6 +22,8 @@ const KEY_GLIDE: f64 = 0.11;
 const SEQ: f64 = 0.9;
 /// A toast shows this long (RD-98).
 pub const TOAST: f64 = 1.6;
+/// How long a code block's chip says Copied (BLK-51).
+pub const COPIED: f64 = 1.4;
 /// The "reloaded" mark: fade in, hold, fade out (RD-33).
 pub const RELOADED: f64 = 0.12 + 1.1 + 0.5;
 
@@ -32,6 +34,8 @@ pub struct Reader {
     pub find: Find,
     pub help: bool,
     pub toast: Option<(String, f64)>,
+    /// The code block whose chip says Copied, by its first source line, and since when.
+    pub copied: Option<(usize, f64)>,
     /// When an outside change last reached the open note (RD-14).
     pub reloaded: Option<f64>,
     /// The first source line of the top-level block under the pointer (RD-100).
@@ -60,6 +64,7 @@ impl Default for Reader {
             find: Find { open: false, q: TextEdit::new(""), cur: 0 },
             help: false,
             toast: None,
+            copied: None,
             reloaded: None,
             hover: None,
             map: Rc::default(),
@@ -398,8 +403,10 @@ impl App {
     }
 
     /// A code block's Copy chip (BLK-51).
-    pub fn copy_code(&mut self, code: &str, tx: &mut Tx) {
+    pub fn copy_code(&mut self, code: &str, line: usize, tx: &mut Tx) {
         tx.copy(code.to_string());
+        self.reader.copied = Some((line, self.now.get()));
+        tx.wake_after(std::time::Duration::from_secs_f64(COPIED + 0.05));
         self.toast("Copied", tx);
     }
 
@@ -425,6 +432,10 @@ impl App {
         let mut changed = false;
         if self.reader.toast.as_ref().is_some_and(|(_, at)| t - at >= TOAST) {
             self.reader.toast = None;
+            changed = true;
+        }
+        if self.reader.copied.is_some_and(|(_, at)| t - at >= COPIED) {
+            self.reader.copied = None;
             changed = true;
         }
         if self.reader.reloaded.is_some_and(|at| t - at >= RELOADED) {

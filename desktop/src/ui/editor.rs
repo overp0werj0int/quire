@@ -426,11 +426,20 @@ fn source(v: V) -> El {
         .on_edit(|s: &mut App| s.cur_edit())
         .on_input_change(|s: &mut App, _: &mut Tx| s.after_edit())
         .on_input_paste(|s: &mut App, content, tx| s.paste_content(content, tx))
-        .on_input_key(on_editor_key)
-        // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in
-        // the direction of its own first strong character.
-        .dir_by_paragraph();
+        .on_input_key(on_editor_key);
+    // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in the
+    // direction of its own first strong character.
+    let input = with_edit_menu(input, "editor").dir_by_paragraph();
     el().key("source").w_full().pt(pad_top).child(input)
+}
+
+/// Quire's own menu on a right-click in field `key` where Rune has no native one, as on Linux
+/// (WR-135, SHEET-032). Elsewhere the field keeps Rune's menu, spelling included.
+pub fn with_edit_menu(input: rune::El, key: &'static str) -> rune::El {
+    if rune::popup_menu_supported() {
+        return input;
+    }
+    input.on_secondary_press(move |s: &mut App, at, _| s.open_edit_menu(key, at.x, at.y))
 }
 
 /// The `[[link]]` around the caret, if any.
