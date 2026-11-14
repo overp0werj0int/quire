@@ -426,7 +426,10 @@ fn source(v: V) -> El {
         .on_edit(|s: &mut App| s.cur_edit())
         .on_input_change(|s: &mut App, _: &mut Tx| s.after_edit())
         .on_input_paste(|s: &mut App, content, tx| s.paste_content(content, tx))
-        .on_input_key(on_editor_key);
+        .on_input_key(on_editor_key)
+        // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in
+        // the direction of its own first strong character.
+        .dir_by_paragraph();
     el().key("source").w_full().pt(pad_top).child(input)
 }
 

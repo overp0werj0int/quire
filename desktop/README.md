@@ -94,7 +94,6 @@ Quire keeps a record of the last sync for each folder and bucket in `sync/` in i
 
 ## Not in this version
 
-- Very long notes type slower. With live formatting, a keystroke takes about 4 ms at 400 lines, 23 ms at 1,000 lines and 133 ms at 3,000 lines, because the text field lays out the whole note, and its formatting, on each edit. Without formatting it was 3, 8 and 23 ms. Measured with `src/bench.rs` on a release build.
 - Scrolling the reader takes about 5 ms a frame on a 5,000-line note, because the whole page is painted each frame. omarky's budget is under 1 ms on average.
 - The passphrase and keys you enter are saved in `state.json`, which only your user can read. They are not in the system keychain.
 - The macOS and Windows builds come from CI and are not tested on those systems yet.

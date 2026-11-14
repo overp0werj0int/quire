@@ -123,7 +123,13 @@ flowchart LR
 1. The editor is one Rune text field. Each open note has its own `TextEdit` in `App.edits`, so
    each tab keeps its caret and undo history. The field paints the note's Markdown with
    formatting spans from `writer.rs` (`App::source_spans`, cached per line). The spans are
-   paint only: the text stays the note's Markdown, character for character.
+   paint only: the text stays the note's Markdown, character for character. The field (and
+   the edit sheet's) is laid out per line with Rune's `dir_by_paragraph`, so a keystroke
+   reshapes only its own line, and each line takes the direction of its first strong
+   character. That needs Rune's fixes on its `quire/by-paragraph-fixes` branch, which
+   `desktop/Cargo.toml` takes from a local checkout at `../rune-quire` until it is pushed:
+   before them a blank line doubled the next line's first letter in the accessible text, and
+   long notes typed slowly.
 2. `App::after_edit` puts the new text into `vault.files` and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you

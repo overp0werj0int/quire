@@ -80,7 +80,8 @@ pub fn sheet(v: V) -> rune::El {
         .strikes(strikes)
         .text_highlights(Vec::<TextHighlight>::new())
         .on_edit(|s: &mut App| s.sheet_field())
-        .on_input_key(on_sheet_key);
+        .on_input_key(on_sheet_key)
+        .dir_by_paragraph();
     let editor = col()
         .key("sheet-scroll")
         .w_full()

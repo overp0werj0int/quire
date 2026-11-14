@@ -34,6 +34,13 @@ profile = ["rune/frame-profile"]
 [build-dependencies]
 embed-resource = "3"
 
+# The per-line editor needs Rune's fixes on the local branch quire/by-paragraph-fixes
+# (~/Projects/rune-quire, commit 2c4d9d09), which is not pushed yet, so this builds only where
+# that checkout sits beside this one. Once it is pushed, pin its revision above and drop this.
+[patch."https://github.com/anomalyco/rune"]
+rune = { path = "../../rune-quire/crates/rune" }
+rune-highlights = { path = "../../rune-quire/crates/rune-highlights" }
+
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]

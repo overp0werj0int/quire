@@ -271,3 +271,49 @@ mod lock_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod a11y_tests {
+    use rune::accesskit::Role;
+    use rune::{Env, Runtime};
+
+    /// The source editor lays out by paragraph; a screen reader still gets each line once, its
+    /// newline last.
+    #[test]
+    fn the_editor_exposes_each_line_once() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-a11y-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(1.0 / 60.0);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, "# Title\n\n#draft\n\nThe text".into());
+            s.focus_editor(tx);
+        });
+        for _ in 0..3 {
+            rt.frame(1.0 / 60.0);
+        }
+        let tree = rt.accessibility_tree();
+        let (id, _) = tree.nodes.iter().find(|(_, n)| n.author_id() == Some("editor")).expect("the editor");
+        let runs: Vec<String> = tree
+            .nodes
+            .iter()
+            .find(|(i, _)| i == id)
+            .map(|(_, n)| n.children().to_vec())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|c| tree.nodes.iter().find(|(i, n)| i == c && n.role() == Role::TextRun))
+            .map(|(_, n)| n.value().unwrap_or("").to_string())
+            .collect();
+        assert_eq!(runs.concat(), "# Title\n\n#draft\n\nThe text", "runs: {runs:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
