@@ -58,6 +58,10 @@ time, because they touch different code.
 
 ### Phase 1. Verification harness and baseline
 
+Status: paused at the user's request, 2026-11-14. The unbuilt work is on branch
+`rw/phase-1-harness`. Until it returns, units are checked by unit tests and headless
+`--snap` renders.
+
 Build the checks before the work, and record Quire as it is today, so every later check reads
 "old value, new value".
 
@@ -76,6 +80,9 @@ Done when the harness runs headless and the baseline numbers and images are comm
 
 ### Phase 2. Rune patch spike
 
+Status: paused at the user's request, 2026-11-14. The work in progress is on branch
+`quire/paragraph-layout` in `~/Projects/rune-quire`. Decision 0004 stays open.
+
 The riskiest unknown. It answers whether hanging marks and per-line leading work in a Rune text
 field with honest caret behaviour and acceptable typing speed.
 
@@ -92,6 +99,9 @@ Done when those checks pass. If typing latency fails its budget, stop and plan a
 phase 7. The fallback is one text field per block, which brings its own caret and undo work.
 
 ### Phase 3. Typography and keymap foundation
+
+Status: done on branch `rw/phase-3-typography`, except the highlighter crate, which moves to
+phase 5 with the code blocks that use it. See `decisions.tsv`.
 
 - Bundle the fonts with their licence, and load faces by file (PAGE-02 has the test).
 - The size setting, 14 px by default, the zoom keys, and how a stored size from an older
