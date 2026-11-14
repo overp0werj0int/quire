@@ -14,6 +14,7 @@ mod lock;
 mod lock_app;
 mod mcp;
 mod md;
+mod roles;
 mod sample;
 mod store;
 mod sync;

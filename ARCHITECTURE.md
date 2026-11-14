@@ -213,6 +213,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
 | `theme.rs` | Themes, fonts, text measurements. |
+| `roles.rs` | The preview page's colours and code colours, derived from the active palette (`docs/reader-writer/`, decision 0005). |
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |

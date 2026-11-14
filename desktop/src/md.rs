@@ -856,7 +856,7 @@ pub fn blocks(text: &str) -> Vec<Block> {
             continue;
         }
         if let Some((h, s)) = heading_line(ln) {
-            out.push(Block::Heading { line: start, level: h.min(3), index: hi, text: ln[s..].to_string() });
+            out.push(Block::Heading { line: start, level: h, index: hi, text: ln[s..].to_string() });
             hi += 1;
             i += 1;
             continue;

@@ -6,6 +6,7 @@ use super::V;
 use super::widgets::{CHECK, label};
 use crate::app::App;
 use crate::md::{self, Block, Tok};
+use crate::roles::Roles;
 use crate::theme::{self, Pal};
 
 struct Look {
@@ -18,6 +19,8 @@ struct Look {
     mono_w: f32,
     asc: f32,
     desc: f32,
+    /// The page's colours (`crate::roles`), named by `behavior/blocks.md`.
+    c: Roles,
 }
 
 impl Look {
@@ -71,7 +74,7 @@ impl Rich {
                     // `padding: .12em .38em` at .8em: the background grows by the vertical
                     // padding, and spaces sized to the rest of the horizontal padding take room.
                     let size = look.size * 0.8;
-                    self.chip(&tok[1..tok.len() - 1], size, look.mono_w, 0.12 * size, 0.38 * size, base_color, p.code);
+                    self.chip(&tok[1..tok.len() - 1], size, look.mono_w, 0.12 * size, 0.38 * size, base_color.or(Some(look.c.code_text)), look.c.code_bg);
                 }
                 Tok::Wiki => {
                     let inner = &tok[2..tok.len() - 2];
@@ -86,8 +89,8 @@ impl Rich {
                     self.spans.push(Span {
                         weight: cx.bold.then_some(600.0),
                         italic: cx.italic,
-                        color: Some(if ok { p.acc } else { p.mute }),
-                        underline: Some(if ok { p.link_line } else { p.mark }),
+                        color: Some(if ok { look.c.link } else { look.c.faint }),
+                        underline: Some(if ok { look.c.link.alpha(0.4) } else { look.c.ghost }),
                         ..Span::new(a, b)
                     });
                     self.links.push((a..b, format!("wiki:{}", target.trim())));
@@ -96,16 +99,16 @@ impl Rich {
                 Tok::Italic => self.inline(&tok[1..tok.len() - 1], Ctx { italic: true, ..cx }, p, look, names, base_color),
                 Tok::Strike => {
                     let a = self.text.len();
-                    self.push(&tok[2..tok.len() - 2], cx, Some(p.mute));
+                    self.push(&tok[2..tok.len() - 2], cx, Some(look.c.dim));
                     let b = self.text.len();
-                    self.strikes.push((a, b, Some(p.mute)));
+                    self.strikes.push((a, b, Some(look.c.dim)));
                 }
                 Tok::Link if image => {
                     let j = tok.find("](").unwrap_or(tok.len());
                     let a = self.text.len();
                     self.text.push_str(if j > 1 { &tok[1..j] } else { "image" });
                     let b = self.text.len();
-                    self.spans.push(Span { color: Some(p.mute), italic: true, ..Span::new(a, b) });
+                    self.spans.push(Span { color: Some(look.c.dim), italic: true, ..Span::new(a, b) });
                 }
                 Tok::Link => {
                     let j = tok.find("](").unwrap_or(tok.len());
@@ -113,7 +116,7 @@ impl Rich {
                     let a = self.text.len();
                     self.text.push_str(&tok[1..j]);
                     let b = self.text.len();
-                    self.spans.push(Span { color: Some(p.acc), underline: Some(p.acc), weight: cx.bold.then_some(600.0), italic: cx.italic, ..Span::new(a, b) });
+                    self.spans.push(Span { color: Some(look.c.link), underline: Some(look.c.link), weight: cx.bold.then_some(600.0), italic: cx.italic, ..Span::new(a, b) });
                     self.links.push((a..b, format!("url:{url}")));
                 }
                 Tok::Tag => {
@@ -191,6 +194,7 @@ pub fn preview(v: V) -> El {
         mono_w: 0.6,
         asc,
         desc,
+        c: Roles::new(p),
     };
     let em = size;
     let names = &s.names;
@@ -229,10 +233,11 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
             let e = el()
                 .key(format!("pv-{line}"))
                 .w_full()
-                .radius(8.0)
-                .fill(p.code)
+                .radius(4.0)
+                .fill(look.c.panel)
+                .border(1.0, look.c.hairline_soft)
                 .scroll_x()
-                .child(el().py(14.0).px(18.0).child(text(if t.is_empty() { " ".into() } else { t }).font(style).color(p.ink2)));
+                .child(el().py(14.0).px(18.0).child(text(if t.is_empty() { " ".into() } else { t }).font(style).color(look.c.text)));
             (em * 1.2, em * 1.3, e)
         }
         Block::Heading { line, level, index, text: t } => {
@@ -245,11 +250,11 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
             let style = TextStyle::new(size, w).family(look.family).lh(size * lh).tracking(size * track);
             let mut r = Rich::default();
             r.inline(&t, Ctx::default(), p, look, names, None);
-            let e = r.el(style, p.ink).key(format!("pv-{line}")).w_full().role("heading").level(level as u32).label(t.clone());
+            let e = r.el(style, if level <= 4 { look.c.strong } else { look.c.dim }).key(format!("pv-{line}")).w_full().role("heading").level(level as u32).label(t.clone());
             let _ = index;
             (size * mt, size * mb, e)
         }
-        Block::Rule => (em * 2.2, em * 2.2, el().h(1.0).w_full().fill(p.line)),
+        Block::Rule => (em * 2.2, em * 2.2, el().h(1.0).w_full().fill(look.c.hairline)),
         Block::Quote { line, text: t } => {
             let mut r = Rich::default();
             r.inline(&md::pretty(&t), Ctx { italic: true, bold: false }, p, look, names, None);
@@ -259,8 +264,8 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
                 .pt(em * 0.1)
                 .pb(em * 0.1)
                 .pl(em * 1.1 + 2.0)
-                .border_sides([0.0, 0.0, 0.0, 2.0], p.mark)
-                .child(r.el(body.italic(), p.ink2).w_full());
+                .border_sides([0.0, 0.0, 0.0, 2.0], look.c.accent)
+                .child(r.el(body.italic(), look.c.dim).w_full());
             (em * 1.3, em * 1.3, e)
         }
         Block::List { line, items } => {
@@ -269,12 +274,12 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
             let text_base = look.baseline(em, em * look.lh, look.asc, look.desc);
             for (i, it) in items.into_iter().enumerate() {
                 let mut r = Rich::default();
-                let base_color = if it.done { Some(p.mute) } else { None };
+                let base_color = if it.done { Some(look.c.dim) } else { None };
                 r.inline(&md::pretty(&it.text), Ctx::default(), p, look, names, base_color);
                 let n = r.text.len();
-                let mut te = r.el(body, p.ink).grow(1.0).shrink().min_w(0.0);
+                let mut te = r.el(body, look.c.text).grow(1.0).shrink().min_w(0.0);
                 if it.done {
-                    te = te.strike(0, n, Some(p.mark));
+                    te = te.strike(0, n, Some(look.c.faint));
                 }
                 let marker = if it.task {
                     let sz = em * 0.85;
@@ -286,22 +291,22 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
                         .mt(top)
                         .center()
                         .radius(3.0)
-                        .border(1.5, if it.done { p.acc } else { p.mark })
+                        .border(1.5, if it.done { look.c.accent } else { look.c.faint })
                         .role("checkbox")
                         .checked(it.done)
                         .cursor(rune::Cursor::Pointer)
                         .on_press(move |s: &mut App| s.toggle_task(line_no));
                     if it.done {
-                        bx = bx.fill(p.acc).child(icon(&CHECK, 9.0).color(p.on_acc));
+                        bx = bx.fill(look.c.accent).child(icon(&CHECK, 9.0).color(look.c.bg));
                     }
                     bx
                 } else if it.marker.as_bytes()[0].is_ascii_digit() {
                     let ns = em * 0.78;
                     let nlh = ns * look.lh;
                     let shift = text_base - look.baseline(ns, nlh, 1.025, 0.275);
-                    el().key("num").min_w(ns * 1.3).mt(shift).child(text(it.marker.clone()).font(TextStyle::new(ns, 400.0).family(look.mono).lh(nlh)).color(p.mute))
+                    el().key("num").min_w(ns * 1.3).mt(shift).child(text(it.marker.clone()).font(TextStyle::new(ns, 400.0).family(look.mono).lh(nlh)).color(look.c.faint))
                 } else {
-                    row().key("bullet").w(em).justify_center().child(text("•").font(body).color(p.acc))
+                    row().key("bullet").w(em).justify_center().child(text("•").font(body).color(look.c.dim))
                 };
                 let li = row()
                     .key(format!("li-{}", it.line))
@@ -319,7 +324,7 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
         Block::Para { line, text: t } => {
             let mut r = Rich::default();
             r.inline(&md::pretty(&t), Ctx::default(), p, look, names, None);
-            (0.0, em * 0.95, r.el(body, p.ink).key(format!("pv-{line}")).w_full())
+            (0.0, em * 0.95, r.el(body, look.c.text).key(format!("pv-{line}")).w_full())
         }
     }
 }
@@ -327,7 +332,6 @@ fn block(v: V, look: &Look, names: &md::Names, b: Block) -> (f32, f32, El) {
 /// One image at its own size, or narrower to fit the column. A box holds its place while it
 /// loads, and a line says so when there is no file.
 fn picture(v: V, img: &md::Img, look: &Look) -> El {
-    let p = v.p;
     let s = v.s;
     let note = |msg: String| {
         row()
@@ -335,8 +339,8 @@ fn picture(v: V, img: &md::Img, look: &Look) -> El {
             .px(14.0)
             .py(10.0)
             .radius(6.0)
-            .fill(p.code)
-            .child(label(msg, theme::sans(look.size * 0.8, 400.0), p.mute).wrap().grow(1.0).shrink())
+            .fill(look.c.card)
+            .child(label(msg, theme::sans(look.size * 0.8, 400.0), look.c.dim).wrap().grow(1.0).shrink())
     };
     let handle = match s.image_source(img) {
         crate::images::Source::File(path) => s.images.file(&path).map(Ok),
@@ -359,7 +363,7 @@ fn picture(v: V, img: &md::Img, look: &Look) -> El {
             row().w_full().child(pic)
         }
         Some(Err(msg)) => note(msg),
-        _ => el().w_full().h(look.size * 6.0).radius(6.0).fill(p.code).role("img").label(alt),
+        _ => el().w_full().h(look.size * 6.0).radius(6.0).fill(look.c.card).role("img").label(alt),
     }
 }
 
