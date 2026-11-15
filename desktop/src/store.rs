@@ -49,7 +49,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            theme: "light".into(),
+            // omarky follows the Omarchy theme, and the system's mode elsewhere.
+            theme: "system".into(),
             light_theme: None,
             dark_theme: None,
             accent: String::new(),
@@ -206,7 +207,8 @@ impl Default for Persist {
             sessions: BTreeMap::new(),
             mode: "source".into(),
             left_open: true,
-            right_open: true,
+            // omarky opens with its outline closed.
+            right_open: false,
             settings: Settings::default(),
             seeded: false,
         }
