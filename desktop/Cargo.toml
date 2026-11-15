@@ -34,8 +34,8 @@ profile = ["rune/frame-profile"]
 [build-dependencies]
 embed-resource = "3"
 
-# The per-line editor and its right-click menu need Rune's fixes on the local branch quire/by-paragraph-fixes
-# (~/Projects/rune-quire, commit a4034f05), which is not pushed yet, so this builds only where
+# The per-line editor, its right-click menu and the raised footnote mark need Rune's fixes on the
+# local branch quire/by-paragraph-fixes (~/Projects/rune-quire, commit d1df2a2f), which is not pushed yet, so this builds only where
 # that checkout sits beside this one. Once it is pushed, pin its revision above and drop this.
 [patch."https://github.com/anomalyco/rune"]
 rune = { path = "../../rune-quire/crates/rune" }

@@ -91,17 +91,12 @@ struct Rich {
     marks: Vec<TextHighlight>,
 }
 
-/// Digits as superscript characters, for footnote references (PAGE-78).
-fn sup(s: &str) -> String {
-    s.chars().map(|ch| ch.to_digit(10).map_or(ch, |d| ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'][d as usize])).collect()
-}
-
 impl Rich {
     fn push(&mut self, s: &str, sp: Span) {
         let a = self.text.len();
         self.text.push_str(s);
         let b = self.text.len();
-        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono) {
+        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono || sp.raise != 0.0) {
             self.spans.push(Span { start: a as u32, end: b as u32, ..sp });
         }
     }
@@ -151,8 +146,10 @@ impl Rich {
                     self.links.push((a..self.text.len(), format!("url:{u}"), c.link));
                 }
                 Some(Link::Anchor(an)) => {
-                    let t = if run.note { sup(&run.t) } else { run.t.clone() };
-                    self.push(&t, Span { color: Some(c.link), ..base });
+                    // A footnote reference is superscript (PAGE-78): measured on omarky's <sup> at
+                    // 14 px, the digit is 10 px with its foot 9 px above the line's baseline.
+                    let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), raise: r(cx.look.b * 0.64), ..base } } else { base };
+                    self.push(&run.t, Span { color: Some(c.link), ..sup });
                     if let Some(l) = cx.anchor_line(an) {
                         self.links.push((a..self.text.len(), format!("line:{l}"), c.link));
                     }

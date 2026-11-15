@@ -177,8 +177,9 @@ Status: in progress on branch `rw/phase-3-typography`. Done: the zen mode rename
 as benches (`desktop/src/bench.rs`), typing within budget (through a local Rune branch), the
 editor's right-click menu, the code chip's Copied state, and the measured parity pass
 (`tools/parity.py`): over the 7 samples and 6 review themes every matched line sits within 2 px
-of omarky's except the footnote mark (Rune spans cannot raise text) and threshold artifacts,
-listed in `decisions.tsv`. Left: the user's sign-off of the side-by-side page (VER-30). The
+of omarky's, except the first block under Quire's file-name line (3 px) and threshold artifacts,
+listed in `decisions.tsv`. The footnote mark is raised through `Span::raise` on the local Rune
+branch. Left: the user's sign-off of the side-by-side page (VER-30). The
 scroll bench's mean (about 5 ms against 1 ms) waits for paint culling or virtualization in Rune.
 
 Every sample under the review themes, side by side with omarky. The user signs off the `manual`
