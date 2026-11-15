@@ -40,3 +40,6 @@ upstream's winit now scales by 12, as Chromium does and as omarky did (RD-26).
 
 The user kept the right-click caret patch and chose to carry the paragraph-styles patch locally
 rather than send it upstream (2026-11-15).
+
+`quire/dev` is pushed to the fork `overp0werj0int/rune` (2026-11-15), and `desktop/Cargo.toml`
+pins its revision for every Rune crate, so Quire builds without a local Rune checkout.

@@ -126,8 +126,8 @@ flowchart LR
    paint only: the text stays the note's Markdown, character for character. The field (and
    the edit sheet's) is laid out per line with Rune's `dir_by_paragraph`, so a keystroke
    reshapes only its own line, and each line takes the direction of its first strong
-   character. That needs Rune's fixes on its `quire/dev` branch, which
-   `desktop/Cargo.toml` takes from a local checkout at `../rune-quire` until it is pushed:
+   character. That needs Rune's fixes on branch `quire/dev` of the fork
+   `overp0werj0int/rune`, which `desktop/Cargo.toml` pins by revision:
    before them a blank line doubled the next line's first letter in the accessible text, and
    long notes typed slowly. The same branch moves the caret to a right-click before the
    editor's own menu opens.

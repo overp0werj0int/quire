@@ -84,7 +84,7 @@ Done when the harness runs headless and the baseline numbers and images are comm
 ### Phase 2. Rune patch spike
 
 Status: done in phase 10 E, 2026-11-15. The paragraph styles moved onto Rune branch
-`quire/by-paragraph-fixes` (now `quire/dev`, decision 0009), carried as a fork branch through `[patch]` (decision 0004). Caret,
+`quire/by-paragraph-fixes` (now `quire/dev`, decision 0009), carried on the fork `overp0werj0int/rune` (decision 0004). Caret,
 clicks in the gutter and wrapping are tested in Quire; typing stays within WR-224's budget (0.7,
 1.1 and 3.3 ms median at 400, 1,000 and 3,000 lines). Rune's own tests for the patch are not run
 on this machine.
