@@ -206,7 +206,8 @@ passes the user checks one at a time:
   check-live sequence runs as a test with the watcher's period injected (RD-19, VER-34).
   Done.
 - D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),
-  the top fade band (WR-177), selected text in the strong colour, the outline's slide (WR-99).
+  the top and foot fade bands (WR-177), selected text in the strong colour, the outline's
+  slide (WR-99). Done. The caret needed Rune's `El::caret_style`.
 - E. Hanging marks (WR-16 and the rest, SHEET-028): resumes phase 2, paused by the user.
 
 ## Open questions

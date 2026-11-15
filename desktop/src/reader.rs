@@ -47,6 +47,9 @@ pub struct Reader {
     pub scroll: Live<[f32; 4]>,
     /// The writer's progress bar, [x, y, w, h], set with the scroll in the frame it draws (WR-178).
     pub bar: Live<[f32; 4]>,
+    /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
+    pub thumb: Live<[f32; 4]>,
+    pub thumb_shown: Live<f32>,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -70,6 +73,8 @@ impl Default for Reader {
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
             bar: Live::new([0.0; 4]),
+            thumb: Live::new([0.0; 4]),
+            thumb_shown: Live::new(0.0),
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -363,7 +368,7 @@ impl App {
         self.reader.wide = Some(!self.wide());
     }
 
-    fn b(&self) -> f32 {
+    pub(crate) fn b(&self) -> f32 {
         self.settings().size as f32
     }
 

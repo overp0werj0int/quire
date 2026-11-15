@@ -374,7 +374,7 @@ pub(crate) mod scroll_tests {
         let mut gap = 0.0;
         let mut top = 0;
         rt.update_if(|s, _| {
-            gap = s.reader.map.borrow().gap(i);
+            gap = crate::page::gap(s.b(), i.checked_sub(1).map(|p| crate::page::rk(&doc.blocks[p].kind)), crate::page::rk(&doc.blocks[i].kind));
             top = s.top();
             false
         });
@@ -722,6 +722,106 @@ mod chip_tests {
         let mid = shown(&rt, "anchor");
         assert!((0.15..0.85).contains(&mid), "half way out at 50 ms: {mid}");
         assert!(shown(&rt, "hot") > 0.99, "accent at once: {}", shown(&rt, "hot"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod writer_chrome_tests {
+    use crate::bench::{DT, LONG, open};
+
+    fn info(rt: &rune::Runtime<crate::app::App>, key: &str) -> Option<rune::ElementInfo> {
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key))
+    }
+
+    /// WR-175: the writer's caret is 2 points wide at the default size, not Rune's 1.5.
+    #[test]
+    fn wr_175_the_caret_is_two_points_wide() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-caret-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, "Some text to type into.\n", crate::app::Mode::Source);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let caret = info(&rt, "editor").and_then(|e| e.caret).expect("the editor shows a caret");
+        assert_eq!(caret[2], 2.0, "caret {caret:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-93: the thumb is hidden at rest, shows while the note scrolls, and is as tall as the
+    /// view is of the note; WR-177: the bands sit at the top and foot of the sheet and let
+    /// presses through.
+    #[test]
+    fn wr_93_177_the_thumb_and_the_fade_bands() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-thumb-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, _| s.persist.settings.toolbar = false);
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let shown = |rt: &rune::Runtime<crate::app::App>| rt.presented("thumb").map_or(0.0, |p| p.1);
+        assert!(shown(&rt) < 0.01, "no thumb at rest: {}", shown(&rt));
+        let area = rt.presented("doc-area").unwrap().0;
+        let (top, foot) = (info(&rt, "fade-top").expect("the top band"), info(&rt, "fade-foot").expect("the foot band"));
+        assert!(top.inert && foot.inert, "the bands let presses through");
+        assert_eq!((top.rect[1], top.rect[3]), (area[1], 28.0), "top band {:?} in {area:?}", top.rect);
+        assert_eq!((foot.rect[1] + foot.rect[3], foot.rect[3]), (area[1] + area[3], 64.0), "foot band {:?}", foot.rect);
+        let (x, y) = rt.find("doc-scroll").unwrap();
+        rt.pointer_move(x, y);
+        rt.wheel(x, y, -400.0);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        assert!(shown(&rt) > 0.4, "the thumb shows while scrolling: {}", shown(&rt));
+        let mut v = [0.0; 4];
+        rt.update_if(|s, _| {
+            v = s.reader.scroll.get();
+            false
+        });
+        let thumb = rt.presented("thumb").unwrap().0;
+        let h = 24f32.max(v[2] * v[2] / (v[1] + v[2]));
+        assert!((thumb[3] - h).abs() < 0.5 && thumb[2] == 3.0, "thumb {thumb:?}, view {v:?}");
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        assert!(shown(&rt) < 0.05, "the thumb fades 700 ms after the last move: {}", shown(&rt));
+        // With the toolbar on, its own fade does the top band's job.
+        rt.update(|s, _| s.persist.settings.toolbar = true);
+        rt.frame(DT);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let band = info(&rt, "fade-top").map(|e| (e.exiting, e.opacity));
+        assert!(band.is_none(), "no top band under the toolbar: {band:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-99: the outline slides in from the right over about 160 ms rather than appearing.
+    #[test]
+    fn wr_99_the_outline_slides() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-slide-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, _| s.persist.right_open = false);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(info(&rt, "outline").is_none());
+        let (x, y) = rt.find("toggle-right").expect("the outline button");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(DT);
+        rt.frame(DT);
+        let sheet = rt.presented("sheet-row").unwrap().0;
+        let end = sheet[0] + sheet[2];
+        let early = rt.presented("outline").expect("the outline mounts").0;
+        assert!(early[0] > end - 236.0 + 20.0, "two frames in, the outline is still sliding: {early:?}, row ends at {end}");
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let done = rt.presented("outline").unwrap().0;
+        assert!((done[0] - (end - 236.0)).abs() < 0.5, "it rests at the right: {done:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

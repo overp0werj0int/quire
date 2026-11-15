@@ -51,7 +51,24 @@ pub fn body(v: V) -> El {
         // scroll in the frame it moves.
         let c = Roles::new(v.p);
         let bar = el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).opacity(0.55).paint_order(30).live_rect(&v.s.reader.bar);
-        area = area.child(bar).child(super::reader::find_bar(v));
+        // The thumb fades over 300 ms (WR-93).
+        let thumb = el()
+            .key("thumb")
+            .pin(Some(0.0), Some(0.0), None, None)
+            .radius(1.5)
+            .fill(c.faint)
+            .paint_order(30)
+            .live_rect(&v.s.reader.thumb)
+            .live_opacity(v.s.reader.thumb_shown.smooth(rune::Spring::new(0.3, 0.0)));
+        // Text fades under the title bar and into the sheet's foot (WR-177). The bands let
+        // presses through to the text. While the toolbar shows, its own fade does the top.
+        let pin = |top: bool| el().pin(Some(0.0), top.then_some(0.0), Some(0.0), (!top).then_some(0.0)).inert();
+        if !shows_toolbar(v) {
+            area = area.child(pin(true).key("fade-top").h(28.0).gradient(c.bg, c.bg.alpha(0.0)));
+        }
+        let foot = [(0.0, c.bg.alpha(0.0)), (0.6, c.bg), (1.0, c.bg)];
+        area = area.child(pin(false).key("fade-foot").h(64.0).linear_gradient(std::f32::consts::PI, foot));
+        area = area.child(bar).child(thumb).child(super::reader::find_bar(v));
     }
     if let Some((msg, _)) = &v.s.reader.toast {
         area = area.child(super::reader::toast(v, msg));
@@ -59,7 +76,11 @@ pub fn body(v: V) -> El {
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     let (o, fade) = v.s.chrome_fade();
     if v.right_visible() {
-        inner = inner.child(outline::outline(v).opacity(o).opacity_motion(fade));
+        // The outline slides in from the right and out to it over 160 ms, and its slot
+        // closes as it leaves (WR-99).
+        let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+        let t = rune::Transition::move_edge(rune::Edge::Trailing).springs(slide).hold_layout();
+        inner = inner.child(outline::outline(v).opacity(o).opacity_motion(fade).transition(t));
     }
     sheet = sheet.child(inner);
     if v.has_doc() && !focus {
@@ -78,6 +99,19 @@ pub fn body(v: V) -> El {
         r = r.child(sidebar::sidebar(v).opacity(o).opacity_motion(fade));
     }
     r.child(sheet)
+}
+
+/// The writer's scroll thumb (WR-93) from the viewport's [offset, range, height, width]: 3
+/// wide, 4 in from the right edge, as tall as the view is of the content but at least 24, and
+/// none when the content is less than 1.05 views tall.
+fn thumb_rect([offset, max, view, width]: [f32; 4]) -> [f32; 4] {
+    let content = max + view;
+    if view <= 0.0 || content <= view * 1.05 {
+        return [0.0; 4];
+    }
+    let h = 24f32.max(view * view / content);
+    let k = if max > 0.0 { (offset / max).clamp(0.0, 1.0) } else { 0.0 };
+    [width - 4.0 - 3.0, (view - h) * k, 3.0, h]
 }
 
 fn clamp(lo: f32, x: f32, hi: f32) -> f32 {
@@ -160,6 +194,7 @@ fn doc_scroll(v: V) -> El {
     let live = s.reader.scroll.clone();
     let bar = s.reader.bar.clone();
     let map = s.reader.map.clone();
+    let (thumb, shown) = (s.reader.thumb.clone(), s.reader.thumb_shown.clone());
     let mut scroll = col()
         .key("doc-scroll")
         .grow(1.0)
@@ -169,10 +204,16 @@ fn doc_scroll(v: V) -> El {
         .scroll(ScrollSpec { stick_bottom: false })
         .on_scroll_offset(move |at| {
             let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];
+            let moved = live.get()[0] != now[0];
             live.set(now);
             // The reader's progress follows its top block (RD-38); the writer's is how far the
             // view has scrolled (WR-178).
             map.borrow_mut().follow(now, &bar);
+            thumb.set(thumb_rect(now));
+            if moved {
+                // Each scroll shows the thumb for 700 ms past the last move (WR-93).
+                shown.pulse(0.5, 0.0, std::time::Duration::from_millis(700));
+            }
         });
     if super::reading(s) {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).
@@ -404,8 +445,8 @@ fn source(v: V) -> El {
     let input = text_input(edit.unwrap_or(&empty), style)
         .key("editor")
         .w_full()
-        .color(ink.text)
-        .caret(c.accent, c.selection)
+        .color(ink.text);
+    let input = writer_caret(input, &c, e)
         .placeholder("Start writing…", c.ghost)
         .spellcheck(s.settings().spellcheck)
         .label("Note")
@@ -429,6 +470,16 @@ pub fn with_edit_menu(input: rune::El, key: &'static str) -> rune::El {
         return input;
     }
     input.on_secondary_press(move |s: &mut App, at, _| s.open_edit_menu(key, at.x, at.y))
+}
+
+/// The writer's caret and selection, shared with the edit sheet: an accent bar
+/// max(2, round(size / 9)) wide with round ends that blinks (WR-175, SHEET-029), and selected
+/// text in the strong colour over the selection (WR-176).
+pub(super) fn writer_caret(input: El, c: &Roles, size: f32) -> El {
+    let blink = rune::Blink { on: 0.52, fade_out: 0.18, off: 0.34, fade_in: 0.18, hold: 1.4 };
+    let style = rune::CaretStyle { width: 2f32.max((size / 9.0).round()), round: true, blink: Some(blink) };
+    let sel = rune::SelectionStyle::new(c.selection).ink(c.strong).inactive(c.selection, Some(c.strong));
+    input.caret(c.accent, c.selection).caret_style(style).selection_style(sel)
 }
 
 /// The `[[link]]` around the caret, if any.

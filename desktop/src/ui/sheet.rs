@@ -73,8 +73,8 @@ pub fn sheet(v: V) -> rune::El {
     let input = text_input(&sh.edit, style)
         .key(EDITOR)
         .w(measure)
-        .color(ink.text)
-        .caret(c.accent, c.selection)
+        .color(ink.text);
+    let input = super::editor::writer_caret(input, &c, e)
         .label("Edit the block")
         .spans(spans)
         .strikes(strikes)
