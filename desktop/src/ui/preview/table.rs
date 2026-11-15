@@ -35,9 +35,10 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
     for i in 0..n {
         let head = rune::text::advance(&heads[i], head_style);
         let word = heads[i].split_whitespace().map(|w| rune::text::advance(w, head_style)).fold(0.0, f32::max);
-        let widest = body.iter().map(|rw| rune::text::content_widths(&rw[i].text, &rw[i].spans, style_of(i)).1).fold(head, f32::max);
-        natural[i] = widest.min(34.0 * avg).ceil() + 2.0 * px;
-        min[i] = (word.max(10.0 * avg).ceil() + 2.0 * px).min(natural[i]);
+        // omarky pads each cell's measure by 2 % and a point, and each column by 2 points.
+        let widest = body.iter().map(|rw| rune::text::content_widths(&rw[i].text, &rw[i].spans, style_of(i)).1 * 1.02 + 1.0).fold(head, f32::max);
+        natural[i] = (widest.min(r(34.0 * avg)) + 2.0 * px + 2.0).ceil();
+        min[i] = natural[i].min((word + 2.0 * px + 2.0).max(10.0 * avg + 2.0 * px)).ceil();
     }
     let (widths, scrolls) = page::table_widths(&natural, &min, look.width - 2.0, 24.0 * avg + 2.0 * px);
     let align = |i: usize| match t.aligns.get(i) {
@@ -56,7 +57,8 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
         head = head.child(el().key(format!("c-{i}")).w(*w).px(px).py(py).child(cell));
     }
     let zebra = c.text.alpha(look.ld(0.022, 0.018));
-    let mut frame = col().key("frame").border(1.0, c.hairline).radius(4.0).clip_rounded(4.0).child(head);
+    // The grid sits inside the 1 px frame, as in omarky, not under it (BLK-62).
+    let mut frame = col().key("frame").border(1.0, c.hairline).padding(1.0).radius(4.0).clip_rounded(4.0).child(head);
     for (ri, cells) in body.into_iter().enumerate() {
         let mut rw = row().key(format!("r-{ri}"));
         if ri > 0 {
@@ -71,5 +73,8 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
         }
         frame = frame.child(rw);
     }
-    if scrolls { el().w_full().scroll_x().child(frame) } else { row().w_full().child(frame) }
+    // While it scrolls, each side fades into the page over its own width, only while there is
+    // more that way (BLK-69).
+    let fade = |w: f32| rune::ScrollFade::strength(w).full_at(1.0).linear();
+    if scrolls { el().w_full().scroll_x().scroll_fade(fade(r(b * 2.2)).with_end(fade(r(b * 2.8)))).child(frame) } else { row().w_full().child(frame) }
 }

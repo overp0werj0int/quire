@@ -110,7 +110,9 @@ impl Rich {
     fn runs(&mut self, runs: &[Run], cx: &Cx, tone: Tone) {
         let look = cx.look;
         let c = &look.c;
-        let code = r(tone.size * 0.86);
+        // Inline code is at the body's code size wherever it sits: a table cell, a footnote or a
+        // heading (PAGE-75).
+        let code = r(look.b * 0.86);
         for run in runs {
             let a = self.text.len();
             if run.br {
@@ -125,7 +127,7 @@ impl Rich {
                 ..Span::default()
             };
             if run.code {
-                self.chip(&run.t, code, look, Some(c.code_text));
+                self.chip(&run.t, code, tone.size, look, Some(c.code_text));
                 continue;
             }
             if run.raw {
@@ -134,7 +136,7 @@ impl Rich {
             }
             match &run.link {
                 Some(Link::Tag(tag)) => {
-                    self.chip(&run.t, code, look, Some(c.accent));
+                    self.chip(&run.t, code, tone.size, look, Some(c.accent));
                     self.links.push((a..self.text.len(), format!("tag:{tag}"), c.accent));
                     continue;
                 }
@@ -169,11 +171,12 @@ impl Rich {
 
     /// Inline code on a chip (PAGE-75, PAGE-76): mono, a quarter em of room each side, the chip
     /// 1.5 × its size tall.
-    fn chip(&mut self, t: &str, size: f32, look: &Look, color: Option<Color>) {
+    fn chip(&mut self, t: &str, size: f32, around: f32, look: &Look, color: Option<Color>) {
         let bg = look.c.code_bg;
         let pad_y = ((r(size * 1.5) - (look.mono_asc + look.mono_desc) * size) / 2.0).max(0.0);
-        // A space at this size is a four-per-em space of the code: `mono_w` em of `side`.
-        let side = 0.25 * size / look.mono_w;
+        // Each side is a four-per-em space of the text around the chip, as omarky's U+2005 sits
+        // outside the code: a mono space (`mono_w` em) at `side` is a quarter em of `around`.
+        let side = 0.25 * around / look.mono_w;
         let a = self.text.len();
         self.text.push(' ');
         let b = self.text.len();
@@ -477,20 +480,25 @@ impl Cx<'_> {
             Alert::Caution => (c.red, &octicons::STOP),
         };
         let ts = r(b * 0.76);
+        let isz = r(b * 0.95);
+        // omarky draws the icon as a Nerd Font glyph, so the row is as tall as that font's line:
+        // JetBrains Mono's ascent and descent come to 1.32 em [18].
         let title = row()
             .key("title")
+            .h((isz * 1.32).ceil())
             .gap(r(b * 0.5))
             .center_y()
-            .child(icon(glyph, r(b * 0.95)).color(tint))
+            .child(icon(glyph, isz).color(tint))
             .child(text(kind.title()).font(TextStyle::new(ts, 700.0).family(look.mono).lh(line(ts, 1.3)).tracking(r(b * 0.08))).color(tint).text_case(TextCase::Uppercase));
         let inner = Tone { color: c.text, size: b, contained: true, ..tone };
+        let fill = look.ld(0.075, 0.09);
         col()
             .w_full()
             .padding(r(b * 1.05))
             .gap(r(b * 0.5))
             .radius(4.0)
-            .fill(tint.alpha(look.ld(0.075, 0.09)))
-            .border(1.0, tint.alpha(look.ld(0.3, 0.24)))
+            .fill(tint.alpha(fill))
+            .border(1.0, c.on_page(tint.alpha(look.ld(0.3, 0.24))))
             .child(title)
             .child(self.stack(blocks, inner, false, false).key("body").w_full())
     }
@@ -553,7 +561,7 @@ impl Cx<'_> {
             .center_y()
             .radius(4.0)
             .fill(look.c.card)
-            .border(1.0, look.c.hairline)
+            .border(1.0, look.c.on_page(look.c.hairline))
             .child(icon(&octicons::IMAGE, r(b * 1.05)).color(look.c.faint));
         let msg = text(msg).font(look.mono_at(ts, 1.3)).color(look.c.faint).min_w(0.0);
         match size {
@@ -674,7 +682,7 @@ fn is_tag_line(runs: &[Run]) -> bool {
 /// Tags drawn as chips (BLK-101, PAGE-76), on the paragraph's baseline.
 fn tag_line(cx: &Cx, runs: &[Run], tone: Tone) -> El {
     let look = cx.look;
-    let size = r(tone.size * 0.86);
+    let size = r(look.b * 0.86);
     let lh = line(tone.size, tone.lead);
     let chip_h = r(size * 1.5);
     let top = (look.baseline(tone.size, lh) - look.mono_asc * size - (chip_h - (look.mono_asc + look.mono_desc) * size) / 2.0).max(0.0);

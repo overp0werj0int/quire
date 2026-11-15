@@ -107,7 +107,7 @@ cargo run -- --snap shot.png --scene dark                # scenes: welcome, prev
 cargo run -- --script events.json --snap shot.png --at mark:end   # play input events, then render
 ```
 
-- A headless run opens the folder in `QUIRE_FOLDER`. Set `HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` to an empty folder, so the run does not touch your own settings.
+- A headless run opens the folder in `QUIRE_FOLDER`, and the note `QUIRE_NOTE` in it if set. `--scene parity` shows the reader as omarky's screenshots do (VER-30): preview mode, body size 14, the Omarchy theme under `HOME`, no side panels. Set `HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` to an empty folder, so the run does not touch your own settings.
 - The sync tests run two devices against an S3 test server in the test process. Three more tests check a real store, and they only run when you ask for them. Each one reads the settings file in `QUIRE_LIVE_STATE`, and none of them prints a key:
 
   ```sh

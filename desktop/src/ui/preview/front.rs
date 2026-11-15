@@ -45,7 +45,7 @@ pub(super) fn pill(cx: &Cx, label: &str, tone: Option<Color>, glyph: Option<&'st
         None => (c.raised, c.hairline, c.dim, c.faint),
         Some(t) => (t.alpha(look.ld(0.12, 0.14)), t.alpha(look.ld(0.4, 0.35)), mix(t, c.text, look.ld(0.25, 0.1)), t),
     };
-    let mut p = row().h(h).px(r(size * 1.3) / 2.0).gap(r(size * 0.4)).center_y().radius(h / 2.0).fill(fill).border(1.0, edge);
+    let mut p = row().h(h).px(r(size * 1.3) / 2.0).gap(r(size * 0.4)).center_y().radius(h / 2.0).fill(fill).border(1.0, c.on_page(edge));
     if let Some(g) = glyph {
         p = p.child(icon(g, size).key("icon").color(icon_ink));
     }
@@ -69,20 +69,27 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
         .color(c.ghost)
         .text_case(TextCase::Uppercase)
         .pin(None, Some(pad - r(b * 0.35)), Some(pad), None);
-    let mut body = col().key("body").w_full();
+    // The title, then the rows, a row gap apart; the title stops short of the label (BLK-91).
+    let gap = r(b * 0.55);
+    let mut body = col().key("body").w_full().gap(gap);
     if !title.is_empty() {
         let ts = step(b, 1.5);
-        body = body.child(text(title.to_string()).key("title").font(TextStyle::new(ts, 700.0).family(look.family).lh(line(ts, 1.3))).color(c.strong).wrap().w_full().pr(r(b * 6.0)).mb(r(b * 0.6)));
+        let label_w = rune::text::advance("FRONT MATTER", TextStyle::new(ls, 400.0).family(look.mono).tracking(0.8)).ceil();
+        body = body.child(text(title.to_string()).key("title").font(TextStyle::new(ts, 700.0).family(look.family).lh(line(ts, 1.3))).color(c.strong).wrap().w_full().pr(label_w + b).pb(r(b * 0.6)));
     }
-    let mut rows = col().key("rows").w_full().gap(r(b * 0.55));
+    // Rows sit at the top, each key centred in a box a row tall, as are one-line values; text
+    // and lists start a little down so their first line meets the key (BLK-92 to BLK-98).
+    let rh = r(b * 1.55);
+    let one_line = |e: El| row().w_full().h(rh).center_y().child(e);
+    let mut rows = col().key("rows").w_full().gap(gap);
     for (i, f) in fields.iter().enumerate() {
         let value: El = match f.kind {
             FieldKind::Pill => {
                 let glyph = is_date(&f.value).then_some(&octicons::CALENDAR);
-                pill(cx, &f.value, status_tone(cx, &f.key, &f.value), glyph)
+                one_line(pill(cx, &f.value, status_tone(cx, &f.key, &f.value), glyph))
             }
             FieldKind::List => {
-                let mut r_ = row().w_full().flex_wrap().gap(r(b * 0.35));
+                let mut r_ = row().w_full().flex_wrap().gap(r(b * 0.35)).pt(((b * 1.55 - b * 0.76 * 2.0) / 2.0).round());
                 for (j, it) in f.items.iter().enumerate() {
                     r_ = r_.child(pill(cx, it, None, None).key(format!("v-{j}")));
                 }
@@ -92,16 +99,18 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
                 let mut rich = Rich::default();
                 let run = Run { t: f.value.clone(), link: Some(Link::Url(f.value.clone())), ..Run::default() };
                 rich.runs(&[run], cx, super::Tone { color: c.link, size: vs, lead: 1.5, contained: true, quote_depth: 0 });
-                rich.el(look.prose(vs, 1.5), c.link).w_full()
+                // One line, cut in the middle when it is wider than the value column.
+                one_line(rich.el(look.prose(vs, 1.5), c.link).truncate_middle())
             }
-            FieldKind::Empty => text("\u{2014}").font(look.prose(vs, 1.5)).color(c.ghost),
-            FieldKind::Text => text(f.value.clone()).font(look.prose(vs, 1.5)).color(c.text).wrap().w_full(),
+            FieldKind::Empty => one_line(text("\u{2014}").font(look.prose(vs, 1.5)).color(c.ghost)),
+            FieldKind::Text => text(f.value.clone()).font(look.prose(vs, 1.5)).color(c.text).wrap().w_full().pt(((b * 1.55 - vs * 1.5) / 2.0).round().max(0.0)),
         };
-        let key = text(f.key.clone()).key("key").font(key_style).color(c.faint).text_case(TextCase::Uppercase).w(key_w);
-        rows = rows.child(row().key(format!("f-{i}")).w_full().min_h(r(b * 1.55)).center_y().child(key).child(el().key("value").grow(1.0).min_w(0.0).child(value)));
+        let key = text(f.key.clone()).key("key").font(key_style).color(c.faint).text_case(TextCase::Uppercase).truncate().w(key_w - b);
+        let key = el().w(key_w).h(rh).center_y().child(key);
+        rows = rows.child(row().key(format!("f-{i}")).w_full().items_start().child(key).child(el().key("value").grow(1.0).min_w(0.0).child(value)));
     }
     body = body.child(rows);
-    el().w_full().padding(pad).radius(6.0).fill(c.card).border(1.0, c.hairline).child(body).child(label)
+    el().w_full().padding(pad).radius(6.0).fill(c.card).border(1.0, c.on_page(c.hairline)).child(body).child(label)
 }
 
 #[cfg(test)]

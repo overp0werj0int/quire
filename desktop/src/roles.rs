@@ -87,6 +87,13 @@ pub struct Roles {
 }
 
 impl Roles {
+    /// `c` flattened over the page. Rune draws a border over the box's own fill, where Qt draws
+    /// it beside the fill, over what is behind; a filled box on the page gets omarky's border
+    /// pixels from its border colour flattened so.
+    pub fn on_page(&self, c: Color) -> Color {
+        mix(self.bg, Color { a: 1.0, ..c }, c.a)
+    }
+
     pub fn new(p: &Pal) -> Roles {
         let (fg, bg, accent, dark, n) = (p.ink, p.bg, p.acc, p.dark, p.named);
         let ld = |light: f32, dark_v: f32| if dark { dark_v } else { light };

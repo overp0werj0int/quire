@@ -6,7 +6,8 @@ use std::path::PathBuf;
 /// folder. For a note, the second value is its path inside the folder.
 pub fn start_target() -> Option<(PathBuf, Option<String>)> {
     if rune::is_headless() {
-        return std::env::var_os("QUIRE_FOLDER").map(|p| (PathBuf::from(p), None));
+        // `QUIRE_NOTE` names a note in that folder to open, for snapshots of one note.
+        return std::env::var_os("QUIRE_FOLDER").map(|p| (PathBuf::from(p), std::env::var("QUIRE_NOTE").ok()));
     }
     let arg = rune::extra_args().iter().map(PathBuf::from).find(|p| p.exists())?.canonicalize().ok()?;
     if arg.is_dir() {

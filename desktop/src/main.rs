@@ -54,6 +54,18 @@ fn scene_focus(s: &mut App) {
 fn scene_settings(s: &mut App) {
     s.settings_open = true;
 }
+/// The reader as omarky's screenshots show it, for the parity pass (VER-30): preview mode, body
+/// size 14, the Omarchy theme under `HOME`, no side panels. With `QUIRE_FOLDER` and `QUIRE_NOTE`.
+fn scene_parity(s: &mut App) {
+    s.mode = app::Mode::Preview;
+    let set = &mut s.persist.settings;
+    set.theme = "system".into();
+    set.light_theme = None;
+    set.dark_theme = None;
+    set.size = 14;
+    s.persist.left_open = false;
+    s.persist.right_open = false;
+}
 fn scene_keys(s: &mut App) {
     s.settings_open = true;
     s.set_sec = app::Sec::Keys;
@@ -103,7 +115,7 @@ fn main() {
         on_key: Some(keys::on_key),
         poll: Some(|s: &mut App, t, tx| s.poll(t, tx)),
         setup: Some(|s: &mut App, waker| s.set_waker(waker)),
-        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys)],
+        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys), ("parity", scene_parity)],
         ..AppSpec::new("Quire", (1280.0, 800.0), app::init, ui::view)
     };
     rune::App::new(spec)

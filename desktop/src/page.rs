@@ -139,10 +139,10 @@ pub fn table_widths(natural: &[f32], min: &[f32], avail: f32, scroll_cap: f32) -
     if lo <= avail {
         let slack: f32 = natural.iter().zip(min).map(|(n, m)| n - m).sum();
         let give = avail - lo;
-        let w = natural.iter().zip(min).map(|(n, m)| if slack > 0.0 { m + (n - m) * give / slack } else { *m }).collect();
+        let w = natural.iter().zip(min).map(|(n, m)| if slack > 0.0 { (m + (n - m) * give / slack).floor() } else { *m }).collect();
         return (w, false);
     }
-    (natural.iter().zip(min).map(|(n, m)| n.min(scroll_cap).max(*m)).collect(), true)
+    (natural.iter().zip(min).map(|(n, m)| n.min(scroll_cap).max(*m).ceil()).collect(), true)
 }
 
 #[cfg(test)]
@@ -219,10 +219,8 @@ mod tests {
     #[test]
     fn blk_63_to_65_table_widths() {
         assert_eq!(table_widths(&[100.0, 200.0], &[50.0, 80.0], 400.0, 150.0), (vec![100.0, 200.0], false));
-        // 300 natural, 130 minimum, 230 available: 100 of 170 slack is kept.
-        let (w, s) = table_widths(&[100.0, 200.0], &[50.0, 80.0], 230.0, 150.0);
-        assert!(!s);
-        assert!((w[0] - (50.0 + 50.0 * 100.0 / 170.0)).abs() < 0.01 && (w.iter().sum::<f32>() - 230.0).abs() < 0.01);
+        // 300 natural, 130 minimum, 230 available: 100 of 170 slack is kept, floored as in omarky.
+        assert_eq!(table_widths(&[100.0, 200.0], &[50.0, 80.0], 230.0, 150.0), (vec![79.0, 150.0], false));
         assert_eq!(table_widths(&[100.0, 200.0], &[50.0, 160.0], 100.0, 150.0), (vec![100.0, 160.0], true));
     }
 }
