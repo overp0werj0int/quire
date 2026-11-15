@@ -337,6 +337,7 @@ impl App {
             }
         }
         self.open_find(tx);
+        self.reader.find.searched = self.reader.find.q.text.clone();
         if self.find_query().is_some() {
             self.source_found(tx);
         }
@@ -414,7 +415,7 @@ impl App {
             let block = doc.blocks.iter().rposition(|b| b.lines.start <= line).unwrap_or(0);
             self.wstate.back = Some((self.reader.scroll.get()[0], block));
             self.mode = Mode::Preview;
-            self.jump_block(line, tx);
+            self.land(block, false, tx);
         } else {
             let top = self.top();
             let line = self.doc().blocks.get(top).map_or(0, |b| b.lines.start);

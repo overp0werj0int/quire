@@ -177,6 +177,12 @@ pub(crate) mod scroll_tests {
         let line = LONG.lines().position(|l| l == "# Chapter 42: Code").unwrap();
         let i = doc.blocks.iter().position(|b| b.lines.start == line).unwrap();
         rt.update(|s, tx| s.jump_block(line, tx));
+        rt.frame(DT);
+        let mut first = [0.0; 4];
+        rt.update_if(|s, _| {
+            first = s.reader.scroll.get();
+            false
+        });
         for _ in 0..90 {
             rt.frame(DT);
         }
@@ -191,6 +197,14 @@ pub(crate) mod scroll_tests {
         });
         assert!((row[1] + gap - page[1] - 20.0).abs() < 1.0, "the heading lands 20 px under the top: row {row:?}, gap {gap}, page {page:?}");
         assert_eq!(top, i, "the top block follows the jump");
+        // RD-24: a long jump cuts to 0.8 of a view short, then glides the rest.
+        let mut last = 0.0;
+        rt.update_if(|s, _| {
+            last = s.reader.scroll.get()[0];
+            false
+        });
+        let short = last - first[0];
+        assert!(short > 0.0 && short <= 0.8 * first[2] + 1.0, "the first frame lands short of the heading: {short} of a {} view", first[2]);
 
         // From the top, four steps on reach a match in the middle of the note, far past the
         // rows built.
@@ -202,6 +216,7 @@ pub(crate) mod scroll_tests {
             s.open_find(tx);
             s.reader.find.q = rune::TextEdit::new("OmarkyReader from anywhere");
             s.find_changed(tx);
+            assert_eq!(s.find_count(), 0, "the search waits for typing to pause (RD-56)");
         });
         for _ in 0..90 {
             rt.frame(DT);
@@ -219,6 +234,26 @@ pub(crate) mod scroll_tests {
         let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
         let mid = page[1] + page[3] / 2.0;
         assert!((y - mid).abs() < 2.0, "the match sits mid-page: at {y}, middle {mid}");
+
+        // RD-60: a match shown between 20% and 75% of the view stays put; shown above that, it
+        // glides to 35%.
+        let h = page[3];
+        let mut nudge = |rt: &mut rune::Runtime<crate::app::App>, by: f32| {
+            rt.update(|s, tx| {
+                let at = s.reader.scroll.get()[0];
+                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
+            });
+            rt.frame(DT);
+            rt.update(|s, tx| s.center_match(tx));
+            for _ in 0..60 {
+                rt.frame(DT);
+            }
+            (rt.find(crate::reader::FIND_CUR).unwrap().1 - page[1]) / h
+        };
+        let at = nudge(&mut rt, 0.2 * h);
+        assert!((at - 0.3).abs() < 0.01, "a match at 30% stays: {at}");
+        let at = nudge(&mut rt, 0.25 * h);
+        assert!((at - 0.35).abs() < 0.02, "a match at 5% glides to 35%: {at}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

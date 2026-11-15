@@ -31,6 +31,7 @@ pub(crate) fn open(dir: &std::path::Path, text: &str, mode: Mode) -> (Runtime<Ap
         std::env::set_var("XDG_STATE_HOME", dir.join("state"));
     }
     let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1400.0, 1000.0), Env { system_dark: false, scale: 1.0 });
+    rt.poll = Some(|s: &mut App, t, tx| s.poll(t, tx));
     rt.frame(DT);
     let t = Instant::now();
     rt.update(move |s, tx| {

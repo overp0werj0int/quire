@@ -61,7 +61,7 @@ impl Default for Reader {
     fn default() -> Self {
         Reader {
             wide: None,
-            find: Find { open: false, q: TextEdit::new(""), cur: 0 },
+            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0 },
             help: false,
             toast: None,
             copied: None,
@@ -188,6 +188,10 @@ impl PageMap {
 pub struct Find {
     pub open: bool,
     pub q: TextEdit,
+    /// The query the matches are for: the bar's text once the search has run (RD-56).
+    pub searched: String,
+    /// When the search runs, on the clock, while one waits.
+    pub due: Option<f64>,
     /// The current match, an index into `blocks::find_all`.
     pub cur: usize,
 }
@@ -406,30 +410,55 @@ impl App {
         self.travel(max, tx);
     }
 
-    /// The block whose first line is `line`, landed 20 px under the top (RD-25).
+    /// Travels to the block whose first line is `line` (RD-24, RD-25, RD-49).
     pub fn jump_block(&mut self, line: usize, tx: &mut Tx) {
-        let doc = self.doc();
-        if let Some(i) = doc.blocks.iter().rposition(|b| b.lines.start <= line) {
-            self.land(i, tx);
+        if let Some(i) = self.block_at_line(line) {
+            self.land(i, true, tx);
         }
     }
 
-    /// Scrolls block `i` to 20 px under the top. Its row starts at the gap above it, so the row
-    /// lands that much higher.
-    fn land(&self, i: usize, tx: &mut Tx) {
-        let doc = self.doc();
-        if let Some(b) = doc.blocks.get(i) {
-            tx.scroll_key_to(block_key(b), 20.0 - self.reader.map.borrow().gap(i));
-        }
+    /// The last block starting at or before `line`.
+    pub(crate) fn block_at_line(&self, line: usize) -> Option<usize> {
+        self.doc().blocks.iter().rposition(|b| b.lines.start <= line)
     }
 
-    /// Centres the current find match. It names its block's row first, so a match in a row
-    /// not yet built is reached too.
-    fn center_match(&self, tx: &mut Tx) {
+    /// Puts block `i` 20 px under the top (RD-25), at once or, when `travel`, as a long jump
+    /// travels (RD-24): past 1.5 views it cuts to 0.8 of a view short, then glides 240 ms. The
+    /// cut and the glide land by the block's row, so both hold where the rows on the way were
+    /// estimates. The row
+    /// starts at the gap above the block, so the row lands that much higher.
+    pub(crate) fn land(&mut self, i: usize, travel: bool, tx: &mut Tx) {
+        let doc = self.doc();
+        let Some(b) = doc.blocks.get(i) else { return };
+        let (gap, top) = {
+            let map = self.reader.map.borrow();
+            (map.gap(i), map.tops.get(i).copied())
+        };
+        let key = block_key(b);
+        self.reader.glide = None;
+        if !travel {
+            return tx.scroll_key_to(key, 20.0 - gap);
+        }
+        let [offset, max, vh, _] = self.reader.scroll.get();
+        if let Some(to) = top.map(|t| (t - 20.0).clamp(0.0, max.max(0.0)))
+            && (to - offset).abs() > 1.5 * vh
+        {
+            // The cut is placed by the row too, so it stops 0.8 of a view short of where the
+            // row measures, not of where it was estimated.
+            tx.scroll_key_to(key.clone(), 20.0 - gap + if to > offset { 0.8 * vh } else { -0.8 * vh });
+        }
+        tx.scroll_key_to_with(key, 20.0 - gap, Spring::new(0.24, 0.0));
+    }
+
+    /// Brings the current find match into view (RD-60, BLK-52): it stays put between 20% and
+    /// 75% of the view's height, glides to 35% while it shows elsewhere, and is centred from off
+    /// screen; in a code line past the visible part, the block scrolls it a third of the way in.
+    /// It names its block's row first, so a match in a row not yet built is reached too.
+    pub(crate) fn center_match(&self, tx: &mut Tx) {
         let m = self.find_matches();
         let doc = self.doc();
         if let Some(b) = m.get(self.reader.find.cur).and_then(|m| doc.blocks.get(m.block)) {
-            tx.scroll_center(format!("{}/{FIND_CUR}", block_key(b)));
+            tx.scroll_band(format!("{}/{FIND_CUR}", block_key(b)), (0.2, 0.75), 0.35);
         }
     }
 
@@ -546,6 +575,8 @@ impl App {
         if f.open {
             f.open = false;
             f.q = TextEdit::new("");
+            f.searched.clear();
+            f.due = None;
             f.cur = 0;
             tx.blur();
         }
@@ -553,7 +584,7 @@ impl App {
 
     pub fn find_query(&self) -> Option<&str> {
         let f = &self.reader.find;
-        Some(f.q.text.as_str()).filter(|q| f.open && !q.is_empty())
+        Some(f.searched.as_str()).filter(|q| f.open && !q.is_empty())
     }
 
     /// How many matches the find bar counts, in either mode.
@@ -566,15 +597,37 @@ impl App {
         self.find_query().map_or_else(Vec::new, |q| blocks::find_all(&self.doc(), q))
     }
 
-    /// The query changed: pick the first match from the top of the view (RD-57).
+    /// The query changed. The writer searches at once; the reader 40 ms after the last
+    /// keystroke, or 120 ms in a note of over 400 blocks (RD-56).
     pub fn find_changed(&mut self, tx: &mut Tx) {
         if self.mode == crate::app::Mode::Source {
+            self.reader.find.searched = self.reader.find.q.text.clone();
             return self.source_found(tx);
         }
+        let wait = if self.doc().blocks.len() > 400 { 0.12 } else { 0.04 };
+        let due = tx.clock() + wait;
+        self.reader.find.due = Some(due);
+        tx.wake_at(due);
+    }
+
+    /// Runs a reader search whose wait is over: picks the first match from the top of the view
+    /// (RD-57). Whether one ran.
+    pub(crate) fn search_due(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let f = &mut self.reader.find;
+        match f.due {
+            Some(due) if t >= due => f.due = None,
+            Some(due) => {
+                tx.wake_at(due);
+                return false;
+            }
+            None => return false,
+        }
+        f.searched = f.q.text.clone();
         let m = self.find_matches();
         let top = self.top();
         self.reader.find.cur = first_match(&m, top);
         self.center_match(tx);
+        true
     }
 
     /// Enter / n and Shift+Enter / N (RD-58).
@@ -653,7 +706,7 @@ impl App {
         let a = crate::md::percent_decode(anchor);
         let i = doc.anchors.get(a.as_str()).or_else(|| doc.anchors.get(blocks::slugify(&a).as_str()));
         if let Some(&i) = i {
-            self.land(i, tx);
+            self.land(i, true, tx);
         }
     }
 }

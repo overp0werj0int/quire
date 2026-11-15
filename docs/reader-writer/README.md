@@ -187,6 +187,23 @@ Every sample under the review themes, side by side with omarky. The user signs o
 items. Budgets are checked again. `README.md`, `desktop/README.md` and `ARCHITECTURE.md` are
 updated.
 
+### Phase 10. The deferred details
+
+Status: in progress on branch `rw/phase-3-typography`. The items phases 5 to 8 deferred, in
+passes the user checks one at a time:
+
+- A. Reader motion and find: long jumps travel in two parts (RD-24), find waits for typing
+  to pause (RD-56) and keeps the match in a band (RD-60), and a match in a long code line
+  scrolls into view sideways (BLK-52). Done. Touchpad fling tuning (RD-27) waits for the
+  user's feel.
+- B. Hover details: colour fades, the task box's hover border, inline chip borders, the code
+  and table edge fades.
+- C. Reader chrome: the preview toolbar buttons (RD-34, RD-35), `[[note#Heading]]` (RD-102),
+  the live-reload check script (RD-19).
+- D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),
+  the top fade band (WR-177), selected text in the strong colour, the outline's slide (WR-99).
+- E. Hanging marks (WR-16 and the rest, SHEET-028): resumes phase 2, paused by the user.
+
 ## Open questions
 
 Each behaviour file ends with its open questions and a recommended default. The work follows

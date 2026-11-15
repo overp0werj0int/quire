@@ -431,6 +431,7 @@ impl App {
         changed |= self.expire_reader(t);
         changed |= self.expire_sheet(t);
         changed |= self.poll_writer(t, tx);
+        changed |= self.search_due(t, tx);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
         }
