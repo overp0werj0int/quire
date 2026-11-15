@@ -13,7 +13,7 @@ pub fn welcome(v: V) -> El {
     let s = v.s;
     let bar = row()
         .key("welcome-bar")
-        .h(42.0)
+        .h(super::titlebar::BAR_H)
         .w_full()
         .pl(14.0)
         .center_y()
@@ -141,7 +141,7 @@ pub fn welcome(v: V) -> El {
     }
 
     let inner = col().key("welcome-inner").w_full().max_w(440.0).gap(40.0).child(title).child(actions).child(recent);
-    let content = col().key("welcome-content").w_full().min_h((v.vh - 42.0).max(0.0)).pt(24.0).px(24.0).pb(72.0).center().child(inner);
+    let content = col().key("welcome-content").w_full().min_h((v.vh - super::titlebar::BAR_H).max(0.0)).pt(24.0).px(24.0).pb(72.0).center().child(inner);
     col()
         .key("welcome")
         .grow(1.0)

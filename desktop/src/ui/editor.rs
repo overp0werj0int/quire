@@ -189,9 +189,9 @@ fn doc_scroll(v: V) -> El {
         });
         content = content.child(column);
     } else if s.files().is_empty() {
-        content = content.min_h(v.vh - 42.0 - 1.0).justify_center().padding(40.0).child(empty_vault(v));
+        content = content.min_h(v.vh - super::titlebar::BAR_H - 1.0).justify_center().padding(40.0).child(empty_vault(v));
     } else {
-        content = content.min_h(v.vh - 42.0 - 1.0).justify_center().padding(40.0).child(no_tab(v));
+        content = content.min_h(v.vh - super::titlebar::BAR_H - 1.0).justify_center().padding(40.0).child(no_tab(v));
     }
     // A scroll viewport is a column: in a row its content would stretch to the viewport's
     // height and leave nothing to scroll.

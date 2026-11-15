@@ -14,7 +14,7 @@ mod sheet;
 mod settings_mcp;
 pub mod settings_sync;
 mod sidebar;
-mod titlebar;
+pub(crate) mod titlebar;
 mod welcome;
 pub mod widgets;
 

@@ -133,7 +133,7 @@ pub fn sheet(v: V) -> rune::El {
         .label(if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" })
         .modal_tx(false, |s: &mut App, tx| s.sheet_escape(tx))
         .on_press(|_: &mut App| {})
-        .child(row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(42.0).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(15.0)))
+        .child(row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0)))
         .child(card)
 }
 

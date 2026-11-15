@@ -9,6 +9,22 @@ use crate::app::{App, Mode};
 use crate::md;
 use crate::theme::{mono, sans};
 
+/// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
+/// each about the golden ratio (1.618) of the next size down, all centred 20 points down.
+pub const BAR_H: f32 = 40.0;
+const BUTTON: f32 = 24.0;
+/// A tab hangs one point below the bar, leaving 5 points above it.
+const TAB_H: f32 = 36.0;
+
+/// An icon button sized for the bar.
+fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size: f32, help: &str) -> El {
+    icon_button(p, key, glyph, size, help).size(BUTTON, BUTTON)
+}
+
+fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size: f32, help: &str, on: bool) -> El {
+    toggle_button(p, key, glyph, size, help, on).size(BUTTON, BUTTON)
+}
+
 pub fn titlebar(v: V) -> El {
     if v.focus() { focus_bar(v) } else { bar(v) }
 }
@@ -17,26 +33,24 @@ fn bar(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let left_visible = v.left_visible();
-    // The 38-point tabs sit on the bar's bottom edge, one point low, so their labels are centred
-    // 24 points down, near the middle of the 42-point bar. The icons on both sides centre on the
-    // same line.
-    let mut left = row().key("left-zone").h(42.0).pt(6.5).pl(14.0).pr(8.0).gap(10.0).center_y();
+    // The icons on both sides, the window dots and the new-tab button centre on the bar's middle.
+    let mut left = row().key("left-zone").h(BAR_H).pl(14.0).pr(8.0).gap(10.0).center_y();
     if left_visible {
         left = left.w(248.0);
     }
     left = left
         .child(dots(p))
         .child(el().grow(1.0))
-        .child(icon_button(p, "toggle-left", &SIDEBAR_LEFT, 16.0, "Toggle sidebar").on_press(|s: &mut App| s.toggle_left()));
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, "Toggle sidebar").on_press(|s: &mut App| s.toggle_left()));
 
     // With the sidebar open, the first tab's left border sits on the line where the content starts.
-    let mut tabs = row().key("tabs").grow(1.0).min_w(0.0).h(42.0).items_end().gap(2.0).pl(if left_visible { 0.0 } else { 6.0 }).pr(4.0).clip_rounded(0.0).offset(0.0, 1.0);
+    let mut tabs = row().key("tabs").grow(1.0).min_w(0.0).h(BAR_H).items_end().gap(2.0).pl(if left_visible { 0.0 } else { 6.0 }).pr(4.0).clip_rounded(0.0).offset(0.0, 1.0);
     for p_ in s.tabs.iter().filter(|t| s.files().contains_key(*t)) {
         tabs = tabs.child(tab(v, p_));
     }
-    tabs = tabs.child(icon_button(p, "new-tab", &PLUS, 12.0, "New note").mb(4.75).ml(2.0).on_press_tx(|s: &mut App, tx| s.new_note(None, tx)));
+    tabs = tabs.child(bar_button(p, "new-tab", &PLUS, 11.0, "New note").mb(BAR_H + 1.0 - BAR_H / 2.0 - BUTTON / 2.0).ml(2.0).on_press_tx(|s: &mut App, tx| s.new_note(None, tx)));
 
-    let mut right = row().key("right-zone").h(42.0).pt(6.5).pl(6.0).pr(10.0).gap(6.0).center_y();
+    let mut right = row().key("right-zone").h(BAR_H).pl(6.0).pr(10.0).gap(6.0).center_y();
     if v.has_doc() {
         // One button flips between source and preview. Its icon shows where it goes.
         let (glyph, help) = if s.mode == Mode::Source {
@@ -44,9 +58,9 @@ fn bar(v: V) -> El {
         } else {
             (&CODE, format!("Show source ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
         };
-        right = right.child(icon_button(p, "mode", glyph, 16.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(|s: &mut App, tx| s.toggle_mode(tx)));
+        right = right.child(bar_button(p, "mode", glyph, 15.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(|s: &mut App, tx| s.toggle_mode(tx)));
         let help = format!("Zen mode ({})", crate::keymap::label(s.preset(), "app.focus-mode"));
-        right = right.child(icon_button(p, "focus", &FOCUS, 16.0, &help).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
+        right = right.child(bar_button(p, "focus", &FOCUS, 15.0, &help).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
     }
     // In preview, omarky's header chips: find, copy all and the measure, then the outline and
     // the shortcuts (RD-34). Each shows as on while its feature is (RD-35).
@@ -54,24 +68,24 @@ fn bar(v: V) -> El {
     let tip = |name: &str, id: &str| format!("{name}  {}", crate::keymap::label(s.preset(), id));
     if preview {
         let find = tip("Find", "reader.find");
-        right = right.child(toggle_button(p, "find", &SEARCH, 14.0, &find, s.reader.find.open).on_press_tx(|s: &mut App, tx| s.toggle_find(tx)));
+        right = right.child(bar_toggle(p, "find", &SEARCH, 13.0, &find, s.reader.find.open).on_press_tx(|s: &mut App, tx| s.toggle_find(tx)));
         let all = tip("Copy all", "reader.copy-all");
-        right = right.child(icon_button(p, "copy-all", &COPY, 13.0, &all).role("button").on_press_tx(|s: &mut App, tx| s.copy_all(tx)));
+        right = right.child(bar_button(p, "copy-all", &COPY, 12.0, &all).role("button").on_press_tx(|s: &mut App, tx| s.copy_all(tx)));
         let wide = s.wide();
         let (glyph, name) = if wide { (&NARROW, "Reading width") } else { (&WIDEN, "Wide width") };
         let help = tip(name, "reader.toggle-wide");
-        right = right.child(toggle_button(p, "wide", glyph, 16.0, &help, wide).on_press(|s: &mut App| s.toggle_wide()));
+        right = right.child(bar_toggle(p, "wide", glyph, 15.0, &help, wide).on_press(|s: &mut App| s.toggle_wide()));
     }
     let outline = if preview { tip("Outline", "reader.toggle-outline") } else { "Toggle outline".to_string() };
-    right = right.child(toggle_button(p, "toggle-right", &SIDEBAR_RIGHT, 16.0, &outline, preview && v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
+    right = right.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, 15.0, &outline, preview && v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
     if preview {
         let help = tip("Shortcuts", "reader.help");
-        right = right.child(icon_button(p, "help", &HELP, 15.0, &help).role("button").on_press(|s: &mut App| s.reader.help = !s.reader.help));
+        right = right.child(bar_button(p, "help", &HELP, 14.0, &help).role("button").on_press(|s: &mut App| s.reader.help = !s.reader.help));
     }
 
     row()
         .key("titlebar")
-        .h(42.0)
+        .h(BAR_H)
         .w_full()
         .window_drag()
         .paint_order(3)
@@ -89,12 +103,14 @@ fn tab(v: V, path: &str) -> El {
     let key = format!("tab:{path}");
     let mut t = row()
         .key(key)
-        .h(38.0)
+        .h(TAB_H)
         .w(190.0)
         .shrink()
         .min_w(72.0)
         .pl(14.0)
         .pr(6.0)
+        // The label and close button centre on the bar's middle, with the icons, not the tab's.
+        .pb(BAR_H + 2.0 - TAB_H)
         .gap(6.0)
         .center_y()
         .corners([9.0, 9.0, 0.0, 0.0])
@@ -133,7 +149,7 @@ fn focus_bar(v: V) -> El {
     let p = v.p;
     let inner = row()
         .key("focus-inner")
-        .h(42.0)
+        .h(BAR_H)
         .w_full()
         .pl(14.0)
         .gap(8.0)
@@ -145,7 +161,7 @@ fn focus_bar(v: V) -> El {
         .child(
             row()
                 .key("leave-focus")
-                .h(26.0)
+                .h(BUTTON)
                 .px(10.0)
                 .mr(10.0)
                 .center()
@@ -157,5 +173,5 @@ fn focus_bar(v: V) -> El {
                 .child(label("leave zen mode · esc", mono(11.5, 400.0), p.mute).group_color(p.ink)),
         )
         .child(el().w(v.trailing));
-    el().key("titlebar").h(42.0).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(inner)
+    el().key("titlebar").h(BAR_H).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(inner)
 }
