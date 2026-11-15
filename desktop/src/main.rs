@@ -492,6 +492,55 @@ mod chip_tests {
         assert!(copied.is_none(), "gone at 1401 ms");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// BLK-15: the heading's `#` fades in and out over 120 ms. BLK-30: an open task box takes
+    /// its accent border at once under the pointer.
+    #[test]
+    fn blk_15_30_hover_timing() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-hover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(DT);
+        rt.update(|s, _| {
+            s.mode = crate::app::Mode::Preview;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, "# Title\n\nText\n\n- [ ] task\n".into());
+        });
+        // Past the page's own fade in.
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let shown = |rt: &Runtime<_>, key: &str| rt.presented(key).map_or(-1.0, |p| p.1);
+        let (ax, ay) = rt.find("anchor").expect("the heading's #");
+        assert!(shown(&rt, "anchor") < 0.01, "hidden at rest");
+        rt.pointer_move(ax + 80.0, ay);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mid = shown(&rt, "anchor");
+        assert!((0.15..0.85).contains(&mid), "half way in at 50 ms: {mid}");
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        assert!(shown(&rt, "anchor") > 0.99, "in by 120 ms");
+        let (hx, hy) = rt.find("hot").expect("the open box's accent edge");
+        assert!(shown(&rt, "hot") < 0.01, "faint at rest");
+        rt.pointer_move(hx, hy);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mid = shown(&rt, "anchor");
+        assert!((0.15..0.85).contains(&mid), "half way out at 50 ms: {mid}");
+        assert!(shown(&rt, "hot") > 0.99, "accent at once: {}", shown(&rt, "hot"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 //! Code blocks (BLK-43 to BLK-50) and diff blocks (BLK-53 to BLK-58).
 
-use rune::{El, Span, TextStyle, col, el, icon, row, text};
+use rune::{El, Span, TextStyle, col, el, row, text};
 
 use super::Cx;
 use crate::ui::octicons;
@@ -82,24 +82,13 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     // moment after a click, with or without the pointer (BLK-51).
     let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
     let (glyph, label, tint) = if copied { (&octicons::CHECK, "Copied", c.green) } else { (&octicons::COPY, "Copy", c.dim) };
-    let chip = row()
-        .key("copy")
-        .h(20.0)
-        .px(6.0)
-        .radius(3.0)
-        .center_y()
-        .fill(c.raised)
-        .border(1.0, c.hairline_soft)
-        .gap(5.0)
+    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: 10.0, icon: 10.0, label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
+        .el(c)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
-        .cursor(rune::Cursor::Pointer)
-        .role("button")
         .label("Copy the code")
         .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&copy, at, tx))
-        .child(icon(glyph, 10.0).color(tint))
-        .child(text(label).font(TextStyle::new(10.0, 400.0).family(look.mono).lh(14.0).tracking(0.4)).color(tint))
         .pin(None, Some(top), Some(pad_r - 6.0), None);
-    let mut out = el().w_full().hover_group().radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(body);
+    let mut out = el().w_full().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(body);
     if !lang.is_empty() {
         out = out.child(badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }

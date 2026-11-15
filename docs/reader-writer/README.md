@@ -196,8 +196,10 @@ passes the user checks one at a time:
   to pause (RD-56) and keeps the match in a band (RD-60), and a match in a long code line
   scrolls into view sideways (BLK-52). Done. Touchpad fling tuning (RD-27) waits for the
   user's feel.
-- B. Hover details: colour fades, the task box's hover border, inline chip borders, the code
-  and table edge fades.
+- B. Hover details: the heading `#` fades over 120 ms and turns accent under the pointer
+  (BLK-15), an open task box takes an accent edge (BLK-30), chip buttons share omarky's look
+  and 120 ms fades (BLK-100, BLK-51), and inline code and tag chips get their hairline edge
+  (PAGE-76). The code and table edge fades were already in (BLK-48, BLK-69). Done.
 - C. Reader chrome: the preview toolbar buttons (RD-34, RD-35), `[[note#Heading]]` (RD-102),
   the live-reload check script (RD-19).
 - D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),

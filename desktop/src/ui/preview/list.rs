@@ -52,10 +52,19 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
             _ => {
                 // The box, inside a hit area round(T × 0.5) larger (BLK-29, BLK-30, BLK-32).
                 let pad = r(t * 0.5) / 2.0;
-                let mut b = el().size(bx, bx).radius(2f32.max(r(bx * 0.24)));
-                b = if done { b.fill(c.accent).child(icon(&octicons::TICK, bx).color(c.bg)) } else { b.border(1f32.max(r(t / 12.0)), c.faint) };
+                let (rad, edge) = (2f32.max(r(bx * 0.24)), 1f32.max(r(t / 12.0)));
+                let mut b = el().size(bx, bx).radius(rad);
+                b = if done {
+                    b.fill(c.accent).child(icon(&octicons::TICK, bx).color(c.bg))
+                } else {
+                    // Accent under the pointer, at once as omarky's border colour has no fade.
+                    let hot = el().key("hot").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(rad).border(edge, c.accent).group_opacity(0.0, 1.0);
+                    b.border(edge, c.faint).child(hot)
+                };
                 let line_no = it.line;
                 el().padding(pad)
+                    .hover_group()
+                    .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
                     .role("checkbox")
                     .checked(done)
                     .cursor(rune::Cursor::Pointer)

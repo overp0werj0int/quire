@@ -4,6 +4,7 @@
 use rune::{Color, El, Key, KeyEvent, TextCase, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
+use super::chip::Chip;
 use super::panel::{BODY, BODY_SMALL, CAPTION, font};
 use super::widgets::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use crate::app::App;
@@ -32,19 +33,9 @@ pub fn find_bar(v: V) -> El {
     };
     let preset = s.preset();
     let tip = |name: &str, id: &str| format!("{name}  {}", keymap::label(preset, id));
-    let button = |key: &str, glyph: &'static rune::Icon, size: f32, help: String, run: fn(&mut App, &mut Tx)| {
-        row()
-            .key(key)
-            .size(26.0, 26.0)
-            .center()
-            .radius(4.0)
-            .hover(c.hover)
-            .hover_group()
-            .role("button")
-            .label(help.clone())
-            .help(help)
-            .on_press_tx(run)
-            .child(icon(glyph, size).color(c.faint).group_color(c.text))
+    let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
+    let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, run: fn(&mut App, &mut Tx)| {
+        Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: c.faint, active: false, fill: None }.el(&c).label(help.clone()).help(help).on_press_tx(run)
     };
     let field = text_input(&f.q, font(BODY, false))
         .key("find-input")

@@ -1,6 +1,7 @@
 //! The window's view.
 
 pub(crate) mod editor;
+mod chip;
 mod lock;
 mod outline;
 mod octicons;

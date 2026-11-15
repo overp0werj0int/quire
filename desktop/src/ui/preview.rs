@@ -92,6 +92,8 @@ struct Rich {
     links: Vec<(std::ops::Range<usize>, String, Color)>,
     /// Find matches painted over the text (RD-59).
     marks: Vec<TextHighlight>,
+    /// Inline-code chips, which get a hairline edge (PAGE-76).
+    chips: Vec<(usize, usize, Color)>,
 }
 
 impl Rich {
@@ -187,6 +189,7 @@ impl Rich {
         self.spans.push(Span { mono: true, size: Some(side), bg: Some(bg), bg_pad: pad_y, ..Span::new(a, b) });
         self.spans.push(Span { mono: true, size: Some(side), bg: Some(bg), bg_pad: pad_y, ..Span::new(c, d) });
         self.spans.push(Span { mono: true, size: Some(size), color, bg: Some(bg), bg_pad: pad_y, ..Span::new(b, c) });
+        self.chips.push((a, d, look.c.chip_edge));
     }
 
     fn el(self, style: TextStyle, color: Color) -> El {
@@ -194,7 +197,7 @@ impl Rich {
         for (a, b, c) in self.strikes {
             e = e.strike(a, b, c);
         }
-        e = e.text_highlights(self.marks);
+        e = e.text_highlights(self.marks).span_rings(self.chips.into_iter().map(|(a, b, c)| (a, b, c, 1.0)));
         for (range, id, color) in self.links {
             // Links underline only under the pointer (PAGE-73).
             e = e.link(rune::Link::new(range, id).hover(LinkPaint::new().underline(color)));
@@ -452,17 +455,20 @@ impl Cx<'_> {
         let w = rune::text::advance("#", hash_style).ceil();
         let top = ((line(size, lead) - line(hs, 1.2)) / 2.0).max(0.0);
         let slug = slug.to_string();
-        let hash = text("#")
+        // Faint, and accent under the pointer itself; fades and colour changes take 120 ms.
+        let fade = || rune::Curve::linear(0.12);
+        let hash = el()
             .key("anchor")
-            .font(hash_style)
-            .color(look.c.faint)
+            .hover_group()
+            .hover_motion(fade(), fade())
             .group_opacity(0.0, 1.0)
             .cursor(rune::Cursor::Pointer)
             .role("button")
             .label("Copy a link to this heading")
             .on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
+            .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
             .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
-        el().w_full().hover_group().child(e).child(hash)
+        el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
     }
 
     /// Three faint dots (BLK-17).
@@ -719,6 +725,7 @@ fn tag_line(cx: &Cx, runs: &[Run], tone: Tone) -> El {
                 .px(r(size * 0.25))
                 .radius(3f32.max(r(chip_h * 0.22)))
                 .fill(look.c.code_bg)
+                .border(1.0, look.c.chip_edge)
                 .cursor(rune::Cursor::Pointer)
                 .role("link")
                 .label(run.t.clone())
