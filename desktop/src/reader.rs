@@ -126,10 +126,6 @@ impl PageMap {
         }
     }
 
-    /// The gap above block `i`.
-    pub fn gap(&self, i: usize) -> f32 {
-        self.gaps.get(i).copied().unwrap_or(0.0)
-    }
 
     fn join(&mut self) {
         let gaps = &self.gaps;
@@ -430,9 +426,12 @@ impl App {
     pub(crate) fn land(&mut self, i: usize, travel: bool, tx: &mut Tx) {
         let doc = self.doc();
         let Some(b) = doc.blocks.get(i) else { return };
-        let (gap, top) = {
+        // From the note itself: right after a switch the map still holds the last note's page
+        // (RD-04), so its tops count only when they are this note's.
+        let gap = crate::page::gap(self.b(), i.checked_sub(1).map(|p| crate::page::rk(&doc.blocks[p].kind)), crate::page::rk(&b.kind));
+        let top = {
             let map = self.reader.map.borrow();
-            (map.gap(i), map.tops.get(i).copied())
+            map.tops.get(i).copied().filter(|_| map.tops.len() == doc.blocks.len())
         };
         let key = block_key(b);
         self.reader.glide = None;
@@ -568,6 +567,11 @@ impl App {
         let n = f.q.text.len();
         f.q.set_selection(0, n);
         tx.focus("find-input", false);
+    }
+
+    /// The title bar's Find button (RD-34): omarky's header chip toggles the bar.
+    pub fn toggle_find(&mut self, tx: &mut Tx) {
+        if self.reader.find.open { self.close_find(tx) } else { self.open_find(tx) }
     }
 
     pub fn close_find(&mut self, tx: &mut Tx) {

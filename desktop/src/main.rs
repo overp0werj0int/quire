@@ -164,6 +164,189 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A notes folder in `dir` holding `files`, its first file open in preview, and the
+    /// watcher looking every `every`.
+    fn vault(dir: &std::path::Path, files: &[(&str, &str)], every: std::time::Duration) -> Runtime<crate::app::App> {
+        use crate::bench::DT;
+        let _ = std::fs::remove_dir_all(dir);
+        let root = dir.join("notes");
+        std::fs::create_dir_all(&root).unwrap();
+        for (name, text) in files {
+            std::fs::write(root.join(name), text).unwrap();
+        }
+        // SAFETY: the caller holds the ENV lock, which keeps other tests that read these out.
+        unsafe {
+            std::env::set_var("HOME", dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut s = crate::app::init();
+        s.watch_every = every;
+        // The watcher starts with a waker, as in the app; the frames below stand in for wakes.
+        s.waker = Some(std::sync::Arc::new(|| {}));
+        let mut rt = Runtime::new(s, crate::ui::view, (1400.0, 1000.0), Env { system_dark: false, scale: 1.0 });
+        rt.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        rt.frame(DT);
+        let first = files[0].0.to_string();
+        rt.update(move |s, tx| {
+            s.open_vault(root, tx);
+            s.open_file(&first, None, tx);
+            s.mode = crate::app::Mode::Preview;
+        });
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt
+    }
+
+    /// RD-19, VER-34: omarky's check-live sequence against the open note. After each outside
+    /// change the same block stays at the top, at the same place.
+    #[test]
+    fn rd_19_live_reload_keeps_the_top_block() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-live-{}", std::process::id()));
+        let blocks: Vec<String> = (0..80).map(|i| format!("Paragraph {i}, which says something of its own and runs on to fill the line.")).collect();
+        let text = blocks.join("\n\n") + "\n";
+        let mut rt = vault(&dir, &[("note.md", &text)], std::time::Duration::from_millis(50));
+        let path = dir.join("notes/note.md");
+        let line = text.lines().position(|l| l.starts_with("Paragraph 40,")).unwrap();
+        rt.update(move |s, tx| s.jump_block(line, tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let key = crate::reader::block_key(&crate::blocks::build(&text).blocks[40]);
+        let place = |rt: &mut Runtime<crate::app::App>| {
+            let mut top = String::new();
+            rt.update_if(|s, _| {
+                top = crate::reader::block_key(&s.doc().blocks[s.top()]);
+                false
+            });
+            (top, rt.presented(&key).map(|p| p.0[1].round()))
+        };
+        let start = place(&mut rt);
+        assert_eq!(start.0, key, "paragraph 40 at the top");
+        assert!(start.1.is_some(), "its row is drawn");
+        // Waits until the app holds `want`, or 3 s.
+        let settle = |rt: &mut Runtime<crate::app::App>, want: &str| {
+            let t = std::time::Instant::now();
+            loop {
+                rt.frame(DT);
+                let mut now = String::new();
+                rt.update_if(|s, _| {
+                    now = s.files().get("note.md").cloned().unwrap_or_default();
+                    false
+                });
+                if now == want || t.elapsed().as_secs_f32() > 3.0 {
+                    assert_eq!(now, want, "the app read the change");
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+        };
+        let mut text = text;
+        // Append.
+        text.push_str("\nAppended at the end.\n");
+        std::fs::write(&path, &text).unwrap();
+        settle(&mut rt, &text);
+        assert_eq!(place(&mut rt), start, "after an append");
+        // Three blocks above the reading position.
+        text = format!("# Inserted\n\nAbove, one.\n\nAbove, two.\n\n{text}");
+        std::fs::write(&path, &text).unwrap();
+        settle(&mut rt, &text);
+        assert_eq!(place(&mut rt), start, "after three blocks above");
+        // An editor's atomic save: a temporary file renamed over the note.
+        text = text.replace("Paragraph 70,", "Paragraph seventy,");
+        let tmp = dir.join("notes/.note.md.tmp");
+        std::fs::write(&tmp, &text).unwrap();
+        std::fs::rename(&tmp, &path).unwrap();
+        settle(&mut rt, &text);
+        assert_eq!(place(&mut rt), start, "after a rename over the note");
+        // A burst of ten writes.
+        for i in 0..10 {
+            text.push_str(&format!("\nBurst {i}.\n"));
+            std::fs::write(&path, &text).unwrap();
+        }
+        settle(&mut rt, &text);
+        assert_eq!(place(&mut rt), start, "after a burst of writes");
+        // Deleted and written back within one look.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, &text).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        settle(&mut rt, &text);
+        let mut open = None;
+        rt.update_if(|s, _| {
+            open = s.active.clone();
+            false
+        });
+        assert_eq!(open.as_deref(), Some("note.md"), "the note stays open");
+        assert_eq!(place(&mut rt), start, "after a delete and restore");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// RD-34, RD-35: preview mode's title bar buttons, and Find showing as on while the bar
+    /// is open.
+    #[test]
+    fn rd_34_35_preview_buttons() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-buttons-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nText.\n")], crate::watch::EVERY);
+        for key in ["find", "copy-all", "wide", "toggle-right", "help"] {
+            assert!(rt.find(key).is_some(), "{key} in preview");
+        }
+        let (x, y) = rt.find("find").unwrap();
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut open = false;
+        rt.update_if(|s, _| {
+            open = s.reader.find.open;
+            false
+        });
+        assert!(open, "the Find button opens the bar");
+        let find = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("find")).expect("the Find button");
+        assert!(find.fill.a > 0.0, "and shows as on, with the hover fill");
+        assert_eq!(find.help.as_deref(), Some("Find  Ctrl+F"), "its tooltip names the preset's key");
+        rt.update(|s, tx| s.toggle_mode(tx));
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        assert!(rt.find("copy-all").is_none(), "source mode keeps its own bar");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
+    #[test]
+    fn rd_102_wiki_link_to_a_heading() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-wiki-{}", std::process::id()));
+        let para = "A paragraph long enough to take a line or two of the page, said again. ".repeat(3);
+        let other = format!("# Other\n\n{}## Far Heading\n\nThe end.\n\n{}", format!("{para}\n\n").repeat(60), format!("{para}\n\n").repeat(30));
+        let mut rt = vault(&dir, &[("note.md", "See [[other#Far Heading]].\n"), ("other.md", &other)], crate::watch::EVERY);
+        rt.update(|s, tx| s.open_link("other#Far Heading", tx));
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let doc = crate::blocks::build(&other);
+        let i = doc.blocks.iter().position(|b| b.lines.start == other.lines().position(|l| l == "## Far Heading").unwrap()).unwrap();
+        let mut got = (String::new(), 0);
+        rt.update_if(|s, _| {
+            got = (s.active.clone().unwrap_or_default(), s.top());
+            false
+        });
+        assert_eq!(got, ("other.md".to_string(), i), "the other note, its heading at the top");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The page is a virtual list (RD-25, RD-57): a jump and a find reach blocks far below
     /// the rows built so far, land where they would on a page built whole, and the block at
     /// the top follows.

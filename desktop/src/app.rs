@@ -128,6 +128,8 @@ pub struct App {
     pub key_moved: bool,
     pub(crate) waker: Option<rune::Waker>,
     pub(crate) watcher: Option<crate::watch::Watcher>,
+    /// How often the watcher looks at the folder: 1.5 s, shorter in tests (VER-34).
+    pub(crate) watch_every: Duration,
     /// Counts name lookups rebuilt, so cached lines redraw when a link's target appears.
     pub names_gen: u64,
     /// Set by the theme watcher when Omarchy switches themes.
@@ -207,6 +209,7 @@ pub fn init() -> App {
         key_moved: false,
         waker: None,
         watcher: None,
+        watch_every: crate::watch::EVERY,
         names_gen: 0,
         theme_changed: None,
         dragging: None,
@@ -453,7 +456,7 @@ impl App {
     }
 
     fn watch_vault(&mut self) {
-        self.watcher = self.vault.as_ref().map(|v| crate::watch::start(v.path.clone(), self.waker.clone()));
+        self.watcher = self.vault.as_ref().map(|v| crate::watch::start(v.path.clone(), self.waker.clone(), self.watch_every));
     }
 
     /// Takes changes other apps made to the folder. A note with edits not yet saved keeps
@@ -969,13 +972,23 @@ impl App {
         self.open_file(&p, Some(Sel { start: end, end, line: None, force_source: true }), tx);
     }
 
+    /// A wiki link: opens the note it names, or creates it. A `#Heading` after the name
+    /// travels to that heading in the reader once the note is shown (RD-102, RD-04).
     pub fn open_link(&mut self, name: &str, tx: &mut Tx) {
-        let t = md::link_target(name).to_string();
+        let (t, frag) = md::wiki_parts(name);
         if t.is_empty() {
+            if let Some(f) = frag {
+                self.go_anchor(&f, tx);
+            }
             return;
         }
         match self.names.resolve(&t).map(str::to_string) {
-            Some(p) => self.open_file(&p, None, tx),
+            Some(p) => {
+                self.open_file(&p, None, tx);
+                if let Some(f) = frag.filter(|_| self.mode == Mode::Preview) {
+                    self.go_anchor(&f, tx);
+                }
+            }
             None => self.new_note(Some(&t), tx),
         }
     }

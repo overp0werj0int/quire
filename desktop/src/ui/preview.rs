@@ -141,7 +141,8 @@ impl Rich {
                     continue;
                 }
                 Some(Link::Wiki(target)) => {
-                    let ok = cx.v.s.names.resolve(target).is_some();
+                    let (name, _) = crate::md::wiki_parts(target);
+                    let ok = name.is_empty() || cx.v.s.names.resolve(&name).is_some();
                     let color = if ok { c.link } else { c.faint };
                     self.push(&run.t, Span { color: Some(color), ..base });
                     self.links.push((a..self.text.len(), format!("wiki:{}", target.trim()), color));

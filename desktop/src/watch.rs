@@ -1,5 +1,5 @@
 //! Watches the open folder for changes made by other apps (an editor, a sync tool, the MCP
-//! server) by checking file times every 1.5 s on its own thread.
+//! server) by checking file times every 1.5 s (`EVERY`) on its own thread.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -51,14 +51,17 @@ fn snapshot(root: &PathBuf) -> BTreeMap<String, (SystemTime, u64)> {
     out
 }
 
-pub fn start(root: PathBuf, waker: Option<rune::Waker>) -> Watcher {
+/// How often the watcher looks at the folder.
+pub const EVERY: Duration = Duration::from_millis(1500);
+
+pub fn start(root: PathBuf, waker: Option<rune::Waker>, every: Duration) -> Watcher {
     let inbox: Arc<Mutex<Changes>> = Arc::default();
     let stop = Arc::new(AtomicBool::new(false));
     let (inbox2, stop2) = (inbox.clone(), stop.clone());
     let _ = std::thread::Builder::new().name("quire-watch".into()).spawn(move || {
         let mut last = snapshot(&root);
         while !stop2.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_millis(1500));
+            std::thread::sleep(every);
             if stop2.load(Ordering::SeqCst) {
                 break;
             }
@@ -105,7 +108,7 @@ pub fn watch_theme(waker: rune::Waker) -> Arc<AtomicBool> {
         };
         let mut last = stamp();
         loop {
-            std::thread::sleep(Duration::from_millis(1500));
+            std::thread::sleep(EVERY);
             let now = stamp();
             if now != last {
                 last = now;
@@ -126,7 +129,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("Sub")).unwrap();
         std::fs::write(dir.join("A.md"), "one").unwrap();
         std::fs::write(dir.join("Sub/B.md"), "two").unwrap();
-        let w = super::start(dir.clone(), None);
+        let w = super::start(dir.clone(), None, super::EVERY);
         std::thread::sleep(std::time::Duration::from_millis(300));
         std::fs::write(dir.join("A.md"), "one, edited elsewhere").unwrap();
         std::fs::remove_file(dir.join("Sub/B.md")).unwrap();

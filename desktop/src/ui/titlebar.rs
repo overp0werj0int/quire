@@ -3,7 +3,8 @@
 use rune::{Color, El, PointerButton, el, icon, row, text};
 
 use super::V;
-use super::widgets::{CLOSE, CODE, EYE, FOCUS, PLUS, SIDEBAR_LEFT, SIDEBAR_RIGHT, dots, icon_button, label};
+use super::widgets::{CLOSE, CODE, EYE, FOCUS, HELP, NARROW, PLUS, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, WIDEN, dots, icon_button, label, toggle_button};
+use super::octicons::COPY;
 use crate::app::{App, Mode};
 use crate::md;
 use crate::theme::{mono, sans};
@@ -47,7 +48,26 @@ fn bar(v: V) -> El {
         let help = format!("Zen mode ({})", crate::keymap::label(s.preset(), "app.focus-mode"));
         right = right.child(icon_button(p, "focus", &FOCUS, 16.0, &help).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
     }
-    right = right.child(icon_button(p, "toggle-right", &SIDEBAR_RIGHT, 16.0, "Toggle outline").on_press(|s: &mut App| s.toggle_right()));
+    // In preview, omarky's header chips: find, copy all and the measure, then the outline and
+    // the shortcuts (RD-34). Each shows as on while its feature is (RD-35).
+    let preview = v.has_doc() && s.mode == Mode::Preview;
+    let tip = |name: &str, id: &str| format!("{name}  {}", crate::keymap::label(s.preset(), id));
+    if preview {
+        let find = tip("Find", "reader.find");
+        right = right.child(toggle_button(p, "find", &SEARCH, 14.0, &find, s.reader.find.open).on_press_tx(|s: &mut App, tx| s.toggle_find(tx)));
+        let all = tip("Copy all", "reader.copy-all");
+        right = right.child(icon_button(p, "copy-all", &COPY, 13.0, &all).role("button").on_press_tx(|s: &mut App, tx| s.copy_all(tx)));
+        let wide = s.wide();
+        let (glyph, name) = if wide { (&NARROW, "Reading width") } else { (&WIDEN, "Wide width") };
+        let help = tip(name, "reader.toggle-wide");
+        right = right.child(toggle_button(p, "wide", glyph, 16.0, &help, wide).on_press(|s: &mut App| s.toggle_wide()));
+    }
+    let outline = if preview { tip("Outline", "reader.toggle-outline") } else { "Toggle outline".to_string() };
+    right = right.child(toggle_button(p, "toggle-right", &SIDEBAR_RIGHT, 16.0, &outline, preview && v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
+    if preview {
+        let help = tip("Shortcuts", "reader.help");
+        right = right.child(icon_button(p, "help", &HELP, 15.0, &help).role("button").on_press(|s: &mut App| s.reader.help = !s.reader.help));
+    }
 
     row()
         .key("titlebar")

@@ -200,8 +200,11 @@ passes the user checks one at a time:
   (BLK-15), an open task box takes an accent edge (BLK-30), chip buttons share omarky's look
   and 120 ms fades (BLK-100, BLK-51), and inline code and tag chips get their hairline edge
   (PAGE-76). The code and table edge fades were already in (BLK-48, BLK-69). Done.
-- C. Reader chrome: the preview toolbar buttons (RD-34, RD-35), `[[note#Heading]]` (RD-102),
-  the live-reload check script (RD-19).
+- C. Reader chrome: in preview the title bar gains Find, Copy all, Wide and Shortcuts
+  buttons with tooltips from the keymap, and Find, Wide and the outline show as on while on
+  (RD-34, RD-35). `[[note#Heading]]` travels to the heading (RD-102, RD-04). omarky's
+  check-live sequence runs as a test with the watcher's period injected (RD-19, VER-34).
+  Done.
 - D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),
   the top fade band (WR-177), selected text in the strong colour, the outline's slide (WR-99).
 - E. Hanging marks (WR-16 and the rest, SHEET-028): resumes phase 2, paused by the user.

@@ -54,6 +54,16 @@ pub fn link_target(inner: &str) -> String {
     inner.split('|').next().unwrap_or("").trim().replace('\u{a0}', " ")
 }
 
+/// A wiki link's note name and heading: `[[note#Heading|alias]]` gives ("note", "Heading").
+/// An empty name points into the note the link is in.
+pub fn wiki_parts(inner: &str) -> (String, Option<String>) {
+    let t = link_target(inner);
+    match t.split_once('#') {
+        Some((name, frag)) => (name.trim().to_string(), Some(frag.trim().to_string()).filter(|f| !f.is_empty())),
+        None => (t, None),
+    }
+}
+
 /// CSS `text-wrap: pretty` keeps a paragraph from ending on one word. Joining the last two
 /// words with a no-break space has the same effect on the last line.
 pub fn pretty(t: &str) -> String {

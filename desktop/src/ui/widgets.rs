@@ -39,6 +39,11 @@ svg!(LOCK, 16.0, r#"<rect x="3.4" y="7" width="9.2" height="6.6" rx="1.6" fill="
 svg!(IMAGE, 16.0, r#"<rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="10.5" cy="6.2" r="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.6 11.6l3.6-3.7 2.6 2.6 1.6-1.5 3 2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>"#);
 // Four corners of a frame: focus mode.
 svg!(FOCUS, 16.0, r#"<path d="M2.5 6V4a1.5 1.5 0 0 1 1.5-1.5h2M10 2.5h2A1.5 1.5 0 0 1 13.5 4v2M13.5 10v2a1.5 1.5 0 0 1-1.5 1.5h-2M6 13.5H4A1.5 1.5 0 0 1 2.5 12v-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
+// Arrows out and in: the wide measure and the reading measure (RD-34).
+svg!(WIDEN, 16.0, r#"<path d="M1.8 8h12.4M4.3 5.5L1.8 8l2.5 2.5M11.7 5.5L14.2 8l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
+svg!(NARROW, 16.0, r#"<path d="M1.5 8h4.3M10.2 8h4.3M3.5 5.5L6 8l-2.5 2.5M12.5 5.5L10 8l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
+// A question mark in a ring: the shortcuts sheet.
+svg!(HELP, 16.0, r#"<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.3a1.9 1.9 0 0 1 3.7.4c0 1.3-1.9 1.5-1.9 2.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".8" fill="currentColor"/>"#);
 svg!(CODE, 16.0, r#"<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 // The logo's mark: three sheets in a stack, the violet one in front (assets/brand).
 svg!(MARK, 100.0, r##"<rect x="38" y="10" width="46" height="60" rx="6" fill="#e1dbcf"/><rect x="27" y="20" width="46" height="60" rx="6" fill="#c9bfae"/><rect x="16" y="30" width="46" height="60" rx="6" fill="#7a4fba"/>"##);
@@ -84,6 +89,26 @@ pub fn icon_button(p: &Pal, key: &str, glyph: &'static Icon, size: f32, help: &s
         .label(help)
         .help(help)
         .child(icon(glyph, size).color(p.mute).group_color(p.ink))
+}
+
+/// [`icon_button`] that shows as active, with the hover fill, a hairline and ink, while its
+/// feature is on (RD-35).
+pub fn toggle_button(p: &Pal, key: &str, glyph: &'static Icon, size: f32, help: &str, on: bool) -> El {
+    if !on {
+        return icon_button(p, key, glyph, size, help).role("switch").checked(false);
+    }
+    row()
+        .key(key)
+        .size(28.0, 28.0)
+        .center()
+        .radius(6.0)
+        .fill(p.hover)
+        .border(1.0, p.line)
+        .role("switch")
+        .checked(true)
+        .label(help)
+        .help(help)
+        .child(icon(glyph, size).color(p.ink))
 }
 
 fn seg_shadow(on: bool) -> Vec<Shadow> {
