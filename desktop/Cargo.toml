@@ -10,7 +10,7 @@ name = "quire"
 path = "src/main.rs"
 
 [dependencies]
-rune = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -25,7 +25,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
+rune-highlights = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -35,7 +35,7 @@ profile = ["rune/frame-profile"]
 embed-resource = "3"
 
 # The per-line editor, its right-click menu and its hanging marks need Rune's fixes on the local
-# branch quire/slim (~/Projects/rune-quire, commit b5512ecf), which is not pushed yet, so this
+# branch quire/dev (~/Projects/rune-quire, its six commits on origin/dev 1dba3423), which is not pushed yet, so this
 # builds only where that checkout sits beside this one. Once it is pushed, pin its revision above
 # and drop this.
 [patch."https://github.com/anomalyco/rune"]
@@ -45,11 +45,12 @@ rune-highlights = { path = "../../rune-quire/crates/rune-highlights" }
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af" }
 # Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
-accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "bf3f9d4a0459af5071cd352df816b610dda7f3a6" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "1dba3423fd1f1904553422e7814700f817abe8af" }
 
 [profile.dev]
 opt-level = 1

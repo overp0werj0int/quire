@@ -733,7 +733,6 @@ mod writer_chrome_tests {
     /// WR-102: a jump in the writer puts its line `min(max(12% of the view, 56), view / 3)`
     /// under the view's top; with typewriter scrolling (WR-86) it centres the caret instead.
     #[test]
-    #[ignore = "Rune finds a keyed highlight only in a field laid out whole, and the writer lays out by paragraph: scroll_key_to(LINE_AT) and scroll_center(CARET) do nothing (decisions.tsv, rune-slim)"]
     fn wr_102_86_a_jump_places_its_line() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         for typewriter in [false, true] {
@@ -759,6 +758,41 @@ mod writer_chrome_tests {
             assert!((at - want).abs() < caret[3], "typewriter {typewriter}: the line sits {at} under the top, want {want}");
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    /// WR-118: find selects the first match after the caret and brings it to the view's middle.
+    #[test]
+    fn wr_118_find_centres_its_match() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-find-centre-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let from = LONG[LONG.len() * 2 / 3..].find(" the ").unwrap() + LONG.len() * 2 / 3;
+        rt.update(move |s, tx| {
+            if let Some(e) = s.cur_edit_opt() {
+                e.set_selection(from, from);
+            }
+            s.reader.find.q = rune::TextEdit::new("the".to_string());
+            s.writer_find(tx);
+        });
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        // Closing the bar gives the editor back its focus, and its caret ends the match.
+        rt.update(|s, tx| {
+            s.close_find(tx);
+            s.focus_editor(tx);
+        });
+        for _ in 0..5 {
+            rt.frame(DT);
+        }
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let caret = info(&rt, "editor").and_then(|e| e.caret).expect("the editor shows a caret");
+        let at = caret[1] + caret[3] / 2.0 - page[1];
+        assert!((at - page[3] / 2.0).abs() < caret[3], "the match sits {at} under the top of a {} view", page[3]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// WR-93: the thumb is hidden at rest, shows while the note scrolls, and is as tall as the

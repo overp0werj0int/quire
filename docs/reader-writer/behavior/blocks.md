@@ -166,8 +166,8 @@ or footnote. (`components/blocks/ListBlock.qml:16`)
   default is to follow BLK-101 (no underline until hover, faint for a missing note), so wiki links
   read like every other page link.
 - Sideways scroll calibration. BLK-47 copies omarky's "half the angle delta". That number depends
-  on what unit the windowing layer delivers, and Quire's vendored winit already scales touchpad
-  deltas by 5.3. The recommended default is to calibrate sideways swipes with the same measurement as the
+  on what unit the windowing layer delivers, and Rune's winit already scales touchpad
+  deltas by 12, as Chromium does. The recommended default is to calibrate sideways swipes with the same measurement as the
   reader's vertical scrolling (`reader.md`, RD-20 to RD-30), and keep 60 px per wheel notch.
 - Tables need a renderer. Quire's parser has no tables today, and core Rune has no table layout.
   The recommended default is to lay out cells from Rune's `text::content_widths` with BLK-63 to BLK-65,

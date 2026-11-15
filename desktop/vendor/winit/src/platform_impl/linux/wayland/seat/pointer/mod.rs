@@ -35,15 +35,6 @@ use crate::platform_impl::wayland::{self, DeviceId, WindowId};
 
 pub mod relative_pointer;
 
-/// Quire: the scale for a touchpad or other continuous scroll.
-///
-/// The compositor sends these scrolls in surface points, and by convention one wheel click
-/// is 10 points. Rune moves the content 1 point for each point. Chromium divides by 10 and
-/// scrolls 53 pixels for each click, so it moves the content 5.3 points for each point. With
-/// this scale, a swipe moves a note as far as it moves a web page. Wheel clicks come as
-/// `LineDelta` and do not use the scale.
-const CONTINUOUS_SCROLL_SCALE: f64 = 5.3;
-
 impl PointerHandler for WinitState {
     fn pointer_frame(
         &mut self,
@@ -178,7 +169,7 @@ impl PointerHandler for WinitState {
                         window_id,
                     );
                 },
-                PointerEventKind::Axis { horizontal, vertical, .. } => {
+                PointerEventKind::Axis { horizontal, vertical, source, .. } => {
                     // Get the current phase.
                     let mut pointer_data = pointer.winit_data().inner.lock().unwrap();
 
@@ -212,12 +203,18 @@ impl PointerHandler for WinitState {
                         )
                     } else {
                         // NOTE: Wayland sign convention is the inverse of winit.
+                        use sctk::reexports::client::protocol::wl_pointer::AxisSource;
+                        // Chromium 152, wayland_pointer.cc: OnAxis converts surface units by
+                        // kWheelDelta / kAxisValueScale. Only finger and continuous sources use
+                        // this gain here: a wheel can send axis-only frames between detents.
+                        const FINGER_POINTS_PER_AXIS_UNIT: f64 = 120.0 / 10.0;
+                        let gain = match source {
+                            Some(AxisSource::Finger | AxisSource::Continuous) => FINGER_POINTS_PER_AXIS_UNIT,
+                            _ => 1.0,
+                        };
                         MouseScrollDelta::PixelDelta(
-                            LogicalPosition::new(
-                                -horizontal.absolute * CONTINUOUS_SCROLL_SCALE,
-                                -vertical.absolute * CONTINUOUS_SCROLL_SCALE,
-                            )
-                            .to_physical(scale_factor),
+                            LogicalPosition::new(-horizontal.absolute * gain, -vertical.absolute * gain)
+                                .to_physical(scale_factor),
                         )
                     };
 

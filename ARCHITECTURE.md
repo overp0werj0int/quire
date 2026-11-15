@@ -126,7 +126,7 @@ flowchart LR
    paint only: the text stays the note's Markdown, character for character. The field (and
    the edit sheet's) is laid out per line with Rune's `dir_by_paragraph`, so a keystroke
    reshapes only its own line, and each line takes the direction of its first strong
-   character. That needs Rune's fixes on its `quire/slim` branch, which
+   character. That needs Rune's fixes on its `quire/dev` branch, which
    `desktop/Cargo.toml` takes from a local checkout at `../rune-quire` until it is pushed:
    before them a blank line doubled the next line's first letter in the accessible text, and
    long notes typed slowly. The same branch moves the caret to a right-click before the
@@ -352,9 +352,10 @@ decided, not why. Each point says how sure it is.
   design, used for pixel comparisons. That is why the desktop code copies details of how
   Chromium measures text, such as `line-height: normal`. Why the design was made in a browser
   is not recorded.
-- **Vendored winit.** Confirmed. `desktop/vendor/winit` is Rune's winit with two changes:
-  file drops on Wayland (`vendor/winit/src/platform_impl/linux/wayland/dnd.rs`), and touchpad
-  scrolling scaled by 5.3 to match Chromium. `Cargo.toml` points the `winit` patch at it.
+- **Vendored winit.** Confirmed. `desktop/vendor/winit` is Rune's winit with
+  one change: file drops on Wayland (`vendor/winit/src/platform_impl/linux/wayland/dnd.rs`).
+  Rune's own winit already scales touchpad scrolling as Chromium does (12 points per unit).
+  `Cargo.toml` points the `winit` patch at it.
 - **Storage the user owns.** The docs say "object storage that you control", with optional
   encryption so "the store sees no note names and no note text". Privacy and having no
   server to run are the likely reasons, but they are not written down. Other options, such as

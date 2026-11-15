@@ -32,4 +32,11 @@ the paragraph styles that hang marks in the gutter (decision 0004, under review)
 caret fix stays too: Rune has no public way to find the text position under a point, so Quire
 cannot place the caret itself before its own menu opens.
 
-The local Rune branch is now `quire/slim`: upstream `bf3f9d4a` plus five commits.
+The local Rune branch was first `quire/slim`: upstream `bf3f9d4a` plus five commits. It is now
+`quire/dev`: the same five commits rebased onto upstream `1dba3423`, plus a fix that finds a keyed
+highlight in a by-paragraph field, so the writer's jumps (WR-102), typewriter scrolling (WR-86) and
+find (WR-118) scroll to their line. On the rebase Quire dropped its own touchpad scale (5.3):
+upstream's winit now scales by 12, as Chromium does and as omarky did (RD-26).
+
+The user kept the right-click caret patch and chose to carry the paragraph-styles patch locally
+rather than send it upstream (2026-11-15).
