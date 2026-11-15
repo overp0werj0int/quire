@@ -83,8 +83,11 @@ Done when the harness runs headless and the baseline numbers and images are comm
 
 ### Phase 2. Rune patch spike
 
-Status: paused at the user's request, 2026-11-14. The work in progress is on branch
-`quire/paragraph-layout` in `~/Projects/rune-quire`. Decision 0004 stays open.
+Status: done in phase 10 E, 2026-11-15. The paragraph styles moved onto Rune branch
+`quire/by-paragraph-fixes`, carried as a fork branch through `[patch]` (decision 0004). Caret,
+clicks in the gutter and wrapping are tested in Quire; typing stays within WR-224's budget (0.7,
+1.1 and 3.3 ms median at 400, 1,000 and 3,000 lines). Rune's own tests for the patch are not run
+on this machine.
 
 The riskiest unknown. It answers whether hanging marks and per-line leading work in a Rune text
 field with honest caret behaviour and acceptable typing speed.
@@ -189,8 +192,9 @@ updated.
 
 ### Phase 10. The deferred details
 
-Status: in progress on branch `rw/phase-3-typography`. The items phases 5 to 8 deferred, in
-passes the user checks one at a time:
+Status: done on branch `rw/phase-3-typography`, 2026-11-15, except touchpad fling feel
+(RD-27), which waits for the user. The items phases 5 to 8 deferred, in passes the user checks
+one at a time:
 
 - A. Reader motion and find: long jumps travel in two parts (RD-24), find waits for typing
   to pause (RD-56) and keeps the match in a band (RD-60), and a match in a long code line
