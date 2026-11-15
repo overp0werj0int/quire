@@ -61,9 +61,12 @@ time, because they touch different code.
 
 ### Phase 1. Verification harness and baseline
 
-Status: paused at the user's request, 2026-11-14. The unbuilt work is on branch
-`rw/phase-1-harness`. Until it returns, units are checked by unit tests and headless
-`--snap` renders.
+Status: dropped, 2026-11-15. The user paused it on 2026-11-14 and then dropped it; the unbuilt
+branch `rw/phase-1-harness` is deleted. Lighter checks built along the way cover most of it: the
+samples are in the fixtures, Rune runtime tests read the layout, `--snap` renders and
+`tools/parity.py` compare against omarky's shots, `src/bench.rs` holds the scroll and typing
+benches, and `tools/check-specs.py` lists items with no check. Only the clean-log gate has no
+replacement.
 
 Build the checks before the work, and record Quire as it is today, so every later check reads
 "old value, new value".
