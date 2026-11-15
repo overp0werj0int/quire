@@ -797,6 +797,76 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The caret's rect in the writer with the caret at byte `at`.
+    fn caret_at(rt: &mut rune::Runtime<crate::app::App>, at: usize) -> [f32; 4] {
+        rt.update(move |s, _| s.cur_edit().set_selection(at, at));
+        rt.frame(DT);
+        rt.frame(DT);
+        info(rt, "editor").and_then(|e| e.caret).expect("a caret")
+    }
+
+    /// WR-16, WR-19, WR-22, WR-25, WR-26, WR-225: marks hang in the gutter, so each line's
+    /// text starts on the column edge; a nested item's spaces stay in the column; wrapped lines
+    /// align with the item's text; the marks are text the caret steps through and a click in
+    /// the gutter reaches.
+    #[test]
+    fn wr_16_225_marks_hang_in_the_gutter() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-hang-{}", std::process::id()));
+        let long = "word ".repeat(60);
+        let text = format!("# Title\nPlain line\n- item\n  - nested\n> quote\n[^1]: note\n- [ ] task\n- {long}\n");
+        let (mut rt, _) = open(&dir, &text, crate::app::Mode::Source);
+        let at = |line: usize| text.split('\n').take(line).map(|l| l.len() + 1).sum::<usize>();
+        let edge = caret_at(&mut rt, at(1))[0];
+        let field = info(&rt, "editor").unwrap().rect;
+        let mut size = 0.0;
+        rt.update_if(|s, _| {
+            size = s.settings().size as f32;
+            false
+        });
+        let gutter = crate::ui::editor::hang_gutter(size);
+        assert!((field[0] + gutter - edge).abs() < 1.0, "plain text starts a gutter into the field: {field:?}, edge {edge}");
+        for (line, mark, what) in [(0, 2, "heading"), (2, 2, "item"), (4, 2, "quote"), (6, 2, "task item")] {
+            let x = caret_at(&mut rt, at(line) + mark)[0];
+            assert!((x - edge).abs() < 1.0, "the {what}'s text starts on the column edge: {x} vs {edge}");
+            let start = caret_at(&mut rt, at(line))[0];
+            assert!(start < edge - 4.0 && start >= field[0] - 0.5, "the {what}'s mark hangs in the gutter: {start}");
+        }
+        // "[^1]: " is wider than the gutter at 14: it starts at the gutter's outer edge and its
+        // text a little past the column edge (Rune does not clip a mark as omarky does).
+        let (label, note) = (caret_at(&mut rt, at(5))[0], caret_at(&mut rt, at(5) + 6)[0]);
+        assert!((label - field[0]).abs() < 0.5 && note >= edge - 0.5 && note < edge + 8.0, "footnote {label}..{note}, edge {edge}");
+        // The task box is the item's text: it starts on the edge, not in the gutter.
+        let nested = caret_at(&mut rt, at(3) + 4)[0];
+        let spaces = caret_at(&mut rt, at(3) + 2)[0];
+        assert!(nested > edge + 4.0, "a nested item's spaces indent it: {nested} vs {edge}");
+        assert!(spaces < nested && caret_at(&mut rt, at(3))[0] < spaces, "the caret steps through the spaces and the marker");
+        // Right and left step through each mark character.
+        let xs: Vec<f32> = (0..=2).map(|i| caret_at(&mut rt, at(0) + i)[0]).collect();
+        assert!(xs[0] < xs[1] && xs[1] < xs[2], "one step per mark character: {xs:?}");
+        // The long item wraps; its next line starts under the item's text.
+        let first = caret_at(&mut rt, at(7) + 2);
+        let wrapped = (at(7) + 2..at(7) + text.split('\n').nth(7).unwrap().len())
+            .map(|i| caret_at(&mut rt, i))
+            .find(|c| c[1] > first[1] + 1.0)
+            .expect("the item wraps");
+        assert!((wrapped[0] - edge).abs() < 1.0, "a wrapped line aligns with the item's text: {wrapped:?} vs {edge}");
+        // A click on the heading's mark in the gutter puts the caret in the mark.
+        let mark = caret_at(&mut rt, at(4));
+        rt.update(|s, _| s.cur_edit().set_selection(at(1), at(1)));
+        rt.frame(DT);
+        rt.pointer_down(mark[0] + 1.0, mark[1] + mark[3] / 2.0);
+        rt.pointer_up(mark[0] + 1.0, mark[1] + mark[3] / 2.0);
+        rt.frame(DT);
+        let mut focus = 0;
+        rt.update_if(|s, _| {
+            focus = s.cur_edit().focus;
+            false
+        });
+        assert!((at(4)..at(4) + 2).contains(&focus), "the click lands in the quote's mark: byte {focus}, line at {}", at(4));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-99: the outline slides in from the right over about 160 ms rather than appearing.
     #[test]
     fn wr_99_the_outline_slides() {

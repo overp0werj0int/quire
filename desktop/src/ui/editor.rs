@@ -179,7 +179,7 @@ fn doc_scroll(v: V) -> El {
         column = column.child(if locked {
             super::lock::panel(v)
         } else if s.mode == Mode::Source {
-            source(v).w(page.width)
+            source(v, page.width, page.gutter)
         } else {
             preview::preview(v).w(page.width)
         });
@@ -407,7 +407,7 @@ pub fn source_column(v: V) -> crate::page::Column {
 
 /// The writer (`behavior/writer.md`): one field, painted with the formatting spans of
 /// `crate::writer`. The text is the note's Markdown, character for character (WR-01).
-fn source(v: V) -> El {
+fn source(v: V, width: f32, room: f32) -> El {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
@@ -418,7 +418,10 @@ fn source(v: V) -> El {
     let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
     let caret = edit.map_or(0, |e| e.focus.min(doc.len()));
     let focus = s.settings().paragraph_focus.then(|| md::para_range(doc, caret));
-    let (spans, strikes) = s.source_spans(e, &ink, focus);
+    let (spans, strikes, hangs) = s.source_spans(e, &ink, focus);
+    // The field reaches a gutter left of the column, and every line starts at the column, so
+    // marks hang in the gutter (WR-26).
+    let gutter = hang_gutter(e).min(room);
     let mut marks = Vec::new();
     // Typewriter scrolling centres this character's line (WR-88).
     let at = if caret < doc.len() {
@@ -459,8 +462,20 @@ fn source(v: V) -> El {
         .on_input_key(on_editor_key);
     // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in the
     // direction of its own first strong character.
-    let input = with_edit_menu(input, "editor").dir_by_paragraph();
-    el().key("source").w_full().pt(pad_top).child(input)
+    let input = with_edit_menu(input, "editor").paragraph_styles(paragraph_styles(&hangs, gutter));
+    el().key("source").w(width + gutter).ml(-gutter).pt(pad_top).child(input)
+}
+
+/// The gutter marks hang in: round(E × 3.2), 45 at 14 (WR-26, SHEET-028).
+pub(crate) fn hang_gutter(e: f32) -> f32 {
+    (e * 3.2).round()
+}
+
+/// Each line's layout in a field whose lines start `gutter` in: its mark hung before that, a
+/// list item's leading whitespace kept in the column (WR-16, WR-19, WR-22, WR-25, WR-225).
+pub(super) fn paragraph_styles(hangs: &[(usize, usize)], gutter: f32) -> Vec<rune::ParagraphStyle> {
+    let base = rune::ParagraphStyle::new().indent(gutter);
+    hangs.iter().map(|&(lead, end)| if end > 0 { base.hang(end).lead(lead) } else { base }).collect()
 }
 
 /// Quire's own menu on a right-click in field `key` where Rune has no native one, as on Linux

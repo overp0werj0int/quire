@@ -98,14 +98,15 @@ pub fn find_in(text: &str, q: &str) -> Vec<Range<usize>> {
     out
 }
 
-/// Spans and strike lines for a whole text.
-pub type Spans = (Vec<Span>, Vec<(usize, usize, Option<Color>)>);
+/// Spans, strike lines and each line's hanging mark (`Styled::hang`) for a whole text.
+pub type Spans = (Vec<Span>, Vec<(usize, usize, Option<Color>)>, Vec<(usize, usize)>);
 
 /// Styles `text` line by line, carrying the block state from each line to the next, and
 /// places each line's spans at its offset.
 fn spans_by(text: &str, mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
     let mut spans = Vec::new();
     let mut strikes = Vec::new();
+    let mut hangs = Vec::new();
     let mut st = State::default();
     let mut at = 0;
     for (i, ln) in text.split('\n').enumerate() {
@@ -115,9 +116,10 @@ fn spans_by(text: &str, mut style: impl FnMut(usize, &str, State) -> Rc<(Styled,
             spans.push(Span { start: s.start + at as u32, end: s.end + at as u32, ..s.clone() });
         }
         strikes.extend(styled.0.strikes.iter().map(|&(a, b, c)| (a + at, b + at, Some(c))));
+        hangs.push(styled.0.hang);
         at += ln.len() + 1;
     }
-    (spans, strikes)
+    (spans, strikes, hangs)
 }
 
 /// The editor's right-click menu (WR-135, SHEET-032): Cut, Copy and Paste, drawn by Quire

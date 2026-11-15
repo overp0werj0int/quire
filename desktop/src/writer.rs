@@ -66,6 +66,10 @@ pub enum Block {
 pub struct Styled {
     pub spans: Vec<Span>,
     pub strikes: Vec<(usize, usize, Color)>,
+    /// The line's hanging mark (WR-16, WR-19, WR-22, WR-25): its bytes `.0..hang.1` hang in the
+    /// gutter, and its first `.0` bytes, a list item's leading whitespace, indent every line of
+    /// it instead. `(0, 0)` hangs nothing.
+    pub hang: (usize, usize),
 }
 
 /// Sizes at the editor size `e` (WR-09, WR-14, WR-30).
@@ -258,6 +262,7 @@ pub fn line(ln: &str, first: bool, st: State, e: f32, ink: &Ink, resolves: &dyn 
         let faint = |a, b| Span { weight: Some(REGULAR), color: Some(ink.faint), size: Some(size), ..sp(a, b) };
         out.spans.push(Span { weight: Some(BOLD), color: Some(ink.strong), size: Some(size), ..sp(0, n) });
         out.spans.push(faint(0, mark));
+        out.hang = (0, mark);
         if close < n {
             out.spans.push(faint(close, n));
         }
@@ -271,11 +276,14 @@ pub fn line(ln: &str, first: bool, st: State, e: f32, ink: &Ink, resolves: &dyn 
     if let Some(q) = quote(ln) {
         out.spans.push(Span { color: Some(ink.dim), italic: true, ..sp(q, n) });
         out.spans.push(colored(0, q, ink.mark));
+        out.hang = (0, q);
         inline(ln, q, n, e, ink, resolves, &mut out);
         return (out, next(Block::None));
     }
     if let Some(l) = md::list_line(ln) {
         out.spans.push(colored(l.marker.start, l.after, ink.mark));
+        // The task box is the item's text and stays in the column (WR-22).
+        out.hang = (l.marker.start, l.after);
         let from = match &l.task {
             Some(t) => {
                 out.spans.push(Span { mono: true, ..colored(t.start, t.start + 3, ink.mark) });
@@ -296,6 +304,8 @@ pub fn line(ln: &str, first: bool, st: State, e: f32, ink: &Ink, resolves: &dyn 
     }
     if let Some(f) = footnote_def(ln) {
         out.spans.push(colored(0, f, ink.mark));
+        // The label, its colon and one space after hang (WR-25).
+        out.hang = (0, f + usize::from(ln[f..].starts_with(' ')));
         inline(ln, f, n, e, ink, resolves, &mut out);
         return (out, next(Block::None));
     }
@@ -605,7 +615,7 @@ pub fn fade(s: &Styled, len: usize, ghost: Color) -> Styled {
     let mut spans = Vec::with_capacity(s.spans.len() + 1);
     spans.push(colored(0, len, ghost));
     spans.extend(s.spans.iter().map(|x| Span { color: Some(ghost), bg: None, ..x.clone() }));
-    Styled { spans, strikes: s.strikes.iter().map(|&(a, b, _)| (a, b, ghost)).collect() }
+    Styled { spans, strikes: s.strikes.iter().map(|&(a, b, _)| (a, b, ghost)).collect(), hang: s.hang }
 }
 
 // ---------- Word count (WR-188) ----------

@@ -29,7 +29,7 @@ pub fn sheet(v: V) -> rune::El {
     let style = super::editor::ed_style(v);
     let e = style.size;
     // SHEET-016, SHEET-028: the editor's gutter, the reading column and the editor's measure.
-    let gutter = r(e * 3.2);
+    let gutter = super::editor::hang_gutter(e);
     let colw = super::preview::column(v).width;
     let w = (v.vw - 48.0).min(colw + 2.0 * gutter + 2.0 * PAD);
     let inner = w - 2.0 * PAD;
@@ -69,10 +69,10 @@ pub fn sheet(v: V) -> rune::El {
     let chrome = 2.0 * PAD + TITLE + GAP + KEY_ROW + 14.0 + shown as f32 * (ctx_h + GAP);
     let limit = (r(0.7 * v.vh) - chrome).max(90.0);
     let ink = crate::writer::Ink::new(&c);
-    let (spans, strikes) = s.sheet_spans(&sh.edit.text, e, &ink);
+    let (spans, strikes, hangs) = s.sheet_spans(&sh.edit.text, e, &ink);
     let input = text_input(&sh.edit, style)
         .key(EDITOR)
-        .w(measure)
+        .w(measure + gutter)
         .color(ink.text);
     let input = super::editor::writer_caret(input, &c, e)
         .label("Edit the block")
@@ -81,14 +81,15 @@ pub fn sheet(v: V) -> rune::El {
         .text_highlights(Vec::<TextHighlight>::new())
         .on_edit(|s: &mut App| s.sheet_field())
         .on_input_key(on_sheet_key);
-    let input = super::editor::with_edit_menu(input, EDITOR).dir_by_paragraph();
+    // The field starts at the card's padding and its lines a gutter in, so marks hang there.
+    let input = super::editor::with_edit_menu(input, EDITOR).paragraph_styles(super::editor::paragraph_styles(&hangs, gutter));
     let editor = col()
         .key("sheet-scroll")
         .w_full()
         .min_h(90.0)
         .max_h(limit)
         .scroll(ScrollSpec { stick_bottom: false })
-        .child(el().key("sheet-pad").w_full().pl(gutter).py(6.0).child(input));
+        .child(el().key("sheet-pad").w_full().py(6.0).child(input));
 
     // SHEET-030, SHEET-038, SHEET-047: the key row, or the problem in its place.
     let preset = s.preset();

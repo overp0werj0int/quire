@@ -151,7 +151,7 @@ fn bench_wr_224_typing() {
         let t2 = text.clone();
         rt.update_if(move |s, _| {
             let c = crate::roles::Roles::new(s.palette(false));
-            let (sp, st) = s.sheet_spans(&t2, 16.0, &crate::writer::Ink::new(&c));
+            let (sp, st, _) = s.sheet_spans(&t2, 16.0, &crate::writer::Ink::new(&c));
             eprintln!("  {n} lines: {} spans, {} strikes, {} paragraphs", sp.len(), st.len(), t2.lines().count());
             false
         });

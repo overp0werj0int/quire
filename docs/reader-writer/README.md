@@ -208,7 +208,10 @@ passes the user checks one at a time:
 - D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),
   the top and foot fade bands (WR-177), selected text in the strong colour, the outline's
   slide (WR-99). Done. The caret needed Rune's `El::caret_style`.
-- E. Hanging marks (WR-16 and the rest, SHEET-028): resumes phase 2, paused by the user.
+- E. Hanging marks (WR-16 and the rest, SHEET-028): heading, list, quote and footnote marks
+  hang in a `round(E × 3.2)` gutter in the writer and the edit sheet, through the paragraph
+  styles of phase 2's Rune patch (decision 0004), with a lead for a nested item's spaces.
+  Done. Rune's own tests for the patch are still not run on this machine.
 
 ## Open questions
 
