@@ -361,11 +361,15 @@ pub(crate) mod scroll_tests {
         let i = doc.blocks.iter().position(|b| b.lines.start == line).unwrap();
         rt.update(|s, tx| s.jump_block(line, tx));
         rt.frame(DT);
-        let mut first = [0.0; 4];
-        rt.update_if(|s, _| {
-            first = s.reader.scroll.get();
-            false
-        });
+        // RD-24: a long jump cuts to 0.8 of a view short, then glides the rest. Measured on
+        // screen: the offset alone also moves as rows above measure, with nothing moving. The
+        // cut is placed by the heading's row once it lays out, a frame after the jump.
+        rt.frame(DT);
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let key = crate::reader::block_key(&doc.blocks[i]);
+        let gap = crate::page::gap(14.0, i.checked_sub(1).map(|p| crate::page::rk(&doc.blocks[p].kind)), crate::page::rk(&doc.blocks[i].kind));
+        let short = rt.presented(&key).map(|r| r.0[1] + gap - page[1] - 20.0);
+        assert!(short.is_some_and(|d| d > 0.0 && d <= 0.8 * page[3] + 1.0), "the first frame lands short of the heading: {short:?} of a {} view", page[3]);
         for _ in 0..90 {
             rt.frame(DT);
         }
@@ -380,14 +384,6 @@ pub(crate) mod scroll_tests {
         });
         assert!((row[1] + gap - page[1] - 20.0).abs() < 1.0, "the heading lands 20 px under the top: row {row:?}, gap {gap}, page {page:?}");
         assert_eq!(top, i, "the top block follows the jump");
-        // RD-24: a long jump cuts to 0.8 of a view short, then glides the rest.
-        let mut last = 0.0;
-        rt.update_if(|s, _| {
-            last = s.reader.scroll.get()[0];
-            false
-        });
-        let short = last - first[0];
-        assert!(short > 0.0 && short <= 0.8 * first[2] + 1.0, "the first frame lands short of the heading: {short} of a {} view", first[2]);
 
         // From the top, four steps on reach a match in the middle of the note, far past the
         // rows built.
@@ -418,10 +414,10 @@ pub(crate) mod scroll_tests {
         let mid = page[1] + page[3] / 2.0;
         assert!((y - mid).abs() < 2.0, "the match sits mid-page: at {y}, middle {mid}");
 
-        // RD-60: a match shown between 20% and 75% of the view stays put; shown above that, it
-        // glides to 35%.
+        // RD-60 (adapted): a match whose block shows between 20% and 75% of the view stays put;
+        // shown above that, it is centred.
         let h = page[3];
-        let mut nudge = |rt: &mut rune::Runtime<crate::app::App>, by: f32| {
+        let nudge = |rt: &mut rune::Runtime<crate::app::App>, by: f32| {
             rt.update(|s, tx| {
                 let at = s.reader.scroll.get()[0];
                 tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
@@ -436,7 +432,7 @@ pub(crate) mod scroll_tests {
         let at = nudge(&mut rt, 0.2 * h);
         assert!((at - 0.3).abs() < 0.01, "a match at 30% stays: {at}");
         let at = nudge(&mut rt, 0.25 * h);
-        assert!((at - 0.35).abs() < 0.02, "a match at 5% glides to 35%: {at}");
+        assert!((at - 0.5).abs() < 0.02, "a match at 5% is centred: {at}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
@@ -734,18 +730,35 @@ mod writer_chrome_tests {
         rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key))
     }
 
-    /// WR-175: the writer's caret is 2 points wide at the default size, not Rune's 1.5.
+    /// WR-102: a jump in the writer puts its line `min(max(12% of the view, 56), view / 3)`
+    /// under the view's top; with typewriter scrolling (WR-86) it centres the caret instead.
     #[test]
-    fn wr_175_the_caret_is_two_points_wide() {
+    #[ignore = "Rune finds a keyed highlight only in a field laid out whole, and the writer lays out by paragraph: scroll_key_to(LINE_AT) and scroll_center(CARET) do nothing (decisions.tsv, rune-slim)"]
+    fn wr_102_86_a_jump_places_its_line() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("quire-caret-{}", std::process::id()));
-        let (mut rt, _) = open(&dir, "Some text to type into.\n", crate::app::Mode::Source);
-        for _ in 0..3 {
-            rt.frame(DT);
+        for typewriter in [false, true] {
+            let dir = std::env::temp_dir().join(format!("quire-place-{typewriter}-{}", std::process::id()));
+            let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+            rt.update(|s, _| s.persist.settings.typewriter_scroll = typewriter);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+            let line = LONG.lines().count() * 2 / 3;
+            rt.update(move |s, tx| s.source_jump(line, tx));
+            for _ in 0..90 {
+                rt.frame(DT);
+            }
+            let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+            let caret = info(&rt, "editor").and_then(|e| e.caret).expect("the editor shows a caret");
+            let vh = page[3];
+            let (at, want) = if typewriter {
+                (caret[1] + caret[3] / 2.0 - page[1], vh / 2.0)
+            } else {
+                (caret[1] - page[1], (vh * 0.12).max(56.0).min(vh / 3.0))
+            };
+            assert!((at - want).abs() < caret[3], "typewriter {typewriter}: the line sits {at} under the top, want {want}");
+            let _ = std::fs::remove_dir_all(&dir);
         }
-        let caret = info(&rt, "editor").and_then(|e| e.caret).expect("the editor shows a caret");
-        assert_eq!(caret[2], 2.0, "caret {caret:?}");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// WR-93: the thumb is hidden at rest, shows while the note scrolls, and is as tall as the

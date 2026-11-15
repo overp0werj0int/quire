@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-11-13. Built 2026-11-15 (phase 10 E): `El::paragraph_styles` takes a
 `ParagraphStyle` per paragraph with `indent`, `first_line_indent`, `hang(bytes)`, `lead(bytes)`,
-`line_height` and `space_above`, carried on the fork branch `quire/by-paragraph-fixes` pinned
+`line_height` and `space_above`, carried on the fork branch `quire/by-paragraph-fixes` (now `quire/slim`, decision 0009) pinned
 through `[patch]`. Quire uses `indent` and `hang` with `lead` so far.
 
 omarky's writer hangs heading marks, list markers and quote marks in the left margin, so every

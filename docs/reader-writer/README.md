@@ -84,7 +84,7 @@ Done when the harness runs headless and the baseline numbers and images are comm
 ### Phase 2. Rune patch spike
 
 Status: done in phase 10 E, 2026-11-15. The paragraph styles moved onto Rune branch
-`quire/by-paragraph-fixes`, carried as a fork branch through `[patch]` (decision 0004). Caret,
+`quire/by-paragraph-fixes` (now `quire/slim`, decision 0009), carried as a fork branch through `[patch]` (decision 0004). Caret,
 clicks in the gutter and wrapping are tested in Quire; typing stays within WR-224's budget (0.7,
 1.1 and 3.3 ms median at 400, 1,000 and 3,000 lines). Rune's own tests for the patch are not run
 on this machine.
@@ -180,7 +180,7 @@ locked notes, and refusing to write over a change that landed while the sheet wa
 Status: done on branch `rw/phase-3-typography`, signed off by the user on 2026-11-15. The zen
 mode rename, the budgets as benches (`desktop/src/bench.rs`), typing within budget (through a
 local Rune branch), the editor's right-click menu, the code chip's Copied state, the raised
-footnote mark (`Span::raise`), the page as a virtual list, and the measured parity pass
+footnote mark (`Span::raise`, dropped since by decision 0009), the page as a virtual list, and the measured parity pass
 (`tools/parity.py`): over the 7 samples and 6 review themes every matched line sits within
 2 px of omarky's, except the first block under Quire's file-name line (3 px) and threshold
 artifacts, listed in `decisions.tsv`. The scroll bench holds its budget (mean 0.7 ms, worst
@@ -211,7 +211,8 @@ one at a time:
   Done.
 - D. Writer chrome: the caret's width and blink (WR-175, SHEET-029), the scroll thumb (WR-93),
   the top and foot fade bands (WR-177), selected text in the strong colour, the outline's
-  slide (WR-99). Done. The caret needed Rune's `El::caret_style`.
+  slide (WR-99). Done. The caret needed Rune's `El::caret_style`; decision 0009 dropped it for
+  Rune's own caret.
 - E. Hanging marks (WR-16 and the rest, SHEET-028): heading, list, quote and footnote marks
   hang in a `round(E × 3.2)` gutter in the writer and the edit sheet, through the paragraph
   styles of phase 2's Rune patch (decision 0004), with a lead for a nested item's spaces.

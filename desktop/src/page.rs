@@ -100,6 +100,12 @@ pub fn rk(k: &crate::blocks::Kind) -> Rk {
     }
 }
 
+/// The height the page's virtual list gives a row not yet laid out, at body size `b`: three
+/// body lines. The page map (`reader::PageMap`) counts the same.
+pub fn row_estimate(b: f32) -> f32 {
+    r(b * 1.6) * 3.0
+}
+
 /// The gap above each top-level block of the page, at body size `b`.
 pub fn gaps(b: f32, blocks: &[crate::blocks::Block]) -> Vec<f32> {
     let mut prev = None;

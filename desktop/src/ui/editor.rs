@@ -121,7 +121,11 @@ fn clamp(lo: f32, x: f32, hi: f32) -> f32 {
 fn doc_scroll(v: V) -> El {
     let s = v.s;
     let focus = v.focus();
-    let mut content = col().key("doc-content").w_full().items_center();
+    // The page map places the reader's rows against the content's top (`reader::PageMap`).
+    let mut content = col().key("doc-content").w_full().items_center().on_layout_tx(|s: &mut App, [_, y, _, _], tx| {
+        s.reader.map.borrow_mut().content_laid_out(y);
+        tx.live_only();
+    });
     if v.has_doc() {
         let pad_x = if focus { clamp(20.0, v.vw * 0.06, 64.0) } else { clamp(20.0, v.vw * 0.05, 56.0) };
         // The toolbar floats TOOLBAR_TOP below the title bar, and the breadcrumb starts 64
@@ -449,7 +453,7 @@ fn source(v: V, width: f32, room: f32) -> El {
         .key("editor")
         .w_full()
         .color(ink.text);
-    let input = writer_caret(input, &c, e)
+    let input = writer_caret(input, &c)
         .placeholder("Start writing…", c.ghost)
         .spellcheck(s.settings().spellcheck)
         .label("Note")
@@ -487,14 +491,12 @@ pub fn with_edit_menu(input: rune::El, key: &'static str) -> rune::El {
     input.on_secondary_press(move |s: &mut App, at, _| s.open_edit_menu(key, at.x, at.y))
 }
 
-/// The writer's caret and selection, shared with the edit sheet: an accent bar
-/// max(2, round(size / 9)) wide with round ends that blinks (WR-175, SHEET-029), and selected
-/// text in the strong colour over the selection (WR-176).
-pub(super) fn writer_caret(input: El, c: &Roles, size: f32) -> El {
-    let blink = rune::Blink { on: 0.52, fade_out: 0.18, off: 0.34, fade_in: 0.18, hold: 1.4 };
-    let style = rune::CaretStyle { width: 2f32.max((size / 9.0).round()), round: true, blink: Some(blink) };
+/// The writer's caret and selection, shared with the edit sheet: an accent caret in Rune's own
+/// shape, a 1.5 point bar that doesn't blink (WR-175, SHEET-029, adapted), and selected text in
+/// the strong colour over the selection (WR-176).
+pub(super) fn writer_caret(input: El, c: &Roles) -> El {
     let sel = rune::SelectionStyle::new(c.selection).ink(c.strong).inactive(c.selection, Some(c.strong));
-    input.caret(c.accent, c.selection).caret_style(style).selection_style(sel)
+    input.caret(c.accent, c.selection).selection_style(sel)
 }
 
 /// The `[[link]]` around the caret, if any.

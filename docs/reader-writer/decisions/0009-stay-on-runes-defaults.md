@@ -1,0 +1,35 @@
+# 0009 Stay on Rune's defaults where a patch buys little
+
+Status: accepted, 2026-11-15.
+
+Quire carried eleven local Rune commits. Upstream Rune moved 277 commits on, and five of the
+local ones conflict with it. Each local commit is a cost at every Rune update, so only the ones
+that change what you see in an important way stay.
+
+Decision:
+
+- **Caret.** The writer and the edit sheet use Rune's caret in the accent colour: a 1.5 point bar
+  that doesn't blink. omarky's is max(2, round(E / 9)) wide with round ends and a blink (WR-175,
+  SHEET-029). Dropped `El::caret_style`.
+- **Footnote references.** They stay small (0.7 of the body size) and sit on the baseline.
+  omarky raises them as superscript (PAGE-78). Footnotes will move to a later design, and in Zen
+  mode they would need an overlay anyway. Dropped `Span::raise`.
+- **Where the reader's blocks are.** Quire keeps this itself, so it can later mark the block you
+  are in. Each row of the page reports its height and place (`El::on_layout`), and the page map
+  (`reader::PageMap`) adds the rows up, with the list's estimate for a row not laid out, then
+  shifts the sum by how far the last row laid out really is from it. Blocks near the view are
+  exact; far ones are estimates, and a trip to one lands again by its row once the row lays out.
+  Dropped `El::on_row_tops` and the patch that let `scroll_key_to` reach rows not built.
+- **Jumps and find.** A long jump (RD-24) still cuts to 0.8 of a view short and glides the rest
+  in 240 ms. When its target is not laid out yet, the cut is placed again by the row a frame
+  later. A find match (RD-60) whose block shows between 20% and 75% of the view stays put; any
+  other match is centred, where omarky glides a visible one to 35%. A match in a code line past
+  the visible part no longer scrolls the code block sideways. Dropped `Tx::scroll_key_to_with`
+  and `Tx::scroll_band`.
+
+Kept for now: the paragraph-span fix (typing speed in long notes and a screen-reader fix), and
+the paragraph styles that hang marks in the gutter (decision 0004, under review). The right-click
+caret fix stays too: Rune has no public way to find the text position under a point, so Quire
+cannot place the caret itself before its own menu opens.
+
+The local Rune branch is now `quire/slim`: upstream `bf3f9d4a` plus five commits.

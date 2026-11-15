@@ -84,18 +84,31 @@ impl Default for Reader {
 }
 
 /// Where each top-level block of the page sits in the scroll viewport's content, so the block at
-/// the top of the view follows from the scroll offset alone. The page is a virtual list: Rune
-/// reports each row's top (`El::on_row_tops`), measured where the row has been laid out and
-/// estimated where not, and a row's block sits its rhythm gap below the row's top.
+/// the top of the view follows from the scroll offset alone. Quire keeps this itself, so it can
+/// mark the block you are in. The page is a virtual list: each row laid out reports its height
+/// and where it is (`El::on_layout`), and a row not yet laid out counts the list's estimate.
+/// The rows add up to where each block would be, and the last row laid out says how far that is
+/// from where it is, so blocks near the view are exact and blocks far from it are estimates
+/// that a trip to them corrects as it arrives.
 #[derive(Default)]
 pub struct PageMap {
     /// The page is on screen.
     pub reading: bool,
-    /// Each row's top, from Rune, and the gap above each block, from the view.
-    row_tops: Vec<f32>,
+    /// The note the rows are for, by its text's hash.
+    note: Option<u64>,
+    /// Each block's row key and its index, and each laid-out row's height by key.
+    keys: Vec<String>,
+    index: HashMap<String, usize>,
+    heights: HashMap<String, f32>,
+    /// The height the list gives a row not yet laid out.
+    estimate: f32,
+    /// The gap above each block, from the view.
     gaps: Vec<f32>,
-    /// Each top-level block's top: the two added.
-    pub tops: Vec<f32>,
+    /// Each block's top with the rows added up from 0, and how far the rows really are from that.
+    base: Vec<f32>,
+    shift: f32,
+    /// The scroll content's top in the window, as last laid out.
+    content_y: f32,
     /// Each top-level block's first source line, and the note's line count.
     pub starts: Vec<usize>,
     pub lines: usize,
@@ -105,7 +118,44 @@ pub struct PageMap {
     pub first_row: Option<usize>,
     pub marks: Vec<Mark>,
     pub marked: Option<usize>,
+    /// A trip waiting for its row to be laid out, to land by where the row is.
+    pending: Option<Pending>,
+    /// A trip into a note whose page isn't mapped yet (a `[[note#Heading]]` link): the block's
+    /// key, whether it travels, and when it was asked, on the clock.
+    later: Option<(String, bool, f64)>,
 }
+
+/// A trip to a row that was not laid out when it started (RD-24, RD-25, RD-60).
+struct Pending {
+    key: String,
+    how: Arrive,
+    /// When it started, on the clock: it gives up after `PENDING` seconds.
+    since: f64,
+}
+
+enum Arrive {
+    /// Put the row `at` points under the view's top, at once.
+    Jump { at: f32 },
+    /// A long trip's cut, placed by the map's estimate: once the row is laid out, cut again to
+    /// 0.8 of a view short of where it is and glide the rest.
+    Cut,
+    /// Glide the block's top to 20 points under the view's top; `to` is the offset asked for
+    /// last.
+    Glide { to: f32 },
+    /// Centre the current find match.
+    Center,
+}
+
+/// What a row laid out asks of the scroll viewport.
+pub enum Arrival {
+    Key(f32),
+    Cut(f32, f32),
+    Glide(f32),
+    Center,
+}
+
+/// How long a trip waits for its row, in seconds.
+const PENDING: f64 = 0.6;
 
 /// An outline row's live colours, [fill, text], and their values when current and not.
 pub struct Mark {
@@ -116,39 +166,135 @@ pub struct Mark {
 }
 
 impl PageMap {
-    /// The rows' tops, as Rune reports them.
-    pub fn set_row_tops(&mut self, tops: &[f32]) {
-        self.row_tops.clear();
-        self.row_tops.extend_from_slice(tops);
-        self.join();
-    }
-
-    /// The gap above each block, from the view.
-    pub fn set_gaps(&mut self, gaps: Vec<f32>) {
-        if gaps != self.gaps {
+    /// The note's blocks: their row keys (built only when the note changes), the gap above
+    /// each, and the list's estimate for a row not yet laid out. A key that leaves the page
+    /// forgets its height, as the list does.
+    pub fn set_rows(&mut self, note: Option<u64>, keys: impl FnOnce() -> Vec<String>, gaps: Vec<f32>, estimate: f32) {
+        let mut changed = false;
+        if note != self.note || self.note.is_none() {
+            self.note = note;
+            self.keys = keys();
+            self.index = self.keys.iter().enumerate().map(|(i, k)| (k.clone(), i)).collect();
+            let index = &self.index;
+            self.heights.retain(|k, _| index.contains_key(k));
+            changed = true;
+        }
+        if gaps != self.gaps || estimate != self.estimate {
             self.gaps = gaps;
+            self.estimate = estimate;
+            changed = true;
+        }
+        if changed {
             self.join();
         }
     }
 
+    /// The scroll content laid out with its top at window `y`.
+    pub fn content_laid_out(&mut self, y: f32) {
+        self.content_y = y;
+    }
+
+    /// Row `key` laid out at window `y`, `h` points tall. Whether that moved any block.
+    pub fn row_laid_out(&mut self, key: &str, y: f32, h: f32) -> bool {
+        let Some(&i) = self.index.get(key) else { return false };
+        let mut moved = false;
+        if self.heights.get(key) != Some(&h) {
+            self.heights.insert(key.to_owned(), h);
+            self.join();
+            moved = true;
+        }
+        let row = self.base[i] - self.gaps.get(i).copied().unwrap_or(0.0);
+        let shift = y - self.content_y - row;
+        if (shift - self.shift).abs() > 0.25 {
+            self.shift = shift;
+            moved = true;
+        }
+        moved
+    }
 
     fn join(&mut self) {
-        let gaps = &self.gaps;
-        self.tops = self.row_tops.iter().enumerate().map(|(i, t)| t + gaps.get(i).copied().unwrap_or(0.0)).collect();
+        let mut y = 0.0;
+        self.base.clear();
+        for (i, k) in self.keys.iter().enumerate() {
+            self.base.push(y + self.gaps.get(i).copied().unwrap_or(0.0));
+            y += self.heights.get(k).copied().unwrap_or(self.estimate);
+        }
+    }
+
+    /// Block `i`'s top in the scroll content.
+    pub fn block_top(&self, i: usize) -> Option<f32> {
+        self.base.get(i).map(|t| t + self.shift)
+    }
+
+    /// The map covers `blocks` blocks: right after a switch it may still hold the last note's
+    /// page (RD-04).
+    pub fn covers(&self, blocks: usize) -> bool {
+        self.base.len() == blocks
+    }
+
+    /// Block `i`'s height, its gap above left out.
+    fn height(&self, i: usize) -> f32 {
+        let row = self.keys.get(i).and_then(|k| self.heights.get(k)).copied().unwrap_or(self.estimate);
+        row - self.gaps.get(i).copied().unwrap_or(0.0)
+    }
+
+    /// Waits for row `key` to be laid out, then arrives `how`.
+    fn wait(&mut self, key: String, how: Arrive, now: f64) {
+        self.pending = Some(Pending { key, how, since: now });
+    }
+
+    /// Row `key` laid out with the view at `[offset, max, ..]`: what a trip waiting for it asks.
+    pub fn arrive(&mut self, key: &str, [offset, max, vh, _]: [f32; 4], now: f64) -> Option<Arrival> {
+        let p = self.pending.as_ref()?;
+        if now - p.since > PENDING {
+            self.pending = None;
+            return None;
+        }
+        if p.key != key {
+            return None;
+        }
+        let top = self.index.get(key).and_then(|&i| self.block_top(i))?;
+        let p = self.pending.as_mut()?;
+        match &mut p.how {
+            Arrive::Jump { at } => {
+                let at = *at;
+                self.pending = None;
+                Some(Arrival::Key(at))
+            }
+            Arrive::Center => {
+                self.pending = None;
+                Some(Arrival::Center)
+            }
+            Arrive::Cut => {
+                let want = (top - 20.0).clamp(0.0, max.max(0.0));
+                p.how = Arrive::Glide { to: want };
+                let cut = if (want - offset).abs() > 0.8 * vh { want - (want - offset).signum() * 0.8 * vh } else { offset };
+                Some(Arrival::Cut(cut, want))
+            }
+            Arrive::Glide { to } => {
+                let want = (top - 20.0).clamp(0.0, max.max(0.0));
+                if (want - *to).abs() < 0.5 {
+                    self.pending = None;
+                    return None;
+                }
+                *to = want;
+                Some(Arrival::Glide(want))
+            }
+        }
     }
 
     /// The last block whose top is at or above 21 points under the viewport's top, at
     /// `offset`.
     pub fn top(&self, offset: f32) -> usize {
         let y = offset + 21.0;
-        self.tops.partition_point(|&t| t <= y).saturating_sub(1)
+        self.base.partition_point(|&t| t + self.shift <= y).saturating_sub(1)
     }
 
     /// The outline row current at `offset`: the last heading whose top is above the viewport's
     /// top plus 100 points.
     pub fn head_row(&self, offset: f32) -> Option<usize> {
         let y = offset + 100.0;
-        self.heads.iter().rev().find(|(k, _)| self.tops.get(*k).is_some_and(|&t| t <= y)).map_or(self.first_row, |(_, row)| *row)
+        self.heads.iter().rev().find(|(k, _)| self.block_top(*k).is_some_and(|t| t <= y)).map_or(self.first_row, |(_, row)| *row)
     }
 
     /// The outline highlight and the reading progress line (RD-38) at the scroll `now`
@@ -424,45 +570,96 @@ impl App {
     }
 
     /// Puts block `i` 20 px under the top (RD-25), at once or, when `travel`, as a long jump
-    /// travels (RD-24): past 1.5 views it cuts to 0.8 of a view short, then glides 240 ms. The
-    /// cut and the glide land by the block's row, so both hold where the rows on the way were
-    /// estimates. The row
-    /// starts at the gap above the block, so the row lands that much higher.
+    /// travels (RD-24): past 1.5 views it cuts to 0.8 of a view short, then glides 240 ms. A row
+    /// near the view is laid out, so its top in the page map is where it is. A row far from it
+    /// may not be, so the trip starts from the map's estimate and lands again once the row lays
+    /// out (`App::row_laid_out`): a long trip's cut is placed again a frame later, by the row.
     pub(crate) fn land(&mut self, i: usize, travel: bool, tx: &mut Tx) {
         let doc = self.doc();
         let Some(b) = doc.blocks.get(i) else { return };
-        // From the note itself: right after a switch the map still holds the last note's page
-        // (RD-04), so its tops count only when they are this note's.
         let gap = crate::page::gap(self.b(), i.checked_sub(1).map(|p| crate::page::rk(&doc.blocks[p].kind)), crate::page::rk(&b.kind));
-        let top = {
-            let map = self.reader.map.borrow();
-            map.tops.get(i).copied().filter(|_| map.tops.len() == doc.blocks.len())
-        };
         let key = block_key(b);
         self.reader.glide = None;
-        if !travel {
-            return tx.scroll_key_to(key, 20.0 - gap);
-        }
         let [offset, max, vh, _] = self.reader.scroll.get();
-        if let Some(to) = top.map(|t| (t - 20.0).clamp(0.0, max.max(0.0)))
-            && (to - offset).abs() > 1.5 * vh
-        {
-            // The cut is placed by the row too, so it stops 0.8 of a view short of where the
-            // row measures, not of where it was estimated.
-            tx.scroll_key_to(key.clone(), 20.0 - gap + if to > offset { 0.8 * vh } else { -0.8 * vh });
+        let now = self.now.get();
+        let mut map = self.reader.map.borrow_mut();
+        // Right after a switch the map may still hold the last note's page (RD-04): the trip
+        // starts once the new page's first rows are laid out.
+        let Some(top) = map.block_top(i).filter(|_| map.covers(doc.blocks.len()) && map.index.contains_key(&key)) else {
+            map.later = Some((key, travel, now));
+            return;
+        };
+        let to = (top - 20.0).clamp(0.0, max.max(0.0));
+        let near = top > offset - vh && top < offset + 2.0 * vh;
+        if !travel {
+            if near {
+                return tx.scroll_key_to(key, 20.0 - gap);
+            }
+            tx.scroll_to_instant(SCROLL, 0.0, to);
+            return map.wait(key, Arrive::Jump { at: 20.0 - gap }, now);
         }
-        tx.scroll_key_to_with(key, 20.0 - gap, Spring::new(0.24, 0.0));
+        let far = (to - offset).abs() > 1.5 * vh;
+        if far {
+            tx.scroll_to_instant(SCROLL, 0.0, if to > offset { to - 0.8 * vh } else { to + 0.8 * vh });
+        }
+        tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
+        if !near {
+            map.wait(key, if far { Arrive::Cut } else { Arrive::Glide { to } }, now);
+        }
     }
 
-    /// Brings the current find match into view (RD-60, BLK-52): it stays put between 20% and
-    /// 75% of the view's height, glides to 35% while it shows elsewhere, and is centred from off
-    /// screen; in a code line past the visible part, the block scrolls it a third of the way in.
-    /// It names its block's row first, so a match in a row not yet built is reached too.
+    /// Brings the current find match into view (RD-60, adapted): a match whose block shows
+    /// between 20% and 75% of the view's height stays put, and any other is centred. A block
+    /// far from the view may not be laid out, so the page first goes to where the map puts it,
+    /// and centres the match once its row lays out.
     pub(crate) fn center_match(&self, tx: &mut Tx) {
         let m = self.find_matches();
         let doc = self.doc();
-        if let Some(b) = m.get(self.reader.find.cur).and_then(|m| doc.blocks.get(m.block)) {
-            tx.scroll_band(format!("{}/{FIND_CUR}", block_key(b)), (0.2, 0.75), 0.35);
+        let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
+        let Some(b) = doc.blocks.get(i) else { return };
+        let [offset, max, vh, _] = self.reader.scroll.get();
+        let mut map = self.reader.map.borrow_mut();
+        let Some(top) = map.block_top(i).filter(|_| map.covers(doc.blocks.len())) else {
+            return tx.scroll_center(FIND_CUR);
+        };
+        let (y0, y1) = (top - offset, top - offset + map.height(i));
+        if y0 >= 0.2 * vh && y1 <= 0.75 * vh {
+            return;
+        }
+        if top > offset - vh && top < offset + 2.0 * vh {
+            return tx.scroll_center(FIND_CUR);
+        }
+        tx.scroll_to_instant(SCROLL, 0.0, (top - 0.5 * vh).clamp(0.0, max.max(0.0)));
+        map.wait(block_key(b), Arrive::Center, self.now.get());
+    }
+
+    /// Row `key` of the page laid out at window rect `[x, y, w, h]` (`ui/preview.rs`): the page
+    /// map takes its height and place, and a trip waiting for the row lands by it.
+    pub(crate) fn row_laid_out(&mut self, key: &str, [_, y, _, h]: [f32; 4], tx: &mut Tx) {
+        let now = self.reader.scroll.get();
+        let mut map = self.reader.map.borrow_mut();
+        if map.row_laid_out(key, y, h) {
+            map.follow(now, &self.reader.bar);
+        }
+        if let Some((k, travel, since)) = map.later.take() {
+            match map.index.get(&k).copied() {
+                Some(i) => {
+                    drop(map);
+                    return self.land(i, travel, tx);
+                }
+                None if self.now.get() - since < 2.0 => map.later = Some((k, travel, since)),
+                None => {}
+            }
+        }
+        match map.arrive(key, now, self.now.get()) {
+            Some(Arrival::Key(at)) => tx.scroll_key_to(key.to_owned(), at),
+            Some(Arrival::Cut(cut, to)) => {
+                tx.scroll_to_instant(SCROLL, 0.0, cut);
+                tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
+            }
+            Some(Arrival::Glide(to)) => tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0)),
+            Some(Arrival::Center) => tx.scroll_center(FIND_CUR),
+            None => tx.live_only(),
         }
     }
 

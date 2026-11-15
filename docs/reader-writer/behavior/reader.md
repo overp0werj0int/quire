@@ -97,7 +97,7 @@ reading them:
 - **RD-57** [in] [verify: script] The first match chosen is the first one at or below the top of the view, else the first in the note (`components/MarkdownView.qml:173-180`).
 - **RD-58** [adapted: 0003] [verify: script] Enter and n go to the next match, Shift+Enter and N to the previous, wrapping at both ends (omarky preset). n and N work after the bar loses focus while a query exists (`components/FindBar.qml:48-52`, `components/MarkdownView.qml:182-185`, `reader/ui/app/ReaderWindow.qml:450-451`).
 - **RD-59** [in] [verify: state, golden] Every match is painted in the text with the find background. The current one is solid accent with bg-coloured text (`services/Reading.qml:87-89`, `lib/inline.js:139-140`).
-- **RD-60** [in] [verify: script] A current match off screen is brought to the centre of the view. A visible match does not move the page if it lies between 20% and 75% of the view height. Otherwise the page glides in 200 ms to put it 35% from the top (`components/MarkdownView.qml:186-191`, `components/DocView.qml:150-155`).
+- **RD-60** [adapted: 0009] [verify: script] A current match off screen is brought to the centre of the view. A visible match does not move the page if it lies between 20% and 75% of the view height. Otherwise the page glides in 200 ms to put it 35% from the top. Quire keeps a match still while its block lies in that band and centres any other (decision 0009) (`components/MarkdownView.qml:186-191`, `components/DocView.qml:150-155`).
 - **RD-61** [in] [verify: script] Esc closes find and clears the query and the highlights (`components/FindBar.qml:52`, `reader/ui/app/ReaderWindow.qml:464-470`).
 
 ## 8. Links

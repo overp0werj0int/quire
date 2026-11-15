@@ -101,7 +101,7 @@ impl Rich {
         let a = self.text.len();
         self.text.push_str(s);
         let b = self.text.len();
-        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono || sp.raise != 0.0) {
+        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono) {
             self.spans.push(Span { start: a as u32, end: b as u32, ..sp });
         }
     }
@@ -152,9 +152,9 @@ impl Rich {
                     self.links.push((a..self.text.len(), format!("url:{u}"), c.link));
                 }
                 Some(Link::Anchor(an)) => {
-                    // A footnote reference is superscript (PAGE-78): measured on omarky's <sup> at
-                    // 14 px, the digit is 10 px with its foot 9 px above the line's baseline.
-                    let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), raise: r(cx.look.b * 0.64), ..base } } else { base };
+                    // A footnote reference is small (PAGE-78, adapted): omarky's <sup> is 10 px at
+                    // 14 px. It sits on the baseline, since Rune has no raised spans.
+                    let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), ..base } } else { base };
                     self.push(&run.t, Span { color: Some(c.link), ..sup });
                     if let Some(l) = cx.anchor_line(an) {
                         self.links.push((a..self.text.len(), format!("line:{l}"), c.link));
@@ -276,7 +276,7 @@ pub fn preview(v: V) -> El {
     let look = Rc::new(look(v));
     let find = Rc::new(find);
     let gaps = Rc::new(page::gaps(look.b, &doc.blocks));
-    let estimate = r(look.b * 1.6) * 3.0;
+    let estimate = page::row_estimate(look.b);
     let (p, dark, vw, vh, trailing) = (v.p, v.dark, v.vw, v.vh, v.trailing);
     col()
         .key("preview")
@@ -291,21 +291,15 @@ pub fn preview(v: V) -> El {
                 let doc = s.doc();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
-                rune::memo(crate::reader::block_key(bl), version, || {
+                let key = crate::reader::block_key(bl);
+                rune::memo(key.clone(), version, || {
                     let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref() };
                     let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
-                    el().w_full().pt(gap).child(cx.top_block(bl, tone))
+                    el().w_full().pt(gap).child(cx.top_block(bl, tone)).on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
                 })
             },
         )
         .virtual_rows_version(s.doc_hash())
-        .on_row_tops(|s: &mut App, tops| {
-            let now = s.reader.scroll.get();
-            let mut map = s.reader.map.borrow_mut();
-            map.set_row_tops(tops);
-            map.follow(now, &s.reader.bar);
-            false
-        })
 }
 
 /// Top-level block `i` of `doc` drawn by the page's renderer in the dim tier, for the edit

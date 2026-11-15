@@ -134,8 +134,8 @@ fn reading(s: &App) -> bool {
 }
 
 /// What the page map (`reader::PageMap`) takes from the view: whether the page shows, each
-/// block's first line and the gap above it. The rows' tops come from Rune as they are laid out,
-/// so a scroll runs no view (VER-32).
+/// block's first line, row key and gap above it. The rows' heights come in as they are laid
+/// out, so a scroll runs no view (VER-32).
 fn map_page(s: &App) {
     let mut map = s.reader.map.borrow_mut();
     map.reading = reading(s);
@@ -150,7 +150,8 @@ fn map_page(s: &App) {
     map.lines = doc.line_count;
     map.starts.extend(doc.blocks.iter().map(|b| b.lines.start));
     let b = s.settings().size as f32;
-    map.set_gaps(crate::page::gaps(b, &doc.blocks));
+    let keys = || doc.blocks.iter().map(crate::reader::block_key).collect();
+    map.set_rows(s.doc_hash(), keys, crate::page::gaps(b, &doc.blocks), crate::page::row_estimate(b));
 }
 
 fn notice(v: V, msg: &str) -> El {
