@@ -6,6 +6,9 @@ mod front;
 mod list;
 mod table;
 
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextHighlight, TextStyle, Tx, col, el, icon, rich, row, text};
 
 use super::V;
@@ -13,7 +16,7 @@ use super::octicons;
 use crate::app::App;
 use crate::blocks::{Alert, Block, Doc, Footnote, GalleryItem, Kind, Link, Run};
 use crate::md::Img;
-use crate::page::{self, Rk, line, r, step};
+use crate::page::{self, line, r, step};
 use crate::roles::{Roles, mix};
 use crate::theme;
 
@@ -236,6 +239,10 @@ fn look(v: V) -> Look {
     }
 }
 
+/// The page (VER-32): a virtual list of the note's top-level blocks, so only the rows near the
+/// view exist. Each row is its block with the rhythm's gap above it (PAGE-54 to PAGE-67), keyed
+/// by the block's content key, so the outline and links can scroll to it and the page holds its
+/// place when lines above it change (RD-11).
 pub fn preview(v: V) -> El {
     let s = v.s;
     let doc = s.doc();
@@ -243,10 +250,12 @@ pub fn preview(v: V) -> El {
         let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
         Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur }
     });
-    // The page is built again only when something it draws from changes, so a scroll, which
-    // re-runs the view to find the top block, reuses it (VER-32).
+    // A row is built again only when something it draws from changes.
     let set = s.settings();
-    let version = (
+    let version = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (
         s.doc_hash(),
         s.active.as_deref(),
         s.vault.as_ref().map(|v| &v.path),
@@ -256,13 +265,43 @@ pub fn preview(v: V) -> El {
         &s.names,
         s.images.epoch.get(),
         s.reader.copied.map(|(l, _)| l),
-    );
-    rune::memo("preview", version, || {
-        let look = look(v);
-        let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
-        let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
-        cx.stack(&doc.blocks, tone, true, false).w_full()
-    })
+        )
+            .hash(&mut h);
+        h.finish()
+    };
+    let look = Rc::new(look(v));
+    let find = Rc::new(find);
+    let gaps = Rc::new(page::gaps(look.b, &doc.blocks));
+    let estimate = r(look.b * 1.6) * 3.0;
+    let (p, dark, vw, vh, trailing) = (v.p, v.dark, v.vw, v.vh, v.trailing);
+    col()
+        .key("preview")
+        .w_full()
+        .growth(rune::GrowthSpec::default())
+        .virtual_rows(
+            doc.blocks.len(),
+            estimate,
+            |s: &App, i| Cow::Owned(s.doc().blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
+            move |s: &App, i| {
+                let v = V { s, p, dark, vw, vh, trailing };
+                let doc = s.doc();
+                let Some(bl) = doc.blocks.get(i) else { return el() };
+                let gap = gaps.get(i).copied().unwrap_or(0.0);
+                rune::memo(crate::reader::block_key(bl), version, || {
+                    let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref() };
+                    let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
+                    el().w_full().pt(gap).child(cx.top_block(bl, tone))
+                })
+            },
+        )
+        .virtual_rows_version(s.doc_hash())
+        .on_row_tops(|s: &mut App, tops| {
+            let now = s.reader.scroll.get();
+            let mut map = s.reader.map.borrow_mut();
+            map.set_row_tops(tops);
+            map.follow(now, &s.reader.bar);
+            false
+        })
 }
 
 /// Top-level block `i` of `doc` drawn by the page's renderer in the dim tier, for the edit
@@ -273,19 +312,6 @@ pub fn context(v: V, doc: &Doc, i: usize) -> El {
     let cx = Cx { v, look: &look, doc, find: None };
     let tone = Tone { color: look.c.dim, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
     cx.block(bl, tone).w_full()
-}
-
-/// The rhythm's view of a block (PAGE-58).
-fn rk(k: &Kind) -> Rk {
-    match k {
-        Kind::Heading { level, .. } => Rk::Heading(*level),
-        Kind::Rule => Rk::Rule,
-        Kind::FrontMatter { .. } => Rk::FrontMatter,
-        Kind::Footnotes { .. } => Rk::Footnotes,
-        Kind::Code { .. } | Kind::Diff { .. } | Kind::Table(_) | Kind::Alert { .. } | Kind::Image { .. } | Kind::Gallery { .. } | Kind::Quote { .. } => Rk::Framed,
-        Kind::List(_) => Rk::List,
-        Kind::Paragraph { .. } | Kind::Html { .. } => Rk::Other,
-    }
 }
 
 /// The find query, lower-cased, and the current match as (piece, match in the piece).
@@ -349,37 +375,34 @@ impl Cx<'_> {
         (out, k - k0)
     }
 
-    /// Blocks one under another, each with the gap the rhythm gives it (PAGE-54 to PAGE-67).
-    /// `top` keys each block by its first line, so the outline and links can scroll to it.
-    fn stack(&self, blocks: &[Block], tone: Tone, top: bool, tight: bool) -> El {
+    /// A top-level block of the page. The block under the pointer is the one Ctrl+Shift+C and e
+    /// act on (RD-100); a right-click copies its Markdown (RD-68).
+    fn top_block(&self, bl: &Block, tone: Tone) -> El {
+        let line = bl.lines.start;
+        self.block(bl, tone)
+            .key("block")
+            .on_hover_change(move |s: &mut App, on, tx| {
+                if on {
+                    s.reader.hover = Some(line);
+                } else if s.reader.hover == Some(line) {
+                    s.reader.hover = None;
+                }
+                // Nothing on the page draws the hover, so a scroll that moves blocks under the
+                // pointer runs no view.
+                tx.live_only();
+            })
+            .on_secondary_press(move |s: &mut App, _, tx| s.copy_block(line, tx))
+    }
+
+    /// Blocks one under another inside a block (a quote, an alert, a list item), each with the
+    /// gap the rhythm gives it (PAGE-66, PAGE-67).
+    fn stack(&self, blocks: &[Block], tone: Tone, tight: bool) -> El {
         let b = self.look.b;
         let mut out = col();
         let mut prev = None;
         for (i, bl) in blocks.iter().enumerate() {
-            let k = rk(&bl.kind);
-            let gap = if top { page::gap(b, prev, k) } else { page::inner_gap(b, prev, k, tight) };
-            let mut e = self.block(bl, tone).mt(gap);
-            if top {
-                // The block under the pointer, for Ctrl+Shift+C and e (RD-100); a right-click
-                // copies its Markdown (RD-68).
-                let line = bl.lines.start;
-                e = e
-                    .key(crate::reader::block_key(bl))
-                    .on_hover_change(move |s: &mut App, on, tx| {
-                        if on {
-                            s.reader.hover = Some(line);
-                        } else if s.reader.hover == Some(line) {
-                            s.reader.hover = None;
-                        }
-                        // Nothing on the page draws the hover, so a scroll that moves blocks
-                        // under the pointer runs no view.
-                        tx.live_only();
-                    })
-                    .on_secondary_press(move |s: &mut App, _, tx| s.copy_block(line, tx));
-            } else {
-                e = e.key(format!("b-{i}"));
-            }
-            out = out.child(e);
+            let k = page::rk(&bl.kind);
+            out = out.child(self.block(bl, tone).mt(page::inner_gap(b, prev, k, tight)).key(format!("b-{i}")));
             prev = Some(k);
         }
         out
@@ -461,7 +484,7 @@ impl Cx<'_> {
             .w_full()
             .items_stretch()
             .child(el().key("bar").w(bar).radius(bar / 2.0).fill(mix(look.c.accent, look.c.bg, 0.35)))
-            .child(self.stack(blocks, inner, false, false).key("body").grow(1.0).min_w(0.0).ml(inset - bar))
+            .child(self.stack(blocks, inner, false).key("body").grow(1.0).min_w(0.0).ml(inset - bar))
     }
 
     /// BLK-37 to BLK-42.
@@ -497,7 +520,7 @@ impl Cx<'_> {
             .fill(tint.alpha(fill))
             .border(1.0, c.on_page(tint.alpha(look.ld(0.3, 0.24))))
             .child(title)
-            .child(self.stack(blocks, inner, false, false).key("body").w_full())
+            .child(self.stack(blocks, inner, false).key("body").w_full())
     }
 
     /// Raw HTML, shown literally (BLK-76).
@@ -647,7 +670,7 @@ impl Cx<'_> {
             if let Some(l) = cite.filter(|_| f.refs > 0) {
                 num = num.cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx| s.jump(l, tx));
             }
-            out = out.child(row().key(format!("fn-{}", f.number)).w_full().items_start().child(num).child(self.stack(&blocks, tone, false, false).key("body").grow(1.0).min_w(0.0)));
+            out = out.child(row().key(format!("fn-{}", f.number)).w_full().items_start().child(num).child(self.stack(&blocks, tone, false).key("body").grow(1.0).min_w(0.0)));
         }
         out
     }

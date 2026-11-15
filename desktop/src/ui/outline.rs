@@ -33,10 +33,7 @@ pub fn outline(v: V) -> El {
         map.heads = heads
             .iter()
             .enumerate()
-            .filter_map(|(i, h)| {
-                let k = blocks.blocks.iter().position(|b| b.lines.start == h.line)?;
-                map.tops[k].is_finite().then(|| (map.tops[k], row_of(i)))
-            })
+            .filter_map(|(i, h)| Some((blocks.blocks.iter().position(|b| b.lines.start == h.line)?, row_of(i))))
             .collect();
         map.first_row = row_of(0);
         let cur = map.head_row(s.reader.scroll.get()[0]);

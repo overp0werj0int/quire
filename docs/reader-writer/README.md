@@ -128,8 +128,8 @@ Status: done on branch `rw/phase-3-typography`, with pulldown-cmark as the parse
 
 ### Phase 5. The reader page
 
-Status: done on branch `rw/phase-3-typography`, except virtualization, the edge fades and the
-hover-only details listed in `decisions.tsv`. Code colours come from `rune-highlights`.
+Status: done on branch `rw/phase-3-typography`, except the edge fades and the hover-only details
+listed in `decisions.tsv`. Virtualization landed in phase 9. Code colours come from `rune-highlights`.
 
 - The measure, gutter and lean (PAGE-21 to PAGE-31).
 - The vertical rhythm table (PAGE-54 to PAGE-69).
@@ -179,8 +179,8 @@ editor's right-click menu, the code chip's Copied state, and the measured parity
 (`tools/parity.py`): over the 7 samples and 6 review themes every matched line sits within 2 px
 of omarky's, except the first block under Quire's file-name line (3 px) and threshold artifacts,
 listed in `decisions.tsv`. The footnote mark is raised through `Span::raise` on the local Rune
-branch. Left: the user's sign-off of the side-by-side page (VER-30). The
-scroll bench's mean (about 5 ms against 1 ms) waits for paint culling or virtualization in Rune.
+branch. The page is a virtual list, so the scroll bench holds its budget (mean 0.7 ms, worst
+6.9 ms). Left: the user's sign-off of the side-by-side page (VER-30).
 
 Every sample under the review themes, side by side with omarky. The user signs off the `manual`
 items. Budgets are checked again. `README.md`, `desktop/README.md` and `ARCHITECTURE.md` are

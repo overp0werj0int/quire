@@ -14,11 +14,11 @@ use rune::{Env, Key, KeyEvent, Mods, Runtime};
 
 use crate::app::{App, Mode};
 
-const LONG: &str = include_str!("../tests/fixtures/omarky/long.md");
-const DT: f64 = 1.0 / 60.0;
+pub(crate) const LONG: &str = include_str!("../tests/fixtures/omarky/long.md");
+pub(crate) const DT: f64 = 1.0 / 60.0;
 
 /// A runtime on a fresh folder holding `note.md` with `text`, opened in `mode`.
-fn open(dir: &std::path::Path, text: &str, mode: Mode) -> (Runtime<App>, f64) {
+pub(crate) fn open(dir: &std::path::Path, text: &str, mode: Mode) -> (Runtime<App>, f64) {
     let _ = std::fs::remove_dir_all(dir);
     let root = dir.join("notes");
     std::fs::create_dir_all(&root).unwrap();

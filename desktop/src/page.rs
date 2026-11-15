@@ -86,6 +86,34 @@ impl Rk {
     }
 }
 
+/// The rhythm's view of a block (PAGE-58).
+pub fn rk(k: &crate::blocks::Kind) -> Rk {
+    use crate::blocks::Kind;
+    match k {
+        Kind::Heading { level, .. } => Rk::Heading(*level),
+        Kind::Rule => Rk::Rule,
+        Kind::FrontMatter { .. } => Rk::FrontMatter,
+        Kind::Footnotes { .. } => Rk::Footnotes,
+        Kind::Code { .. } | Kind::Diff { .. } | Kind::Table(_) | Kind::Alert { .. } | Kind::Image { .. } | Kind::Gallery { .. } | Kind::Quote { .. } => Rk::Framed,
+        Kind::List(_) => Rk::List,
+        Kind::Paragraph { .. } | Kind::Html { .. } => Rk::Other,
+    }
+}
+
+/// The gap above each top-level block of the page, at body size `b`.
+pub fn gaps(b: f32, blocks: &[crate::blocks::Block]) -> Vec<f32> {
+    let mut prev = None;
+    blocks
+        .iter()
+        .map(|bl| {
+            let k = rk(&bl.kind);
+            let g = gap(b, prev, k);
+            prev = Some(k);
+            g
+        })
+        .collect()
+}
+
 /// The gap above `cur` after `prev` on the page (PAGE-54 to PAGE-65). The first match wins.
 pub fn gap(b: f32, prev: Option<Rk>, cur: Rk) -> f32 {
     let Some(prev) = prev else { return 0.0 };

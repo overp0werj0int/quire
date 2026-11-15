@@ -77,7 +77,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let [vw, vh] = cx.layout_size("root").unwrap_or([1280.0, 800.0]);
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
-    map_page(s, cx);
+    map_page(s);
     let v = V { s, p, dark, vw, vh, trailing };
     cx.caption_color(p.ink2);
 
@@ -132,12 +132,12 @@ fn reading(s: &App) -> bool {
     s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
 }
 
-/// Where the page's blocks sit (`reader::PageMap`). The reads are unscrolled, so a scroll runs no
-/// view (VER-32).
-fn map_page(s: &App, cx: &mut Cx<App>) {
+/// What the page map (`reader::PageMap`) takes from the view: whether the page shows, each
+/// block's first line and the gap above it. The rows' tops come from Rune as they are laid out,
+/// so a scroll runs no view (VER-32).
+fn map_page(s: &App) {
     let mut map = s.reader.map.borrow_mut();
     map.reading = reading(s);
-    map.tops.clear();
     map.starts.clear();
     map.heads.clear();
     map.marks.clear();
@@ -146,12 +146,10 @@ fn map_page(s: &App, cx: &mut Cx<App>) {
         return;
     }
     let doc = s.doc();
-    map.origin = cx.layout(crate::reader::SCROLL).map_or(0.0, |r| r[1]);
     map.lines = doc.line_count;
-    for b in &doc.blocks {
-        map.tops.push(cx.layout(&crate::reader::block_key(b)).map_or(f32::INFINITY, |r| r[1]));
-        map.starts.push(b.lines.start);
-    }
+    map.starts.extend(doc.blocks.iter().map(|b| b.lines.start));
+    let b = s.settings().size as f32;
+    map.set_gaps(crate::page::gaps(b, &doc.blocks));
 }
 
 fn notice(v: V, msg: &str) -> El {

@@ -66,7 +66,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
         };
         // A done item's text is dim (BLK-31).
         let inner = if done { Tone { color: c.dim, ..tone } } else { tone };
-        let body = cx.stack(&it.blocks, inner, false, l.tight).key("body").w_full().pl(indent);
+        let body = cx.stack(&it.blocks, inner, l.tight).key("body").w_full().pl(indent);
         out = out.child(el().key(format!("li-{}", it.line)).w_full().child(body).child(marker.key("marker")));
     }
     out

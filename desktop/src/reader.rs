@@ -78,21 +78,25 @@ impl Default for Reader {
     }
 }
 
-/// Where each top-level block of the page sits, unscrolled (`Cx::layout`), so the block at the
-/// top of the view follows from the scroll offset alone.
+/// Where each top-level block of the page sits in the scroll viewport's content, so the block at
+/// the top of the view follows from the scroll offset alone. The page is a virtual list: Rune
+/// reports each row's top (`El::on_row_tops`), measured where the row has been laid out and
+/// estimated where not, and a row's block sits its rhythm gap below the row's top.
 #[derive(Default)]
 pub struct PageMap {
     /// The page is on screen.
     pub reading: bool,
-    /// The viewport's top, and each top-level block's, in window points as if unscrolled.
-    pub origin: f32,
+    /// Each row's top, from Rune, and the gap above each block, from the view.
+    row_tops: Vec<f32>,
+    gaps: Vec<f32>,
+    /// Each top-level block's top: the two added.
     pub tops: Vec<f32>,
     /// Each top-level block's first source line, and the note's line count.
     pub starts: Vec<usize>,
     pub lines: usize,
-    /// The outline's rows, when it shows: each heading's top as `tops` has it and its row,
-    /// the row current above the first, and each row's colours.
-    pub heads: Vec<(f32, Option<usize>)>,
+    /// The outline's rows, when it shows: each heading's block and its row, the row current
+    /// above the first, and each row's colours.
+    pub heads: Vec<(usize, Option<usize>)>,
     pub first_row: Option<usize>,
     pub marks: Vec<Mark>,
     pub marked: Option<usize>,
@@ -107,18 +111,57 @@ pub struct Mark {
 }
 
 impl PageMap {
+    /// The rows' tops, as Rune reports them.
+    pub fn set_row_tops(&mut self, tops: &[f32]) {
+        self.row_tops.clear();
+        self.row_tops.extend_from_slice(tops);
+        self.join();
+    }
+
+    /// The gap above each block, from the view.
+    pub fn set_gaps(&mut self, gaps: Vec<f32>) {
+        if gaps != self.gaps {
+            self.gaps = gaps;
+            self.join();
+        }
+    }
+
+    /// The gap above block `i`.
+    pub fn gap(&self, i: usize) -> f32 {
+        self.gaps.get(i).copied().unwrap_or(0.0)
+    }
+
+    fn join(&mut self) {
+        let gaps = &self.gaps;
+        self.tops = self.row_tops.iter().enumerate().map(|(i, t)| t + gaps.get(i).copied().unwrap_or(0.0)).collect();
+    }
+
     /// The last block whose top is at or above 21 points under the viewport's top, at
     /// `offset`.
     pub fn top(&self, offset: f32) -> usize {
-        let y = self.origin + offset + 21.0;
+        let y = offset + 21.0;
         self.tops.partition_point(|&t| t <= y).saturating_sub(1)
     }
 
     /// The outline row current at `offset`: the last heading whose top is above the viewport's
     /// top plus 100 points.
     pub fn head_row(&self, offset: f32) -> Option<usize> {
-        let y = self.origin + offset + 100.0;
-        self.heads.iter().rev().find(|(t, _)| *t <= y).map_or(self.first_row, |(_, row)| *row)
+        let y = offset + 100.0;
+        self.heads.iter().rev().find(|(k, _)| self.tops.get(*k).is_some_and(|&t| t <= y)).map_or(self.first_row, |(_, row)| *row)
+    }
+
+    /// The outline highlight and the reading progress line (RD-38) at the scroll `now`
+    /// ([offset, max, height, width]), without a view run (VER-32).
+    pub fn follow(&mut self, now: [f32; 4], bar: &Live<[f32; 4]>) {
+        let k = if self.reading {
+            self.mark(now[0]);
+            self.progress(now)
+        } else if now[1] > 0.0 {
+            (now[0] / now[1]).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        bar.set([0.0, 0.0, now[3] * k.clamp(0.0, 1.0), 2.0]);
     }
 
     /// Moves the outline's highlight to the row current at `offset`, without a view run.
@@ -366,8 +409,27 @@ impl App {
     /// The block whose first line is `line`, landed 20 px under the top (RD-25).
     pub fn jump_block(&mut self, line: usize, tx: &mut Tx) {
         let doc = self.doc();
-        if let Some(b) = doc.blocks.iter().rev().find(|b| b.lines.start <= line) {
-            tx.scroll_key_to(block_key(b), 20.0);
+        if let Some(i) = doc.blocks.iter().rposition(|b| b.lines.start <= line) {
+            self.land(i, tx);
+        }
+    }
+
+    /// Scrolls block `i` to 20 px under the top. Its row starts at the gap above it, so the row
+    /// lands that much higher.
+    fn land(&self, i: usize, tx: &mut Tx) {
+        let doc = self.doc();
+        if let Some(b) = doc.blocks.get(i) {
+            tx.scroll_key_to(block_key(b), 20.0 - self.reader.map.borrow().gap(i));
+        }
+    }
+
+    /// Centres the current find match. It names its block's row first, so a match in a row
+    /// not yet built is reached too.
+    fn center_match(&self, tx: &mut Tx) {
+        let m = self.find_matches();
+        let doc = self.doc();
+        if let Some(b) = m.get(self.reader.find.cur).and_then(|m| doc.blocks.get(m.block)) {
+            tx.scroll_center(format!("{}/{FIND_CUR}", block_key(b)));
         }
     }
 
@@ -512,9 +574,7 @@ impl App {
         let m = self.find_matches();
         let top = self.top();
         self.reader.find.cur = first_match(&m, top);
-        if !m.is_empty() {
-            tx.scroll_center(FIND_CUR);
-        }
+        self.center_match(tx);
     }
 
     /// Enter / n and Shift+Enter / N (RD-58).
@@ -525,9 +585,7 @@ impl App {
         let n = self.find_matches().len();
         let f = &mut self.reader.find;
         f.cur = step(f.cur, n, forward);
-        if n > 0 {
-            tx.scroll_center(FIND_CUR);
-        }
+        self.center_match(tx);
     }
 
     /// Esc in the reader (RD-85): close find, else clear the selection, else Quire's Esc.
@@ -594,8 +652,8 @@ impl App {
         let doc = self.doc();
         let a = crate::md::percent_decode(anchor);
         let i = doc.anchors.get(a.as_str()).or_else(|| doc.anchors.get(blocks::slugify(&a).as_str()));
-        if let Some(b) = i.and_then(|&i| doc.blocks.get(i)) {
-            tx.scroll_key_to(block_key(b), 20.0);
+        if let Some(&i) = i {
+            self.land(i, tx);
         }
     }
 }

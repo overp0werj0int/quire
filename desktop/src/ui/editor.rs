@@ -172,18 +172,7 @@ fn doc_scroll(v: V) -> El {
             live.set(now);
             // The reader's progress follows its top block (RD-38); the writer's is how far the
             // view has scrolled (WR-178).
-            let mut map = map.borrow_mut();
-            if map.reading {
-                map.mark(at.offset[1]);
-            }
-            let k = if map.reading {
-                map.progress(now)
-            } else if at.max[1] > 0.0 {
-                (at.offset[1] / at.max[1]).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            bar.set([0.0, 0.0, at.viewport[0] * k.clamp(0.0, 1.0), 2.0]);
+            map.borrow_mut().follow(now, &bar);
         });
     if super::reading(s) {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).

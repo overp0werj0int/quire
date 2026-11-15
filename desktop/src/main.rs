@@ -163,6 +163,64 @@ pub(crate) mod scroll_tests {
         assert!(after < before, "the settings body scrolls");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The page is a virtual list (RD-25, RD-57): a jump and a find reach blocks far below
+    /// the rows built so far, land where they would on a page built whole, and the block at
+    /// the top follows.
+    #[test]
+    fn the_page_reaches_rows_not_built() {
+        use crate::bench::{DT, LONG, open};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-virtual-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Preview);
+        let doc = crate::blocks::build(LONG);
+        let line = LONG.lines().position(|l| l == "# Chapter 42: Code").unwrap();
+        let i = doc.blocks.iter().position(|b| b.lines.start == line).unwrap();
+        rt.update(|s, tx| s.jump_block(line, tx));
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let row = rt.presented(&crate::reader::block_key(&doc.blocks[i])).expect("the row is built").0;
+        let mut gap = 0.0;
+        let mut top = 0;
+        rt.update_if(|s, _| {
+            gap = s.reader.map.borrow().gap(i);
+            top = s.top();
+            false
+        });
+        assert!((row[1] + gap - page[1] - 20.0).abs() < 1.0, "the heading lands 20 px under the top: row {row:?}, gap {gap}, page {page:?}");
+        assert_eq!(top, i, "the top block follows the jump");
+
+        // From the top, four steps on reach a match in the middle of the note, far past the
+        // rows built.
+        rt.update(|s, tx| s.scroll_top(tx));
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        rt.update(|s, tx| {
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("OmarkyReader from anywhere");
+            s.find_changed(tx);
+        });
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let mut cur = 0;
+        rt.update(|s, tx| {
+            (0..4).for_each(|_| s.find_step(true, tx));
+            cur = s.reader.find.cur;
+        });
+        assert_eq!(cur, 4, "find starts at the first match from the top (RD-57)");
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+        let mid = page[1] + page[3] / 2.0;
+        assert!((y - mid).abs() < 2.0, "the match sits mid-page: at {y}, middle {mid}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
