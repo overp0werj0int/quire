@@ -257,11 +257,11 @@ pub fn preview(v: V) -> El {
         s.images.epoch.get(),
         s.reader.copied.map(|(l, _)| l),
     );
-    rune::memo("reader-page", version, || {
+    rune::memo("preview", version, || {
         let look = look(v);
         let cx = Cx { v, look: &look, doc: &doc, find: find.as_ref() };
         let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
-        cx.stack(&doc.blocks, tone, true, false).key("preview").w_full()
+        cx.stack(&doc.blocks, tone, true, false).w_full()
     })
 }
 
