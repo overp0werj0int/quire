@@ -1,0 +1,29 @@
+[32m  INFO[0m: Launching config: "/home/sbx/omarky/reader/ui/shell.qml"
+[32m  INFO[0m: Shell ID: "31e4639117817d52eb8649bc99026d98" Path ID "31e4639117817d52eb8649bc99026d98"
+[32m  INFO[0m: Saving logs to "/run/user/1000/quickshell/by-id/2j1f2oiot/log.qslog"
+[33m  WARN[0m: --- WARNING ---
+[33m  WARN[0m: WAYLAND_DISPLAY is present but QT_QPA_PLATFORM is "offscreen"
+[33m  WARN[0m: If you are actually running wayland, set QT_QPA_PLATFORM to "wayland" or most functionality will be broken.
+[32m  INFO[0m: Configuration Loaded
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/alerts-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/code-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/frontmatter-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/kitchen-sink-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/prose-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/tables-1.png
+[32m  INFO[97m qml[0m: Omarky: the editor runs without the native highlighter (qs:@/qs/components/NativeHighlighter.qml:2:1: module "Omarky.Native" is not installed)
+[33m  WARN[0m: This plugin does not support setting window masks
+[32m  INFO[97m qml[0m: shots: wrote /home/sbx/omarky/reader/shots/gruvbox/sample-1.png
+[32m  INFO[97m qml[0m: shots: done

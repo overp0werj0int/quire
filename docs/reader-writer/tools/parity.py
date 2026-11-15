@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """The parity pass (VER-30): Quire's reader beside omarky's, under the review themes.
 
-    parity.py --omarky SHOTS [--out DIR] [--quire BIN] [--themes a,b] [--samples a,b]
+    parity.py [--omarky SHOTS] [--out DIR] [--quire BIN] [--themes a,b] [--samples a,b]
 
 SHOTS is omarky's `reader/tools/screenshot` output (`shots/<theme>/<sample>-1.png`), taken
-with `--size wide --pages 1 --opt outline=false`. For each theme and sample this renders Quire
+with `--size wide --pages 1 --opt outline=false`. omarky 0.7.0's shots, signed off as the
+target in phase 9, are kept in `reference/omarky-0.7.0/shots` and are the default. For each theme and sample this renders Quire
 at the same page size, body size 14, the same Omarchy theme and no panels (`--scene parity`),
 measures the ink in both, and writes DIR/index.html: the two pages side by side for a person
 to sign off, with the measured offsets.
@@ -198,7 +199,7 @@ table.sum td:first-child,table.sum th:first-child{text-align:left}
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--omarky", required=True, help="omarky's shots folder (shots/<theme>/<sample>-1.png)")
+    ap.add_argument("--omarky", default=os.path.join(REPO, "docs/reader-writer/reference/omarky-0.7.0/shots"), help="omarky's shots folder (shots/<theme>/<sample>-1.png)")
     ap.add_argument("--out", default=os.path.join(REPO, "desktop/target/parity"))
     ap.add_argument("--quire", default=os.path.join(REPO, "desktop/target/debug/quire"))
     ap.add_argument("--themes", default=THEMES)

@@ -14,6 +14,7 @@ only.
 | `source/omarky-0.7.0/` | The behaviour extracted from omarky's code and docs, with citations. The behaviour files are adapted from it |
 | `tools/check-specs.py` | Checks the behaviour files' format, and that no extracted item is missing |
 | `tools/parity.py` | The parity pass (VER-30): renders Quire beside omarky's shots under the review themes, measures each line's drift, and writes a page for sign-off |
+| `reference/omarky-0.7.0/shots` | omarky's own screenshots of the samples under the review themes: the parity target |
 | `TODO.md` | Work left for later passes |
 | `decisions.tsv` | The decision trail of the planning run |
 
@@ -173,14 +174,14 @@ locked notes, and refusing to write over a change that landed while the sheet wa
 
 ### Phase 9. Parity pass
 
-Status: in progress on branch `rw/phase-3-typography`. Done: the zen mode rename, the budgets
-as benches (`desktop/src/bench.rs`), typing within budget (through a local Rune branch), the
-editor's right-click menu, the code chip's Copied state, and the measured parity pass
-(`tools/parity.py`): over the 7 samples and 6 review themes every matched line sits within 2 px
-of omarky's, except the first block under Quire's file-name line (3 px) and threshold artifacts,
-listed in `decisions.tsv`. The footnote mark is raised through `Span::raise` on the local Rune
-branch. The page is a virtual list, so the scroll bench holds its budget (mean 0.7 ms, worst
-6.9 ms). Left: the user's sign-off of the side-by-side page (VER-30).
+Status: done on branch `rw/phase-3-typography`, signed off by the user on 2026-11-15. The zen
+mode rename, the budgets as benches (`desktop/src/bench.rs`), typing within budget (through a
+local Rune branch), the editor's right-click menu, the code chip's Copied state, the raised
+footnote mark (`Span::raise`), the page as a virtual list, and the measured parity pass
+(`tools/parity.py`): over the 7 samples and 6 review themes every matched line sits within
+2 px of omarky's, except the first block under Quire's file-name line (3 px) and threshold
+artifacts, listed in `decisions.tsv`. The scroll bench holds its budget (mean 0.7 ms, worst
+6.9 ms).
 
 Every sample under the review themes, side by side with omarky. The user signs off the `manual`
 items. Budgets are checked again. `README.md`, `desktop/README.md` and `ARCHITECTURE.md` are
