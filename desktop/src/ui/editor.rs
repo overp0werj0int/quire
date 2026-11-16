@@ -122,8 +122,9 @@ fn doc_scroll(v: V) -> El {
     });
     if v.has_doc() {
         let pad_x = if focus { clamp(20.0, v.vw * 0.06, 64.0) } else { clamp(20.0, v.vw * 0.05, 56.0) };
-        // The toolbar floats TOOLBAR_TOP below the title bar, and the breadcrumb starts 64
-        // points down, as far as it did under the old full-width bar.
+        // The toolbar floats TOOLBAR_TOP below the title bar. The note's name and folder sit in
+        // the title bar, so the text starts TOOLBAR_GAP under the toolbar, or PAGE-28's room
+        // under the title bar.
         let bar = shows_toolbar(v);
         let locked = s.active.as_deref().is_some_and(|a| s.note_locked(a));
         // The reader page sets its own column, gutter and room below (PAGE-21 to PAGE-29), and
@@ -133,7 +134,7 @@ fn doc_scroll(v: V) -> El {
         let page = if writer { source_column(v) } else { preview::column(v) };
         // Above the text: the toolbar's room, or with typewriter scrolling half the view
         // (WR-86, WR-87). Below it: half the view (WR-86).
-        let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { 34.0 };
+        let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { crate::page::TOP_ROOM };
         let pad_b = if reader {
             crate::page::bottom_room(v.vh)
         } else if writer {
@@ -162,16 +163,7 @@ fn doc_scroll(v: V) -> El {
             column = column.pl(page.gutter);
         }
         if bar {
-            column = column.child(toolbar(v));
-        }
-        if !focus {
-            column = column.child(if reader {
-                crumb(v).w(page.width).mb(crate::page::TOP_ROOM)
-            } else if writer {
-                crumb(v).w(page.width)
-            } else {
-                crumb(v)
-            });
+            column = column.child(toolbar(v)).child(el().key("toolbar-gap").h(TOOLBAR_GAP));
         }
         column = column.child(if locked {
             super::lock::panel(v)
@@ -226,6 +218,8 @@ fn doc_scroll(v: V) -> El {
 
 /// The space above the floating toolbar, at rest and while it sticks.
 const TOOLBAR_TOP: f32 = 10.0;
+/// From the toolbar to the text.
+const TOOLBAR_GAP: f32 = 24.0;
 /// The height of the floating toolbar.
 const TOOLBAR_H: f32 = 36.0;
 
@@ -319,13 +313,14 @@ fn toolbar(v: V) -> El {
         .child(lock_button(v))
 }
 
-fn crumb(v: V) -> El {
+/// The note's folder and name, in the title bar; a click on the name renames it.
+pub(super) fn crumb(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let active = s.active.clone().unwrap_or_default();
     let dir = md::dir(&active).to_string();
     let style = mono(12.0, 400.0);
-    let mut r = row().key("crumb").h(24.0).mb(30.0).gap(6.0).center_y();
+    let mut r = row().key("crumb").h(24.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
         r = r.child(label(dir, style, p.mute)).child(label("/", style, p.mark));
     }
@@ -338,6 +333,7 @@ fn crumb(v: V) -> El {
                 .mx(-5.0)
                 .radius(5.0)
                 .hover(p.hover)
+                .no_window_drag()
                 .role("button")
                 .label("Rename note")
                 .help("Rename note")
@@ -353,7 +349,7 @@ fn crumb(v: V) -> El {
                     .key("rename-row")
                     .center_y()
                     .child(
-                        el().key("rename-box").w(w).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
+                        el().key("rename-box").no_window_drag().w(w).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
                             text_input(edit, style)
                                 .key("rename")
                                 .single_line()

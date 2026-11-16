@@ -39,7 +39,7 @@ are right, unless `SYNC.md` says otherwise.
 The desktop app uses one state struct and a view function, in the style of the Elm
 architecture.
 
-- `App` in `desktop/src/app.rs` holds all state: the open folder, tabs, editors, settings,
+- `App` in `desktop/src/app.rs` holds all state: the open folder, the open notes (`tabs`, listed under Open in the sidebar), editors, settings,
   dialogs and sync status. The actions that change state are methods on `App`.
 - `ui::view` in `desktop/src/ui/mod.rs` turns `&App` into a Rune element tree. It runs again
   for every frame. The builders in `desktop/src/ui/` only read state. They get it wrapped in

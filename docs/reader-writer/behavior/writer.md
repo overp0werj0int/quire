@@ -121,7 +121,7 @@ The editor handles editing keys itself. Window commands go through the keymap (d
 ### Window command keys
 
 - **WR-64** [adapted: 0001] [verify: script] Ctrl+S (omarky preset) writes the note now, without waiting for autosave, and shows the toast "Saved". Every Quire note has a name, so there is no Save As path. omarky: a draft opens the Save As dialog instead (`writer/ui/app/WriterWindow.qml:81-85`)
-- **WR-65** [quire] [verify: -] There is no Save As. A note lives in the notes folder and is renamed in the breadcrumb above the text (`writer/ui/app/WriterWindow.qml:148`, `quire:desktop/src/ui/editor.rs:230-285`)
+- **WR-65** [quire] [verify: -] There is no Save As. A note lives in the notes folder and is renamed in the title bar, by a click on its name (`writer/ui/app/WriterWindow.qml:148`, `quire:desktop/src/ui/editor.rs:230-285`)
 - **WR-66** [quire] [verify: -] Ctrl+N makes a note named "Untitled" in the new-notes folder and opens it in a tab, as Quire does today. omarky: a new window on a new draft (`writer/ui/app/WriterWindow.qml:149`, `quire:desktop/src/folders.rs:76-100`)
 - **WR-67** [quire] [verify: -] Ctrl+O opens Quire's quick switcher (`writer/ui/app/WriterWindow.qml:150`, `quire:desktop/src/keys.rs:54`)
 - **WR-68** [adapted: 0001] [verify: script] Ctrl+W (omarky preset) writes any unsaved text and closes the active note's tab. The window stays open. omarky: saves and closes the window, and closing the last window quits (`writer/ui/app/WriterWindow.qml:69-73`, `writer/ui/shell.qml:54-59`)
@@ -275,8 +275,8 @@ The editor handles editing keys itself. Window commands go through the keymap (d
 
 ### Header
 
-- **WR-179** [quire] [verify: -] Quire's title bar (tabs and buttons) and the breadcrumb above the text take the header's place. The sheet's top border stays, with no hairline that appears on scroll (`writer/ui/app/WriterWindow.qml:417-431`, `quire:desktop/src/ui/titlebar.rs:15-60`)
-- **WR-180** [quire] [verify: -] The note's name shows in its tab and in the breadcrumb, where a click renames it. The folder shows in the breadcrumb (`writer/ui/app/WriterWindow.qml:433-469`, `quire:desktop/src/ui/editor.rs:230-285`)
+- **WR-179** [quire] [verify: -] Quire's title bar (the note's folder and name, and buttons) takes the header's place. The sheet's top border stays, with no hairline that appears on scroll (`writer/ui/app/WriterWindow.qml:417-431`, `quire:desktop/src/ui/titlebar.rs:15-60`)
+- **WR-180** [quire] [verify: -] The note's name shows in the title bar, where a click renames it, and in the sidebar's Open list. The folder shows in the title bar (`writer/ui/app/WriterWindow.qml:433-469`, `quire:desktop/src/ui/editor.rs:230-285`)
 - **WR-181** [quire] [verify: -] The title bar keeps Quire's buttons for the mode switch, focus mode and the outline. Find, font, paragraph focus, typewriter and help have keys and are listed in the command palette. omarky: a row of header chips (`writer/ui/app/WriterWindow.qml:471-484`, `quire:desktop/src/ui/titlebar.rs:36-48`)
 - **WR-182** [quire] [verify: -] Quire's title bar buttons show their state as they do today (`writer/ui/app/WriterWindow.qml:477-483`)
 - **WR-183** [quire] [verify: -] Quire's icon button look applies (`components/ChipButton.qml:13-30`, `quire:desktop/src/ui/widgets.rs`)

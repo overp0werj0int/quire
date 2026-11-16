@@ -1,8 +1,8 @@
-//! The left sidebar: the folder menu, files, search and tags.
+//! The left sidebar: the open notes, then the folder menu, files, search and tags.
 
 use std::collections::BTreeMap;
 
-use rune::{Color, El, ScrollSpec, Span, col, el, icon, rich, row, text, text_input};
+use rune::{Color, El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, text_input};
 
 use super::V;
 use super::panel;
@@ -91,11 +91,65 @@ pub fn sidebar(v: V) -> El {
         .child(foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx)))
         .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
 
-    let mut side = col().key("sidebar").w(248.0).h_full().min_h(0.0).child(head).child(tabs).child(list).child(foot);
+    let mut side = col().key("sidebar").w(248.0).h_full().min_h(0.0).child(open_notes(v)).child(head).child(tabs).child(list).child(foot);
     if s.vault_menu {
         side = side.child(vault_menu(v));
     }
     side
+}
+
+/// The open notes, one row each in the order they were opened, under a heading set as the
+/// folder's name is. The current note has the tree's accent wash; a row's close button shows on
+/// hover and on the current row, and a middle click closes it too.
+fn open_notes(v: V) -> El {
+    let s = v.s;
+    let c = Roles::new(v.p);
+    let heading = row()
+        .key("open-head")
+        .h(panel::row_h(panel::BODY))
+        .mx(panel::INSET)
+        .pl(panel::TEXT_X - panel::INSET)
+        .center_y()
+        .child(text("Open").font(panel::font(panel::BODY, true)).color(c.text));
+    let mut list = col().key("open-notes").w_full().pt(6.0).pb(6.0).role("tablist").child(heading);
+    for path in s.tabs.iter().filter(|t| s.files().contains_key(*t)) {
+        list = list.child(open_row(v, path));
+    }
+    list
+}
+
+fn open_row(v: V, path: &str) -> El {
+    let c = Roles::new(v.p);
+    let on = v.s.active.as_deref() == Some(path);
+    let (open_path, close_path) = (path.to_string(), path.to_string());
+    let close = row()
+        .key("x")
+        .size(18.0, 18.0)
+        .center()
+        .radius(3.0)
+        .hover(c.hover)
+        .label("Close")
+        .help("Close")
+        .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
+        .on_press(move |s: &mut App| s.close_tab(&close_path))
+        .child(icon(&CLOSE, 8.0).color(c.faint));
+    panel::shade(format!("tab:{path}"), panel::BODY, 0, 0.0, &c, on)
+        .pr(4.0)
+        .hover_group()
+        .role("tab")
+        .checked(on)
+        .label(md::base(path).to_string())
+        .help(path.to_string())
+        .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
+        .on_press_tx(move |s: &mut App, tx| {
+            if tx.button() == PointerButton::Middle {
+                s.close_tab(&open_path);
+            } else if s.active.as_deref() != Some(open_path.as_str()) {
+                s.open_file(&open_path, None, tx);
+            }
+        })
+        .child(text(md::base(path)).font(panel::font(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(close)
 }
 
 fn vault_menu(v: V) -> El {

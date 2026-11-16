@@ -15,3 +15,10 @@ column is centred in the window. omarky's outline key toggles Quire's outline wh
 
 Open: moving the outline to the left to match omarky exactly. That would put two panels on the
 left when the file tree is open.
+
+Update, 2026-11-16: the tab strip left the title bar. The open notes are listed under an Open
+heading at the top of the left sidebar, above the folder's name, set in the folder name's type
+and in the file tree's row style (`ui/sidebar.rs`, `open_notes`). The note's folder and name, which
+sat above the text, moved into the title bar where the tabs were, and still rename the note on
+a click. The text now starts PAGE-28's 44 points under the title bar, or 24 under the writer's
+toolbar.
