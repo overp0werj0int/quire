@@ -22,3 +22,9 @@ and in the file tree's row style (`ui/sidebar.rs`, `open_notes`). The note's fol
 sat above the text, moved into the title bar where the tabs were, and still rename the note on
 a click. The text now starts PAGE-28's 44 points under the title bar, or 24 under the writer's
 toolbar.
+
+Update, 2026-11-17: the sidebar runs the window's full height, with a line along its right edge
+from top to bottom, and the title bar spans only the rest. The window's corner (the window dots
+on macOS and the sidebar toggle) heads the sidebar when it is open and the title bar when it is
+closed, at the same place, so the toggle never moves (`titlebar::corner`). The sheet keeps only
+its top border.

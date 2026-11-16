@@ -7,7 +7,7 @@
 use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, TextEdit, TextHighlight, TextStyle, Tx, col, el, icon, row, text, text_input};
 
 use super::widgets::label;
-use super::{V, outline, preview, sidebar};
+use super::{V, outline, preview};
 use crate::app::{App, Mode};
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
@@ -17,9 +17,7 @@ use crate::theme::{self, mono, sans};
 pub fn body(v: V) -> El {
     let p = v.p;
     let focus = v.focus();
-    let left = v.left_visible();
-    let corner = if left { [10.0, 0.0, 0.0, 0.0] } else { [0.0; 4] };
-    let mut sheet = col().key("sheet").grow(1.0).min_w(0.0).min_h(0.0).fill(p.bg).clip_corners(corner).corners(corner);
+    let mut sheet = col().key("sheet").grow(1.0).min_w(0.0).min_h(0.0).fill(p.bg);
     if v.has_doc() {
         // Image files dropped on the note link at the caret. Wayland gives no file drops yet,
         // so there a copied file or image goes in with paste.
@@ -34,10 +32,8 @@ pub fn body(v: V) -> El {
             sheet = sheet.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: p.acc, inset: true });
         }
     }
-    let top = if focus { 0.0 } else { 1.0 };
-    let side = if left { 1.0 } else { 0.0 };
-    if top + side > 0.0 {
-        sheet = sheet.border_sides([top, 0.0, 0.0, side], p.line).border_layout();
+    if !focus {
+        sheet = sheet.border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
     }
     let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
     // In zen mode the progress bar runs along the window's top edge (`ui::view`).
@@ -83,11 +79,7 @@ pub fn body(v: V) -> El {
     if focus {
         sheet = sheet.child(focus_hint(v));
     }
-    let mut r = row().key("body").grow(1.0).min_h(0.0).w_full();
-    if left {
-        r = r.child(sidebar::sidebar(v));
-    }
-    r.child(sheet)
+    row().key("body").grow(1.0).min_h(0.0).w_full().child(sheet)
 }
 
 /// The progress bar: the reader's follows its top block (RD-38), the writer's is how far the

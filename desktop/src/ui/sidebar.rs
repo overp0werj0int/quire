@@ -91,7 +91,20 @@ pub fn sidebar(v: V) -> El {
         .child(foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx)))
         .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
 
-    let mut side = col().key("sidebar").w(248.0).h_full().min_h(0.0).child(open_notes(v)).child(head).child(tabs).child(list).child(foot);
+    // The sidebar runs the window's full height, its edge a line from top to bottom.
+    let mut side = col()
+        .key("sidebar")
+        .w(248.0)
+        .h_full()
+        .min_h(0.0)
+        .border_sides([0.0, 1.0, 0.0, 0.0], p.line)
+        .border_layout()
+        .child(super::titlebar::corner(v))
+        .child(open_notes(v))
+        .child(head)
+        .child(tabs)
+        .child(list)
+        .child(foot);
     if s.vault_menu {
         side = side.child(vault_menu(v));
     }
@@ -101,6 +114,8 @@ pub fn sidebar(v: V) -> El {
 /// The open notes, one row each in the order they were opened, under a heading set as the
 /// folder's name is. The current note has the tree's accent wash; a row's close button shows on
 /// hover and on the current row, and a middle click closes it too.
+const OPEN_PAD: f32 = 6.0;
+
 fn open_notes(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
@@ -111,7 +126,7 @@ fn open_notes(v: V) -> El {
         .pl(panel::TEXT_X - panel::INSET)
         .center_y()
         .child(text("Open").font(panel::font(panel::BODY, true)).color(c.text));
-    let mut list = col().key("open-notes").w_full().pt(6.0).pb(6.0).role("tablist").child(heading);
+    let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
     for path in s.tabs.iter().filter(|t| s.files().contains_key(*t)) {
         list = list.child(open_row(v, path));
     }
@@ -169,9 +184,12 @@ fn vault_menu(v: V) -> El {
             .child(label(t, sans(13.0, 400.0), p.ink))
     };
     let [a, b] = theme::menu_shadows();
+    // Under the folder's name, below the corner and the Open list.
+    let open = v.s.tabs.iter().filter(|t| v.s.files().contains_key(*t)).count() as f32;
+    let y = super::titlebar::BAR_H + OPEN_PAD * 2.0 + panel::row_h(panel::BODY) * (1.0 + open) + 40.0;
     let panel = col()
         .key("vault-menu")
-        .absolute(10.0, 40.0)
+        .absolute(10.0, y)
         .w(228.0)
         .padding(5.0)
         .radius(9.0)

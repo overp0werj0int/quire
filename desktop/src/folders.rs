@@ -58,7 +58,8 @@ pub fn folder_at(path: &str) -> Option<String> {
             return Some(md::dir(&p.replace('|', "/")).to_string());
         }
     }
-    path.split('/').any(|s| matches!(s, "sidebar" | "side-scroll" | "vault-head")).then(String::new)
+    let segs = || path.split('/');
+    (segs().any(|s| matches!(s, "sidebar" | "side-scroll" | "vault-head")) && !segs().any(|s| s == "open-notes")).then(String::new)
 }
 
 /// Splits `Drafts/Ideas/Name` into a clean folder path and a clean note name.

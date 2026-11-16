@@ -88,7 +88,10 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),
         Screen::Vault => {
-            let root = root.child(titlebar::titlebar(v)).child(editor::body(v));
+            // The sidebar runs the full height; the title bar and the page share the rest.
+            let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(titlebar::titlebar(v)).child(editor::body(v));
+            let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
+            let root = root.child(frame);
             if v.focus() { root.children(editor::progress(v)) } else { root }
         }
     };

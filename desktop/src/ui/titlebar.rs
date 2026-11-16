@@ -23,6 +23,23 @@ fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size
     toggle_button(p, key, glyph, size, help, on).size(BUTTON, BUTTON)
 }
 
+/// The window's top-left corner: the window dots and the sidebar toggle. It heads the sidebar
+/// when that is open and the title bar when it is closed, at the same place, so the toggle
+/// never moves. Its icons centre on the bar's middle.
+pub fn corner(v: V) -> El {
+    let p = v.p;
+    row()
+        .key("left-zone")
+        .h(BAR_H)
+        .pl(14.0)
+        .pr(8.0)
+        .gap(10.0)
+        .center_y()
+        .window_drag()
+        .child(dots(p))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, "Toggle sidebar").no_window_drag().on_press(|s: &mut App| s.toggle_left()))
+}
+
 pub fn titlebar(v: V) -> El {
     if v.focus() { focus_bar(v) } else { bar(v) }
 }
@@ -31,17 +48,8 @@ fn bar(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let left_visible = v.left_visible();
-    // The icons on both sides, the window dots and the note's name centre on the bar's middle.
-    let mut left = row().key("left-zone").h(BAR_H).pl(14.0).pr(8.0).gap(10.0).center_y();
-    if left_visible {
-        left = left.w(248.0);
-    }
-    left = left
-        .child(dots(p))
-        .child(el().grow(1.0))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, "Toggle sidebar").on_press(|s: &mut App| s.toggle_left()));
-
-    // The note's folder and name start where the page does, after the sidebar.
+    // The note's folder and name start where the page does: after the sidebar, or after the
+    // window corner's buttons when it is closed.
     let mut title = row().key("title").grow(1.0).min_w(0.0).h(BAR_H).pl(if left_visible { 20.0 } else { 6.0 }).pr(8.0).center_y().clip_rounded(0.0);
     if v.has_doc() {
         title = title.child(super::editor::crumb(v));
@@ -86,7 +94,7 @@ fn bar(v: V) -> El {
         .w_full()
         .window_drag()
         .paint_order(3)
-        .child(left)
+        .children((!left_visible).then(|| corner(v)))
         .child(title)
         .child(right)
         .child(el().w(v.trailing))

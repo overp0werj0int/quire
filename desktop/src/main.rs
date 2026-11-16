@@ -808,6 +808,30 @@ mod writer_chrome_tests {
         }
     }
 
+    /// The sidebar runs the window's full height, and its toggle keeps its place in the window's
+    /// corner whether the sidebar is open or closed.
+    #[test]
+    fn the_sidebar_toggle_stays_in_the_corner() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toggle-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, _| s.persist.left_open = true);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let side = info(&rt, "sidebar").expect("the sidebar shows").rect;
+        assert!(side[1] == 0.0 && side[3] == rt.presented("root").unwrap().0[3], "the sidebar runs top to bottom: {side:?}");
+        let open = info(&rt, "toggle-left").expect("the toggle shows").rect;
+        rt.update(|s, _| s.toggle_left());
+        for _ in 0..120 {
+            rt.frame(DT);
+        }
+        let closed = info(&rt, "toggle-left").expect("the toggle shows with the sidebar closed").rect;
+        assert!(info(&rt, "sidebar").is_none(), "the sidebar closed");
+        assert_eq!(open, closed, "the toggle stays put");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-118: find selects the first match after the caret and brings it to the view's middle.
     #[test]
     fn wr_118_find_centres_its_match() {
