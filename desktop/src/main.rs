@@ -760,6 +760,27 @@ mod writer_chrome_tests {
         }
     }
 
+    /// Typing leaves the chrome where it is: the title bar, the file tree, the toolbar and the
+    /// status bar stay fully drawn through Enter and the pause after it (decision 0010).
+    #[test]
+    fn typing_leaves_the_chrome_in_place() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-chrome-stays-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update(|s, tx| s.writer_enter(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        for key in ["titlebar", "sidebar", "toolbar", "status"] {
+            let o = info(&rt, key).unwrap_or_else(|| panic!("{key} is drawn")).opacity;
+            assert!(o > 0.99, "{key} at opacity {o} after Enter");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-118: find selects the first match after the caret and brings it to the view's middle.
     #[test]
     fn wr_118_find_centres_its_match() {
