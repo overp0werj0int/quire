@@ -781,6 +781,33 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-178: the progress bar runs under the title bar, and along the window's top edge in
+    /// zen mode, in both modes.
+    #[test]
+    fn wr_178_zen_progress_runs_along_the_window_top() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        for mode in [crate::app::Mode::Source, crate::app::Mode::Preview] {
+            let dir = std::env::temp_dir().join(format!("quire-zen-bar-{mode:?}-{}", std::process::id()));
+            let (mut rt, _) = open(&dir, LONG, mode);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+            rt.update(|s, tx| s.scroll_by(600.0, tx));
+            for _ in 0..60 {
+                rt.frame(DT);
+            }
+            let bar = info(&rt, "progress").expect("the progress bar is drawn").rect;
+            assert!(bar[1] >= crate::ui::titlebar::BAR_H && bar[2] > 1.0, "{mode:?}: under the title bar, got {bar:?}");
+            rt.update(|s, tx| s.toggle_focus(tx));
+            for _ in 0..60 {
+                rt.frame(DT);
+            }
+            let bar = info(&rt, "progress").expect("the progress bar is drawn in zen mode").rect;
+            assert!(bar[1] == 0.0 && bar[2] > 1.0, "{mode:?}: zen bar at the window top, got {bar:?}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
     /// WR-118: find selects the first match after the caret and brings it to the view's middle.
     #[test]
     fn wr_118_find_centres_its_match() {

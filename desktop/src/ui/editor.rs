@@ -18,11 +18,7 @@ pub fn body(v: V) -> El {
     let p = v.p;
     let focus = v.focus();
     let left = v.left_visible();
-    // Under an active first tab the corner is square, so the tab's left border runs straight
-    // down into the sheet's.
-    let first = v.s.tabs.iter().find(|t| v.s.files().contains_key(*t));
-    let round = left && (focus || first.is_none() || first != v.s.active.as_ref());
-    let corner = if round { [10.0, 0.0, 0.0, 0.0] } else { [0.0; 4] };
+    let corner = if left { [10.0, 0.0, 0.0, 0.0] } else { [0.0; 4] };
     let mut sheet = col().key("sheet").grow(1.0).min_w(0.0).min_h(0.0).fill(p.bg).clip_corners(corner).corners(corner);
     if v.has_doc() {
         // Image files dropped on the note link at the caret. Wayland gives no file drops yet,
@@ -44,13 +40,12 @@ pub fn body(v: V) -> El {
         sheet = sheet.border_sides([top, 0.0, 0.0, side], p.line).border_layout();
     }
     let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
+    // In zen mode the progress bar runs along the window's top edge (`ui::view`).
+    let progress = if focus { None } else { progress(v) };
     if super::reading(v.s) {
-        area = area.child(super::reader::progress(v)).child(super::reader::find_bar(v));
+        area = area.children(progress).child(super::reader::find_bar(v));
     } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
-        // The writer's progress bar is how far the view has scrolled (WR-178), drawn from the
-        // scroll in the frame it moves.
         let c = Roles::new(v.p);
-        let bar = el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).opacity(0.55).paint_order(30).live_rect(&v.s.reader.bar);
         // The thumb fades over 300 ms (WR-93).
         let thumb = el()
             .key("thumb")
@@ -68,7 +63,7 @@ pub fn body(v: V) -> El {
         }
         let foot = [(0.0, c.bg.alpha(0.0)), (0.6, c.bg), (1.0, c.bg)];
         area = area.child(pin(false).key("fade-foot").h(64.0).linear_gradient(std::f32::consts::PI, foot));
-        area = area.child(bar).child(thumb).child(super::reader::find_bar(v));
+        area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
     }
     if let Some((msg, _)) = &v.s.reader.toast {
         area = area.child(super::reader::toast(v, msg));
@@ -93,6 +88,17 @@ pub fn body(v: V) -> El {
         r = r.child(sidebar::sidebar(v));
     }
     r.child(sheet)
+}
+
+/// The progress bar: the reader's follows its top block (RD-38), the writer's is how far the
+/// view has scrolled (WR-178). Both are drawn from the scroll in the frame it moves.
+pub(super) fn progress(v: V) -> Option<El> {
+    if super::reading(v.s) {
+        return Some(super::reader::progress(v));
+    }
+    let writing = v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a));
+    let c = Roles::new(v.p);
+    writing.then(|| el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).opacity(0.55).paint_order(30).live_rect(&v.s.reader.bar))
 }
 
 /// The writer's scroll thumb (WR-93) from the viewport's [offset, range, height, width]: 3

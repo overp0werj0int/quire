@@ -88,7 +88,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),
         Screen::Vault => {
-            root.child(titlebar::titlebar(v)).child(editor::body(v))
+            let root = root.child(titlebar::titlebar(v)).child(editor::body(v));
+            if v.focus() { root.children(editor::progress(v)) } else { root }
         }
     };
     if s.tree_menu.is_some() {
