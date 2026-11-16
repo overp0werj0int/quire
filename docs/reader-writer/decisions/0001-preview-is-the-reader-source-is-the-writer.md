@@ -9,7 +9,8 @@ notes folder with a file tree, tabs and an outline.
 Decision: Quire keeps one window and two modes. Preview mode gets omarky's reader behaviour:
 the page, the blocks, the reader keys, find, the outline that follows, the help sheet and the
 edit sheet. Source mode gets omarky's writer behaviour: live formatting, hanging marks, the
-editing keys, focus, typewriter scrolling and the chrome that steps aside.
+editing keys, focus and typewriter scrolling. (The chrome that stepped aside while typing went in
+decision 0010.)
 
 omarky's writer preview (`Ctrl+P`, `Esc` back, opened at the paragraph you were in) maps to
 Quire's mode switch. Switching keeps the reading position in both directions.

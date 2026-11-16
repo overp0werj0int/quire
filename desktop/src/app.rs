@@ -151,7 +151,7 @@ pub struct App {
     pub unlock_error: Option<String>,
     /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
     pub reader: crate::reader::Reader,
-    /// The writer's state: typing, the chrome, typewriter scrolling (`crate::writer_app`).
+    /// The writer's state: typewriter scrolling (`crate::writer_app`).
     pub wstate: crate::writer_app::WriterState,
     /// The edit sheet over the reader, while it is open (`crate::sheet`).
     pub sheet: Option<crate::sheet::Sheet>,
@@ -433,7 +433,7 @@ impl App {
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
         changed |= self.expire_sheet(t);
-        changed |= self.poll_writer(t, tx);
+        self.poll_writer(t, tx);
         changed |= self.search_due(t, tx);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
@@ -487,8 +487,6 @@ impl App {
                 e.replace_text(text.clone());
                 e.set_selection(a, b);
             }
-            // A reload is not typing: the chrome stays (WR-184).
-            self.wstate.seen = None;
             if let Some(v) = &mut self.vault {
                 if new {
                     v.born.insert(rel.clone(), now_ns());
@@ -826,9 +824,6 @@ impl App {
 
     /// The editor's text changed: keep the folder copy in step and save soon.
     pub fn after_edit(&mut self) {
-        // Typing, for the chrome that steps aside (WR-184). The next poll stamps the time,
-        // because the app clock only moves in `poll`.
-        self.wstate.typed = true;
         let Some(a) = self.active.clone() else { return };
         let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) else { return };
         if self.unlocked.contains_key(&a) {

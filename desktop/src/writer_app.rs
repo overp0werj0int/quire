@@ -1,6 +1,6 @@
 //! The writer on `App` (`docs/reader-writer/behavior/writer.md`): the source's formatting
 //! spans, cached per line; the editing keys; paragraph focus, typewriter scrolling and the
-//! font cycle; find in the source; and the chrome that steps aside while you type.
+//! font cycle; and find in the source.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,8 +19,6 @@ use crate::writer::{self, Count, Ink, State, Styled};
 pub const CARET: &str = "caret-at";
 /// A transparent highlight over a line placed at the top of the view (WR-102, WR-112).
 pub const LINE_AT: &str = "line-at";
-/// "Typing" lasts this long after the text last changed (WR-184).
-pub const TYPING: f64 = 1.4;
 /// The source fonts Ctrl+Shift+M steps through (WR-125).
 const FONT_CYCLE: [&str; 3] = ["quattro", "duospace", "ia-mono"];
 
@@ -35,15 +33,6 @@ struct Cache {
 
 #[derive(Default)]
 pub struct WriterState {
-    /// The text changed since the last poll.
-    pub typed: bool,
-    /// The note and text hash the last poll saw, so any edit counts as typing.
-    pub(crate) seen: Option<(String, u64)>,
-    /// When the text last changed, and when the pointer last moved over the window.
-    pub typing_at: f64,
-    pub pointer_at: f64,
-    /// The chrome is stepped aside, as last drawn (WR-185).
-    pub hidden: bool,
     /// The caret the last frame saw, so typewriter scrolling follows moves (WR-88).
     caret: Option<(String, usize)>,
     /// Centre the caret line on the next frame (a forced move).
@@ -379,7 +368,7 @@ impl App {
         tx.scroll_center(crate::reader::FIND_CUR);
     }
 
-    // ---------- Scrolling and the chrome ----------
+    // ---------- Scrolling ----------
 
     /// Holds source line `line` at `min(top padding, view height / 3)` below the view's top
     /// (WR-102). The line carries a keyed highlight for one moment so the scroll can find it.
@@ -433,30 +422,8 @@ impl App {
         }
     }
 
-    /// Whether the chrome steps aside now (WR-184 to WR-187).
-    fn chrome_away(&self, t: f64) -> bool {
-        self.writing()
-            && t - self.wstate.typing_at < TYPING
-            && self.wstate.pointer_at < self.wstate.typing_at
-            && self.palette.is_none()
-            && !self.settings_open
-            && !self.reader.find.open
-            && !self.reader.help
-            && self.tree_menu.is_none()
-            && !self.vault_menu
-    }
-
-    /// Before each frame: typewriter scrolling follows the caret, and the chrome steps aside
-    /// or comes back.
-    pub(crate) fn poll_writer(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let mut changed = false;
-        // Any change to the open note's text is typing, whichever path made it.
-        let seen = self.active.clone().map(|a| (a, hash(self.active_text())));
-        let edited = matches!((&self.wstate.seen, &seen), (Some((a0, h0)), Some((a1, h1))) if a0 == a1 && h0 != h1);
-        if std::mem::take(&mut self.wstate.typed) || edited {
-            self.wstate.typing_at = t;
-        }
-        self.wstate.seen = seen;
+    /// Before each frame: typewriter scrolling follows the caret.
+    pub(crate) fn poll_writer(&mut self, t: f64, tx: &mut Tx) {
         if self.writing() {
             let at = self.active.clone().zip(self.cur_edit_opt().map(|e| e.focus));
             if self.wstate.center || (self.settings().typewriter_scroll && at != self.wstate.caret) {
@@ -468,30 +435,6 @@ impl App {
         if self.wstate.top_line.is_some_and(|(_, since)| t - since > 0.5) {
             self.wstate.top_line = None;
         }
-        let away = self.chrome_away(t);
-        if away != self.wstate.hidden {
-            self.wstate.hidden = away;
-            changed = true;
-        }
-        if away {
-            tx.wake_after(std::time::Duration::from_secs_f64((self.wstate.typing_at + TYPING - t).max(0.05)));
-        }
-        changed
-    }
-
-    /// The pointer moved: the chrome comes back (WR-187). Says whether anything changed.
-    pub fn pointer_moved(&mut self) -> bool {
-        if !self.wstate.hidden {
-            return false;
-        }
-        self.wstate.pointer_at = self.now.get().max(self.wstate.typing_at) + 1e-6;
-        self.wstate.hidden = false;
-        true
-    }
-
-    /// The chrome's opacity and its fade: out over 600 ms, back over 160 ms (WR-186).
-    pub fn chrome_fade(&self) -> (f32, rune::Spring) {
-        if self.wstate.hidden { (0.0, rune::Spring::new(0.6, 0.0)) } else { (1.0, rune::Spring::new(0.16, 0.0)) }
     }
 }
 

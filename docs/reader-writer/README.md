@@ -164,7 +164,8 @@ the caret's width and blink, the scroll thumb, the fade bands and glides on jump
 `decisions.tsv`. The right-click menu and the typing budget landed in phase 9.
 
 Live formatting per line, hanging marks and leading through the phase 2 patch, the editing keys,
-the paragraph fade, typewriter scrolling, the chrome that steps aside while typing, word count,
+the paragraph fade, typewriter scrolling, the chrome that steps aside while typing (dropped by
+decision 0010), word count,
 the round trip between modes keeping the position, the font cycle, the help sheet
 (`behavior/writer.md`). The typing bench must stay inside budget.
 
@@ -235,7 +236,7 @@ most:
 - A note changed on disk while it has unsaved edits. Recommended: keep Quire's rule, where your
   edits win (`behavior/writer.md`).
 - The floating formatting toolbar. Recommended: keep it, and let it step aside while typing
-  (`behavior/writer.md`).
+  (`behavior/writer.md`). Since decision 0010 it stays while typing.
 - Code colours on Quire's built-in themes. Resolved in phase 5: each theme carries its upstream
   palette's colours, and Paper, White, Ink and Black have their own set (`decisions.tsv`).
 - `format.rs` rules are shared with Android. Recommended: a `Ctrl+K` change lands in both apps,

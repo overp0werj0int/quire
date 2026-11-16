@@ -74,29 +74,23 @@ pub fn body(v: V) -> El {
         area = area.child(super::reader::toast(v, msg));
     }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
-    let (o, fade) = v.s.chrome_fade();
     if v.right_visible() {
         // The outline slides in from the right and out to it over 160 ms, and its slot
         // closes as it leaves (WR-99).
         let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
         let t = rune::Transition::move_edge(rune::Edge::Trailing).springs(slide).hold_layout();
-        inner = inner.child(outline::outline(v).opacity(o).opacity_motion(fade).transition(t));
+        inner = inner.child(outline::outline(v).transition(t));
     }
     sheet = sheet.child(inner);
     if v.has_doc() && !focus {
-        // The status bar stays while there is a selection (WR-190).
-        let sel = v.s.active.as_ref().and_then(|a| v.s.edits.get(a)).is_some_and(|e| e.anchor != e.focus);
-        let o = if sel { 1.0 } else { o };
-        sheet = sheet.child(outline::status(v).opacity(o).opacity_motion(fade));
+        sheet = sheet.child(outline::status(v));
     }
     if focus {
         sheet = sheet.child(focus_hint(v));
     }
     let mut r = row().key("body").grow(1.0).min_h(0.0).w_full();
     if left {
-        // The file tree's contents step aside with the chrome; the panel keeps its width, so
-        // the column stays put (writer.md, open questions).
-        r = r.child(sidebar::sidebar(v).opacity(o).opacity_motion(fade));
+        r = r.child(sidebar::sidebar(v));
     }
     r.child(sheet)
 }
@@ -168,8 +162,7 @@ fn doc_scroll(v: V) -> El {
             column = column.pl(page.gutter);
         }
         if bar {
-            let (o, fade) = s.chrome_fade();
-            column = column.child(toolbar(v).opacity(o).opacity_motion(fade));
+            column = column.child(toolbar(v));
         }
         if !focus {
             column = column.child(if reader {

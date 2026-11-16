@@ -10,7 +10,7 @@ In scope, for the desktop app only:
   measure, zoom, live reload that keeps the position, links, copy source, task ticking, the help
   sheet.
 - The writer: live formatting with hanging marks, the editing keys, focus, typewriter scrolling,
-  the chrome that steps aside while typing, word count, the round trip between modes, the help
+  the chrome that steps aside while typing (dropped by decision 0010), word count, the round trip between modes, the help
   sheet.
 - The edit sheet (`E` and `Shift+E` in the reader).
 - The keymap with two presets (decision 0003).
