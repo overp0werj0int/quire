@@ -1206,3 +1206,96 @@ mod edit_menu_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod lone_tests {
+    use crate::bench::DT;
+    use rune::{Env, Runtime};
+
+    fn shown(rt: &Runtime<crate::app::App>, key: &str) -> bool {
+        rt.elements().iter().any(|e| e.key.as_deref() == Some(key))
+    }
+
+    /// A note opened on its own from a folder outside the list (decision 0011): only that note
+    /// is read, its edits save to it, and the list, the folder that opens next, every session
+    /// and sync stay as they were. Adding its folder opens the folder on the same note.
+    #[test]
+    fn a_note_outside_the_list_opens_on_its_own() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-lone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (notes, loose) = (dir.join("notes"), dir.join("loose"));
+        std::fs::create_dir_all(&notes).unwrap();
+        std::fs::create_dir_all(loose.join("sub")).unwrap();
+        std::fs::write(notes.join("x.md"), "# x").unwrap();
+        for f in ["a.md", "b.md", "sub/c.md"] {
+            std::fs::write(loose.join(f), format!("# {f}")).unwrap();
+        }
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        let (n, file) = (notes.clone(), loose.join("a.md"));
+        rt.update(move |s, tx| {
+            s.open_vault(n, tx);
+            s.persist.settings.sync.provider = "s3".into();
+            s.persist.settings.sync.connected = true;
+            s.open_lone(&file).unwrap();
+        });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let listed = |s: &crate::app::App| s.persist.vaults.iter().map(|v| v.path.clone()).collect::<Vec<_>>();
+        let (notes2, loose1) = (notes.clone(), loose.clone());
+        rt.update_if(move |s, _| {
+            assert_eq!(s.files().keys().collect::<Vec<_>>(), ["a.md"], "only the note is read");
+            assert_eq!((s.tabs.clone(), s.active.as_deref()), (vec!["a.md".to_string()], Some("a.md")));
+            assert!(listed(s).contains(&notes2) && !listed(s).contains(&loose1), "the folder stays out of the list");
+            assert_eq!(s.persist.last.as_ref(), Some(&notes2), "the folder that opens next is unchanged");
+            assert!(!s.sync_ready() && s.sync_label().is_none(), "a note on its own isn't synced");
+            false
+        });
+        assert!(shown(&rt, "lone") && shown(&rt, "add-folder"), "the sidebar offers to add the folder");
+        assert!(!shown(&rt, "panel-tabs") && !shown(&rt, "foot-new"), "no files, search, tags or New note");
+
+        // Edits save to the file; nothing is added to, or deleted from, its folder.
+        rt.update(|s, tx| {
+            s.set_text("a.md", "edited".into());
+            s.new_note(None, tx);
+            s.start_new_folder("", tx);
+            s.delete_note();
+            s.start_rename(tx);
+            assert!(s.renaming.is_none(), "no rename");
+            assert!(s.notice.is_some(), "says why");
+            s.flush_all();
+        });
+        assert_eq!(std::fs::read_to_string(loose.join("a.md")).unwrap(), "edited");
+        let mut on_disk: Vec<String> = std::fs::read_dir(&loose).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        on_disk.sort();
+        assert_eq!(on_disk, ["a.md", "b.md", "sub"], "the folder keeps exactly its files");
+        let saved = crate::store::load();
+        assert_eq!(saved.last.as_ref(), Some(&notes), "quitting keeps the folder that opens next");
+        assert!(!saved.vaults.iter().any(|v| v.path == loose) && !saved.sessions.keys().any(|k| k.contains("loose")), "no list entry or session for it");
+
+        // Adding the folder opens it on the same note.
+        rt.update(|s, tx| s.add_lone_folder(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let loose2 = loose.clone();
+        rt.update_if(move |s, _| {
+            assert!(s.folder_open());
+            assert!(s.files().contains_key("b.md") && s.files().contains_key("sub/c.md"), "the whole folder is read");
+            assert_eq!(s.active.as_deref(), Some("a.md"), "on the same note");
+            assert!(listed(s).contains(&loose2) && s.persist.last.as_ref() == Some(&loose2), "the folder joins the list");
+            false
+        });
+        assert!(!shown(&rt, "lone") && shown(&rt, "panel-tabs") && shown(&rt, "foot-new"), "the folder's sidebar is back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -1,5 +1,6 @@
-//! Watches the open folder for changes made by other apps (an editor, a sync tool, the MCP
-//! server) by checking file times every 1.5 s (`EVERY`) on its own thread.
+//! Watches the open folder, or a note opened on its own, for changes made by other apps (an
+//! editor, a sync tool, the MCP server) by checking file times every 1.5 s (`EVERY`) on its own
+//! thread.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -26,8 +27,17 @@ impl Drop for Watcher {
     }
 }
 
-fn snapshot(root: &PathBuf) -> BTreeMap<String, (SystemTime, u64)> {
+/// The time and size of each note under `root`, or of only the notes `only` names.
+fn snapshot(root: &PathBuf, only: Option<&[String]>) -> BTreeMap<String, (SystemTime, u64)> {
     let mut out = BTreeMap::new();
+    if let Some(only) = only {
+        for rel in only {
+            if let Ok(m) = std::fs::metadata(root.join(rel)) {
+                out.insert(rel.clone(), (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()));
+            }
+        }
+        return out;
+    }
     let mut stack = vec![(root.clone(), String::new())];
     while let Some((dir, rel)) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
@@ -54,18 +64,19 @@ fn snapshot(root: &PathBuf) -> BTreeMap<String, (SystemTime, u64)> {
 /// How often the watcher looks at the folder.
 pub const EVERY: Duration = Duration::from_millis(1500);
 
-pub fn start(root: PathBuf, waker: Option<rune::Waker>, every: Duration) -> Watcher {
+/// Watches every note under `root`, or with `only`, just those notes.
+pub fn start(root: PathBuf, only: Option<Vec<String>>, waker: Option<rune::Waker>, every: Duration) -> Watcher {
     let inbox: Arc<Mutex<Changes>> = Arc::default();
     let stop = Arc::new(AtomicBool::new(false));
     let (inbox2, stop2) = (inbox.clone(), stop.clone());
     let _ = std::thread::Builder::new().name("quire-watch".into()).spawn(move || {
-        let mut last = snapshot(&root);
+        let mut last = snapshot(&root, only.as_deref());
         while !stop2.load(Ordering::SeqCst) {
             std::thread::sleep(every);
             if stop2.load(Ordering::SeqCst) {
                 break;
             }
-            let now = snapshot(&root);
+            let now = snapshot(&root, only.as_deref());
             if now == last {
                 continue;
             }
@@ -129,7 +140,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("Sub")).unwrap();
         std::fs::write(dir.join("A.md"), "one").unwrap();
         std::fs::write(dir.join("Sub/B.md"), "two").unwrap();
-        let w = super::start(dir.clone(), None, super::EVERY);
+        let w = super::start(dir.clone(), None, None, super::EVERY);
         std::thread::sleep(std::time::Duration::from_millis(300));
         std::fs::write(dir.join("A.md"), "one, edited elsewhere").unwrap();
         std::fs::remove_file(dir.join("Sub/B.md")).unwrap();
@@ -137,6 +148,20 @@ mod tests {
         let c = std::mem::take(&mut *w.inbox.lock().unwrap());
         assert_eq!(c.changed, vec![("A.md".to_string(), "one, edited elsewhere".to_string())]);
         assert_eq!(c.removed, vec!["Sub/B.md".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_lone_note_is_watched_alone() {
+        let dir = std::env::temp_dir().join(format!("quire-watch-lone-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        for f in ["a.md", "b.md", "sub/c.md"] {
+            std::fs::write(dir.join(f), "x").unwrap();
+        }
+        let all = super::snapshot(&dir, None);
+        assert_eq!(all.keys().cloned().collect::<Vec<_>>(), ["a.md", "b.md", "sub/c.md"]);
+        let one = super::snapshot(&dir, Some(&["a.md".to_string()]));
+        assert_eq!(one.keys().cloned().collect::<Vec<_>>(), ["a.md"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

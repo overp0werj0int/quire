@@ -16,6 +16,18 @@ pub struct Vault {
     /// Creation order of each note (file birth time, else modification time), for lists the
     /// design keeps in the order notes were made, such as backlinks.
     pub born: std::collections::HashMap<String, u128>,
+    pub scope: Scope,
+}
+
+/// What an open vault holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// A notes folder in the list: every note under the root, remembered and synced.
+    Folder,
+    /// One note opened on its own from a folder outside the list (a file double-clicked in a
+    /// file manager). Only that note is read and watched; the folder is not scanned, listed,
+    /// remembered or synced, and no note is added to it, moved or deleted.
+    Lone,
 }
 
 fn skip(name: &str) -> bool {
@@ -62,7 +74,28 @@ pub fn load(root: &Path) -> std::io::Result<Vault> {
     }
     folders.sort();
     let name = root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
-    Ok(Vault { name, path: root.to_path_buf(), folders, files, born })
+    Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder })
+}
+
+/// Reads one note on its own (`Scope::Lone`): the vault's root is the note's folder and its
+/// only note is the file.
+pub fn load_one(file: &Path) -> std::io::Result<Vault> {
+    let bad = || std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a note file");
+    let root = file.parent().ok_or_else(bad)?;
+    let rel = file.file_name().ok_or_else(bad)?.to_string_lossy().into_owned();
+    let text = std::fs::read_to_string(file)?.replace("\r\n", "\n");
+    let meta = std::fs::metadata(file).ok();
+    let when = meta.and_then(|m| m.created().or_else(|_| m.modified()).ok());
+    let ns = when.and_then(|w| w.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    let name = root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
+    Ok(Vault {
+        name,
+        path: root.to_path_buf(),
+        folders: Vec::new(),
+        born: [(rel.clone(), ns)].into(),
+        files: [(rel, text)].into(),
+        scope: Scope::Lone,
+    })
 }
 
 pub fn count_notes(root: &Path) -> usize {

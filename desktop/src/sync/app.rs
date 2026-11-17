@@ -97,7 +97,7 @@ impl App {
     /// Sync is set up and its test passed.
     pub fn sync_ready(&self) -> bool {
         let sy = &self.settings().sync;
-        sy.provider != "none" && sy.connected && self.vault.is_some()
+        sy.provider != "none" && sy.connected && self.folder_open()
     }
 
     /// The settings changed, so the connection must be tested again.
@@ -379,7 +379,7 @@ impl App {
     /// The status bar's sync label, or None when sync is off.
     pub fn sync_label(&self) -> Option<(String, bool, bool)> {
         let sy = &self.settings().sync;
-        if sy.provider == "none" || !sy.connected {
+        if sy.provider == "none" || !sy.connected || !self.folder_open() {
             return None;
         }
         if self.sync.busy() {

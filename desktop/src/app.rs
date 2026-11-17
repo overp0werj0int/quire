@@ -8,7 +8,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 
 use crate::md::{self, Names};
 use crate::store::{self, Persist, Session, Settings, VaultRef};
-use crate::vault::{self, Op, Vault, Writer};
+use crate::vault::{self, Op, Scope, Vault, Writer};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -232,9 +232,17 @@ pub fn init() -> App {
         c.remove("prefix");
     }
     app.mode = if app.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
-    let target = crate::cli::start_target();
-    let note = target.as_ref().and_then(|t| t.1.clone());
-    let start = target.map(|t| t.0).or_else(|| app.persist.last.clone());
+    let known: Vec<PathBuf> = app.persist.vaults.iter().map(|v| v.path.clone()).collect();
+    let (start, note) = match crate::cli::start_target(&known) {
+        Some(crate::cli::Start::Lone(file)) => {
+            if app.open_lone(&file).is_err() {
+                app.screen = Screen::Welcome;
+            }
+            (None, None)
+        }
+        Some(crate::cli::Start::Folder(dir, note)) => (Some(dir), note),
+        None => (app.persist.last.clone(), None),
+    };
     if let Some(p) = start {
         if app.load_vault(&p).is_err() {
             app.screen = Screen::Welcome;
@@ -398,7 +406,7 @@ impl App {
     }
 
     fn store_session(&mut self) {
-        if let Some(v) = &self.vault {
+        if let Some(v) = self.vault.as_ref().filter(|v| v.scope == Scope::Folder) {
             let key = v.path.to_string_lossy().into_owned();
             let s = self.session();
             self.persist.sessions.insert(key, s);
@@ -456,7 +464,10 @@ impl App {
     }
 
     fn watch_vault(&mut self) {
-        self.watcher = self.vault.as_ref().map(|v| crate::watch::start(v.path.clone(), self.waker.clone(), self.watch_every));
+        self.watcher = self.vault.as_ref().map(|v| {
+            let only = (v.scope == Scope::Lone).then(|| v.files.keys().cloned().collect());
+            crate::watch::start(v.path.clone(), only, self.waker.clone(), self.watch_every)
+        });
     }
 
     /// Takes changes other apps made to the folder. A note with edits not yet saved keeps
@@ -542,7 +553,7 @@ impl App {
     /// Starts, updates or stops the HTTP MCP server to match the settings.
     fn sync_mcp_http(&mut self) -> bool {
         let m = &self.persist.settings.mcp;
-        let want = m.enabled && m.transport == "http" && self.vault.is_some();
+        let want = m.enabled && m.transport == "http" && self.folder_open();
         let port: Option<u16> = m.port.parse().ok().filter(|p| *p > 0);
         if !want || port.is_none() {
             let had = self.mcp_http.take().is_some() || self.mcp_http_error.is_some();
@@ -624,7 +635,7 @@ impl App {
             }
         }
         self.store_session();
-        if let Some(v) = &self.vault {
+        if let Some(v) = self.vault.as_ref().filter(|v| v.scope == Scope::Folder) {
             self.persist.last = Some(v.path.clone());
         }
         let _ = store::save(&self.persist);
@@ -676,10 +687,31 @@ impl App {
 
     pub fn load_vault(&mut self, path: &Path) -> std::io::Result<()> {
         let v = vault::load(path)?;
+        self.enter(v);
+        Ok(())
+    }
+
+    /// Opens a note on its own (`Scope::Lone`), leaving the list of folders, the folder that
+    /// opens next time and every folder's session as they were.
+    pub fn open_lone(&mut self, file: &Path) -> std::io::Result<()> {
+        let v = vault::load_one(file)?;
+        self.enter(v);
+        Ok(())
+    }
+
+    /// Makes `v` the open vault. A folder takes the session it was left with and joins the list;
+    /// a note opened on its own is its only tab.
+    fn enter(&mut self, v: Vault) {
         self.flush_notes();
         self.store_session();
-        let key = path.to_string_lossy().into_owned();
-        let ses = self.persist.sessions.get(&key).cloned().unwrap_or_default();
+        let path = v.path.clone();
+        let ses = match v.scope {
+            Scope::Folder => self.persist.sessions.get(&*path.to_string_lossy()).cloned().unwrap_or_default(),
+            Scope::Lone => {
+                let only: Vec<String> = v.files.keys().cloned().collect();
+                Session { active: only.first().cloned(), tabs: only, ..Default::default() }
+            }
+        };
         self.tabs = ses.tabs.into_iter().filter(|p| v.files.contains_key(p)).collect();
         self.active = ses.active.filter(|a| v.files.contains_key(a)).or_else(|| self.tabs.first().cloned());
         self.recent = ses.recent.into_iter().filter(|p| v.files.contains_key(p)).collect();
@@ -687,10 +719,12 @@ impl App {
             self.recent = self.tabs.clone();
         }
         self.expanded = ses.expanded.into_iter().collect();
-        if !self.persist.vaults.iter().any(|r| r.path == path) {
-            self.persist.vaults.push(VaultRef { name: v.name.clone(), path: path.to_path_buf() });
+        if v.scope == Scope::Folder {
+            if !self.persist.vaults.iter().any(|r| r.path == path) {
+                self.persist.vaults.push(VaultRef { name: v.name.clone(), path: path.clone() });
+            }
+            self.persist.last = Some(path);
         }
-        self.persist.last = Some(path.to_path_buf());
         self.vault = Some(v);
         self.edits.clear();
         self.rebuild_names();
@@ -715,7 +749,30 @@ impl App {
         self.want_editor_focus = self.mode == Mode::Source;
         self.persist_later();
         self.sync_auto(0.5);
-        Ok(())
+    }
+
+    /// A folder from the list is open, not a note on its own.
+    pub fn folder_open(&self) -> bool {
+        self.vault.as_ref().is_some_and(|v| v.scope == Scope::Folder)
+    }
+
+    /// A note opened on its own can't add notes or folders to its folder, move or delete them:
+    /// says so and returns true.
+    pub fn refuse_lone(&mut self) -> bool {
+        let lone = self.vault.as_ref().is_some_and(|v| v.scope == Scope::Lone);
+        if lone {
+            self.notice = Some("This note is open on its own. Add its folder to change the notes in it.".into());
+        }
+        lone
+    }
+
+    /// Adds the folder of the note open on its own to the list and opens it there, on that note.
+    pub fn add_lone_folder(&mut self, tx: &mut Tx) {
+        let Some((dir, note)) = self.vault.as_ref().filter(|v| v.scope == Scope::Lone).map(|v| (v.path.clone(), self.active.clone())) else { return };
+        self.open_vault(dir, tx);
+        if let Some(n) = note.filter(|n| self.files().contains_key(n)) {
+            self.open_file(&n, None, tx);
+        }
     }
 
     pub fn open_vault(&mut self, path: PathBuf, tx: &mut Tx) {
@@ -748,7 +805,9 @@ impl App {
         self.vault_menu = false;
         self.focus = false;
         self.renaming = None;
-        self.persist.last = None;
+        if self.folder_open() {
+            self.persist.last = None;
+        }
         self.watcher = None;
         self.refresh_counts();
         self.persist_later();
@@ -927,6 +986,9 @@ impl App {
     }
 
     pub fn delete_note(&mut self) {
+        if self.refuse_lone() {
+            return;
+        }
         let Some(p) = self.active.clone() else { return };
         self.unlocked.remove(&p);
         let Some(v) = &mut self.vault else { return };
@@ -997,6 +1059,9 @@ impl App {
     }
 
     pub fn start_rename(&mut self, tx: &mut Tx) {
+        if self.refuse_lone() {
+            return;
+        }
         let Some(a) = &self.active else { return };
         let mut e = TextEdit::new(md::base(a));
         let n = e.text.len();

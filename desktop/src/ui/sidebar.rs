@@ -1,4 +1,5 @@
-//! The left sidebar: the open notes, then the folder menu, files, search and tags.
+//! The left sidebar: the open notes, then the folder menu, files, search and tags; for a note
+//! opened on its own, a button to add its folder instead.
 
 use std::collections::BTreeMap;
 
@@ -84,15 +85,16 @@ pub fn sidebar(v: V) -> El {
             .child(text(t).font(panel::font(panel::BODY, false)).color(c.dim).group_color(c.text))
             .child(text(kbd).font(panel::font(panel::CAPTION, false)).color(c.faint))
     };
+    let lone = vault.is_some_and(|v| v.scope == crate::vault::Scope::Lone);
     let foot = col()
         .key("side-foot")
         .pt(6.0)
         .pb(8.0)
-        .child(foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx)))
+        .children((!lone).then(|| foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx))))
         .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
 
     // The sidebar runs the window's full height, its edge a line from top to bottom.
-    let mut side = col()
+    let side = col()
         .key("sidebar")
         .w(248.0)
         .h_full()
@@ -101,14 +103,43 @@ pub fn sidebar(v: V) -> El {
         .border_layout()
         .child(super::titlebar::corner(v))
         .child(open_notes(v))
-        .child(head)
-        .child(tabs)
-        .child(list)
-        .child(foot);
+        .child(head);
+    // A note opened on its own has no files, search or tags to show: its folder isn't read.
+    let side = if lone { side.child(lone_panel(v)).child(el().grow(1.0)) } else { side.child(tabs).child(list) };
+    let mut side = side.child(foot);
     if s.vault_menu {
         side = side.child(vault_menu(v));
     }
     side
+}
+
+/// Under the folder's name, for a note opened on its own: what that means, and a button that
+/// adds the folder to the list and opens it on the same note.
+fn lone_panel(v: V) -> El {
+    let c = Roles::new(v.p);
+    col()
+        .key("lone")
+        .w_full()
+        .pt(panel::CAPTION_Y - 4.0)
+        .gap(8.0)
+        .child(
+            text("This note is open on its own. The rest of its folder isn't read or synced.")
+                .font(panel::font(panel::BODY_SMALL, false))
+                .color(c.faint)
+                .wrap()
+                .w_full()
+                .pl(panel::TEXT_X)
+                .pr(panel::INSET + 8.0),
+        )
+        .child(
+            panel::shade("add-folder", panel::BODY, 0, 0.0, &c, false)
+                .gap(8.0)
+                .hover_group()
+                .role("button")
+                .on_press_tx(|s: &mut App, tx| s.add_lone_folder(tx))
+                .child(icon(&FOLDER_PLUS, 12.0).color(c.faint).group_color(c.text))
+                .child(text("Add this folder").font(panel::font(panel::BODY, false)).color(c.dim).group_color(c.text)),
+        )
 }
 
 /// The open notes, one row each in the order they were opened, under a heading set as the
