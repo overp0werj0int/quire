@@ -166,6 +166,42 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The settings box is as tall as its page, up to the window less a margin, and keeps its
+    /// top when the section changes. A page taller than the box fades out at its bottom edge
+    /// until it is scrolled to its end.
+    #[test]
+    fn the_settings_box_fits_its_page() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-setbox-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        let show = |rt: &mut Runtime<crate::app::App>, sec: crate::app::Sec| {
+            rt.update(|s, _| {
+                s.settings_open = true;
+                s.set_sec = sec;
+            });
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            rt.elements().into_iter().find(|e| e.key.as_deref() == Some("settings-frame")).unwrap().rect
+        };
+        let mcp = show(&mut rt, crate::app::Sec::Mcp);
+        let keys = show(&mut rt, crate::app::Sec::Keys);
+        assert!(mcp[3] < 400.0, "a short page gets a short box: {mcp:?}");
+        assert!((keys[3] - 720.0).abs() < 0.5, "a long page fills the box's room: {keys:?}");
+        assert_eq!(mcp[1], keys[1], "the box keeps its top");
+        let stuck = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("set-fade-hold")).unwrap().stuck;
+        assert!(stuck(&rt).abs() > 12.0, "the fade shows while more page is below");
+        let (x, y) = rt.find("set-scroll").unwrap();
+        rt.pointer_move(x, y);
+        rt.wheel(x, y, -100_000.0);
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        assert_eq!(stuck(&rt), 0.0, "and goes at the page's end");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A notes folder in `dir` holding `files`, its first file open in preview, and the
     /// watcher looking every `every`.
     fn vault(dir: &std::path::Path, files: &[(&str, &str)], every: std::time::Duration) -> Runtime<crate::app::App> {

@@ -73,14 +73,23 @@ pub fn settings(v: V) -> El {
         .min_w(0.0)
         .h_full()
         .child(head)
-        .child(col().key("set-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).scroll_margin(16.0).child(col().key(format!("set-body-{title}")).w_full().px(32.0).pb(28.0).child(body)));
+        .child(
+            col()
+                .key("set-scroll")
+                .shrink()
+                .min_h(0.0)
+                .w_full()
+                .scroll(ScrollSpec { stick_bottom: false })
+                .scroll_margin(FADE)
+                .child(col().key("set-page").w_full().child(col().key(format!("set-body-{title}")).w_full().px(32.0).pb(28.0).child(body)).child(fade(v))),
+        );
     let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
     let panel = el()
         .key("settings-frame")
         .w_full()
         .max_w(780.0)
-        .h(580.0f32.min(v.vh - 48.0))
+        .max_h(max_h(v))
         .radius(12.0)
         .fill(p.bg)
         .border(1.0, Roles::new(p).hairline)
@@ -90,7 +99,6 @@ pub fn settings(v: V) -> El {
             row()
                 .key("settings")
                 .w_full()
-                .h_full()
                 .radius(12.0)
                 .clip_rounded(12.0)
                 .role("dialog")
@@ -104,9 +112,35 @@ pub fn settings(v: V) -> El {
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
         .paint_order(40)
         .fill(p.scrim)
-        .padding(24.0)
-        .center()
+        .px(24.0)
+        .pt((v.vh - max_h(v)) / 2.0)
+        .items_center()
         .child(panel)
+}
+
+/// The tallest the settings box grows: the window less a 24 point margin, up to 720 points.
+/// The box is as tall as its page needs up to this, and its top stays where a box this tall
+/// would start, so the section list never moves when the section changes.
+fn max_h(v: V) -> f32 {
+    (v.vh - 48.0).min(720.0)
+}
+
+/// How far the page fades out above the box's bottom edge while more of it is below.
+const FADE: f32 = 28.0;
+
+/// The fade at the box's bottom edge. It holds to the edge while the page runs on below it and
+/// shows as far as it is held, so a page that fits, or one scrolled to its end, shows no fade.
+fn fade(v: V) -> El {
+    let bg = v.p.bg;
+    el().key("set-fade-hold").w_full().h(0.0).sticky_bottom(0.0).child(
+        el()
+            .key("set-fade")
+            .pin(Some(0.0), Some(-FADE), Some(0.0), None)
+            .h(FADE)
+            .linear_gradient(std::f32::consts::PI, [(0.0, bg.alpha(0.0)), (1.0, bg)])
+            .inert()
+            .stuck_reveal(12.0),
+    )
 }
 
 /// The width of the settings body, for grids that fit columns to it.
