@@ -178,7 +178,13 @@ fn doc_scroll(v: V) -> El {
             column = column.pl(page.gutter);
         }
         if bar {
-            column = column.child(toolbar(v)).child(el().key("toolbar-gap").h(TOOLBAR_GAP));
+            column = column.child(toolbar(v));
+            // A find bar too wide to sit beside the toolbar takes its own row under it, and the
+            // text starts below that row.
+            if find_row(v) {
+                column = column.child(el().key("find-row").h(FIND_GAP + super::reader::FIND_H));
+            }
+            column = column.child(el().key("toolbar-gap").h(TOOLBAR_GAP));
         }
         column = column.child(if locked {
             super::lock::panel(v)
@@ -224,20 +230,41 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_anchor();
     }
     if shows_toolbar(v) {
-        // Text fades out at the top, so the toolbar floats on a clear band. The caret stays
-        // below the toolbar while you type.
-        scroll = scroll.scroll_fade(ScrollFade::strength(TOOLBAR_TOP + TOOLBAR_H + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(TOOLBAR_TOP + TOOLBAR_H + 12.0 + if s.reader.find.open { super::reader::FIND_H + FIND_GAP } else { 0.0 });
+        // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
+        // float on a clear band. The caret stays below them while you type.
+        let below = if find_row(v) { find_top(v) + super::reader::FIND_H } else { TOOLBAR_TOP + TOOLBAR_H };
+        scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(below + 12.0);
     }
     scroll.child(content)
 }
 
-/// Where the find bar's top sits in the note area. Under the formatting toolbar it takes its
-/// own row, so the two never overlap at any window width; elsewhere it floats 10 under the
-/// title bar (RD-53, WR-122).
+/// Where the find bar's top sits in the note area: 10 under the title bar, centred on the
+/// formatting toolbar's row when it fits beside it, else on its own row under the toolbar
+/// (RD-53, WR-122).
 pub(super) fn find_top(v: V) -> f32 {
-    if shows_toolbar(v) { TOOLBAR_TOP + TOOLBAR_H + FIND_GAP } else { TOOLBAR_TOP }
+    if find_row(v) {
+        TOOLBAR_TOP + TOOLBAR_H + FIND_GAP
+    } else if shows_toolbar(v) {
+        TOOLBAR_TOP + (TOOLBAR_H - super::reader::FIND_H) / 2.0
+    } else {
+        TOOLBAR_TOP
+    }
 }
 
+/// The open find bar takes its own row under the formatting toolbar: the window is too narrow
+/// for it to sit beside the toolbar with `FIND_CLEAR` between them.
+fn find_row(v: V) -> bool {
+    use super::reader::{FIND_RIGHT, FIND_W};
+    if !v.s.reader.find.open || !shows_toolbar(v) {
+        return false;
+    }
+    let toolbar_right = source_column(v).gutter + TOOLBAR_X + TOOLBAR_W;
+    let (left, right) = docked(v);
+    toolbar_right + FIND_CLEAR > v.vw - left - right - FIND_RIGHT - FIND_W
+}
+
+/// The least room between the toolbar and a find bar on its row.
+const FIND_CLEAR: f32 = 16.0;
 /// From the toolbar to the find bar under it.
 const FIND_GAP: f32 = 8.0;
 
@@ -247,6 +274,11 @@ const TOOLBAR_TOP: f32 = 10.0;
 const TOOLBAR_GAP: f32 = 24.0;
 /// The height of the floating toolbar.
 const TOOLBAR_H: f32 = 36.0;
+/// The toolbar's width: 13 buttons of 28, 4 separators of 11, 16 gaps of 2 and 4 of padding
+/// at each end.
+pub(crate) const TOOLBAR_W: f32 = 448.0;
+/// From the text column's left edge to the toolbar's.
+const TOOLBAR_X: f32 = -13.5;
 
 /// Whether the formatting toolbar shows: source mode, the setting on, a note open and not
 /// locked, and not in focus mode.
@@ -308,7 +340,7 @@ fn toolbar(v: V) -> El {
         .mb(64.0 - TOOLBAR_TOP - TOOLBAR_H)
         // The ink of the first icon lines up with the text: 4 points of padding, then the 9.5
         // points from a button's edge to its glyph.
-        .ml(-13.5)
+        .ml(TOOLBAR_X)
         .px(4.0)
         .gap(2.0)
         .center_y()
@@ -417,10 +449,14 @@ pub fn line_h(e: f32) -> f32 {
 /// The source column (WR-171, WR-172): the preview's rule with the source font's measure.
 pub fn source_column(v: V) -> crate::page::Column {
     let set = v.s.settings();
-    let left = if v.left_visible() { 249.0 } else { 0.0 };
-    let right = if v.right_visible() { 236.0 } else { 0.0 };
+    let (left, right) = docked(v);
     let avg = crate::page::avg_char(theme::editor_font(&set.font).family);
     crate::page::column(v.vw - left - right, set.size as f32, avg, v.s.wide(), left - right)
+}
+
+/// The widths of the docked sidebar and outline, 0 for one that is not docked.
+fn docked(v: V) -> (f32, f32) {
+    (if v.left_visible() { 249.0 } else { 0.0 }, if v.right_visible() { 236.0 } else { 0.0 })
 }
 
 /// The writer (`behavior/writer.md`): one field, painted with the formatting spans of

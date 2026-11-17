@@ -439,8 +439,9 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// WR-122: in the source the find bar takes its own row under the formatting toolbar, so
-    /// they never overlap, from the smallest window up.
+    /// WR-122: in the source the find bar sits on the formatting toolbar's row when it fits
+    /// beside it, and otherwise takes its own row under it, with the text starting below that
+    /// row. The two never overlap, from the smallest window up.
     #[test]
     fn wr_122_find_bar_clears_the_toolbar() {
         use crate::bench::DT;
@@ -451,15 +452,22 @@ pub(crate) mod scroll_tests {
             s.mode = crate::app::Mode::Source;
             s.writer_find(tx);
         });
-        for (w, h) in [(520.0, 400.0), (720.0, 600.0), (1000.0, 700.0), (1400.0, 1000.0)] {
+        for (w, h, beside) in [(520.0, 400.0, false), (720.0, 600.0, false), (1000.0, 700.0, false), (1280.0, 800.0, true), (1400.0, 1000.0, true)] {
             rt.set_viewport((w, h), 1.0);
             for _ in 0..20 {
                 rt.frame(DT);
             }
             let rect = |key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect).expect(key);
-            let (bar, find) = (rect("toolbar"), rect("find-bar"));
-            assert!(find[1] >= bar[1] + bar[3], "at {w}x{h} the find bar {find:?} sits under the toolbar {bar:?}");
-            assert!(find[0] >= 0.0 && find[0] + find[2] <= w, "and inside the window");
+            let (bar, find, text) = (rect("toolbar"), rect("find-bar"), rect("editor"));
+            assert_eq!(bar[2], crate::ui::editor::TOOLBAR_W, "the toolbar's width");
+            assert!(find[0] >= 0.0 && find[0] + find[2] <= w, "at {w}x{h} the find bar is inside the window");
+            if beside {
+                assert_eq!(find[1] + find[3] / 2.0, bar[1] + bar[3] / 2.0, "at {w}x{h} the find bar {find:?} is centred on the toolbar's row {bar:?}");
+                assert!(find[0] >= bar[0] + bar[2] + 16.0, "with room between them");
+            } else {
+                assert!(find[1] >= bar[1] + bar[3], "at {w}x{h} the find bar {find:?} sits under the toolbar {bar:?}");
+                assert!(text[1] >= find[1] + find[3], "and the text {text:?} starts below it");
+            }
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
