@@ -34,7 +34,7 @@ pub fn sidebar(v: V) -> El {
     );
 
     // The panel switch is a row of section captions; the open one is in the text colour.
-    let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::CAPTION_X).pr(panel::INSET).pt(panel::CAPTION_Y - 4.0).pb(panel::CAPTION_GAP - 4.0).center_y();
+    let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET).pt(panel::CAPTION_Y - 4.0).pb(panel::CAPTION_GAP - 4.0).center_y();
     for (id, lbl) in [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")] {
         let on = s.left_panel == id;
         tabs = tabs.child(

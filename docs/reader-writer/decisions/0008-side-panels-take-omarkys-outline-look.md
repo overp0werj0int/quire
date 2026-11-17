@@ -32,3 +32,7 @@ Not changed: panel widths (248 and 236 px), positions (decision 0007), menus (WR
 Update, 2026-11-17: the user asked for Quire's accent dot on the outline's current section
 back. The current row keeps omarky's shading and also has a 5 px accent dot 13 px left of its
 text, in the row's left padding, so the text stays where omarky puts it (RD-47, WR-100).
+
+Update, 2026-11-17: the captions start 22 px from the left, on the rows' text edge, not at
+omarky's 20 px. At 20 px the Files, Search and Tags switch started 2 px left of the rows it
+labels.

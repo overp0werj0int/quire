@@ -12,8 +12,8 @@ use crate::theme::px;
 pub const CAPTION: f32 = 10.0;
 pub const BODY_SMALL: f32 = 11.0;
 pub const BODY: f32 = 12.0;
-/// A caption's left edge and its distance from the top of its section.
-pub const CAPTION_X: f32 = 20.0;
+/// A caption's distance from the top of its section. Its left edge is the rows' text edge,
+/// `TEXT_X`.
 pub const CAPTION_Y: f32 = 18.0;
 /// From a caption to the first row under it.
 pub const CAPTION_GAP: f32 = 10.0;

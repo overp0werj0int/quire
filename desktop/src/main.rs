@@ -349,6 +349,11 @@ pub(crate) mod scroll_tests {
         assert!(rt.find("outline").is_some(), "the outline is open");
         let button = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-right") && !e.exiting).expect("the outline button");
         assert!(button.fill.a > 0.0, "the outline button shows as on in source mode");
+        // The panel switch's captions start on the text edge of the rows they label.
+        let els = rt.elements();
+        let files = els.iter().find(|e| e.key.as_deref() == Some("panel-files")).expect("the Files caption");
+        let row = els.iter().find(|e| e.text.as_deref() == Some("note") && e.path.contains("file:note.md")).expect("the note's row");
+        assert_eq!(files.rect[0], row.rect[0], "the Files caption lines up with the rows");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

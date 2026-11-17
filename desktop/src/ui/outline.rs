@@ -48,7 +48,7 @@ pub fn outline(v: V) -> El {
         None
     };
     let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
-    let mut list = col().key("outline-list").w_full().pb(12.0).child(panel::caption("Contents", &c).pl(panel::CAPTION_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
+    let mut list = col().key("outline-list").w_full().pb(12.0).child(panel::caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
     for (n, &i) in shown.iter().enumerate() {
         let h = &heads[i];
         let on = cur == Some(n);
@@ -80,7 +80,7 @@ pub fn outline(v: V) -> El {
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
-    list = list.child(panel::caption("Linked from", &c).pl(panel::CAPTION_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
+    list = list.child(panel::caption("Linked from", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
     let mut back = s.active.as_ref().map(|a| md::backlinks(s.files(), a)).unwrap_or_default();
     if let Some(vault) = &s.vault {
         back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
