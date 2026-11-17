@@ -222,6 +222,8 @@ fn map_page(s: &App) {
     map.marks.clear();
     map.marked = None;
     if !map.reading {
+        // The writer's progress takes the reader's measure (WR-178): it needs the line count.
+        map.lines = s.active.as_ref().map_or(0, |_| s.active_text().split('\n').count());
         return;
     }
     let doc = s.doc();

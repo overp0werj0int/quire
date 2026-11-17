@@ -89,15 +89,11 @@ pub fn body(v: V) -> El {
     row().key("body").grow(1.0).min_h(0.0).w_full().child(sheet)
 }
 
-/// The progress bar: the reader's follows its top block (RD-38), the writer's is how far the
-/// view has scrolled (WR-178). Both are drawn from the scroll in the frame it moves.
+/// The progress bar: in both modes the share of the note's lines above the view, full at its
+/// end (RD-38, WR-178). It is drawn from the scroll in the frame it moves.
 pub(super) fn progress(v: V) -> Option<El> {
-    if super::reading(v.s) {
-        return Some(super::reader::progress(v));
-    }
     let writing = v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a));
-    let c = Roles::new(v.p);
-    writing.then(|| el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).opacity(0.55).paint_order(30).live_rect(&v.s.reader.bar))
+    (super::reading(v.s) || writing).then(|| super::reader::progress(v))
 }
 
 /// The writer's scroll thumb (WR-93) from the viewport's [offset, range, height, width]: 3
@@ -211,8 +207,7 @@ fn doc_scroll(v: V) -> El {
             let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];
             let moved = live.get()[0] != now[0];
             live.set(now);
-            // The reader's progress follows its top block (RD-38); the writer's is how far the
-            // view has scrolled (WR-178).
+            // The progress line (RD-38, WR-178).
             map.borrow_mut().follow(now, &bar);
             thumb.set(thumb_rect(now));
             if moved {
@@ -546,7 +541,7 @@ fn source(v: V, width: f32, room: f32) -> El {
         .on_input_key(on_editor_key);
     // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in the
     // direction of its own first strong character.
-    let input = with_edit_menu(input, "editor").paragraph_styles(paragraph_styles(&hangs, gutter));
+    let input = with_edit_menu(input, "editor").paragraph_styles(paragraph_styles(&hangs, gutter)).on_layout_tx(|s: &mut App, r, tx| s.field_laid_out(r, tx));
     el().key("source").w(width + gutter).ml(-gutter).pt(pad_top).child(input)
 }
 

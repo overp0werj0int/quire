@@ -286,7 +286,8 @@ pub fn undo_toast(v: V, name: &str) -> El {
     toast_row(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
-/// The reading progress line (RD-37, RD-38): 2 px of accent along the top of the note area.
+/// The progress line (RD-37, RD-38, WR-178): 2 px of accent along the top of the note area,
+/// one line for both modes.
 pub fn progress(v: V) -> El {
     let c = Roles::new(v.p);
     el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).paint_order(30).live_rect(&v.s.reader.bar)

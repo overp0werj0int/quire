@@ -2056,6 +2056,65 @@ mod writer_chrome_tests {
         }
     }
 
+    /// RD-34, WR-227: the buttons both modes have keep one place in the title bar, so none
+    /// moves when the mode changes.
+    #[test]
+    fn shared_title_bar_buttons_keep_their_place_across_modes() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-slots-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, "# A\n\nText.\n", crate::app::Mode::Source);
+        let places = |rt: &mut rune::Runtime<crate::app::App>| {
+            for _ in 0..60 {
+                rt.frame(DT);
+            }
+            ["mode", "focus", "toggle-right"].map(|k| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).expect(k).rect)
+        };
+        let source = places(&mut rt);
+        rt.update(|s, tx| s.switch_mode(tx));
+        let preview = places(&mut rt);
+        assert_eq!(source, preview, "mode, zen and outline sit alike in source and preview");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-178, RD-38: the progress bar means one thing in both modes, the share of the note's
+    /// lines above the view, so one place in the note reads alike in source and preview, and
+    /// the end of the note fills it in both.
+    #[test]
+    fn wr_178_progress_means_one_thing_in_both_modes() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-progress-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        let lines = LONG.split('\n').count();
+        let share = |rt: &rune::Runtime<crate::app::App>| info(rt, "progress").map_or(0.0, |e| e.rect[2]) / info(rt, "doc-scroll").unwrap().rect[2];
+        let settle = |rt: &mut rune::Runtime<crate::app::App>| {
+            for _ in 0..90 {
+                rt.frame(DT);
+            }
+        };
+        settle(&mut rt);
+        let line = lines * 2 / 3;
+        rt.update(move |s, tx| s.source_jump(line, tx));
+        settle(&mut rt);
+        let source = share(&rt);
+        rt.update(|s, tx| s.switch_mode(tx));
+        settle(&mut rt);
+        let preview = share(&rt);
+        let want = line as f32 / lines as f32;
+        assert!((source - want).abs() < 0.08, "source reads {source:.2} at line {line} of {lines}");
+        assert!((preview - want).abs() < 0.08, "preview reads {preview:.2} at line {line} of {lines}");
+        rt.update(|s, tx| s.switch_mode(tx));
+        settle(&mut rt);
+        rt.update(move |s, tx| s.source_jump(lines - 2, tx));
+        settle(&mut rt);
+        assert!(share(&rt) > 0.99, "the note's end fills the bar in source: {:.2}", share(&rt));
+        rt.update(|s, tx| s.switch_mode(tx));
+        settle(&mut rt);
+        rt.update(|s, tx| s.scroll_bottom(tx));
+        settle(&mut rt);
+        assert!(share(&rt) > 0.99, "and in preview: {:.2}", share(&rt));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar runs the window's full height, and its toggle keeps its place in the window's
     /// corner whether the sidebar is open or closed.
     #[test]

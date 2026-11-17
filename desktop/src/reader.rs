@@ -112,6 +112,8 @@ pub struct PageMap {
     /// Each top-level block's first source line, and the note's line count.
     pub starts: Vec<usize>,
     pub lines: usize,
+    /// The writer's text field in the window as last laid out: its top and its height.
+    field: [f32; 2],
     /// The outline's rows, when it shows: each heading's block and its row, the row current
     /// above the first, and each row's colours.
     pub heads: Vec<(usize, Option<usize>)>,
@@ -194,6 +196,13 @@ impl PageMap {
     /// The scroll content laid out with its top at window `y`.
     pub fn content_laid_out(&mut self, y: f32) {
         self.content_y = y;
+    }
+
+    /// The writer's text field laid out at window `y`, `h` points tall. Whether it moved.
+    pub fn field_laid_out(&mut self, y: f32, h: f32) -> bool {
+        let moved = self.field != [y, h];
+        self.field = [y, h];
+        moved
     }
 
     /// Row `key` laid out at window `y`, `h` points tall. Whether that moved any block.
@@ -305,10 +314,8 @@ impl PageMap {
         let k = if self.reading {
             self.mark(now[0]);
             self.progress(now)
-        } else if now[1] > 0.0 {
-            (now[0] / now[1]).clamp(0.0, 1.0)
         } else {
-            0.0
+            self.source_progress(now)
         };
         bar.set([0.0, 0.0, now[3] * k.clamp(0.0, 1.0), 2.0]);
     }
@@ -332,6 +339,17 @@ impl PageMap {
     pub fn progress(&self, [offset, max, vh, _]: [f32; 4]) -> f32 {
         let line = self.starts.get(self.top(offset)).copied().unwrap_or(0);
         progress(line, self.lines, offset, max, vh)
+    }
+
+    /// The writer's progress, in the reader's measure (WR-178, RD-38): the line at the view's
+    /// top over the line count, full once the text's end is in view. The field reports no
+    /// line positions, so the line is its share of the field's height.
+    pub fn source_progress(&self, [offset, max, vh, _]: [f32; 4]) -> f32 {
+        let [y, h] = self.field;
+        let top = y - self.content_y;
+        let end = (top + h - vh).clamp(0.0, max.max(0.0));
+        let line = if h > 0.0 { (self.lines as f32 * ((offset + 21.0 - top) / h).clamp(0.0, 1.0)) as usize } else { 0 };
+        progress(line, self.lines, offset, end, vh)
     }
 }
 
@@ -368,7 +386,8 @@ pub fn glide_from(offset: f32, glide: Option<(f32, f64)>, now: f64) -> f32 {
 }
 
 /// Reading progress (RD-38): the top block's source line over the line count, eased the rest
-/// of the way to 1 over the last screen. 0 at the very top.
+/// of the way to 1 over the last screen, or over the whole scroll of a page shorter than two
+/// screens. 0 at the very top.
 pub fn progress(top_line: usize, lines: usize, offset: f32, max: f32, vh: f32) -> f32 {
     if offset <= 0.5 || lines == 0 {
         return 0.0;
@@ -377,8 +396,10 @@ pub fn progress(top_line: usize, lines: usize, offset: f32, max: f32, vh: f32) -
         return 1.0;
     }
     let base = (top_line as f32 / lines as f32).clamp(0.0, 1.0);
+    // A page shorter than two views eases over all of its scroll, so its top still reads 0.
+    let last = vh.min(max);
     let left = max - offset;
-    if vh > 0.0 && left < vh { base + (1.0 - base) * (1.0 - left / vh) } else { base }
+    if last > 0.0 && left < last { base + (1.0 - base) * (1.0 - left / last) } else { base }
 }
 
 /// The first match at or below the top block, else the first (RD-57).
@@ -634,6 +655,17 @@ impl App {
         }
         tx.scroll_to_instant(SCROLL, 0.0, (top - 0.5 * vh).clamp(0.0, max.max(0.0)));
         map.wait(block_key(b), Arrive::Center, self.now.get());
+    }
+
+    /// The writer's text field laid out at window rect `[x, y, w, h]`: the progress line takes
+    /// its place (WR-178).
+    pub(crate) fn field_laid_out(&mut self, [_, y, _, h]: [f32; 4], tx: &mut Tx) {
+        let now = self.reader.scroll.get();
+        let mut map = self.reader.map.borrow_mut();
+        if map.field_laid_out(y, h) {
+            map.follow(now, &self.reader.bar);
+        }
+        tx.live_only();
     }
 
     /// Row `key` of the page laid out at window rect `[x, y, w, h]` (`ui/preview.rs`): the page
@@ -973,6 +1005,8 @@ mod tests {
         assert_eq!(progress(40, 100, 200.0, 1000.0, 500.0), 0.4);
         // Over the last screen it eases toward 1: half a view left is half way.
         assert!((progress(40, 100, 750.0, 1000.0, 500.0) - 0.7).abs() < 1e-5);
+        assert!(progress(0, 100, 2.0, 300.0, 500.0) < 0.01, "a short page reads 0 at its top");
+        assert!((progress(0, 100, 150.0, 300.0, 500.0) - 0.5).abs() < 1e-5);
     }
 
     #[test]
