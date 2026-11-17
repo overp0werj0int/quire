@@ -561,6 +561,37 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-109: on a mode switch the old text goes at once and the new one fades in, so the two
+    /// never show together, and the switch is over within 250 ms.
+    #[test]
+    fn wr_109_the_mode_switch_shows_one_text() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-swap-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text to read.\n")], crate::watch::EVERY);
+        rt.update(|s, _| s.mode = crate::app::Mode::Source);
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let shown = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some(key)).map(|e| e.opacity).fold(0.0f32, f32::max);
+        let (x, y) = rt.find("mode").expect("the mode button");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        let mut faded = false;
+        for i in 1..=15 {
+            rt.frame(DT);
+            let (src, pre) = (shown(&rt, "source"), shown(&rt, "preview"));
+            assert!(src.min(pre) <= 0.05, "frame {i}: source at {src} and preview at {pre} show together");
+            faded |= pre > 0.0 && pre < 0.9;
+            if i as f64 * DT >= 0.25 {
+                assert!(pre >= 0.97, "the preview shows whole by 250 ms: {pre}");
+            }
+        }
+        assert!(faded, "the preview fades in");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

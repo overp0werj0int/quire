@@ -178,7 +178,7 @@ fn doc_scroll(v: V) -> El {
             column = column.pl(page.gutter);
         }
         if bar {
-            column = column.child(toolbar(v));
+            column = column.child(toolbar(v).transition(mode_swap()));
             // A find bar too wide to sit beside the toolbar takes its own row under it, and the
             // text starts below that row.
             if find_row(v) {
@@ -186,13 +186,16 @@ fn doc_scroll(v: V) -> El {
             }
             column = column.child(el().key("toolbar-gap").h(TOOLBAR_GAP));
         }
-        column = column.child(if locked {
-            super::lock::panel(v)
-        } else if s.mode == Mode::Source {
-            source(v, page.width, page.gutter)
-        } else {
-            preview::preview(v).w(page.width)
-        });
+        column = column.child(
+            if locked {
+                super::lock::panel(v)
+            } else if s.mode == Mode::Source {
+                source(v, page.width, page.gutter)
+            } else {
+                preview::preview(v).w(page.width)
+            }
+            .transition(mode_swap()),
+        );
         content = content.child(column);
     } else if s.files().is_empty() {
         content = content.min_h(v.vh - super::titlebar::BAR_H - 1.0).justify_center().padding(40.0).child(empty_vault(v));
@@ -236,6 +239,13 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(below + 12.0);
     }
     scroll.child(content)
+}
+
+/// How the text and the toolbar of one mode give way to the other's: the old ones go at once
+/// and the new ones fade in over 160 ms (WR-109), so the two texts, at their different line
+/// pitches, never show together.
+fn mode_swap() -> rune::Transition {
+    rune::Transition::opacity().springs(rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::NONE))
 }
 
 /// Where the find bar's top sits in the note area: 10 under the title bar, centred on the
