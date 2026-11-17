@@ -326,6 +326,8 @@ impl App {
         let deleted = self.record_delete(folder, true);
         self.remove_folder(folder);
         self.deleted = Some(deleted);
+        // The Undo toast shows on the page, so a drawer over it closes.
+        self.drawer = None;
         self.sync_after_save();
     }
 

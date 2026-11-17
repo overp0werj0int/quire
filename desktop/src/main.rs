@@ -1135,6 +1135,23 @@ pub(crate) mod scroll_tests {
             false
         });
         assert!(shown(&rt, "sidebar-over").is_none() && mode == crate::app::Mode::Preview, "one press on the mode button closes the drawer and acts");
+        // A delete made in the drawer closes it, so the Undo toast shows on the page and works.
+        let at = rt.find("toggle-left").expect("the sidebar button");
+        rt.pointer_move(at.0, at.1);
+        rt.pointer_down(at.0, at.1);
+        rt.pointer_up(at.0, at.1);
+        settle(&mut rt);
+        rt.update(|s, _| s.delete_note());
+        settle(&mut rt);
+        rt.update(|s, _| s.writer.wait(std::time::Duration::from_secs(5)));
+        assert!(shown(&rt, "sidebar-over").is_none(), "the delete closed the drawer");
+        let at = rt.find("toast-undo").expect("the toast offers Undo");
+        rt.pointer_move(at.0, at.1);
+        rt.pointer_down(at.0, at.1);
+        rt.pointer_up(at.0, at.1);
+        settle(&mut rt);
+        rt.update(|s, _| s.writer.wait(std::time::Duration::from_secs(5)));
+        assert!(dir.join("notes/note.md").is_file(), "Undo brought the note back");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

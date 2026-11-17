@@ -1172,6 +1172,8 @@ impl App {
         // Unsaved text goes to disk first, so the trash and Undo have it.
         self.flush_notes();
         self.deleted = Some(self.record_delete(&p, false));
+        // The Undo toast shows on the page, so a drawer over it closes.
+        self.drawer = None;
         self.unlocked.remove(&p);
         let Some(v) = &mut self.vault else { return };
         v.files.remove(&p);
