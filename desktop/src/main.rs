@@ -826,6 +826,31 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
+    /// a hover, above the page rather than over its text.
+    #[test]
+    fn wr_223_the_zen_hint_sits_in_the_top_bar() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-zen-hint-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, tx| s.toggle_focus(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let bar = rt.presented("titlebar").unwrap().0;
+        let hint = info(&rt, "focus-hint").expect("the zen hint shows");
+        let inside = |r: [f32; 4], o: [f32; 4]| r[0] >= o[0] - 0.5 && r[1] >= o[1] - 0.5 && r[0] + r[2] <= o[0] + o[2] + 0.5 && r[1] + r[3] <= o[1] + o[3] + 0.5;
+        assert!(inside(hint.rect, bar), "the hint {:?} sits in the top bar {bar:?}", hint.rect);
+        assert!(hint.opacity > 0.99, "drawn without a hover: opacity {}", hint.opacity);
+        let words = rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.contains("esc to leave zen mode"))).expect("the hint's text");
+        assert!(inside(words.rect, bar) && words.opacity > 0.99);
+        let mid = bar[0] + bar[2] / 2.0;
+        assert!((words.rect[0] + words.rect[2] / 2.0 - mid).abs() < 1.0, "centred: {:?} in {bar:?}", words.rect);
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        assert!(page[1] >= bar[1] + bar[3] - 0.5, "the page {page:?} starts under the bar {bar:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A press in the editor dragged below the page and held there scrolls the page, and the
     /// selection grows with it, as in a text view.
     #[test]

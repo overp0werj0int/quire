@@ -73,9 +73,6 @@ pub fn body(v: V) -> El {
         inner = inner.child(outline::outline(v).transition(t));
     }
     sheet = sheet.child(inner);
-    if focus {
-        sheet = sheet.child(focus_hint(v));
-    }
     row().key("body").grow(1.0).min_h(0.0).w_full().child(sheet)
 }
 
@@ -521,17 +518,6 @@ fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
         None => false,
     }
-}
-
-fn focus_hint(v: V) -> El {
-    let p = v.p;
-    let wc = md::words(v.s.active_text());
-    row()
-        .key("focus-hint")
-        .pin(Some(0.0), None, Some(0.0), Some(14.0))
-        .justify_center()
-        .inert()
-        .child(super::widgets::padded(format!("{} words · esc to leave zen mode", group(wc)), mono(11.5, 400.0), p.mute, 10.0, 4.0, 0.0).radius(6.0).fill(p.bg))
 }
 
 /// 1234 as "1,234", as `toLocaleString` writes it in English.

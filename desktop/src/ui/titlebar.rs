@@ -100,8 +100,19 @@ fn bar(v: V) -> El {
         .child(el().w(v.trailing))
 }
 
+/// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
+/// nothing covers it; the window dots and a button to leave show under the pointer.
 fn focus_bar(v: V) -> El {
     let p = v.p;
+    let wc = v.s.word_count().words;
+    let words = format!("{} {} · esc to leave zen mode", super::editor::group(wc), if wc == 1 { "word" } else { "words" });
+    let hint = row()
+        .key("focus-hint")
+        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+        .justify_center()
+        .center_y()
+        .inert()
+        .child(label(words, mono(11.5, 400.0), p.mute));
     let inner = row()
         .key("focus-inner")
         .h(BAR_H)
@@ -109,7 +120,6 @@ fn focus_bar(v: V) -> El {
         .pl(14.0)
         .gap(8.0)
         .center_y()
-        .fill(p.bg)
         .group_opacity(0.0, 1.0)
         .child(dots(p))
         .child(el().grow(1.0))
@@ -128,5 +138,5 @@ fn focus_bar(v: V) -> El {
                 .child(label("leave zen mode · esc", mono(11.5, 400.0), p.mute).group_color(p.ink)),
         )
         .child(el().w(v.trailing));
-    el().key("titlebar").h(BAR_H).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(inner)
+    el().key("titlebar").h(BAR_H).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(hint).child(inner)
 }

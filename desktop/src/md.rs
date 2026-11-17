@@ -414,39 +414,6 @@ pub fn backlinks(files: &BTreeMap<String, String>, active: &str) -> Vec<(String,
     out
 }
 
-/// Counts words as the prototype does: letter or number runs, fenced code left out.
-pub fn words(t: &str) -> usize {
-    let mut text = String::with_capacity(t.len());
-    let mut fence = false;
-    let mut lines = t.split('\n').peekable();
-    while let Some(ln) = lines.next() {
-        if ln.starts_with("```") || (fence && ln.contains("```")) {
-            fence = !fence;
-            text.push(' ');
-            continue;
-        }
-        if !fence {
-            text.push_str(ln);
-        }
-        text.push('\n');
-    }
-    let mut n = 0;
-    let mut in_word = false;
-    for c in text.chars() {
-        let starts = c.is_alphanumeric();
-        let cont = starts || c == '\'' || c == '’' || c == '-';
-        if in_word {
-            if !cont {
-                in_word = false;
-            }
-        } else if starts {
-            in_word = true;
-            n += 1;
-        }
-    }
-    n
-}
-
 /// The paragraph (run of non-blank lines) around byte `pos`, as first and last line index.
 pub fn para_range(text: &str, pos: usize) -> (usize, usize) {
     let lines: Vec<&str> = text.split('\n').collect();
@@ -737,8 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn words_and_paragraphs() {
-        assert_eq!(words("Hello world, it's 2026.\n```\nskip me\n```\nend"), 5);
+    fn paragraphs() {
         assert_eq!(para_range("a\nb\n\nc", 0), (0, 1));
     }
 
