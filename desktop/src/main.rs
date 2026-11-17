@@ -202,6 +202,40 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// In a small window each settings row stacks its control under its text, so descriptions
+    /// keep a readable width and no text runs past the page's margin.
+    #[test]
+    fn settings_fit_a_small_window() {
+        use crate::app::Sec;
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-setsmall-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        for (w, h) in [(520.0, 400.0), (640.0, 480.0)] {
+            rt.set_viewport((w, h), 1.0);
+            for sec in [Sec::Appearance, Sec::Editor, Sec::Files, Sec::Sync, Sec::Mcp, Sec::Keys] {
+                rt.update(|s, _| {
+                    s.settings_open = true;
+                    s.set_sec = sec;
+                });
+                for _ in 0..30 {
+                    rt.frame(DT);
+                }
+                let els = rt.elements();
+                let body = els.iter().find(|e| e.key.as_deref().is_some_and(|k| k.starts_with("set-body-"))).unwrap().rect;
+                let edge = body[0] + body[2] - 24.0;
+                for e in els.iter().filter(|e| e.text.is_some() && e.path.contains("/set-body-") && !e.path.contains("/cfg/")) {
+                    assert!(e.rect[0] + e.rect[2] <= edge + 0.5, "{w}x{h} {sec:?}: {:?} ends at {} past {edge}", e.text, e.rect[0] + e.rect[2]);
+                }
+                if sec == Sec::Appearance {
+                    let desc = els.iter().find(|e| e.text.as_deref().is_some_and(|t| t.starts_with("Match system follows"))).unwrap();
+                    assert!(desc.rect[2] >= 180.0, "{w}x{h}: the Mode description is {} wide", desc.rect[2]);
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A notes folder in `dir` holding `files`, its first file open in preview, and the
     /// watcher looking every `every`.
     fn vault(dir: &std::path::Path, files: &[(&str, &str)], every: std::time::Duration) -> Runtime<crate::app::App> {

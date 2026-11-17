@@ -294,7 +294,7 @@ pub fn sync(v: V) -> El {
     }
     c = c.child(col().key("provider-form").w_full().pt(16.0).pb(18.0).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().child(label(pv.full, sans(14.0, 500.0), p.ink)).child(form));
     let when = |id: &'static str, l: &str| seg(l, sy.when == id, move |s, _| s.settings_mut().sync.when = id.into());
-    c = c.child(row_(v, "when", "When to sync", Some("On save uploads a note a moment after you stop typing."), settings_seg(p, "when-seg", vec![when("save", "On save"), when("interval", "Every 5 min"), when("manual", "Manually")])));
+    c = c.child(row_(v, "when", "When to sync", Some("On save uploads a note a moment after you stop typing."), settings_seg(v, "when-seg", vec![when("save", "On save"), when("interval", "Every 5 min"), when("manual", "Manually")])));
     let enc = sy.encrypt;
     c = c.child(row_(
         v,
@@ -361,7 +361,7 @@ pub fn sync(v: V) -> El {
             })
             .child(text(msg).font(sans(12.5, 400.0).lh(12.5 * 1.45)).color(color).wrap().grow(1.0).min_w(180.0)),
     );
-    c.child(label("Keys are saved in Quire's settings file, never inside the notes folder.", mono(11.0, 400.0).lh(16.5), p.mute).pt(14.0).wrap())
+    c.child(text("Keys are saved in Quire's settings file, never inside the notes folder.").font(mono(11.0, 400.0).lh(16.5)).color(p.mute).pt(14.0).wrap().w_full())
 }
 
 fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {

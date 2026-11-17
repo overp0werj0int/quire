@@ -52,7 +52,7 @@ pub fn mcp(v: V) -> El {
         "transport",
         "Transport",
         Some("With stdio, the AI app starts Quire's helper itself. HTTP serves a local endpoint on this computer."),
-        settings_seg_mono(p, "tr-seg", vec![tr("stdio", "stdio"), tr("http", "HTTP")]),
+        settings_seg_mono(v, "tr-seg", vec![tr("stdio", "stdio"), tr("http", "HTTP")]),
     ));
     if http {
         let port = m.port.clone();
@@ -106,7 +106,7 @@ pub fn mcp(v: V) -> El {
         c = c.child(grid);
     }
     let access = |id: &'static str, l: &str| seg(l, (if m.access == "write" { "write" } else { "read" }) == id, move |s, _| s.settings_mut().mcp.access = id.into());
-    c = c.child(row_(v, "access", "Access", Some("Read only turns off every tool that changes files."), settings_seg(p, "access-seg", vec![access("read", "Read only"), access("write", "Read & write")])));
+    c = c.child(row_(v, "access", "Access", Some("Read only turns off every tool that changes files."), settings_seg(v, "access-seg", vec![access("read", "Read only"), access("write", "Read & write")])));
 
     let ro = m.access != "write";
     let mut tools = col().key("tools").w_full().mt(8.0);
@@ -232,11 +232,12 @@ pub fn mcp(v: V) -> El {
             .child(
                 row()
                     .key("mcp-status")
+                    .w_full()
                     .gap(8.0)
                     .mt(12.0)
-                    .center_y()
-                    .child(el().size(6.0, 6.0).radius(3.0).fill(p.acc))
-                    .child(label(status, mono(11.0, 400.0), p.mute)),
+                    .items_start()
+                    .child(el().size(6.0, 6.0).mt(5.25).radius(3.0).fill(p.acc))
+                    .child(text(status).font(mono(11.0, 400.0).lh(16.5)).color(p.mute).wrap().grow(1.0).shrink().min_w(0.0)),
             ),
     )
 }

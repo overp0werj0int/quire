@@ -172,10 +172,11 @@ pub fn segmented(p: &Pal, key: &str, segs: Vec<Seg>, h: f32, pad_x: f32, radius:
             .h(h)
             .px(pad_x)
             .center()
+            .shrink()
             .radius(radius)
             .fill(if on { p.bg } else { Color::TRANSPARENT })
             .label(sg.label.clone())
-            .child(label(sg.label, style, if on { p.ink } else { p.mute }));
+            .child(label(sg.label, style, if on { p.ink } else { p.mute }).truncate());
         for sh in seg_shadow(on) {
             b = b.box_shadow(sh);
         }
@@ -185,13 +186,19 @@ pub fn segmented(p: &Pal, key: &str, segs: Vec<Seg>, h: f32, pad_x: f32, radius:
 }
 
 /// The settings segmented control: 26 tall, 12.5 px Instrument Sans, on the side colour.
-pub fn settings_seg(p: &Pal, key: &str, segs: Vec<Seg>) -> El {
-    segmented(p, key, segs, 26.0, 12.0, 6.0, sans(12.5, 400.0), p.side, 8.0)
+pub fn settings_seg(v: super::V, key: &str, segs: Vec<Seg>) -> El {
+    segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, sans(12.5, 400.0), v.p.side, 8.0)
+}
+
+/// A settings segment's side padding: less when the page is narrow and its rows stack, so a
+/// control of three long names still fits. A segment that cannot fit shortens its name.
+fn settings_seg_pad(v: super::V) -> f32 {
+    if super::settings::stacked(v) { 7.0 } else { 12.0 }
 }
 
 /// The settings segmented control in mono (MCP transport).
-pub fn settings_seg_mono(p: &Pal, key: &str, segs: Vec<Seg>) -> El {
-    segmented(p, key, segs, 26.0, 12.0, 6.0, mono(12.0, 400.0), p.side, 8.0)
+pub fn settings_seg_mono(v: super::V, key: &str, segs: Vec<Seg>) -> El {
+    segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, mono(12.0, 400.0), v.p.side, 8.0)
 }
 
 /// A 36 by 20 switch.

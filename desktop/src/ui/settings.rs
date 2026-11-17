@@ -35,13 +35,13 @@ pub fn settings(v: V) -> El {
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
     }
-    let nav = col().key("set-nav").w(190.0).h_full().py(18.0).px(10.0).fill(p.side).child(text("settings").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0)).child(tabs);
+    let nav = col().key("set-nav").w(nav_w(v)).h_full().py(18.0).px(10.0).fill(p.side).child(text("settings").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0)).child(tabs);
     let title = SECS.iter().find(|x| x.0 == s.set_sec).map_or("", |x| x.1);
     let head = row()
         .key("set-head")
         .h(58.0)
         .w_full()
-        .pl(32.0)
+        .pl(pad(v))
         .pr(16.0)
         .center_y()
         .justify_between()
@@ -81,7 +81,7 @@ pub fn settings(v: V) -> El {
                 .w_full()
                 .scroll(ScrollSpec { stick_bottom: false })
                 .scroll_margin(FADE)
-                .child(col().key("set-page").w_full().child(col().key(format!("set-body-{title}")).w_full().px(32.0).pb(28.0).child(body)).child(fade(v))),
+                .child(col().key("set-page").w_full().child(col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body)).child(fade(v))),
         );
     let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
@@ -143,19 +143,50 @@ fn fade(v: V) -> El {
     )
 }
 
+/// Whether the window is small: the section list and the page's margins narrow in it.
+fn small(v: V) -> bool {
+    v.vw < 720.0
+}
+
+/// The section list's width.
+fn nav_w(v: V) -> f32 {
+    if small(v) { 150.0 } else { 190.0 }
+}
+
+/// The page's side margin.
+fn pad(v: V) -> f32 {
+    if small(v) { 24.0 } else { 32.0 }
+}
+
 /// The width of the settings body, for grids that fit columns to it.
 pub fn body_width(v: V) -> f32 {
-    (v.vw - 48.0).min(780.0) - 190.0 - 64.0
+    (v.vw - 48.0).min(780.0) - nav_w(v) - 2.0 * pad(v)
+}
+
+/// Whether a row stacks its control under its title and description: when the body is too
+/// narrow for both side by side with a readable description.
+pub fn stacked(v: V) -> bool {
+    body_width(v) < 460.0
 }
 
 /// A settings row: a title and description on the left, a control on the right.
 pub fn row_(v: V, key: &str, title: &str, desc: Option<&str>, control: El) -> El {
-    let p = v.p;
-    let mut left = col().key("text").grow(1.0).shrink().min_w(0.0).child(label(title, sans(14.0, 500.0), p.ink));
+    let mut left = col().key("text").child(label(title, sans(14.0, 500.0), v.p.ink));
     if let Some(d) = desc {
         left = left.child(desc_text(v, d));
     }
-    row().key(key).w_full().gap(24.0).py(16.0).center_y().border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().child(left).child(control)
+    pair(v, key, left, control)
+}
+
+/// A settings row of `left` (its title and description) and `control`: side by side, or one
+/// over the other when the body is narrow (`stacked`).
+pub fn pair(v: V, key: &str, left: El, control: El) -> El {
+    let r = if stacked(v) {
+        col().gap(10.0).child(left.w_full()).child(control.self_start().max_w(body_width(v)))
+    } else {
+        row().gap(24.0).center_y().child(left.grow(1.0).shrink().min_w(0.0)).child(control)
+    };
+    r.key(key).w_full().py(16.0).border_sides([1.0, 0.0, 0.0, 0.0], v.p.line).border_layout()
 }
 
 pub fn desc_text(v: V, d: &str) -> El {
@@ -188,11 +219,11 @@ fn appearance(v: V) -> El {
     col()
         .key("appearance")
         .w_full()
-        .child(row_(v, "theme", "Mode", Some(mode_desc), settings_seg(v.p, "theme-seg", vec![theme_seg("light", "Light"), theme_seg("dark", "Dark"), theme_seg("system", "Match system")])))
+        .child(row_(v, "theme", "Mode", Some(mode_desc), settings_seg(v, "theme-seg", vec![theme_seg("light", "Light"), theme_seg("dark", "Dark"), theme_seg("system", "Match system")])))
         .child(theme_grid(v, false))
         .child(theme_grid(v, true))
         .child(accent_block(v))
-        .child(row_(v, "prev-font", "Preview typeface", Some("Used when reading a note in preview."), settings_seg(v.p, "prev-seg", theme::PROSE_FONTS.iter().map(prev).collect())))
+        .child(row_(v, "prev-font", "Preview typeface", Some("Used when reading a note in preview."), settings_seg(v, "prev-seg", theme::PROSE_FONTS.iter().map(prev).collect())))
 }
 
 /// The themes for light or dark mode as cards, each with a small picture of its colours.
@@ -205,7 +236,7 @@ fn theme_grid(v: V, dark: bool) -> El {
     if theme::omarchy().is_some() {
         items.push(("omarchy", "Omarchy"));
     }
-    let cols = if body_width(v) >= 640.0 { 4 } else { 3 };
+    let cols = if body_width(v) >= 380.0 { 3 } else { 2 };
     let cw = ((body_width(v) - 10.0 * (cols as f32 - 1.0)) / cols as f32).floor();
     let slot = if dark { "dark" } else { "light" };
     let mut grid = col().key(format!("{slot}-themes")).w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
@@ -285,7 +316,7 @@ fn accent_block(v: V) -> El {
             e.set_selection(n, n);
         }
     };
-    let mut swatches = row().key("swatches").gap(8.0).center_y().wrap().role("radiogroup").focus_group();
+    let mut swatches = row().key("swatches").w_full().gap(8.0).center_y().flex_wrap().role("radiogroup").focus_group();
     for &(hex, name) in theme::ACCENTS {
         let on = current == hex;
         if hex.is_empty() {
@@ -341,6 +372,8 @@ fn editor(v: V) -> El {
     let set = v.s.settings();
     let editor_id = theme::editor_font(&set.font).id;
     let mut cards = col().key("font-cards").w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
+    // As many columns as fit cards wide enough for their sample line, up to three.
+    let cols = ((body_width(v) + 10.0) / 178.0).floor().clamp(1.0, 3.0) as usize;
     let mut card_row = row().w_full().gap(10.0);
     for (i, f) in EDITOR_FONTS.iter().enumerate() {
         let on = editor_id == f.id;
@@ -368,7 +401,7 @@ fn editor(v: V) -> El {
             b = b.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
         }
         card_row = card_row.child(b);
-        if i % 3 == 2 {
+        if i % cols == cols - 1 {
             cards = cards.child(std::mem::replace(&mut card_row, row().w_full().gap(10.0)));
         }
     }
@@ -411,9 +444,9 @@ fn editor(v: V) -> El {
         .key("editor-set")
         .w_full()
         .child(block(v, "font", "Editor font", Some("The font of a note in source mode.")).child(cards))
-        .child(row_(v, "code-font", "Code font", Some("Code blocks and inline code, in both modes."), settings_seg(p, "code-seg", theme::CODE_FONTS.iter().map(code).collect())))
+        .child(row_(v, "code-font", "Code font", Some("Code blocks and inline code, in both modes."), settings_seg(v, "code-seg", theme::CODE_FONTS.iter().map(code).collect())))
         .child(row_(v, "size", "Font size", Some("The size of the note's text. Headings and code scale with it."), size_ctl))
-        .child(row_(v, "width", "Line width", Some("Readable keeps lines to about 72 characters."), settings_seg(p, "width-seg", vec![width("readable", "Readable"), width("full", "Full width")])));
+        .child(row_(v, "width", "Line width", Some("Readable keeps lines to about 72 characters."), settings_seg(v, "width-seg", vec![width("readable", "Readable"), width("full", "Full width")])));
     type Get = fn(&crate::store::Settings) -> bool;
     type Set = fn(&mut crate::store::Settings);
     let toggles: [(&str, &str, &str, Get, Set); 5] = [
@@ -433,24 +466,12 @@ fn files(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let path = s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
-    let loc = row()
-        .key("location")
-        .w_full()
-        .gap(24.0)
-        .py(16.0)
-        .center_y()
-        .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
-        .border_layout()
-        .child(
-            col()
-                .key("text")
-                .grow(1.0)
-                .shrink()
-                .min_w(0.0)
-                .child(label("Folder location", sans(14.0, 500.0), p.ink))
-                .child(text(path).font(mono(12.0, 400.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
-        )
-        .child(outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)));
+    let loc = pair(
+        v,
+        "location",
+        col().key("text").child(label("Folder location", sans(14.0, 500.0), p.ink)).child(text(path).font(mono(12.0, 400.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
+        outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)),
+    );
     let cur = s.settings().new_folder.clone();
     let mut opts = row().key("folder-opts").w_full().flex_wrap().gap(6.0).mt(12.0).role("radiogroup").focus_group();
     let mut list = vec![(String::new(), "Folder root".to_string())];
@@ -506,7 +527,7 @@ fn keys(v: V) -> El {
         "preset",
         "Keys",
         Some("omarky's keys, or the keys Quire used before. Every label in the app follows."),
-        settings_seg(p, "preset-seg", vec![pick(Preset::Omarky, "omarky"), pick(Preset::Quire, "Quire")]),
+        settings_seg(v, "preset-seg", vec![pick(Preset::Omarky, "omarky"), pick(Preset::Quire, "Quire")]),
     ));
     // Only keys whose feature is built: the rest arrive with the reader and writer work.
     let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor")];
@@ -527,7 +548,7 @@ fn keys(v: V) -> El {
                     .justify_between()
                     .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
                     .border_layout()
-                    .child(label(a.name, sans(13.5, 400.0), p.ink))
+                    .child(label(a.name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
                     .child(super::widgets::padded(kb, mono(11.5, 400.0), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
             );
         }
