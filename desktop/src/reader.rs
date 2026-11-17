@@ -850,6 +850,12 @@ impl App {
         self.center_match(tx);
     }
 
+    /// Closes the help sheet. In the writer the caret goes back to the note (WR-158).
+    pub fn close_help(&mut self, tx: &mut Tx) {
+        self.reader.help = false;
+        self.focus_editor(tx);
+    }
+
     /// Esc in the reader (RD-85): close find, else clear the selection, else Quire's Esc.
     pub fn reader_escape(&mut self, tx: &mut Tx) -> bool {
         if self.reader.help {

@@ -1,7 +1,7 @@
 //! The reader's chrome over the page (`behavior/reader.md`): the find bar, the help sheet,
 //! toasts, the reading progress line and the "reloaded" mark.
 
-use rune::{Color, El, Key, KeyEvent, TextCase, Tx, col, el, icon, row, text, text_input};
+use rune::{Color, El, Key, KeyEvent, ScrollSpec, TextCase, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
 use super::chip::Chip;
@@ -186,7 +186,7 @@ pub fn help_sheet(v: V) -> El {
     let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let mut card = col().key("help-card").w(w).px(24.0).py(22.0).gap(18.0).on_press(|_: &mut App| {});
+    let mut card = col().key("help-body").w(w).px(24.0).py(22.0).gap(18.0).on_press(|_: &mut App| {});
     card = card.child(
         text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
             .key("help-version")
@@ -218,14 +218,19 @@ pub fn help_sheet(v: V) -> El {
     for column in columns {
         body = body.child(column);
     }
-    let card = popup(&c).child(card.child(body));
+    // The card fits the window, 24 px clear of each edge, and its rows scroll inside it.
+    let card = popup(&c).key("help-card").child(col().key("help-scroll").max_h(v.vh - 48.0).scroll(ScrollSpec { stick_bottom: false }).child(card.child(body)));
+    // Modal: the note behind takes no wheel or press while help is open.
     col()
         .key("help-scrim")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
         .fill(v.p.scrim)
         .center()
         .paint_order(70)
-        .on_press(|s: &mut App| s.reader.help = false)
+        .role("dialog")
+        .label("Keyboard help")
+        .modal_tx(false, |s: &mut App, tx| s.close_help(tx))
+        .on_press_tx(|s: &mut App, tx| s.close_help(tx))
         .child(card)
 }
 

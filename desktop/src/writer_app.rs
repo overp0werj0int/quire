@@ -300,8 +300,7 @@ impl App {
     /// zen mode, then the preview.
     pub fn writer_escape(&mut self, tx: &mut Tx) -> bool {
         if self.reader.help {
-            self.reader.help = false;
-            self.focus_editor(tx);
+            self.close_help(tx);
             return true;
         }
         if self.reader.find.open {

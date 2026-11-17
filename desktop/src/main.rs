@@ -380,6 +380,65 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// RD-86, RD-87: in a small window the help card fits it and its rows scroll inside, a
+    /// wheel stops at the sheet and leaves the note where it was, and `?` and Esc still close it.
+    #[test]
+    fn rd_86_help_fits_and_holds_the_note() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-help-{}", std::process::id()));
+        let long = format!("# A\n\n{}", "A paragraph of text that runs on.\n\n".repeat(200));
+        let mut rt = vault(&dir, &[("note.md", &long)], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let rect = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect);
+        let help = |rt: &mut Runtime<crate::app::App>| {
+            let mut on = false;
+            rt.update_if(|s, _| {
+                on = s.reader.help;
+                false
+            });
+            on
+        };
+        rt.update(|s, _| s.reader.help = true);
+        settle(&mut rt);
+        let card = rect(&rt, "help-card").expect("the help card");
+        assert!(card[1] >= 0.0 && card[1] + card[3] <= 480.0, "the card fits the window: {card:?}");
+        let (page, body) = (rect(&rt, "doc-col").unwrap(), rect(&rt, "help-body").unwrap());
+        rt.pointer_move(320.0, 240.0);
+        rt.wheel(320.0, 240.0, -400.0);
+        settle(&mut rt);
+        assert_eq!(rect(&rt, "doc-col").unwrap()[1], page[1], "the note behind stays put");
+        assert!(rect(&rt, "help-body").unwrap()[1] < body[1], "the card's rows scroll");
+        rt.key(KeyEvent { key: Key::Text("?".into()), mods: Mods { shift: true, ..Default::default() } });
+        settle(&mut rt);
+        assert!(!help(&mut rt), "? closes help");
+        rt.update(|s, _| s.reader.help = true);
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(!help(&mut rt), "Esc closes help");
+        // WR-158: in the writer, closing help puts the caret back in the note.
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            s.focus_editor(tx);
+        });
+        settle(&mut rt);
+        rt.update(|s, _| s.reader.help = true);
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(!help(&mut rt), "Esc closes the writer's help");
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("editor") && e.focused), "and the editor has the keyboard");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

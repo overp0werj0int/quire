@@ -145,7 +145,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
         "sheet.save" => |s, tx| s.sheet_save(tx),
         "sheet.cancel" => |s, tx| s.sheet_escape(tx),
-        "help.close" => |s, _| s.reader.help = false,
+        "help.close" => |s, tx| s.close_help(tx),
         "writer.bold" => |s, tx| s.format(Fmt::Bold, tx),
         "writer.italic" => |s, tx| s.format(Fmt::Italic, tx),
         "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),
