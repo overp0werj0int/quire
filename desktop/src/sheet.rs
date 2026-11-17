@@ -108,6 +108,7 @@ impl App {
         edit.set_selection(0, 0);
         self.reader.pending = None;
         self.sheet = Some(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None });
+        self.cover_page();
         tx.clear_text_selection();
         tx.focus(EDITOR, false);
     }

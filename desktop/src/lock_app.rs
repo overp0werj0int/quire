@@ -70,6 +70,7 @@ impl App {
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
         self.lock_dialog = Some(String::new());
+        self.cover_page();
         tx.focus("lock-pass", false);
     }
 

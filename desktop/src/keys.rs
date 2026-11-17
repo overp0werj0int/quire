@@ -141,7 +141,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.copy-block-under-pointer" => |s, tx| s.copy_block_here(tx),
         "reader.copy-all" => |s, tx| s.copy_all(tx),
         "reader.read-from-disk" => |s, _| s.read_from_disk(),
-        "reader.help" => |s, _| s.reader.help = true,
+        "reader.help" => |s, _| {
+            s.cover_page();
+            s.reader.help = true;
+        },
         "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
         "sheet.save" => |s, tx| s.sheet_save(tx),
@@ -166,7 +169,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.find" => |s, tx| s.writer_find(tx),
         "writer.find-next" => |s, tx| s.source_step(true, tx),
         "writer.find-previous" => |s, tx| s.source_step(false, tx),
-        "writer.help" => |s, _| s.reader.help = !s.reader.help,
+        "writer.help" => |s, _| {
+            s.cover_page();
+            s.reader.help = !s.reader.help;
+        },
         "writer.paragraph-focus" => |s, tx| s.toggle_paragraph_focus(tx),
         "writer.typewriter" => |s, tx| s.toggle_typewriter(tx),
         "writer.next-font" => |s, tx| s.next_font(tx),

@@ -912,6 +912,23 @@ pub(crate) mod scroll_tests {
         tap(&mut rt, at);
         settle(&mut rt);
         assert!(rect(&rt, "sidebar-over").is_none() && mode(&mut rt) != was, "another button closes the drawer and acts");
+        // A layer over the page closes the drawer, so it never shows through or over it.
+        toggle(&mut rt);
+        settle(&mut rt);
+        let at = rt.find("foot-settings").expect("Settings at the drawer's foot");
+        tap(&mut rt, at);
+        settle(&mut rt);
+        assert!(rect(&rt, "settings-frame").is_some() && rect(&rt, "sidebar-over").is_none(), "Settings closes the sidebar's drawer");
+        rt.update(|s, _| s.settings_open = false);
+        settle(&mut rt);
+        let at = rt.find("toggle-right").expect("the outline button");
+        tap(&mut rt, at);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline-over").is_some());
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Commands, tx));
+        settle(&mut rt);
+        assert!(rect(&rt, "palette-frame").is_some() && rect(&rt, "outline-over").is_none(), "the palette closes the outline's drawer");
+        rt.update(|s, tx| s.close_palette(tx));
         assert_eq!(docked(&mut rt), setting, "the docked setting never changed");
         // From 680 up, nothing changed: the button docks and undocks it.
         rt.set_viewport((1000.0, 600.0), 1.0);

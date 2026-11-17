@@ -1413,6 +1413,13 @@ impl App {
     pub fn toggle_settings(&mut self, _tx: &mut Tx) {
         self.settings_open = !self.settings_open;
         self.palette = None;
+        self.cover_page();
+    }
+
+    /// A layer opens over the page (the palette or quick switcher, Settings, a dialog, help or
+    /// the edit sheet): an open drawer closes, so it never shows over or through that layer.
+    pub fn cover_page(&mut self) {
+        self.drawer = None;
     }
 
     /// A toolbar action on the active note's selection, as one undo step.
@@ -1440,6 +1447,7 @@ impl App {
         self.settings_open = true;
         self.vault_menu = false;
         self.palette = None;
+        self.cover_page();
     }
 
     pub fn open_search(&mut self, tx: &mut Tx) {
@@ -1473,6 +1481,7 @@ impl App {
         self.palette = Some(Palette { mode, q: TextEdit::new(""), idx: 0 });
         self.vault_menu = false;
         self.settings_open = false;
+        self.cover_page();
         tx.focus("pal-input", false);
     }
 
