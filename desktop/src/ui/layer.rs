@@ -39,6 +39,7 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
         Layer::Help => Some(super::reader::help_sheet(v)),
         Layer::Sheet(sh) => Some(super::sheet::sheet(v, sh)),
         Layer::Drawer(_) => super::drawer(v),
+        Layer::Menu(m) => Some(super::menu::menu(v, m)),
     };
     let Some(card) = card else { return };
     // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
@@ -76,6 +77,7 @@ fn plane(kind: Kind) -> (&'static str, i16) {
         Kind::Help => ("help-scrim", 50),
         Kind::Sheet => ("sheet-scrim", 50),
         Kind::Drawer(_) => ("", 35),
+        Kind::Menu => ("", 80),
     }
 }
 

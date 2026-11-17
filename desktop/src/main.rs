@@ -2561,7 +2561,7 @@ mod escape_tests {
             }
             let mut seen = (Mode::Source, false, false);
             rt.update_if(|s, _| {
-                seen = (s.mode, s.focus, s.edit_menu.is_some());
+                seen = (s.mode, s.focus, s.menu().is_some_and(|m| matches!(m.of, crate::layer::MenuOf::Edit(_))));
                 false
             });
             seen
@@ -2578,7 +2578,7 @@ mod escape_tests {
         }
         let mut open = false;
         rt.update_if(|s, _| {
-            open = s.edit_menu.is_some();
+            open = s.menu().is_some_and(|m| matches!(m.of, crate::layer::MenuOf::Edit(_)));
             false
         });
         assert!(open, "the right-click opened the editor's menu");
@@ -2730,7 +2730,7 @@ mod edit_menu_tests {
             }
             let mut got = (None, None);
             rt.update_if(|s, _| {
-                got = (s.reader.menu.map(|m| m.2), s.reader.toast.as_ref().map(|t| t.0.clone()));
+                got = ((match s.menu().map(|m| &m.of) { Some(crate::layer::MenuOf::Block(l)) => Some(*l), _ => None }), s.reader.toast.as_ref().map(|t| t.0.clone()));
                 false
             });
             got
@@ -2750,7 +2750,7 @@ mod edit_menu_tests {
         press(&mut rt, "tm-1");
         let mut after = (Some(0), None);
         rt.update_if(|s, _| {
-            after = (s.reader.menu.map(|m| m.2), s.reader.toast.as_ref().map(|t| t.0.clone()));
+            after = ((match s.menu().map(|m| &m.of) { Some(crate::layer::MenuOf::Block(l)) => Some(*l), _ => None }), s.reader.toast.as_ref().map(|t| t.0.clone()));
             false
         });
         assert_eq!(after, (None, Some("Copied the block's text".into())), "Copy text copies and closes the menu");
@@ -2806,18 +2806,18 @@ mod edit_menu_tests {
         let mut seen = (false, false, 99);
         rt.update_if(|s, _| {
             let caret = s.cur_edit().focus;
-            seen = (s.edit_menu.is_some(), s.edit_menu_selected(), caret);
+            seen = (s.menu().is_some_and(|m| matches!(m.of, crate::layer::MenuOf::Edit(_))), s.edit_menu_selected(), caret);
             false
         });
         assert_eq!(seen, (true, false, 0), "menu open, nothing selected, caret moved to the click");
-        rt.update(|s, tx| s.close_edit_menu(tx));
+        rt.update(|s, tx| s.close_layer(tx));
         rt.frame(DT);
         // "alpha" selected; a right-click at its start keeps it.
         rt.update(|s, _| s.cur_edit().set_selection(0, 5));
         rt.frame(DT);
         right_click(&mut rt);
         rt.update_if(|s, _| {
-            seen = (s.edit_menu.is_some(), s.edit_menu_selected(), 0);
+            seen = (s.menu().is_some_and(|m| matches!(m.of, crate::layer::MenuOf::Edit(_))), s.edit_menu_selected(), 0);
             false
         });
         assert_eq!(seen, (true, true, 0), "menu open over the selection");
@@ -2835,7 +2835,7 @@ mod edit_menu_tests {
         let mut open = true;
         rt.update_if(|s, _| {
             now = s.active_text().to_string();
-            open = s.edit_menu.is_some();
+            open = s.menu().is_some_and(|m| matches!(m.of, crate::layer::MenuOf::Edit(_)));
             false
         });
         assert!(!open, "the menu closed");

@@ -113,7 +113,6 @@ pub struct App {
     pub(crate) handed: Option<Option<String>>,
     pub set_sec: Sec,
     pub focus: bool,
-    pub vault_menu: bool,
     pub renaming: Option<TextEdit>,
     pub creating: Option<TextEdit>,
     /// One editor per open note, so each keeps its caret and undo history.
@@ -159,8 +158,6 @@ pub struct App {
     /// Set by the theme watcher when Omarchy switches themes.
     theme_changed: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub dragging: Option<crate::folders::DragNote>,
-    pub tree_menu: Option<crate::folders::TreeMenu>,
-    pub edit_menu: Option<crate::writer_app::EditMenu>,
     pub new_folder: Option<crate::folders::NewFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
@@ -221,7 +218,6 @@ pub fn init() -> App {
         handed: None,
         set_sec: Sec::Appearance,
         focus: false,
-        vault_menu: false,
         renaming: None,
         creating: None,
         edits: HashMap::new(),
@@ -253,8 +249,6 @@ pub fn init() -> App {
         names_gen: 0,
         theme_changed: None,
         dragging: None,
-        tree_menu: None,
-        edit_menu: None,
         new_folder: None,
         sync: Default::default(),
         images: Default::default(),
@@ -912,7 +906,6 @@ impl App {
         self.query = TextEdit::new("");
         self.left_panel = Panel::Files;
         self.layers.clear();
-        self.vault_menu = false;
         self.renaming = None;
         self.ensure_edit();
         if self.mode == Mode::Source {
@@ -971,7 +964,6 @@ impl App {
         self.store_session();
         self.screen = Screen::Welcome;
         self.layers.clear();
-        self.vault_menu = false;
         self.focus = false;
         self.renaming = None;
         if self.folder_open() {
@@ -1094,7 +1086,6 @@ impl App {
         self.recent.insert(0, path.to_string());
         self.recent.truncate(30);
         self.renaming = None;
-        self.vault_menu = false;
         if sel.is_some_and(|s| s.force_source) {
             self.mode = Mode::Source;
         }
@@ -1426,7 +1417,6 @@ impl App {
     }
 
     pub fn open_settings(&mut self, tx: &mut Tx) {
-        self.vault_menu = false;
         self.open_layer(crate::layer::Layer::Settings, tx);
     }
 
@@ -1453,7 +1443,6 @@ impl App {
     }
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {
-        self.vault_menu = false;
         self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0 }), tx);
         tx.focus("pal-input", false);
     }
@@ -1462,10 +1451,6 @@ impl App {
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
         if self.layer().is_some() {
             self.dismiss(tx);
-        } else if self.vault_menu {
-            self.vault_menu = false;
-        } else if self.tree_menu.is_some() {
-            self.tree_menu = None;
         } else if self.new_folder.is_some() {
             self.new_folder = None;
         } else if self.renaming.is_some() {

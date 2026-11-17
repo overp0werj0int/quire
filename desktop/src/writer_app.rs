@@ -11,6 +11,7 @@ use std::rc::Rc;
 use rune::{Color, Span, TextEdit, Tx};
 
 use crate::app::{App, Mode};
+use crate::layer::{Menu, MenuOf};
 use crate::format::Edit;
 use crate::md;
 use crate::writer::{self, Count, Ink, State, Styled};
@@ -111,32 +112,11 @@ fn spans_by(text: &str, mut style: impl FnMut(usize, &str, State) -> Rc<(Styled,
     (spans, strikes, hangs)
 }
 
-/// The editor's right-click menu (WR-135, SHEET-032): Cut, Copy and Paste, drawn by Quire
-/// where Rune has no native menu. Where it opened, and the field it acts on.
-pub struct EditMenu {
-    pub x: f32,
-    pub y: f32,
-    pub field: &'static str,
-}
-
 impl App {
-    /// A right-click in the source editor or the sheet's. Rune has put the caret at the click
-    /// already, unless the click was in the selection.
-    pub fn open_edit_menu(&mut self, field: &'static str, x: f32, y: f32) {
-        self.edit_menu = Some(EditMenu { x, y, field });
-    }
-
-    /// Closing the menu gives focus back to its field (SHEET-032).
-    pub fn close_edit_menu(&mut self, tx: &mut Tx) {
-        if let Some(m) = self.edit_menu.take() {
-            tx.focus(m.field, false);
-        }
-    }
-
-    /// Whether the menu's field has text selected, for Cut and Copy.
+    /// Whether the edit menu's field has text selected, for Cut and Copy.
     pub fn edit_menu_selected(&self) -> bool {
-        let Some(m) = &self.edit_menu else { return false };
-        let edit = if m.field == crate::sheet::EDITOR { self.sheet().map(|s| &s.edit) } else { self.active.as_ref().and_then(|a| self.edits.get(a)) };
+        let Some(Menu { of: MenuOf::Edit(field), .. }) = self.menu() else { return false };
+        let edit = if *field == crate::sheet::EDITOR { self.sheet().map(|s| &s.edit) } else { self.active.as_ref().and_then(|a| self.edits.get(a)) };
         edit.is_some_and(|e| e.anchor != e.focus)
     }
 }

@@ -4,6 +4,7 @@ pub(crate) mod editor;
 mod chip;
 mod layer;
 mod lock;
+mod menu;
 mod outline;
 mod octicons;
 mod panel;
@@ -140,15 +141,6 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             }
         }
     };
-    if s.tree_menu.is_some() {
-        root = root.child(sidebar::tree_menu(v));
-    }
-    if s.edit_menu.is_some() {
-        root = root.child(sidebar::edit_menu(v));
-    }
-    if s.reader.menu.is_some() && reading(s) {
-        root = root.child(reader::block_menu(v));
-    }
     if s.dragging.as_ref().is_some_and(|d| d.active) {
         root = root.child(sidebar::drag_ghost(v));
     }

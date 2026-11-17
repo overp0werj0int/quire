@@ -563,7 +563,7 @@ pub fn with_edit_menu(input: rune::El, key: &'static str) -> rune::El {
     if rune::popup_menu_supported() {
         return input;
     }
-    input.on_secondary_press(move |s: &mut App, at, _| s.open_edit_menu(key, at.x, at.y))
+    input.on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Edit(key), (at.x, at.y), tx))
 }
 
 /// The writer's caret and selection, shared with the edit sheet: an accent caret in Rune's own

@@ -14,6 +14,7 @@
 use rune::Tx;
 
 use crate::app::{App, Drawer, Mode, Palette, Screen};
+use crate::folders::MenuOn;
 use crate::sheet::Sheet;
 
 pub enum Layer {
@@ -28,6 +29,27 @@ pub enum Layer {
     Sheet(Box<Sheet>),
     /// The sidebar or the outline over the page, in a window too narrow to dock it.
     Drawer(Drawer),
+    Menu(Menu),
+}
+
+/// A menu, at the point it opened at, on what it opened on.
+pub struct Menu {
+    pub at: (f32, f32),
+    pub of: MenuOf,
+}
+
+/// What a menu was opened on.
+pub enum MenuOf {
+    /// The folder's name at the sidebar's top: switch folder, Settings.
+    Folder,
+    /// A note, a folder or the tree's empty space (`folders::MenuOn`).
+    Tree(MenuOn),
+    /// The tree menu's second step for a folder with notes: delete it or not.
+    DeleteFolder(String),
+    /// A text field, by key: the source editor or the edit sheet's (WR-135, SHEET-032).
+    Edit(&'static str),
+    /// A block of the page, by its first source line (RD-68).
+    Block(usize),
 }
 
 /// Which layer, without its state: what a key toggles.
@@ -39,6 +61,7 @@ pub enum Kind {
     Help,
     Sheet,
     Drawer(Drawer),
+    Menu,
 }
 
 impl Layer {
@@ -50,6 +73,7 @@ impl Layer {
             Layer::Help => Kind::Help,
             Layer::Sheet(_) => Kind::Sheet,
             Layer::Drawer(d) => Kind::Drawer(*d),
+            Layer::Menu(_) => Kind::Menu,
         }
     }
 }
@@ -58,7 +82,7 @@ impl Kind {
     /// A menu or a drawer: the page around it stays in view, so a window shortcut closes it and
     /// acts as if it had not been there, and a change to the page closes it.
     pub fn light(self) -> bool {
-        matches!(self, Kind::Drawer(_))
+        matches!(self, Kind::Drawer(_) | Kind::Menu)
     }
 }
 
@@ -135,6 +159,14 @@ impl App {
         })
     }
 
+    /// The open menu.
+    pub fn menu(&self) -> Option<&Menu> {
+        self.open_layers().find_map(|l| match l {
+            Layer::Menu(m) => Some(m),
+            _ => None,
+        })
+    }
+
     /// The open edit sheet.
     pub fn sheet(&self) -> Option<&Sheet> {
         self.open_layers().find_map(|l| match l {
@@ -170,17 +202,27 @@ impl App {
         }
     }
 
-    /// Opens `layer` over the page, closing whatever was open (a menu opens over the layer it
-    /// was opened in). It takes over where focus goes back to from the layer it replaces, so a
-    /// palette that gives way to Settings still hands the keyboard back to the note.
+    /// Opens `layer` over the page, closing whatever was open. It takes over where focus goes
+    /// back to from the layer it replaces, so a palette that gives way to Settings still hands
+    /// the keyboard back to the note. A menu opens over the layer it was opened in, replacing
+    /// only a menu, and a field's menu gives focus back to its field.
     pub fn open_layer(&mut self, layer: Layer, tx: &mut Tx) {
-        let replaced = std::mem::take(&mut self.layers);
-        let back = match replaced.into_iter().next() {
-            Some(first) => first.back,
-            None => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
+        let replaced = match &layer {
+            Layer::Menu(_) => self.layers.pop_if(|o| matches!(o.layer, Layer::Menu(_))).into_iter().collect(),
+            _ => std::mem::take(&mut self.layers),
+        };
+        let back = match (&layer, replaced.into_iter().next()) {
+            (Layer::Menu(Menu { of: MenuOf::Edit(field), .. }), _) => Some(field.to_string()),
+            (_, Some(first)) => first.back,
+            (_, None) => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
         };
         self.handed = None;
         self.layers.push(Open { layer, back, over: self.context() });
+    }
+
+    /// Opens a menu of `of` at `at`.
+    pub fn open_menu(&mut self, of: MenuOf, at: (f32, f32), tx: &mut Tx) {
+        self.open_layer(Layer::Menu(Menu { at, of }), tx);
     }
 
     /// Opens a layer outside any event (a scene, a test): focus goes back where Rune's modal

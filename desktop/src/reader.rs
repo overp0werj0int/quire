@@ -40,7 +40,6 @@ pub struct Reader {
     /// The first source line of the top-level block under the pointer (RD-100).
     pub hover: Option<usize>,
     /// The block menu a right-click opened (RD-68): where, and its block's first line.
-    pub menu: Option<(f32, f32, usize)>,
     /// Where the page's blocks sit, from the last view. Shared with the scroll handler, which
     /// draws the reading progress from it without running the view (VER-32).
     pub map: Rc<RefCell<PageMap>>,
@@ -70,7 +69,6 @@ impl Default for Reader {
             copied: None,
             reloaded: None,
             hover: None,
-            menu: None,
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
             bar: Live::new([0.0; 4]),

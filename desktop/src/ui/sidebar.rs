@@ -3,16 +3,17 @@
 
 use std::collections::BTreeMap;
 
-use rune::{Color, El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, text_input};
+use rune::{El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, text_input};
 
 use super::V;
 use super::panel;
 use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, FOLDER_PLUS, PLUS, SEARCH, floating, label};
 use crate::folders::{MenuOn, row_key};
+use crate::layer::MenuOf;
 use crate::app::{App, Panel, Sel};
 use crate::md;
 use crate::roles::{Roles, mix};
-use super::styles::{keys, literal, nav};
+use super::styles::{keys, nav};
 use crate::theme;
 
 /// The size of a sidebar button and of a panel tab: the smallest pointer target. The drawn
@@ -36,7 +37,7 @@ pub fn sidebar(v: V) -> El {
             .gap(6.0)
             .role("button")
             .label(name.clone())
-            .on_press(|s: &mut App| s.vault_menu = !s.vault_menu)
+            .on_press_tx(|s: &mut App, tx| s.open_menu(MenuOf::Folder, (0.0, 0.0), tx))
             .child(text(name).font(nav(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
@@ -118,11 +119,7 @@ pub fn sidebar(v: V) -> El {
         .child(super::titlebar::corner_room());
     // Note mode has no folder: no folder menu, files, search or tags.
     let side = if note_mode { side.children(open_notes(v)).child(el().grow(1.0)) } else { side.children(open_notes(v)).child(head).child(tabs).child(list) };
-    let mut side = side.child(foot);
-    if s.vault_menu {
-        side = side.child(vault_menu(v));
-    }
-    side
+    side.child(foot)
 }
 
 /// The open notes, one row each in the order they were opened, under a section label. The
@@ -161,6 +158,12 @@ fn open_count(v: V) -> usize {
 }
 
 /// The Open list's height: its label, its rows and its padding, or nothing when it is gone.
+/// Where the folder's menu opens: under the folder's name, below the window corner and the
+/// Open list.
+pub(super) fn folder_menu_y(v: V) -> f32 {
+    super::titlebar::BAR_H + open_h(v) + 40.0
+}
+
 fn open_h(v: V) -> f32 {
     match open_count(v) {
         0 => 0.0,
@@ -235,38 +238,6 @@ fn open_row(v: V, path: &str) -> El {
         .child(close)
 }
 
-fn vault_menu(v: V) -> El {
-    let p = v.p;
-    let path = v.s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
-    let item = |key: &str, t: &str, run: fn(&mut App, &mut rune::Tx)| {
-        row()
-            .key(key)
-            .w_full()
-            .h(30.0)
-            .px(10.0)
-            .center_y()
-            .radius(6.0)
-            .hover(p.hover)
-            .role("menuitem")
-            .on_press_tx(move |s: &mut App, tx| run(s, tx))
-            .child(label(t, nav(panel::BODY, false), p.ink))
-    };
-    // Under the folder's name, below the corner and the Open list.
-    let y = super::titlebar::BAR_H + open_h(v) + 40.0;
-    let panel = floating(col(), &Roles::new(p))
-        .key("vault-menu")
-        .absolute(10.0, y)
-        .w(228.0)
-        .padding(5.0)
-        .radius(9.0)
-        .role("menu")
-        .modal(true, |s: &mut App| s.vault_menu = false)
-        .child(text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0))
-        .child(item("menu-switch", "Switch folder…", |s, tx| s.go_welcome(tx)))
-        .child(item("menu-settings", "Settings", |s, tx| s.open_settings(tx)));
-    el().key("vault-menu-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(31).child(panel)
-}
-
 struct Node {
     folders: BTreeMap<String, Node>,
     files: Vec<String>,
@@ -311,7 +282,7 @@ fn files_panel(v: V) -> El {
         .key("tree")
         .w_full()
         .role("tree")
-        .on_secondary_press(|s: &mut App, at, _| s.open_tree_menu(MenuOn::Root, at.x, at.y));
+        .on_secondary_press(|s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Root), (at.x, at.y), tx));
     if root_target {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
     }
@@ -350,7 +321,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
         rows.push(
             tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false)
                 .on_press(move |s: &mut App| s.toggle_folder(&path))
-                .on_secondary_press(move |s: &mut App, at, _| s.open_tree_menu(MenuOn::Folder(menu_path.clone()), at.x, at.y))
+                .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx))
                 .child(add),
         );
         if open {
@@ -368,7 +339,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             tree_row(v, &row_key("file", f), md::base(f), f, depth, false, false, on)
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
                 .on_drag(move |s: &mut App, d: &mut rune::Drag, tx| s.drag_note(&drag_path, d, tx))
-                .on_secondary_press(move |s: &mut App, at, _| s.open_tree_menu(MenuOn::Note(menu_path.clone()), at.x, at.y)),
+                .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Note(menu_path.clone())), (at.x, at.y), tx)),
         );
     }
 }
@@ -431,148 +402,6 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                     }),
             ),
         )
-}
-
-/// The tree's menu, at the pointer: new notes and folders, rename or delete for a note, and
-/// delete for a folder.
-pub fn tree_menu(v: V) -> El {
-    let Some(m) = &v.s.tree_menu else { return el() };
-    if let (MenuOn::Folder(f), true) = (&m.on, m.confirm) {
-        return confirm_delete_folder(v, f, m.x, m.y);
-    }
-    let mut items: Vec<(&str, Run)> = Vec::new();
-    match m.on.clone() {
-        MenuOn::Folder(f) => {
-            let (f2, f3) = (f.clone(), f.clone());
-            let (mx, my) = (m.x, m.y);
-            items.push(("New note here", Box::new(move |s, tx| s.new_note_in(Some(&f), None, tx))));
-            items.push(("New folder here", Box::new(move |s, tx| s.start_new_folder(&f2, tx))));
-            items.push(("Delete folder", Box::new(move |s, _| s.ask_delete_folder(&f3, mx, my))));
-        }
-        MenuOn::Note(n) => {
-            let (n1, n2, n3) = (n.clone(), n.clone(), n.clone());
-            items.push(("New note here", Box::new(move |s, tx| s.new_note_in(Some(md::dir(&n1)), None, tx))));
-            items.push(("Rename", Box::new(move |s, tx| {
-                s.tree_menu = None;
-                s.open_file(&n2, None, tx);
-                s.start_rename(tx);
-            })));
-            if !md::dir(&n).is_empty() {
-                items.push(("Move to folder root", Box::new(move |s, tx| {
-                    s.tree_menu = None;
-                    s.move_note(&n3, "", tx);
-                })));
-            }
-            items.push(("Delete note", Box::new(move |s, _| {
-                s.tree_menu = None;
-                s.delete_path(&n);
-            })));
-        }
-        MenuOn::Root => {
-            items.push(("New note", Box::new(|s, tx| s.new_note_in(Some(""), None, tx))));
-            items.push(("New folder", Box::new(|s, tx| s.start_new_folder("", tx))));
-        }
-    }
-    let items = items.into_iter().map(|(t, run)| Item { label: t, keys: None, enabled: true, run }).collect();
-    menu(v, "tree-menu", (m.x, m.y), items, |s, _| s.tree_menu = None).paint_order(55)
-}
-
-pub type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
-
-/// A row of Quire's in-app menu (WR-193): its name, its shortcut, and what it does.
-pub struct Item {
-    pub label: &'static str,
-    pub keys: Option<String>,
-    pub enabled: bool,
-    pub run: Run,
-}
-
-/// Quire's in-app menu at `at`, kept inside the window: the tree's, the editor's and the
-/// preview's. `close`
-/// runs before a picked item's action, and on Esc or a click outside.
-pub fn menu(v: V, key: &str, at: (f32, f32), items: Vec<Item>, close: fn(&mut App, &mut rune::Tx)) -> El {
-    let p = v.p;
-    // Wide enough for the longest row's name and key, at about 7.2 points a character.
-    let need = |it: &Item| 30.0 + 7.2 * (it.label.len() + it.keys.as_ref().map_or(0, |k| k.len() + 2)) as f32;
-    let w = items.iter().map(need).fold(200f32, f32::max).ceil();
-    let h = 10.0 + 30.0 * items.len() as f32;
-    let x = at.0.min(v.vw - w - 8.0).max(8.0);
-    let y = at.1.min(v.vh - h - 8.0).max(8.0);
-    let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").modal_tx(true, close);
-    for (i, it) in items.into_iter().enumerate() {
-        let ink = if it.enabled { p.ink } else { p.mute };
-        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).gap(14.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
-        if let Some(k) = it.keys {
-            r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
-        }
-        if it.enabled {
-            let run = it.run;
-            r = r.hover(p.hover).on_press_tx(move |s: &mut App, tx| {
-                close(s, tx);
-                run(s, tx);
-            });
-        } else {
-            r = r.disabled(true);
-        }
-        panel = panel.child(r);
-    }
-    el().key(format!("{key}-layer")).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).child(panel)
-}
-
-/// The editor's menu (WR-135, SHEET-032): Cut and Copy, with nothing selected greyed out, and
-/// Paste, each sent to the field as its key would be. Over the edit sheet as well.
-pub fn edit_menu(v: V) -> El {
-    let Some(m) = &v.s.edit_menu else { return el() };
-    let selected = v.s.edit_menu_selected();
-    let send = |c: char| -> Run {
-        // As Rune's own field menu sends them.
-        let mods = rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..rune::Mods::default() };
-        Box::new(move |_, tx| tx.send_key(rune::KeyEvent { key: rune::Key::Command(c), mods }))
-    };
-    let items = vec![
-        Item { label: "Cut", keys: Some("Ctrl+X".into()), enabled: selected, run: send('x') },
-        Item { label: "Copy", keys: Some("Ctrl+C".into()), enabled: selected, run: send('c') },
-        Item { label: "Paste", keys: Some("Ctrl+V".into()), enabled: true, run: send('v') },
-    ];
-    menu(v, "edit-menu", (m.x, m.y), items, |s, tx| s.close_edit_menu(tx)).paint_order(80)
-}
-
-/// The tree menu's second step for a folder with notes: what moves to the trash, and two buttons.
-fn confirm_delete_folder(v: V, folder: &str, mx: f32, my: f32) -> El {
-    let p = v.p;
-    let n = v.s.notes_in(folder).len();
-    let name = folder.rsplit('/').next().unwrap_or(folder);
-    let msg = format!("Move {name} and its {n} {} to the trash?", if n == 1 { "note" } else { "notes" });
-    let w = 260.0;
-    let h = 104.0;
-    let x = mx.min(v.vw - w - 8.0).max(8.0);
-    let y = my.min(v.vh - h - 8.0).max(8.0);
-    let f = folder.to_string();
-    let button = |key: &str, t: &str, color: Color| {
-        row().key(key).h(30.0).px(12.0).center_y().radius(6.0).hover(p.hover).role("button").label(t).child(label(t, nav(panel::BODY, true), color))
-    };
-    let panel = floating(col(), &Roles::new(p))
-        .key("tree-menu")
-        .absolute(x, y)
-        .w(w)
-        .padding(12.0)
-        .gap(10.0)
-        .radius(9.0)
-        .role("alertdialog")
-        .label(msg.clone())
-        .modal(true, |s: &mut App| s.tree_menu = None)
-        .child(label(msg, nav(panel::BODY, false).lh(18.0), p.ink).wrap())
-        .child(
-            row()
-                .gap(4.0)
-                .child(el().grow(1.0))
-                .child(button("tm-cancel", "Cancel", p.ink2).on_press(|s: &mut App| s.tree_menu = None))
-                .child(button("tm-delete", "Delete", p.err).on_press(move |s: &mut App| {
-                    s.tree_menu = None;
-                    s.delete_folder(&f);
-                })),
-        );
-    el().key("tree-menu-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(55).child(panel)
 }
 
 /// The note under the pointer while it is dragged to a folder.

@@ -46,14 +46,6 @@ pub enum MenuOn {
     Root,
 }
 
-#[derive(Clone, Debug)]
-pub struct TreeMenu {
-    pub x: f32,
-    pub y: f32,
-    pub on: MenuOn,
-    /// The menu asks before it deletes the folder it was opened on.
-    pub confirm: bool,
-}
 
 /// A folder being named in the tree.
 pub struct NewFolder {
@@ -136,7 +128,6 @@ impl App {
         self.rebuild_names_pub();
         self.mark_dirty_pub(&p);
         self.screen = crate::app::Screen::Vault;
-        self.tree_menu = None;
         let end = content.len();
         self.open_file(&p, Some(Sel { start: end, end, line: None, force_source: false }), tx);
         if name.is_none() {
@@ -159,7 +150,6 @@ impl App {
         self.show_left(tx);
         self.left_panel = crate::app::Panel::Files;
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
-        self.tree_menu = None;
         tx.focus("new-folder", false);
     }
 
@@ -293,10 +283,6 @@ impl App {
         }
     }
 
-    pub fn open_tree_menu(&mut self, on: MenuOn, x: f32, y: f32) {
-        self.tree_menu = Some(TreeMenu { x, y, on, confirm: false });
-        self.vault_menu = false;
-    }
 
     /// The notes inside `folder`, its subfolders included.
     pub fn notes_in(&self, folder: &str) -> Vec<String> {
@@ -306,12 +292,11 @@ impl App {
 
     /// Deletes a folder from the menu: an empty folder goes at once, and a folder with notes
     /// asks first.
-    pub fn ask_delete_folder(&mut self, folder: &str, x: f32, y: f32) {
+    pub fn ask_delete_folder(&mut self, folder: &str, at: (f32, f32), tx: &mut Tx) {
         if self.notes_in(folder).is_empty() {
-            self.tree_menu = None;
             self.delete_folder(folder);
         } else {
-            self.tree_menu = Some(TreeMenu { x, y, on: MenuOn::Folder(folder.to_string()), confirm: true });
+            self.open_menu(crate::layer::MenuOf::DeleteFolder(folder.to_string()), at, tx);
         }
     }
 

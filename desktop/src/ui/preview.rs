@@ -303,7 +303,7 @@ pub fn preview(v: V) -> El {
                         .pt(gap)
                         .child(cx.top_block(bl, tone))
                         .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
-                        .on_secondary_press(move |s: &mut App, at, _| s.reader.menu = Some((at.x, at.y, line)))
+                        .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Block(line), (at.x, at.y), tx))
                 })
             },
         )

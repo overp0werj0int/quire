@@ -49,7 +49,7 @@ Notes on reading this file:
 - **KEY-20** [in] [verify: unit, script] app.close-tab (global): omarky preset `Ctrl+W`; quire preset `Ctrl+W`. Writes any unsaved text and closes the active tab. The window stays (RD-82, WR-68).
 - **KEY-21** [in] [verify: unit, script] app.zoom-in (global): omarky preset `Ctrl+=` or `Ctrl++`; quire preset `Ctrl+=` or `Ctrl++`. Steps the text size up and remembers it, in both modes (RD-82, WR-72, WR-126, PAGE-19).
 - **KEY-22** [in] [verify: unit, script] app.zoom-out (global): omarky preset `Ctrl+-`; quire preset `Ctrl+-`. Steps the text size down (RD-82, WR-72, WR-126, PAGE-19).
-- **KEY-23** [quire] [verify: -] app.escape (global): omarky preset `Esc`; quire preset `Esc`. Runs Quire's `App::escape`. It closes the palette, then Settings, the folder menu, the tree menu, new folder, rename and the create prompt, then leaves focus mode. Each context's own Esc runs first and falls through to it (RD-85, WR-77).
+- **KEY-23** [quire] [verify: -] app.escape (global): omarky preset `Esc`; quire preset `Esc`. Runs Quire's `App::escape`. An open layer (the palette, Settings, the lock dialog, help, the edit sheet, a drawer or a menu) takes Esc first and closes, and focus goes back where it was. With none open, Esc closes new folder, rename and the create prompt, then leaves focus mode. Each context's own Esc runs first and falls through to it (RD-85, WR-77).
 - **KEY-94** [quire] [verify: -] app.undo-delete (global): omarky preset `Ctrl+Shift+R`; quire preset `Ctrl+Shift+R`. While a delete's toast offers Undo, puts the note or folder back (`folders::Deleted`). The toast names the key. Text fields keep `Ctrl+Z`, so the delete takes a chord of its own. R is for restore.
 
 ## Reader
@@ -106,7 +106,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-67** [adapted: 0003] [verify: unit, script] writer.paragraph-focus (writer): omarky preset `Ctrl+Shift+F`; quire preset `Ctrl+Shift+D`. Toggles the fade of every paragraph but the current one (WR-75, WR-79). In the quire preset `Ctrl+Shift+F` searches all notes. D stands for dim.
 - **KEY-68** [in] [verify: unit, script] writer.typewriter (writer): omarky preset `Ctrl+Shift+T`; quire preset `Ctrl+Shift+T`. Toggles typewriter scrolling (WR-75, WR-85).
 - **KEY-69** [in] [verify: unit, script] writer.next-font (writer): omarky preset `Ctrl+Shift+M`; quire preset `Ctrl+Shift+M`. Steps the source font to the next iA Writer family (WR-75, WR-125).
-- **KEY-70** [in] [verify: unit, script] writer.escape (writer): omarky preset `Esc`; quire preset `Esc`. Closes an open menu, else the help sheet, else the find bar, else falls through to app.escape, else shows the preview (WR-77).
+- **KEY-70** [in] [verify: unit, script] writer.escape (writer): omarky preset `Esc`; quire preset `Esc`. Closes the find bar, else falls through to app.escape, else shows the preview. An open menu or the help sheet is a layer and takes Esc before it (WR-77).
 - **KEY-71** [deferred] [verify: -] writer.spelling (writer): omarky preset `Ctrl+Shift+L`; quire preset `Ctrl+Shift+L`. Toggles spell checking (WR-75, WR-128).
 - **KEY-72** [deferred] [verify: -] writer.rewrite (writer, sheet): omarky preset `Ctrl+J`; quire preset `Ctrl+J`. Opens the rewrite line on the block or selection (WR-76, WR-167, SHEET-034).
 - **KEY-73** [deferred] [verify: -] writer.rewrite-section (writer, sheet): omarky preset `Ctrl+Shift+J`; quire preset `Ctrl+Shift+J`. Opens the rewrite line on the section (WR-76, WR-167, SHEET-034).
