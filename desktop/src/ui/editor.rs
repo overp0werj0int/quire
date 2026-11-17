@@ -248,14 +248,12 @@ fn doc_scroll(v: V) -> El {
     scroll.child(content)
 }
 
-/// Where the find bar's top sits in the note area: 10 under the title bar, centred on the
-/// formatting toolbar's row when it fits beside it, else on its own row under the toolbar
+/// Where the find bar's top sits in the note area: 10 under the title bar, which is the
+/// formatting toolbar's top when it fits beside it, else on its own row under the toolbar
 /// (RD-53, WR-122).
 pub(super) fn find_top(v: V) -> f32 {
     if find_row(v) {
         TOOLBAR_TOP + TOOLBAR_H + FIND_GAP
-    } else if shows_toolbar(v) {
-        TOOLBAR_TOP + (TOOLBAR_H - super::reader::FIND_H) / 2.0
     } else {
         TOOLBAR_TOP
     }
@@ -284,8 +282,8 @@ const FIND_FADE: f32 = 24.0;
 const TOOLBAR_TOP: f32 = 10.0;
 /// From the toolbar to the text.
 const TOOLBAR_GAP: f32 = 24.0;
-/// The height of the floating toolbar.
-const TOOLBAR_H: f32 = 36.0;
+/// The height of the floating toolbar: the find bar's, so the two share one row edge to edge.
+const TOOLBAR_H: f32 = super::reader::FIND_H;
 /// The toolbar's width: 13 buttons of 28, 4 separators of 11, 16 gaps of 2 and 4 of padding
 /// at each end.
 pub(crate) const TOOLBAR_W: f32 = 448.0;
