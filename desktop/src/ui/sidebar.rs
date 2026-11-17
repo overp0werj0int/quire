@@ -7,7 +7,7 @@ use rune::{Color, El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row,
 
 use super::V;
 use super::panel;
-use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, FOLDER_PLUS, PLUS, SEARCH, label};
+use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, FOLDER_PLUS, PLUS, SEARCH, floating, label};
 use crate::folders::{MenuOn, row_key};
 use crate::app::{App, Panel, Sel};
 use crate::md;
@@ -233,19 +233,15 @@ fn vault_menu(v: V) -> El {
             .on_press_tx(move |s: &mut App, tx| run(s, tx))
             .child(label(t, nav(panel::BODY, false), p.ink))
     };
-    let [a, b] = theme::menu_shadows();
     // Under the folder's name, below the corner and the Open list.
     let open = v.s.tabs.iter().filter(|t| v.s.files().contains_key(*t)).count() as f32;
     let y = super::titlebar::BAR_H + OPEN_PAD * 2.0 + panel::row_h(panel::BODY) * (1.0 + open) + 40.0;
-    let panel = col()
+    let panel = floating(col(), &Roles::new(p))
         .key("vault-menu")
         .absolute(10.0, y)
         .w(228.0)
         .padding(5.0)
         .radius(9.0)
-        .fill(p.bg)
-        .box_shadow(a)
-        .box_shadow(b)
         .role("menu")
         .modal(true, |s: &mut App| s.vault_menu = false)
         .child(text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0))
@@ -483,8 +479,7 @@ pub fn menu(v: V, key: &str, at: (f32, f32), items: Vec<Item>, close: fn(&mut Ap
     let h = 10.0 + 30.0 * items.len() as f32;
     let x = at.0.min(v.vw - w - 8.0).max(8.0);
     let y = at.1.min(v.vh - h - 8.0).max(8.0);
-    let [a, b] = theme::menu_shadows();
-    let mut panel = col().key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).fill(p.bg).box_shadow(a).box_shadow(b).role("menu").modal_tx(true, close);
+    let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").modal_tx(true, close);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
         let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
@@ -533,21 +528,17 @@ fn confirm_delete_folder(v: V, folder: &str, mx: f32, my: f32) -> El {
     let h = 104.0;
     let x = mx.min(v.vw - w - 8.0).max(8.0);
     let y = my.min(v.vh - h - 8.0).max(8.0);
-    let [a, b] = theme::menu_shadows();
     let f = folder.to_string();
     let button = |key: &str, t: &str, color: Color| {
         row().key(key).h(30.0).px(12.0).center_y().radius(6.0).hover(p.hover).role("button").label(t).child(label(t, nav(panel::BODY, true), color))
     };
-    let panel = col()
+    let panel = floating(col(), &Roles::new(p))
         .key("tree-menu")
         .absolute(x, y)
         .w(w)
         .padding(12.0)
         .gap(10.0)
         .radius(9.0)
-        .fill(p.bg)
-        .box_shadow(a)
-        .box_shadow(b)
         .role("alertdialog")
         .label(msg.clone())
         .modal(true, |s: &mut App| s.tree_menu = None)
@@ -569,13 +560,12 @@ fn confirm_delete_folder(v: V, folder: &str, mx: f32, my: f32) -> El {
 pub fn drag_ghost(v: V) -> El {
     let p = v.p;
     let Some(d) = v.s.dragging.as_ref().filter(|d| d.active) else { return el() };
-    let [a, b] = theme::menu_shadows();
     let hint = match &d.target {
         Some(t) if t.is_empty() => "to the folder root".to_string(),
         Some(t) => format!("to {t}/"),
         None => String::new(),
     };
-    let mut r = row()
+    let mut r = floating(row(), &Roles::new(p))
         .key("drag-ghost")
         .absolute(d.x + 14.0, d.y + 10.0)
         .gap(8.0)
@@ -583,9 +573,6 @@ pub fn drag_ghost(v: V) -> El {
         .h(28.0)
         .center_y()
         .radius(7.0)
-        .fill(p.bg)
-        .box_shadow(a)
-        .box_shadow(b)
         .paint_order(70)
         .inert()
         .child(label(md::base(&d.path), nav(panel::BODY, true), p.ink));

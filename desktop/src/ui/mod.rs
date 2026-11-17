@@ -24,6 +24,7 @@ pub use editor::follow_link_at_caret;
 use rune::{Cx, El, TextStyle, col, el, row};
 
 use crate::app::{App, Screen};
+use crate::roles::Roles;
 use crate::theme::{self, Pal};
 
 /// What every builder reads: the state, the palette and the window size.
@@ -226,7 +227,7 @@ fn map_page(s: &App) {
 
 fn notice(v: V, msg: &str) -> El {
     let p = v.p;
-    row()
+    widgets::floating(row(), &Roles::new(p))
         .key("notice")
         .pin(None, None, Some(16.0), Some(40.0))
         .w(360.0)
@@ -234,9 +235,6 @@ fn notice(v: V, msg: &str) -> El {
         .gap(12.0)
         .padding(12.0)
         .radius(9.0)
-        .fill(p.bg)
-        .box_shadow(theme::menu_shadows()[0])
-        .box_shadow(theme::menu_shadows()[1])
         .paint_order(60)
         .child(widgets::label(msg, styles::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
         .child(

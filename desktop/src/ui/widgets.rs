@@ -4,6 +4,7 @@ use rune::{Color, El, Icon, Key, KeyEvent, Mods, Shadow, TextStyle, Tx, el, icon
 
 use crate::app::App;
 use super::styles::{fixed_advance, literal, sans};
+use crate::roles::Roles;
 use crate::theme::{self, Pal};
 
 macro_rules! svg {
@@ -87,6 +88,14 @@ pub fn padded(s: impl Into<String>, style: TextStyle, c: Color, px: f32, py: f32
 }
 
 /// A square icon button: 28 by 28, radius 6, muted, ink on hover.
+/// A menu or popup over the window (D4): the window's colour, the hairline edge the palette,
+/// Settings and the lock dialog have, and the menu's shadow, whose own 1 point ring is too faint
+/// to show on a dark theme. Every menu, popup, toast and floating notice takes it.
+pub fn floating(e: El, c: &Roles) -> El {
+    let [a, b] = theme::menu_shadows();
+    e.fill(c.bg).border(1.0, c.hairline).box_shadow(a).box_shadow(b)
+}
+
 pub fn icon_button(p: &Pal, key: &str, glyph: &'static Icon, size: f32, help: &str) -> El {
     row()
         .key(key)
@@ -273,4 +282,43 @@ pub fn dots(p: &Pal) -> El {
         }))
         .child(dot("win-min", "Minimize", |_, tx| tx.minimize()))
         .child(dot("win-max", "Maximize", |_, tx| tx.toggle_maximized()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::roles::Roles;
+    use crate::theme::{THEMES, contrast, theme_pal};
+
+    /// D4: the menu's shadow appears only in `floating`, so no menu or popup can take the
+    /// shadow without the edge.
+    #[test]
+    fn menus_take_the_floating_edge() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui");
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(&ui).unwrap() {
+            let path = entry.unwrap().path();
+            let Ok(src) = std::fs::read_to_string(&path) else { continue };
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            for (i, line) in src.lines().enumerate().take_while(|(_, l)| !l.starts_with("#[cfg(test)]")) {
+                if line.contains("menu_shadows") && !(name == "widgets.rs" && line.contains("let [a, b] = theme::menu_shadows();")) {
+                    found.push(format!("ui/{name}:{}", i + 1));
+                }
+            }
+        }
+        assert!(found.is_empty(), "the menu's shadow outside widgets::floating:\n{}", found.join("\n"));
+    }
+
+    /// D4: the edge shows against the window in every theme, as the modal panels' edge does, and
+    /// more than the shadow's own ring, which all but vanished on dark themes.
+    #[test]
+    fn floating_edge_shows_on_every_theme() {
+        for t in THEMES {
+            let c = Roles::new(theme_pal(t.id, t.dark));
+            let edge = c.bg.mix(c.hairline.alpha(1.0), c.hairline.a);
+            assert!(contrast(edge, c.bg) >= 1.1, "{}: menu edge {:.2}:1", t.id, contrast(edge, c.bg));
+            let ring = crate::theme::menu_shadows()[0].color;
+            let old = c.bg.mix(ring.alpha(1.0), ring.a);
+            assert!(contrast(edge, c.bg) > contrast(old, c.bg), "{}: the edge shows less than the shadow's ring", t.id);
+        }
+    }
 }

@@ -14,7 +14,7 @@ use crate::roles::Roles;
 use crate::theme;
 
 pub(super) fn popup(c: &Roles) -> El {
-    el().fill(c.bg).border(1.0, c.hairline).radius(6.0).box_shadow(theme::menu_shadows()[0]).box_shadow(theme::menu_shadows()[1])
+    super::widgets::floating(el(), c).radius(6.0)
 }
 
 /// The find bar's size, and its room from the note area's right edge.
