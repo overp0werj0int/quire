@@ -908,6 +908,9 @@ pub(crate) mod scroll_tests {
         settle(&mut rt);
         assert!(!root.join("Drafts/b.md").exists() && root.join(".trash/Drafts - b.md").is_file());
         assert!(rt.find("toast-undo").is_some(), "the toast offers Undo");
+        // UT: the button shows its key, so no tooltip repeats it.
+        let undo = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toast-undo")).unwrap();
+        assert_eq!(undo.help, None, "the Undo button has no tooltip");
         press(&mut rt, "toast-undo");
         settle(&mut rt);
         assert_eq!(std::fs::read_to_string(root.join("Drafts/b.md")).unwrap(), "# B edited\n", "back with its last text");

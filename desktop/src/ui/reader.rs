@@ -271,7 +271,6 @@ pub fn undo_toast(v: V, name: &str) -> El {
         .hover(c.hover)
         .role("button")
         .label(format!("Undo ({key})"))
-        .help(format!("Undo ({key})"))
         .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
         .child(text("Undo").font(body).color(c.accent))
         .child(text(key).font(keys(11.0)).color(c.faint));
