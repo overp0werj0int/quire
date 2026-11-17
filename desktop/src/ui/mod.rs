@@ -6,7 +6,7 @@ mod lock;
 mod outline;
 mod octicons;
 mod panel;
-mod styles;
+pub(crate) mod styles;
 mod palette;
 mod preview;
 mod reader;
@@ -109,6 +109,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);
+    // Tooltips in the panel family, so a name and its key read as one line (KT). The system
+    // look otherwise, which on macOS replaces AppKit's own tooltips with Rune's.
+    cx.help_look(rune::HelpLook::system(dark).font(styles::tooltip()));
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };

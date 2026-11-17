@@ -252,6 +252,36 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// KT: a title bar tooltip names its button and its key on one line in the panel family,
+    /// whose characters share one width, as the key does in the footer and the palette.
+    #[test]
+    fn tooltips_name_the_key_in_the_panel_family() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tooltips-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        let line = crate::ui::styles::panel_line(11.5);
+        let mut per_char = Vec::new();
+        for button in ["toggle-right", "toggle-left", "mode"] {
+            rt.pointer_move(640.0, 500.0);
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            let at = rt.find(button).expect("the button");
+            rt.pointer_move(at.0, at.1);
+            for _ in 0..90 {
+                rt.frame(DT);
+            }
+            let (text, r) = rt.help_tooltip().map(|(t, r)| (t.to_string(), r)).unwrap_or_else(|| panic!("{button} shows a tooltip"));
+            assert!(text.contains(" (") && text.ends_with(')'), "{button}: '{text}' names its key");
+            assert!((r[3] - (line + 8.0)).abs() < 0.6, "{button}: '{text}' is one line of the panel family, {} high", r[3]);
+            per_char.push((text.clone(), (r[2] - 14.0) / text.chars().count() as f32));
+        }
+        let (lo, hi) = per_char.iter().fold((f32::MAX, 0.0f32), |(lo, hi), (_, w)| (lo.min(*w), hi.max(*w)));
+        assert!(hi - lo < 0.25, "every character is one width, as in a monospace: {per_char:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar's small buttons and the panel tabs take a pointer over at least 24 by 24
     /// points, and the rows they sit in keep their height.
     #[test]

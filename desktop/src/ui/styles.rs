@@ -4,10 +4,11 @@
 //! - The panel family, fontconfig's `monospace` as omarky reads it (decision 0008), is for
 //!   navigation: the side panels, their captions and footers, and the menus. Key names and
 //!   literal values (paths, addresses, tokens, configuration) take it wherever they appear, so
-//!   a key looks the same in the footer, the palette and the shortcut list.
+//!   a key looks the same in the footer, the palette and the shortcut list. Tooltips take it
+//!   too, since most name a key: "Outline (Ctrl+\)" is one line in one family.
 //! - Instrument Sans is for the rest: the palette, the quick switcher, Settings, the lock
-//!   dialog, help, the edit sheet, toasts, tooltips, the title bar, the find bar, the welcome
-//!   screen and empty states.
+//!   dialog, help, the edit sheet, toasts, the title bar, the find bar, the welcome screen and
+//!   empty states.
 //!
 //! Every chrome text takes one of the styles below, and `ui_builders_take_chrome_styles` keeps
 //! any other family out of `ui/`. The note's own type (the page and the editor) is not chrome:
@@ -55,6 +56,11 @@ pub fn keys(size: f32) -> TextStyle {
     panel(size, 400.0)
 }
 
+/// A tooltip's text: its name and the key that does it, on one line in the panel family.
+pub fn tooltip() -> TextStyle {
+    panel(11.5, 400.0)
+}
+
 /// A literal value: a path, an address, a token, a name the program reads, configuration.
 pub fn literal(size: f32) -> TextStyle {
     panel(size, 400.0)
@@ -92,10 +98,11 @@ mod tests {
     fn chrome_styles_use_two_families() {
         let two = [panel_family(), SANS];
         assert_ne!(two[0], two[1]);
-        for (name, s) in [("nav", nav(12.0, false)), ("nav bold", nav(12.0, true)), ("keys", keys(11.0)), ("literal", literal(12.0)), ("sans", sans(13.0, 400.0))] {
+        for (name, s) in [("nav", nav(12.0, false)), ("nav bold", nav(12.0, true)), ("keys", keys(11.0)), ("literal", literal(12.0)), ("sans", sans(13.0, 400.0)), ("tooltip", tooltip())] {
             assert!(two.contains(&s.family), "{name} is in {:?}, outside the chrome's two families", s.family);
         }
         assert_eq!(keys(11.0).family, nav(11.0, false).family, "key names take the panel family");
+        assert_eq!(tooltip().family, keys(11.0).family, "a tooltip names its key in the key's family");
     }
 
     /// C14: a builder in `ui/` sets chrome text only through the styles above. The page's own
