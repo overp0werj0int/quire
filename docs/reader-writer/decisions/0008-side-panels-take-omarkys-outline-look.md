@@ -28,3 +28,7 @@ current colours" for the panels' text and row shades only.
   card that sits on it.
 
 Not changed: panel widths (248 and 236 px), positions (decision 0007), menus (WR-193).
+
+Update, 2026-11-17: the user asked for Quire's accent dot on the outline's current section
+back. The current row keeps omarky's shading and also has a 5 px accent dot 13 px left of its
+text, in the row's left padding, so the text stays where omarky puts it (RD-47, WR-100).

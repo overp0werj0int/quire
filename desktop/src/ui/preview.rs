@@ -180,12 +180,14 @@ impl Rich {
         // Each side is a four-per-em space of the text around the chip, as omarky's U+2005 sits
         // outside the code: a mono space (`mono_w` em) at `side` is a quarter em of `around`.
         let side = 0.25 * around / look.mono_w;
+        // No-break spaces: a plain one is a break opportunity, and a line broken there left the
+        // chip's leading side behind as a dot of chip at the end of the line above.
         let a = self.text.len();
-        self.text.push(' ');
+        self.text.push('\u{a0}');
         let b = self.text.len();
         self.text.push_str(t);
         let c = self.text.len();
-        self.text.push(' ');
+        self.text.push('\u{a0}');
         let d = self.text.len();
         self.spans.push(Span { mono: true, size: Some(side), bg: Some(bg), bg_pad: pad_y, ..Span::new(a, b) });
         self.spans.push(Span { mono: true, size: Some(side), bg: Some(bg), bg_pad: pad_y, ..Span::new(c, d) });

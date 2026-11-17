@@ -53,7 +53,7 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
     for (i, w) in widths.iter().enumerate() {
         let label = t.header.get(i).map_or(String::new(), |h| crate::blocks::plain(h));
         let marks = cx.marks(t.header_pids.get(i).copied(), &label, 0).0;
-        let cell = text(label).font(head_style).color(c.dim).text_case(TextCase::Uppercase).wrap().align(align(i)).w_full().text_highlights(marks);
+        let cell = text(label).font(head_style).color(c.dim).text_case(TextCase::Uppercase).wrap_anywhere().align(align(i)).w_full().text_highlights(marks);
         head = head.child(el().key(format!("c-{i}")).w(*w).px(px).py(py).child(cell));
     }
     let zebra = c.text.alpha(look.ld(0.022, 0.018));
@@ -68,7 +68,9 @@ pub(super) fn table(cx: &Cx, t: &Table, tone: Tone) -> El {
             rw = rw.fill(zebra);
         }
         for (i, cell) in cells.into_iter().enumerate() {
-            let e = cell.el(style_of(i), tone.color).align(align(i)).w_full();
+            // A word wider than its column (a URL, a long name) breaks inside, as Qt's wrap does
+            // in omarky, instead of running into the next column.
+            let e = cell.el(style_of(i), tone.color).wrap_anywhere().align(align(i)).w_full();
             rw = rw.child(el().key(format!("c-{i}")).w(widths[i]).px(px).py(py).child(e));
         }
         frame = frame.child(rw);

@@ -782,6 +782,44 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// RD-47, WR-100: the outline's current section has the accent dot left of its text, one
+    /// dot only, and in the reader it moves with the scroll.
+    #[test]
+    fn the_current_section_has_the_dot() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-outline-dot-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Preview);
+        rt.update(|s, _| s.persist.right_open = true);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        // The lit dots, by their place, and the text of the row each sits in.
+        let lit = |rt: &rune::Runtime<crate::app::App>| {
+            let all = rt.elements();
+            all.iter()
+                .filter(|e| e.key.as_deref() == Some("dot") && e.fill.a > 0.5)
+                .map(|e| {
+                    let row = e.parent.map(|p| &all[p]).expect("a dot sits in its row");
+                    assert!(row.key.as_deref().is_some_and(|k| k.starts_with("ol-")), "in an outline row");
+                    let name = all.iter().find(|t| t.parent == e.parent && t.text.is_some()).expect("the row's text");
+                    assert!(e.rect[0] + e.rect[2] < name.rect[0] - 10.0, "the dot {:?} sits left of the text {:?}", e.rect, name.rect);
+                    (e.rect[1], name.text.clone().unwrap())
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = lit(&rt);
+        assert_eq!(first.len(), 1, "one dot: {first:?}");
+        let last = crate::md::headings(LONG).iter().filter(|h| h.level <= 4).last().unwrap().line;
+        rt.update(move |s, tx| s.jump(last, tx));
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        let later = lit(&rt);
+        assert_eq!(later.len(), 1, "still one dot: {later:?}");
+        assert!(later[0].0 > first[0].0, "the dot moved down the outline with the page: {first:?} to {later:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-189: the word count and reading time sit centred at the bottom of the outline, in
     /// both modes. In the writer a footer of fixed height opens under them with the caret's
     /// line and column; in preview there is no footer and nothing says "preview".

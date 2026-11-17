@@ -81,6 +81,15 @@ pub fn shade_fill(c: &Roles, current: bool) -> Color {
     if current { c.accent.alpha(0.1) } else { Color::TRANSPARENT }
 }
 
+/// The current row's dot: the accent, sitting 13 px left of the row's text (`DOT_GAP`).
+pub fn dot_fill(c: &Roles, current: bool) -> Color {
+    if current { c.accent } else { Color::TRANSPARENT }
+}
+
+/// The dot's size and the room between it and the row's text.
+pub const DOT: f32 = 5.0;
+pub const DOT_GAP: f32 = 13.0;
+
 /// The text colour of a row: the text colour when current, dim at the top level, between dim
 /// and faint below it.
 pub fn ink(c: &Roles, depth: usize, current: bool) -> Color {
