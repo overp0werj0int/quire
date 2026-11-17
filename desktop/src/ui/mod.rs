@@ -20,7 +20,7 @@ pub mod widgets;
 
 pub use editor::follow_link_at_caret;
 
-use rune::{Cx, El, TextStyle, col, row};
+use rune::{Cx, El, TextStyle, col, el, row};
 
 use crate::app::{App, Screen};
 use crate::theme::{self, Pal};
@@ -60,6 +60,12 @@ impl V<'_> {
     }
 }
 
+/// How one thing gives way to another in its place: the old one goes at once and the new one
+/// fades in over 160 ms, so the two never show together.
+pub(crate) fn swap() -> rune::Transition {
+    rune::Transition::opacity().springs(rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::NONE))
+}
+
 /// Where a text's baseline sits below its box top, for CSS `align-items: baseline` rows.
 pub fn baseline(style: TextStyle) -> f32 {
     let (asc, desc) = theme::metrics(style.family);
@@ -94,11 +100,18 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),
         Screen::Vault => {
-            // The sidebar runs the full height; the title bar and the page share the rest.
-            let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(titlebar::titlebar(v)).child(editor::body(v));
+            // The sidebar runs the full height; the title bar and the page share the rest. Zen
+            // mode's bar spans the window from the frame it shows, so its pill never rides the
+            // page's widening as the sidebar goes.
+            let bar = if focus { el().key("titlebar-room").h(titlebar::BAR_H) } else { titlebar::titlebar(v) };
+            let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(bar).child(editor::body(v));
             let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
             let root = root.child(frame);
-            if v.focus() { root.children(editor::progress(v)) } else { root.child(titlebar::corner(v)) }
+            if focus {
+                root.child(titlebar::titlebar(v).pin(Some(0.0), Some(0.0), Some(0.0), None)).children(editor::progress(v))
+            } else {
+                root.child(titlebar::corner(v))
+            }
         }
     };
     if s.tree_menu.is_some() {

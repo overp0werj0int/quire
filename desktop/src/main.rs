@@ -646,6 +646,32 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-223: entering zen mode from its button, the floating pill shows where it stays while
+    /// the sidebar goes and the page widens.
+    #[test]
+    fn wr_223_the_zen_pill_stays_put() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-zen-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text.\n")], crate::watch::EVERY);
+        rt.update(|s, _| s.mode = crate::app::Mode::Source);
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let (x, y) = rt.find("focus").expect("the zen button");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        let mut seen = Vec::new();
+        for _ in 0..30 {
+            rt.frame(DT);
+            seen.extend(rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("zen-actions") && !e.exiting).map(|e| e.rect[0]));
+        }
+        assert!(!seen.is_empty(), "the pill shows");
+        assert!(seen.iter().all(|&x| x == seen[0]), "and never moves: {seen:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

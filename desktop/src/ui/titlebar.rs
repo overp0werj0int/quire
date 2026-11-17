@@ -54,8 +54,10 @@ pub fn corner_room() -> El {
     el().key("corner-room").h(BAR_H)
 }
 
+/// The title bar, or zen mode's bar. Entering or leaving zen mode, the old bar goes at once and
+/// the new one fades in where it stays.
 pub fn titlebar(v: V) -> El {
-    if v.focus() { focus_bar(v) } else { bar(v) }
+    if v.focus() { focus_bar(v) } else { bar(v) }.transition(super::swap())
 }
 
 fn bar(v: V) -> El {
