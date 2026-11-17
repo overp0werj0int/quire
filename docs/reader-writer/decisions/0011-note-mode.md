@@ -30,6 +30,11 @@ holds the Open list as full paths. The note shown is the open vault, and showing
 note swaps it in, read again from disk. Two notes with one name from different folders stay
 apart.
 
+A note that leaves the screen keeps its editor, with the caret and undo history, and its
+plain text if it was unlocked (`Parked`, by full path). It gets them back when it shows again,
+if the file still holds the text it had. If the file changed outside meanwhile, the note
+comes back from disk instead, and a locked one locks again. Closing a note drops what it kept.
+
 While in Note mode:
 
 - The app starts in zen, in preview. Leaving zen shows the page with the sidebar collapsed.
@@ -55,12 +60,12 @@ folder" button. The user found that confusing and asked for the two modes instea
 Open limits:
 
 - Each launch opens a new window. There is no single-instance reuse.
-- Showing another note drops the last one's undo history, and an unlocked locked note locks
-  again.
 - A note open in the list but not shown isn't watched. It is read again when shown.
 
 Test: `note_mode_tests::notes_open_as_files_in_note_mode` covers the start in zen and preview,
 the collapsed sidebar and its Open list, the refusals, saving, Ctrl+O's file picker, two notes
 of one name, links, closing notes, what reaches `state.json`, and leaving for a folder.
+`note_mode_tests::a_note_keeps_its_undo_and_unlock_across_switches` covers what a note keeps
+while another shows, and a note changed outside meanwhile.
 `cli::tests::a_note_opens_in_its_known_folder_or_alone` covers how the argument is read, and
 `watch::tests::a_lone_note_is_watched_alone` the watcher.

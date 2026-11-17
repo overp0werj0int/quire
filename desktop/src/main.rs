@@ -1358,4 +1358,68 @@ mod note_mode_tests {
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// A note that leaves the screen in Note mode keeps its caret, undo history and unlocked
+    /// text until it shows again. If the file changed meanwhile, it comes back from disk.
+    #[test]
+    fn a_note_keeps_its_undo_and_unlock_across_switches() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-note-park-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (one, two) = (dir.join("one"), dir.join("two"));
+        std::fs::create_dir_all(&one).unwrap();
+        std::fs::create_dir_all(&two).unwrap();
+        std::fs::write(one.join("a.md"), "first").unwrap();
+        std::fs::write(two.join("a.md"), "other").unwrap();
+        let (a, b) = (one.canonicalize().unwrap().join("a.md"), two.canonicalize().unwrap().join("a.md"));
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(DT);
+        let set = |s: &mut crate::app::App, key: &str, v: &str| s.field(key, String::new).replace_text(v.to_string());
+        let (a1, b1) = (a.clone(), b.clone());
+        rt.update(move |s, tx| {
+            assert!(s.start_note(&a1));
+            s.mode = Mode::Source;
+            let e = s.cur_edit();
+            e.set_selection(5, 5);
+            e.paste(" edit");
+            s.after_edit();
+            assert_eq!(s.active_text(), "first edit");
+            s.ask_lock(tx);
+            set(s, "lock-pass", "tiger lily");
+            set(s, "lock-repeat", "tiger lily");
+            s.lock_note(tx);
+            assert!(s.note_unlocked("a.md"));
+            // Away to a note of the same name, and back.
+            s.open_note(&b1);
+            assert!(!s.note_unlocked("a.md"), "the other note isn't unlocked by the first one's key");
+            assert_eq!(s.active_text(), "other");
+            s.open_note(&a1);
+            assert!(s.note_unlocked("a.md"), "still unlocked");
+            assert_eq!(s.active_text(), "first edit");
+            s.cur_edit().undo();
+            assert_eq!(s.cur_edit().text, "first", "the undo history came back");
+            s.after_edit();
+        });
+
+        // Changed outside while away: it comes back from disk, its history gone.
+        let (a2, b2) = (a.clone(), b.clone());
+        rt.update(move |s, _| {
+            s.open_note(&b2);
+            s.flush_all();
+            std::fs::write(&a2, "changed outside").unwrap();
+            s.open_note(&a2);
+            assert!(!s.note_unlocked("a.md"));
+            assert_eq!(s.active_text(), "changed outside");
+            s.cur_edit().undo();
+            assert_eq!(s.cur_edit().text, "changed outside", "no history from before");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

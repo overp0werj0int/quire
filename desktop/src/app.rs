@@ -159,6 +159,8 @@ pub struct App {
     /// vault of its own, rooted at its folder; the one shown is `vault`, read again from disk
     /// each time it is shown.
     pub notes: Vec<PathBuf>,
+    /// Note mode's notes in Open but not shown, by full path: what each keeps until it shows again.
+    parked: HashMap<PathBuf, Parked>,
     /// Folder mode's sidebar setting, kept while Note mode collapses the sidebar, so Note mode
     /// never changes what Folder mode opens with.
     folder_left: Option<bool>,
@@ -168,6 +170,15 @@ pub struct App {
 pub struct Unlocked {
     pub key: crate::lock::Key,
     pub text: String,
+}
+
+/// A note in Note mode's Open list while another shows: its editor, with the caret and undo
+/// history, and its plain text if it was unlocked. `text` is what the file held, so a note
+/// changed outside comes back from disk instead, locked again if it was locked.
+struct Parked {
+    text: String,
+    edit: Option<TextEdit>,
+    unlocked: Option<Unlocked>,
 }
 
 pub fn init() -> App {
@@ -229,6 +240,7 @@ pub fn init() -> App {
         unlocked: HashMap::new(),
         lock_dialog: None,
         notes: Vec::new(),
+        parked: HashMap::new(),
         folder_left: None,
         unlock_error: None,
         reader: Default::default(),
@@ -719,6 +731,12 @@ impl App {
         if self.note_path().as_ref() == Some(&file) {
             return true;
         }
+        self.park();
+        let parked = self.parked.remove(&file);
+        if parked.is_some() {
+            // Its last edits are queued for the writer: read the file after them.
+            self.writer.wait(Duration::from_secs(2));
+        }
         match vault::load_one(&file) {
             Ok(v) => {
                 let new = !self.notes.contains(&file);
@@ -731,6 +749,16 @@ impl App {
                     self.mode = Mode::Preview;
                     self.want_editor_focus = false;
                 }
+                let rel = self.active.clone().unwrap_or_default();
+                if let Some(p) = parked.filter(|p| self.files().get(&rel) == Some(&p.text)) {
+                    if let Some(u) = p.unlocked {
+                        self.unlocked.insert(rel.clone(), u);
+                    }
+                    if let Some(mut e) = p.edit {
+                        e.focused = self.mode == Mode::Source;
+                        self.edits.insert(rel, e);
+                    }
+                }
                 true
             }
             Err(e) => {
@@ -738,6 +766,15 @@ impl App {
                 false
             }
         }
+    }
+
+    /// Keeps the shown note's editor and unlocked text while another note shows in Note mode.
+    fn park(&mut self) {
+        let Some(file) = self.note_path() else { return };
+        let Some(rel) = self.active.clone() else { return };
+        let Some(text) = self.files().get(&rel).cloned() else { return };
+        let (edit, unlocked) = (self.edits.remove(&rel), self.unlocked.remove(&rel));
+        self.parked.insert(file, Parked { text, edit, unlocked });
     }
 
     /// Starts the app in Note mode on `file`, in zen; leaving zen shows the page with the
@@ -752,11 +789,15 @@ impl App {
         let Some(i) = self.notes.iter().position(|n| n == file) else { return };
         let shown = self.note_path().as_deref() == Some(file);
         self.notes.remove(i);
+        // A closed note forgets its undo history and locks again.
+        self.parked.remove(file);
         if !shown {
             return;
         }
         while let Some(next) = self.notes.get(i.min(self.notes.len().saturating_sub(1))).cloned() {
             if self.open_note(&next) {
+                // Showing the neighbour parked the closed note.
+                self.parked.remove(file);
                 return;
             }
             self.notes.retain(|n| *n != next);
@@ -799,6 +840,7 @@ impl App {
         match v.scope {
             Scope::Folder => {
                 self.notes.clear();
+                self.parked.clear();
                 if let Some(left) = self.folder_left.take() {
                     self.persist.left_open = left;
                     self.mode = if self.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
