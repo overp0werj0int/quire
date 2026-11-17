@@ -277,6 +277,8 @@ fn find_row(v: V) -> bool {
 const FIND_CLEAR: f32 = 16.0;
 /// From the toolbar to the find bar under it.
 const FIND_GAP: f32 = 8.0;
+/// The fade under the band that covers a find bar on its own row.
+const FIND_FADE: f32 = 24.0;
 
 /// The space above the floating toolbar, at rest and while it sticks.
 const TOOLBAR_TOP: f32 = 10.0;
@@ -343,6 +345,21 @@ fn toolbar(v: V) -> El {
         .backdrop_blur(12.0)
         .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })
         .stuck_reveal(8.0);
+    // With the find bar on its own row, the stuck toolbar hangs a band of the page's colour
+    // from the view's top edge to that row's foot, the width of the note area, and a short fade
+    // under it. Text scrolling up goes under the band, never beside the bar.
+    let band = find_row(v).then(|| {
+        let (left, right) = docked(v);
+        let below = find_top(v) + super::reader::FIND_H;
+        let h = below + FIND_FADE;
+        let stops = [(0.0, p.bg), (below / h, p.bg), (1.0, p.bg.alpha(0.0))];
+        el().key("find-band")
+            .pin(Some(-(source_column(v).gutter + TOOLBAR_X)), Some(-TOOLBAR_TOP), None, None)
+            .size(v.vw - left - right, h)
+            .linear_gradient(std::f32::consts::PI, stops)
+            .inert()
+            .stuck_reveal(8.0)
+    });
     row()
         .key("toolbar")
         .self_start()
@@ -360,6 +377,7 @@ fn toolbar(v: V) -> El {
         .on_press(|_: &mut App| {})
         .role("toolbar")
         .label("Formatting")
+        .children(band)
         .child(back)
         .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
         .child(btn("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic))
