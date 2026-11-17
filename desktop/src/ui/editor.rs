@@ -72,12 +72,18 @@ pub fn body(v: V) -> El {
         area = area.child(super::reader::toast(v, msg));
     }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
+    // The outline slides in from the right and out to it over 160 ms (WR-99).
+    let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+    let t = rune::Transition::move_edge(rune::Edge::Trailing).springs(slide);
     if v.right_visible() {
-        // The outline slides in from the right and out to it over 160 ms, and its slot
-        // closes as it leaves (WR-99).
-        let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
-        let t = rune::Transition::move_edge(rune::Edge::Trailing).springs(slide).hold_layout();
-        inner = inner.child(outline::outline(v).transition(t));
+        // Docked, its slot closes as it leaves.
+        inner = inner.child(outline::outline(v).transition(t.hold_layout()));
+    } else if v.right_over() {
+        // Too narrow to dock: the same panel over the page's right edge, on the page's colour,
+        // so the page does not reflow under it.
+        let shadow = rune::Shadow { x: -6.0, y: 0.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
+        let over = el().key("outline-over").pin(None, Some(0.0), Some(0.0), Some(0.0)).paint_order(35).fill(v.p.bg).box_shadow(shadow).child(outline::outline(v));
+        inner = inner.child(over.transition(t));
     }
     sheet = sheet.child(inner);
     row().key("body").grow(1.0).min_h(0.0).w_full().child(sheet)

@@ -464,6 +464,60 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// RD-40, WR-96: below 1100 pt the outline button opens the outline over the page's right
+    /// edge, the page keeps its width, and Esc or the button closes it. From 1100 pt up it
+    /// docks as before.
+    #[test]
+    fn the_outline_opens_over_a_narrow_page() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-overlay-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\n## B\n\nText.\n")], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, _| s.mode = crate::app::Mode::Source);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let rect = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect);
+        let press = |rt: &mut Runtime<crate::app::App>| {
+            let (x, y) = rt.find("toggle-right").expect("the outline button");
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+        };
+        rt.set_viewport((960.0, 600.0), 1.0);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_none(), "no outline at first");
+        let page = rect(&rt, "doc-area").unwrap();
+        press(&mut rt);
+        settle(&mut rt);
+        let o = rect(&rt, "outline").expect("the button opens the outline");
+        assert!(o[0] >= 0.0 && o[0] + o[2] <= 960.0 && o[2] >= 180.0, "inside the window: {o:?}");
+        assert_eq!(rect(&rt, "doc-area").unwrap(), page, "the page does not reflow under it");
+        assert!(rect(&rt, "outline-over").is_some(), "over the page, not docked");
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_none(), "Esc closes it");
+        press(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_some(), "the button opens it again");
+        press(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_none(), "and closes it");
+        // Wide, the button docks it and the page makes room.
+        rt.set_viewport((1400.0, 1000.0), 1.0);
+        settle(&mut rt);
+        let page = rect(&rt, "doc-area").unwrap();
+        press(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_some() && rect(&rt, "outline-over").is_none(), "docked");
+        assert!(rect(&rt, "doc-area").unwrap()[2] < page[2], "the page makes room");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

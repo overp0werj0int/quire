@@ -37,7 +37,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     }
     let left = if s.persist.left_open { "Hide sidebar" } else { "Show sidebar" };
     v.push(cmd(left, "app.toggle-sidebar", |s, _| s.toggle_left()));
-    let right = if s.persist.right_open { "Hide outline" } else { "Show outline" };
+    let right = if s.outline_open() { "Hide outline" } else { "Show outline" };
     v.push(cmd(right, "app.toggle-outline", |s, _| s.toggle_right()));
     if dark {
         v.push(cmd("Use light theme", "", |s, _| s.set_theme("light")));

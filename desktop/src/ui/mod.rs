@@ -50,8 +50,13 @@ impl V<'_> {
     pub fn left_visible(&self) -> bool {
         self.is_vault() && self.s.persist.left_open && !self.focus() && self.vw >= 680.0
     }
+    /// The outline docked beside the page, which makes room for it.
     pub fn right_visible(&self) -> bool {
-        self.is_vault() && self.s.persist.right_open && !self.focus() && self.has_doc() && self.vw >= 1100.0
+        self.is_vault() && self.s.persist.right_open && !self.focus() && self.has_doc() && self.vw >= crate::app::OUTLINE_DOCK_W
+    }
+    /// The outline over the page's right edge, in a window too narrow to dock it.
+    pub fn right_over(&self) -> bool {
+        self.is_vault() && self.s.outline_over && !self.focus() && self.has_doc() && self.vw < crate::app::OUTLINE_DOCK_W
     }
 }
 
@@ -78,6 +83,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let [vw, vh] = cx.layout_size("root").unwrap_or([1280.0, 800.0]);
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
+    s.view_w.set(vw);
     map_page(s);
     let v = V { s, p, dark, vw, vh, trailing };
     cx.caption_color(p.ink2);
