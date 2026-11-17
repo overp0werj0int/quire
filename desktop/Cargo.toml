@@ -11,10 +11,11 @@ path = "src/main.rs"
 
 [dependencies]
 # Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 1dba3423 plus
-# six commits the per-line editor, its right-click menu and its hanging marks need (decision 0009).
+# seven commits: what the per-line editor, its right-click menu and its hanging marks need (decision
+# 0009), and the edge scroll for a text field's drag selection.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -29,7 +30,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -41,12 +42,12 @@ embed-resource = "3"
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49" }
 # Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "0d291cc0806ac322d4946074859167c2812398a4" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "21fbda4bc43b8d1a99214cbb66f481c8df579a49" }
 
 [profile.dev]
 opt-level = 1

@@ -781,6 +781,44 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A press in the editor dragged below the page and held there scrolls the page, and the
+    /// selection grows with it, as in a text view.
+    #[test]
+    fn a_drag_selection_held_below_the_page_scrolls_it() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-drag-scroll-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let field = rt.presented("editor").unwrap().0;
+        let (x, y) = (field[0] + 40.0, field[1] + 30.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.frame(DT);
+        rt.pointer_move(x, y + 40.0);
+        rt.frame(DT);
+        let focus = |rt: &mut rune::Runtime<crate::app::App>| {
+            let mut f = 0;
+            rt.update_if(|s, _| {
+                f = s.cur_edit().focus;
+                false
+            });
+            f
+        };
+        let before = (rt.presented("editor").unwrap().0[1], focus(&mut rt));
+        rt.pointer_move(x, page[1] + page[3] + 60.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let after = (rt.presented("editor").unwrap().0[1], focus(&mut rt));
+        rt.pointer_up(x, page[1] + page[3] + 60.0);
+        assert!(after.0 < before.0 - 100.0, "the page scrolls under the held drag: editor top {} then {}", before.0, after.0);
+        assert!(after.1 > before.1, "the selection grows with it: focus {} then {}", before.1, after.1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-178: the progress bar runs under the title bar, and along the window's top edge in
     /// zen mode, in both modes.
     #[test]
