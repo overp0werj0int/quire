@@ -55,7 +55,8 @@ pub fn outline(v: V) -> El {
         let line = h.line;
         let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
         let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
-        let mut name = text(text_).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0);
+        // A heading cut short offers its whole text; one shown in full has no tooltip (C7).
+        let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_);
         let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on);
         // The current row's dot sits in the row's left padding, so the text keeps its place.
         let pad = panel::TEXT_X - panel::INSET + depth as f32 * panel::INDENT;
@@ -95,8 +96,8 @@ pub fn outline(v: V) -> El {
                 .hover_group()
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
-                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0))
-                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift)),
+                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(bp.as_str()))
+                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(bp.as_str())),
         );
     }
     if back.is_empty() {

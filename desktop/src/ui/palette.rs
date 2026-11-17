@@ -84,10 +84,10 @@ pub fn palette(v: V) -> El {
                     }
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
-                .child(rich(t, spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0))
+                .child(rich(t.clone(), spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(t))
                 // The note's folder, or the command's key: at most `SUB_W`, so a long folder
                 // never squeezes the name. A folder keeps its end, the folder nearest the note.
-                .child(text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W)),
+                .child(text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W).help_when_truncated(it.sub.clone())),
         );
     }
     if d.items.is_empty() {

@@ -190,7 +190,6 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
         .role("tab")
         .checked(on)
         .label(name.clone())
-        .help(crate::store::tilde(file))
         .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
         .on_press_tx(move |s: &mut App, tx| {
             if tx.button() == PointerButton::Middle {
@@ -199,7 +198,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
                 s.open_note(&open_file);
             }
         })
-        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(crate::store::tilde(file)))
         .child(close)
 }
 
@@ -224,7 +223,6 @@ fn open_row(v: V, path: &str) -> El {
         .role("tab")
         .checked(on)
         .label(md::base(path).to_string())
-        .help(path.to_string())
         .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
         .on_press_tx(move |s: &mut App, tx| {
             if tx.button() == PointerButton::Middle {
@@ -233,7 +231,7 @@ fn open_row(v: V, path: &str) -> El {
                 s.open_file(&open_path, None, tx);
             }
         })
-        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(path))
         .child(close)
 }
 
@@ -350,8 +348,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
             .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
         rows.push(
-            tree_row(v, &row_key("dir", &f.path), name, depth, true, open, false)
-                .help(f.path.clone())
+            tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false)
                 .on_press(move |s: &mut App| s.toggle_folder(&path))
                 .on_secondary_press(move |s: &mut App, at, _| s.open_tree_menu(MenuOn::Folder(menu_path.clone()), at.x, at.y))
                 .child(add),
@@ -368,8 +365,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
         let drag_path = f.clone();
         let menu_path = f.clone();
         rows.push(
-            tree_row(v, &row_key("file", f), md::base(f), depth, false, false, on)
-                .help(f.clone())
+            tree_row(v, &row_key("file", f), md::base(f), f, depth, false, false, on)
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
                 .on_drag(move |s: &mut App, d: &mut rune::Drag, tx| s.drag_note(&drag_path, d, tx))
                 .on_secondary_press(move |s: &mut App, at, _| s.open_tree_menu(MenuOn::Note(menu_path.clone()), at.x, at.y)),
@@ -382,7 +378,7 @@ const CHEV: f32 = 12.0;
 
 /// A tree row in omarky's outline style: folders bold, notes regular, both 12 px and dim; the
 /// open note in the text colour on a tenth of the accent.
-fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool, on: bool) -> El {
+fn tree_row(v: V, key: &str, name: &str, whole: &str, depth: usize, folder: bool, open: bool, on: bool) -> El {
     let p = v.p;
     let c = Roles::panel(p);
     let chev = el()
@@ -404,7 +400,8 @@ fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool,
     if folder {
         r = r.expanded(open);
     }
-    r.child(text(name).font(nav(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+    // A name that shows in full needs no tooltip; one cut short offers its whole path (C7).
+    r.child(text(name).font(nav(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(whole))
 }
 
 /// The row where a new folder gets its name.

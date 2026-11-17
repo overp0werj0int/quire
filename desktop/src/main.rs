@@ -517,6 +517,32 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// C7: a name that shows in full has no tooltip; a name cut short offers its whole path, in
+    /// the tree and in the Open list.
+    #[test]
+    fn a_name_tooltip_shows_only_when_the_name_is_cut() {
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-cut-tips-{}", std::process::id()));
+        let long = "A note whose name is far too long for the sidebar to show.md";
+        let mut rt = vault(&dir, &[("short.md", "# A\n"), (long, "# B\n")], crate::watch::EVERY);
+        rt.update(move |s, tx| s.open_file(long, None, tx));
+        rt.update(|s, tx| s.open_file("short.md", None, tx));
+        for _ in 0..5 {
+            rt.frame(crate::bench::DT);
+        }
+        // The tooltips under a row, but for its close button's.
+        let tips = |rt: &Runtime<crate::app::App>, row: &str| -> Vec<String> {
+            rt.elements().into_iter().filter(|e| e.path.split('/').any(|seg| seg == row)).filter_map(|e| e.help).filter(|h| h != "Close").collect()
+        };
+        for row in ["file:short.md", "tab:short.md"] {
+            assert!(tips(&rt, row).is_empty(), "{row} shows its whole name, so no tooltip");
+        }
+        for row in [format!("file:{long}"), format!("tab:{long}")] {
+            assert_eq!(tips(&rt, &row), [long], "{row} is cut, so it offers the whole name");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-34, RD-35: preview mode's title bar buttons, and Find showing as on while the bar
     /// is open.
     #[test]
