@@ -65,6 +65,14 @@ impl V<'_> {
     }
 }
 
+/// The keyboard's focus ring on every control Tab reaches (FR): 2 points of the text colour,
+/// 3 points outside the control. A selected card or choice wears the accent at most 1 point
+/// outside its edge, so focus sits clear of it in another colour, and the two never look
+/// alike.
+pub(crate) fn focus_ring(p: &Pal) -> (f32, f32, rune::Color) {
+    (2.0, 3.0, p.ink)
+}
+
 /// How one thing gives way to another in its place: the old one goes at once and the new one
 /// fades in over 160 ms, so the two never show together.
 pub(crate) fn swap() -> rune::Transition {
@@ -98,9 +106,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     map_page(s);
     let v = V { s, p, dark, vw, vh, trailing };
     cx.caption_color(p.ink2);
-    // The keyboard's focus ring, on the controls Tab reaches (Settings, buttons): 2 points of
-    // the accent, 2 points outside the control.
-    cx.focus_ring(2.0, 2.0, p.acc.alpha(0.7));
+    let (w, gap, c) = focus_ring(p);
+    cx.focus_ring(w, gap, c);
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };
@@ -237,4 +244,25 @@ fn notice(v: V, msg: &str) -> El {
                 .key("notice-x")
                 .on_press(|s: &mut App| s.notice = None),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::theme::{THEMES, contrast, theme_pal};
+
+    /// FR: keyboard focus reads on every theme, against the window and the sidebar (3:1, as
+    /// WCAG asks of a focus indicator), differs from the accent that marks a selected choice,
+    /// and leaves a gap outside the selected ring, which reaches 1 point past the edge.
+    #[test]
+    fn focus_differs_from_selection() {
+        for t in THEMES {
+            let p = theme_pal(t.id, t.dark);
+            let (w, gap, c) = super::focus_ring(p);
+            for fill in [p.bg, p.side] {
+                assert!(contrast(c, fill) >= 3.0, "{}: focus ring {:.2}:1", t.id, contrast(c, fill));
+            }
+            assert!(contrast(c, p.acc) >= 1.4, "{}: focus ring {:.2}:1 against the accent", t.id, contrast(c, p.acc));
+            assert!(w >= 2.0 && gap - 1.0 >= 2.0, "{}: focus ring {w} wide, {gap} out", t.id);
+        }
+    }
 }
