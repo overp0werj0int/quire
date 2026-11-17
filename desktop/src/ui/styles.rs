@@ -5,7 +5,7 @@
 //!   navigation: the side panels, their captions and footers, and the menus. Key names and
 //!   literal values (paths, addresses, tokens, configuration) take it wherever they appear, so
 //!   a key looks the same in the footer, the palette and the shortcut list. Tooltips take it
-//!   too, since most name a key: "Outline (Ctrl+\)" is one line in one family.
+//!   too, since most name a key: "Hide outline (Ctrl+\)" is one line in one family.
 //! - Instrument Sans is for the rest: the palette, the quick switcher, Settings, the lock
 //!   dialog, help, the edit sheet, toasts, the title bar, the find bar, the welcome screen and
 //!   empty states.

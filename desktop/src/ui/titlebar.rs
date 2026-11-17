@@ -57,7 +57,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .child(dots(p))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), crate::commands::sidebar_name(v.s), "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.
@@ -110,37 +110,39 @@ fn actions(v: V, mut r: El) -> El {
     // Each shows as on while its feature is (RD-35).
     let preview = v.has_doc() && s.mode == Mode::Preview;
     if preview {
-        let find = tip("Find", "reader.find");
+        let find = tip("Find in note", "reader.find");
         r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
-        let all = tip("Copy all", "reader.copy-all");
+        let all = tip("Copy the whole note", "reader.copy-all");
         r = r.child(bar_button(p, "copy-all", &COPY_ALL, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
         let wide = s.wide();
-        let (glyph, name) = if wide { (&NARROW, "Readable width") } else { (&WIDEN, "Full width") };
+        let (glyph, name) = if wide { (&NARROW, "Use readable width") } else { (&WIDEN, "Use full width") };
         let help = tip(name, "reader.toggle-wide");
         r = r.child(bar_toggle(p, "wide", glyph, &help, wide).on_press_tx(act(|s, _| s.toggle_wide())));
-        let help = tip("Shortcuts", "reader.help");
+        let help = tip("Show shortcuts", "reader.help");
         r = r.child(bar_button(p, "help", &HELP, &help).role("button").on_press_tx(act(|s, _| s.reader.help = !s.reader.help)));
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();
-        let help = tip("Paragraph focus", "writer.paragraph-focus");
+        let name = if set.paragraph_focus { "Turn off paragraph focus" } else { "Turn on paragraph focus" };
+        let help = tip(name, "writer.paragraph-focus");
         r = r.child(bar_toggle(p, "paragraph-focus", &PARAGRAPH, &help, set.paragraph_focus).on_press_tx(act(|s, tx| s.toggle_paragraph_focus(tx))));
-        let help = tip("Typewriter scrolling", "writer.typewriter");
+        let name = if set.typewriter_scroll { "Turn off typewriter scrolling" } else { "Turn on typewriter scrolling" };
+        let help = tip(name, "writer.typewriter");
         r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, &help, set.typewriter_scroll).on_press_tx(act(|s, tx| s.toggle_typewriter(tx))));
-        let help = tip("Next font", "writer.next-font");
+        let help = tip("Use next font", "writer.next-font");
         r = r.child(bar_button(p, "next-font", &FONT, &help).role("button").on_press_tx(act(|s, tx| s.next_font(tx))));
     }
     if v.has_doc() {
         r = r.child(el().key("bar-sep").w(1.0).h(16.0).mx(2.0).fill(p.line));
         // One button flips between source and preview. Its icon shows where it goes.
-        let (glyph, name) = if s.mode == Mode::Source { (&EYE, "Show preview") } else { (&CODE, "Show source") };
-        let help = tip(name, "app.toggle-mode");
+        let glyph = if s.mode == Mode::Source { &EYE } else { &CODE };
+        let help = tip(crate::commands::mode_name(s), "app.toggle-mode");
         r = r.child(bar_button(p, "mode", glyph, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(act(|s, tx| s.toggle_mode(tx))));
-        let help = if zen { tip("Leave zen mode", "app.escape") } else { tip("Zen mode", "app.focus-mode") };
+        let help = tip(crate::commands::zen_name(s), if zen { "app.escape" } else { "app.focus-mode" });
         r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen).on_press_tx(act(|s, tx| s.toggle_focus(tx))));
     }
     if !zen {
-        let outline = tip("Outline", if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
+        let outline = tip(crate::commands::outline_name(s), if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over()).on_press_tx(|s: &mut App, tx| s.toggle_right(tx)));
     }
     r

@@ -71,9 +71,9 @@ pub fn find_bar(v: V) -> El {
                 .child(icon(&SEARCH, 14.0).color(c.faint))
                 .child(field)
                 .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
-                .child(button("find-prev", &CHEVRON_UP, 10.0, tip("Previous", "find.previous"), |s, tx| s.find_step(false, tx)))
-                .child(button("find-next", &CHEVRON_DOWN, 10.0, tip("Next", "find.next"), |s, tx| s.find_step(true, tx)))
-                .child(button("find-close", &CLOSE, 8.0, tip("Close", "find.close"), |s, tx| s.close_find(tx))),
+                .child(button("find-prev", &CHEVRON_UP, 10.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))
+                .child(button("find-next", &CHEVRON_DOWN, 10.0, tip("Next match", "find.next"), |s, tx| s.find_step(true, tx)))
+                .child(button("find-close", &CLOSE, 8.0, tip("Close find", "find.close"), |s, tx| s.close_find(tx))),
         )
 }
 

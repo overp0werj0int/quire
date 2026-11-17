@@ -179,8 +179,8 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
         .center()
         .radius(3.0)
         .hover(c.hover)
-        .label("Close")
-        .help("Close")
+        .label("Close note")
+        .help("Close note")
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press(move |s: &mut App| s.close_note(&close_file))
         .child(icon(&CLOSE, 8.0).color(c.faint));
@@ -212,8 +212,8 @@ fn open_row(v: V, path: &str) -> El {
         .center()
         .radius(3.0)
         .hover(c.hover)
-        .label("Close")
-        .help("Close")
+        .label("Close tab")
+        .help("Close tab")
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press(move |s: &mut App| s.close_tab(&close_path))
         .child(icon(&CLOSE, 8.0).color(c.faint));
@@ -343,7 +343,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             .radius(3.0)
             .hover(Roles::panel(v.p).hover)
             .label("New note in this folder")
-            .help("New note here")
+            .help("New note in this folder")
             .group_opacity(0.0, 1.0)
             .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
             .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
@@ -639,8 +639,8 @@ fn search_panel(v: V) -> El {
                 .center()
                 .radius(3.0)
                 .hover(c.hover)
-                .label("Clear")
-                .help("Clear")
+                .label("Clear search")
+                .help("Clear search")
                 .on_press_tx(|s: &mut App, tx| {
                     s.query = rune::TextEdit::new("");
                     tx.focus("search", false);

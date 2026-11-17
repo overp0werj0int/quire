@@ -568,7 +568,7 @@ pub(crate) mod scroll_tests {
         }
         // The tooltips under a row, but for its close button's.
         let tips = |rt: &Runtime<crate::app::App>, row: &str| -> Vec<String> {
-            rt.elements().into_iter().filter(|e| e.path.split('/').any(|seg| seg == row)).filter_map(|e| e.help).filter(|h| h != "Close").collect()
+            rt.elements().into_iter().filter(|e| e.path.split('/').any(|seg| seg == row) && !e.path.ends_with("/x")).filter_map(|e| e.help).collect()
         };
         for row in ["file:short.md", "tab:short.md"] {
             assert!(tips(&rt, row).is_empty(), "{row} shows its whole name, so no tooltip");
@@ -576,6 +576,57 @@ pub(crate) mod scroll_tests {
         for row in [format!("file:{long}"), format!("tab:{long}")] {
             assert_eq!(tips(&rt, &row), [long], "{row} is cut, so it offers the whole name");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// TN: a button's tooltip names its command as the palette does, in the state the app is
+    /// in: the sidebar and outline toggles, the mode and zen buttons, and the toolbar's image
+    /// and lock buttons.
+    #[test]
+    fn tooltips_and_palette_names_agree() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tip-names-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text.\n")], crate::watch::EVERY);
+        // Each button, and the palette command it runs: by its key, or by name for the lock.
+        let pairs = [("toggle-left", "app.toggle-sidebar"), ("toggle-right", "app.toggle-outline"), ("mode", "app.toggle-mode"), ("focus", "app.focus-mode"), ("fmt-image", "app.insert-image"), ("fmt-lock", "")];
+        let name = |tip: &str| match tip.rsplit_once(" (") {
+            Some((n, k)) if k.ends_with(')') => n.to_string(),
+            _ => tip.to_string(),
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        let states: [(crate::app::Mode, bool, bool, bool); 5] = [
+            (crate::app::Mode::Source, true, false, false),
+            (crate::app::Mode::Source, false, true, false),
+            (crate::app::Mode::Preview, true, true, false),
+            (crate::app::Mode::Preview, false, false, false),
+            (crate::app::Mode::Source, true, false, true),
+        ];
+        for (mode, left, right, zen) in states {
+            rt.update(move |s, _| {
+                s.mode = mode;
+                s.persist.left_open = left;
+                s.persist.right_open = right;
+                s.focus = zen;
+            });
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            let mut palette = Vec::new();
+            rt.update_if(|s, _| {
+                palette = crate::commands::commands(s, false).into_iter().map(|c| (c.action, c.label)).collect();
+                false
+            });
+            let els = rt.elements();
+            for (key, action) in pairs {
+                let Some(tip) = els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).and_then(|e| e.help.clone()) else { continue };
+                let tip = name(&tip);
+                let want: Vec<&String> = palette.iter().filter(|(a, l)| if action.is_empty() { l.starts_with("Lock note") } else { *a == action }).map(|(_, l)| l).collect();
+                assert_eq!(want, [&tip], "{mode:?} left {left} right {right} zen {zen}: the {key} button's tooltip and the palette");
+                seen.insert(key);
+            }
+        }
+        assert_eq!(seen.len(), pairs.len(), "every pair was compared: {seen:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -605,7 +656,7 @@ pub(crate) mod scroll_tests {
         assert!(open, "the Find button opens the bar");
         let find = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("find")).expect("the Find button");
         assert!(find.fill.a > 0.0, "and shows as on, with the hover fill");
-        assert_eq!(find.help.as_deref(), Some("Find (Ctrl+F)"), "its tooltip names the preset's key");
+        assert_eq!(find.help.as_deref(), Some("Find in note (Ctrl+F)"), "its tooltip names the preset's key");
         // Every title bar button with a key names it the same way: "Name (Keys)".
         let tips = |rt: &Runtime<crate::app::App>| -> Vec<(String, String)> {
             rt.elements()

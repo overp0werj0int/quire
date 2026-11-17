@@ -18,6 +18,32 @@ fn cmd(label: impl Into<String>, action: &'static str, run: Run) -> Cmd {
     Cmd { label: label.into(), action, run }
 }
 
+/// The names a command goes by both in the palette and on its button's tooltip, each the
+/// action a press performs in the state the app is in, so a user meets one vocabulary (TN).
+pub fn mode_name(s: &App) -> &'static str {
+    if s.mode == Mode::Source { "Show preview" } else { "Show source" }
+}
+
+pub fn zen_name(s: &App) -> &'static str {
+    if s.focus { "Leave zen mode" } else { "Enter zen mode" }
+}
+
+pub fn sidebar_name(s: &App) -> &'static str {
+    if s.sidebar_open() { "Hide sidebar" } else { "Show sidebar" }
+}
+
+pub fn outline_name(s: &App) -> &'static str {
+    if s.outline_open() { "Hide outline" } else { "Show outline" }
+}
+
+pub const INSERT_IMAGE: &str = "Insert image…";
+
+/// The lock's name for a note that is unlocked now (it locks again) or plain (it gets a
+/// password).
+pub fn lock_name(unlocked: bool) -> &'static str {
+    if unlocked { "Lock note now" } else { "Lock note with a password…" }
+}
+
 pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     let has = s.active.is_some();
     let mut v = vec![
@@ -27,18 +53,14 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.quick_open(tx)),
     ];
     if has {
-        let label = if s.mode == Mode::Source { "Show preview" } else { "Show source" };
-        v.push(cmd(label, "app.toggle-mode", |s, tx| s.toggle_mode(tx)));
+        v.push(cmd(mode_name(s), "app.toggle-mode", |s, tx| s.toggle_mode(tx)));
     }
     v.push(cmd("Search all notes", "app.search-notes", |s, tx| s.open_search(tx)));
     if has {
-        let label = if s.focus { "Leave zen mode" } else { "Enter zen mode" };
-        v.push(cmd(label, "app.focus-mode", |s, tx| s.toggle_focus(tx)));
+        v.push(cmd(zen_name(s), "app.focus-mode", |s, tx| s.toggle_focus(tx)));
     }
-    let left = if s.sidebar_open() { "Hide sidebar" } else { "Show sidebar" };
-    v.push(cmd(left, "app.toggle-sidebar", |s, tx| s.toggle_left(tx)));
-    let right = if s.outline_open() { "Hide outline" } else { "Show outline" };
-    v.push(cmd(right, "app.toggle-outline", |s, tx| s.toggle_right(tx)));
+    v.push(cmd(sidebar_name(s), "app.toggle-sidebar", |s, tx| s.toggle_left(tx)));
+    v.push(cmd(outline_name(s), "app.toggle-outline", |s, tx| s.toggle_right(tx)));
     if dark {
         v.push(cmd("Use light theme", "", |s, _| s.set_theme("light")));
     } else {
@@ -57,14 +79,14 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         v.push(cmd("Sync now", "", |s, _| s.sync_now()));
     }
     if s.active.is_some() {
-        v.push(cmd("Insert image…", "app.insert-image", |s, tx| s.pick_image(tx)));
+        v.push(cmd(INSERT_IMAGE, "app.insert-image", |s, tx| s.pick_image(tx)));
     }
     if let Some(a) = s.active.as_deref() {
         if s.note_unlocked(a) {
-            v.push(cmd("Lock note now", "", |s, _| s.relock()));
+            v.push(cmd(lock_name(true), "", |s, _| s.relock()));
             v.push(cmd("Remove password", "", |s, tx| s.remove_password(tx)));
         } else if !s.note_locked(a) {
-            v.push(cmd("Lock note with a password…", "", |s, tx| s.ask_lock(tx)));
+            v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
         }
     }
     v.push(cmd("Open settings", "app.settings", |s, _| s.open_settings()));

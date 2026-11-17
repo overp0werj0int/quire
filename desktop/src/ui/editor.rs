@@ -291,7 +291,7 @@ fn lock_button(v: V) -> El {
     use super::widgets::LOCK;
     let p = v.p;
     let open = v.s.active.as_deref().is_some_and(|a| v.s.note_unlocked(a));
-    let help = if open { "Lock now. The note needs its password again." } else { "Lock with a password" };
+    let help = crate::commands::lock_name(open);
     row()
         .key("fmt-lock")
         .size(28.0, 28.0)
@@ -373,16 +373,16 @@ fn toolbar(v: V) -> El {
         .child(btn("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike))
         .child(btn("fmt-heading", &HEADING, "Heading".into(), Fmt::Heading))
         .child(sep("sep-1"))
-        .child(btn("fmt-link", &LINK, tip("Link", "writer.link"), Fmt::Link))
-        .child(btn("fmt-wiki", &WIKI, "Note link".into(), Fmt::Wiki))
+        .child(btn("fmt-link", &LINK, tip("Insert link", "writer.link"), Fmt::Link))
+        .child(btn("fmt-wiki", &WIKI, "Insert note link".into(), Fmt::Wiki))
         .child(sep("sep-2"))
         .child(btn("fmt-bullets", &BULLETS, "Bulleted list".into(), Fmt::Bullet))
         .child(btn("fmt-numbers", &NUMBERS, "Numbered list".into(), Fmt::Number))
         .child(btn("fmt-task", &TASK, "Task".into(), Fmt::Task))
         .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
-        .child(btn("fmt-code", &CODE, tip("Code", "writer.inline-code"), Fmt::Code))
+        .child(btn("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code))
         .child(sep("sep-3"))
-        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip("Insert an image", "app.insert-image")).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
+        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
         .child(lock_button(v))
 }
