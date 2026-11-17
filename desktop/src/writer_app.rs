@@ -297,7 +297,7 @@ impl App {
     }
 
     /// Esc in the writer (WR-77): the help sheet, the find bar, then Quire's own overlays and
-    /// zen mode.
+    /// zen mode, then the preview.
     pub fn writer_escape(&mut self, tx: &mut Tx) -> bool {
         if self.reader.help {
             self.reader.help = false;
@@ -309,7 +309,14 @@ impl App {
             self.focus_editor(tx);
             return true;
         }
-        self.escape(tx)
+        if self.escape(tx) {
+            return true;
+        }
+        if self.active.is_none() {
+            return false;
+        }
+        self.toggle_mode(tx);
+        true
     }
 
     // ---------- Find in the source (WR-115 to WR-123) ----------

@@ -105,7 +105,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-67** [adapted: 0003] [verify: unit, script] writer.paragraph-focus (writer): omarky preset `Ctrl+Shift+F`; quire preset `Ctrl+Shift+D`. Toggles the fade of every paragraph but the current one (WR-75, WR-79). In the quire preset `Ctrl+Shift+F` searches all notes. D stands for dim.
 - **KEY-68** [in] [verify: unit, script] writer.typewriter (writer): omarky preset `Ctrl+Shift+T`; quire preset `Ctrl+Shift+T`. Toggles typewriter scrolling (WR-75, WR-85).
 - **KEY-69** [in] [verify: unit, script] writer.next-font (writer): omarky preset `Ctrl+Shift+M`; quire preset `Ctrl+Shift+M`. Steps the source font to the next iA Writer family (WR-75, WR-125).
-- **KEY-70** [in] [verify: unit, script] writer.escape (writer): omarky preset `Esc`; quire preset `Esc`. Closes an open menu, else the help sheet, else the find bar, else falls through to app.escape (WR-77).
+- **KEY-70** [in] [verify: unit, script] writer.escape (writer): omarky preset `Esc`; quire preset `Esc`. Closes an open menu, else the help sheet, else the find bar, else falls through to app.escape, else shows the preview (WR-77).
 - **KEY-71** [deferred] [verify: -] writer.spelling (writer): omarky preset `Ctrl+Shift+L`; quire preset `Ctrl+Shift+L`. Toggles spell checking (WR-75, WR-128).
 - **KEY-72** [deferred] [verify: -] writer.rewrite (writer, sheet): omarky preset `Ctrl+J`; quire preset `Ctrl+J`. Opens the rewrite line on the block or selection (WR-76, WR-167, SHEET-034).
 - **KEY-73** [deferred] [verify: -] writer.rewrite-section (writer, sheet): omarky preset `Ctrl+Shift+J`; quire preset `Ctrl+Shift+J`. Opens the rewrite line on the section (WR-76, WR-167, SHEET-034).
@@ -164,7 +164,7 @@ Each row is a chord that omarky and Quire bind to different things today.
 | `Tab` | Indent a list item by its marker, else 4 spaces | Two spaces at the caret | omarky's rule (WR-47) | omarky's rule |
 | `Shift+Tab` | Outdent a list item | Swallowed | omarky's rule (WR-50) | omarky's rule |
 | `Enter` | Continue lists and quotes | Continue lists | omarky's rule (WR-39 to WR-45) | omarky's rule |
-| `Esc` | Writer closes menu, help, find, then preview. Reader closes find, then the selection | Closes palette, Settings, menus, rename and new folder, then leaves focus mode | One chain. The context's steps, then Quire's, then back to source in preview | Same chain |
+| `Esc` | Writer closes menu, help, find, then preview. Reader closes find, then the selection | Closes palette, Settings, menus, rename and new folder, then leaves focus mode | One chain. The context's steps, then Quire's, then the other mode: preview from source, source from preview | Same chain |
 
 `Ctrl+B`, `Ctrl+I` and `Ctrl+K` mean the same in both apps. Both presets run Quire's `format.rs`
 edge cases with omarky's link rule (WR-56, WR-57). Inside omarky `Ctrl+0` resets zoom in the

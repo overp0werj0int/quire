@@ -1162,6 +1162,69 @@ mod writer_chrome_tests {
 }
 
 #[cfg(test)]
+mod escape_tests {
+    use crate::app::Mode;
+    use rune::{Env, Key, KeyEvent, Mods, Runtime};
+
+    const DT: f64 = 1.0 / 60.0;
+
+    /// WR-77: Esc in the editor closes what is open first, one thing per press, and with
+    /// nothing open goes to the preview. Esc there comes back (WR-111).
+    #[test]
+    fn wr_77_esc_in_the_editor_goes_to_the_preview() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-escape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.on_key = Some(crate::keys::on_key);
+        rt.frame(DT);
+        rt.update(|s, tx| {
+            s.mode = Mode::Source;
+            s.focus = true;
+            s.focus_editor(tx);
+        });
+        let esc = |rt: &mut Runtime<crate::app::App>| {
+            rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            let mut seen = (Mode::Source, false, false);
+            rt.update_if(|s, _| {
+                seen = (s.mode, s.focus, s.edit_menu.is_some());
+                false
+            });
+            seen
+        };
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "the first Esc leaves zen mode only");
+        let ([x, y, _, _], _) = rt.presented("editor").expect("the editor");
+        rt.secondary_down(x + 2.0, y + 8.0);
+        rt.secondary_up(x + 2.0, y + 8.0);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut open = false;
+        rt.update_if(|s, _| {
+            open = s.edit_menu.is_some();
+            false
+        });
+        assert!(open, "the right-click opened the editor's menu");
+        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "Esc closes the editor's menu and stays");
+        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "with nothing open, Esc goes to the preview");
+        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "and Esc in the preview comes back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod edit_menu_tests {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
 

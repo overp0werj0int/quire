@@ -160,7 +160,7 @@ pub const TABLE: &[Action] = &[
     a(67, "writer.paragraph-focus", "Paragraph focus", &[Writer], Adapted, &["Ctrl+Shift+F"], &["Ctrl+Shift+D"]),
     same(68, "writer.typewriter", "Typewriter scrolling", &[Writer], In, &["Ctrl+Shift+T"]),
     same(69, "writer.next-font", "Next font", &[Writer], In, &["Ctrl+Shift+M"]),
-    same(70, "writer.escape", "Close a menu, help or find", &[Writer], In, &["Esc"]),
+    same(70, "writer.escape", "Close a menu, help or find, else show the preview", &[Writer], In, &["Esc"]),
     same(71, "writer.spelling", "Spell checking", &[Writer], Deferred, &["Ctrl+Shift+L"]),
     same(72, "writer.rewrite", "Rewrite", W, Deferred, &["Ctrl+J"]),
     same(73, "writer.rewrite-section", "Rewrite the section", W, Deferred, &["Ctrl+Shift+J"]),
