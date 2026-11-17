@@ -1,5 +1,4 @@
-//! The vault window's top band: window dots, sidebar toggle, the note's name, its word count
-//! and reading time, and view toggles.
+//! The vault window's top band: window dots, sidebar toggle, the note's name and view toggles.
 //! The open notes are listed at the top of the sidebar (`sidebar::open_notes`).
 
 use rune::{El, el, row};
@@ -51,10 +50,9 @@ fn bar(v: V) -> El {
     let left_visible = v.left_visible();
     // The note's folder and name start where the page does: after the sidebar, or after the
     // window corner's buttons when it is closed.
-    // The word count and reading time follow it as pills (WR-189).
-    let mut title = row().key("title").grow(1.0).min_w(0.0).h(BAR_H).pl(if left_visible { 20.0 } else { 6.0 }).pr(8.0).gap(8.0).center_y().clip_rounded(0.0);
+    let mut title = row().key("title").grow(1.0).min_w(0.0).h(BAR_H).pl(if left_visible { 20.0 } else { 6.0 }).pr(8.0).center_y().clip_rounded(0.0);
     if v.has_doc() {
-        title = title.child(super::editor::crumb(v).mr(4.0)).children(super::outline::pills(v));
+        title = title.child(super::editor::crumb(v));
     }
 
     let mut right = row().key("right-zone").h(BAR_H).pl(6.0).pr(10.0).gap(6.0).center_y();

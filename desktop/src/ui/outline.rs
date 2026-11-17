@@ -1,5 +1,5 @@
-//! The right panel: the outline, backlinks and, at its foot, the status line. The word count and
-//! reading time are pills in the title bar (`pills`).
+//! The right panel: the outline, backlinks and, at its foot, the status line with the word
+//! count and reading time.
 
 use rune::{El, Live, ScrollSpec, col, el, row, text};
 
@@ -11,6 +11,10 @@ use crate::keys::mod_click;
 use crate::md;
 use crate::roles::Roles;
 use crate::theme::mono;
+
+/// The panel's width, and the status line's side padding.
+const STATUS_W: f32 = 236.0;
+const STATUS_X: f32 = 16.0;
 
 pub fn outline(v: V) -> El {
     let p = v.p;
@@ -96,46 +100,68 @@ pub fn outline(v: V) -> El {
     let scroll = col().key("outline-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
     col()
         .key("outline")
-        .w(236.0)
+        .w(STATUS_W)
         .h_full()
         .min_h(0.0)
         .fill(c.wash)
         .border_sides([0.0, 0.0, 0.0, 1.0], c.hairline_soft)
         .border_layout()
         .child(scroll)
-        .children(status(v))
+        .child(status(v))
 }
 
-/// The status line at the panel's foot: in the writer the caret's line and column, or how many
-/// characters are selected, and the link under the caret; in both modes the sync state. None
-/// when it has nothing to show.
-fn status(v: V) -> Option<El> {
+/// The status line at the panel's foot, centred, its parts split by dots: in the writer the
+/// caret's line and column, or how many characters are selected; then the word count and
+/// reading time together (WR-189), and the sync state. Parts that don't fit go on a centred line
+/// below, so no line starts or ends with a dot. The link under the caret shows on a line above.
+fn status(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
-    let style = mono(11.5, 400.0);
-    let mut r = row().key("status").h(29.0).w_full().gap(12.0).px(16.0).center_y().border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().clip_rounded(0.0);
-    let mut any = false;
-    if s.mode == Mode::Source {
-        let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
-        let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
-        let pos = edit.map_or(0, |e| e.focus.min(doc.len()));
+    let style = mono(11.0, 400.0);
+    let edit = (s.mode == Mode::Source).then(|| s.active.as_ref().and_then(|a| s.edits.get(a))).flatten();
+    let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
+    let sel = &doc[a..b];
+    // Each part with its width: mono labels are 0.6 em a character (`widgets::label`).
+    let w = |t: &str| t.chars().count() as f32 * 0.6 * style.size;
+    let mut parts: Vec<(El, f32)> = Vec::new();
+    let mut link = None;
+    if let Some(e) = edit {
+        let pos = e.focus.min(doc.len());
         let (line, ls) = md::line_col(doc, pos);
-        let sel = &doc[a..b];
-        let pos_label = if sel.is_empty() {
+        let at = if sel.is_empty() {
             format!("Ln {}, Col {}", line + 1, doc[ls..pos].chars().count() + 1)
         } else {
             format!("{} selected", group(sel.chars().count()))
         };
-        r = r.child(label(pos_label, style, p.mute).key("caret-pos"));
-        if let Some(t) = link_at_caret(doc, pos) {
+        parts.push((label(at.clone(), style, p.mute).key("caret-pos"), w(&at)));
+        link = link_at_caret(doc, pos).map(|t| {
             let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
-            r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(p.acc).truncate().shrink().min_w(0.0));
-        }
-        any = true;
+            text(format!("{}{verb}{t}”", mod_click())).font(style).color(p.acc).truncate().min_w(0.0).max_w(STATUS_W - 2.0 * STATUS_X)
+        });
     }
+    // The writer's count (WR-188): front matter, code fences and link targets left out.
+    let count = s.word_count();
+    let wc = count.words;
+    let words = if sel.is_empty() {
+        format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
+    } else {
+        format!("{} of {} words", group(crate::writer::count_words(sel)), group(wc))
+    };
+    let read = format!("{} min read", count.minutes);
+    let dot = || label("·", style, p.mark).mx(6.0);
+    let sep = w("·") + 12.0;
+    // The count and the reading time stay together on one line.
+    let counts = row()
+        .key("counts")
+        .center_y()
+        .child(label(words.clone(), style, p.mute).key("word-count").help(format!("{} characters", group(count.chars))))
+        .child(dot())
+        .child(label(read.clone(), style, p.mute).key("read-time"));
+    parts.push((counts, w(&words) + sep + w(&read)));
     if let Some((lbl, busy, failed)) = s.sync_label() {
         let dot = if failed { p.err } else if busy { p.acc } else { p.mark };
+        let width = 12.0 + w(&lbl);
         let mut sync = row()
             .key("sync-state")
             .role("button")
@@ -144,38 +170,38 @@ fn status(v: V) -> Option<El> {
                 s.set_sec = crate::app::Sec::Sync;
             })
             .gap(6.0)
-            .center_y().child(el().size(6.0, 6.0).radius(3.0).fill(dot)).child(label(lbl, style, if failed { p.err } else { p.mute }));
+            .center_y()
+            .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
+            .child(label(lbl, style, if failed { p.err } else { p.mute }));
         if let Some(e) = &s.sync.error {
             sync = sync.help(e.clone());
         }
-        r = r.child(el().grow(1.0)).child(sync);
-        any = true;
+        parts.push((sync, width));
     }
-    any.then_some(r)
-}
-
-/// The word count and the reading time, as pills beside the note's name in the title bar
-/// (WR-189). The writer's count (WR-188): front matter, code fences and link targets left out.
-pub fn pills(v: V) -> [El; 2] {
-    let p = v.p;
-    let s = v.s;
-    let doc = s.active_text();
-    let sel = (s.mode == Mode::Source)
-        .then(|| s.active.as_ref().and_then(|a| s.edits.get(a)))
-        .flatten()
-        .map_or("", |e| &doc[e.anchor.min(e.focus).min(doc.len())..e.anchor.max(e.focus).min(doc.len())]);
-    let count = s.word_count();
-    let wc = count.words;
-    let words = if sel.is_empty() {
-        format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
-    } else {
-        format!("{} of {} words", group(crate::writer::count_words(sel)), group(wc))
-    };
-    let pill = |key: &str, t: String| {
-        row().key(key).h(20.0).px(8.0).center_y().radius(10.0).fill(p.soft).no_window_drag().child(label(t, mono(11.0, 400.0), p.mute))
-    };
-    [
-        pill("word-count", words).help(format!("{} characters", group(count.chars))),
-        pill("read-time", format!("{} min read", count.minutes)),
-    ]
+    let room = STATUS_W - 2.0 * STATUS_X;
+    let mut lines: Vec<(Vec<El>, f32)> = Vec::new();
+    for (part, pw) in parts {
+        match lines.last_mut() {
+            Some((line, used)) if *used + sep + pw <= room => {
+                line.push(dot());
+                line.push(part);
+                *used += sep + pw;
+            }
+            _ => lines.push((vec![part], pw)),
+        }
+    }
+    let lines = lines.into_iter().enumerate().map(|(i, (line, _))| row().key(format!("status-line-{i}")).center_y().children(line));
+    col()
+        .key("status")
+        .w_full()
+        .min_h(29.0)
+        .py(7.0)
+        .px(STATUS_X)
+        .gap(4.0)
+        .center()
+        .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
+        .border_layout()
+        .clip_rounded(0.0)
+        .children(link)
+        .children(lines)
 }
