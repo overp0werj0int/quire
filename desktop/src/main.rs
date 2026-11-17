@@ -1056,6 +1056,88 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// An open drawer holds the keyboard and the wheel: the keyboard moves into it, Tab stays in
+    /// it, typing and scrolling never reach the note behind, and as it closes the keyboard goes
+    /// back to the note. Its title bar stays live: the mode button closes it and acts.
+    #[test]
+    fn a_drawer_holds_the_keyboard_and_the_scroll() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-drawerkeys-{}", std::process::id()));
+        let long = format!("# A\n\n## B\n\n{}", "A line of text.\n\n".repeat(80));
+        let mut rt = vault(&dir, &[("note.md", long.as_str())], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_full_keyboard_access(true);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let key = |rt: &mut Runtime<crate::app::App>, k: Key| {
+            rt.key(KeyEvent { key: k, mods: Mods::default() });
+            settle(rt);
+        };
+        let focus = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.focused).map(|e| e.path);
+        let shown = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| (e.rect, e.path));
+        let text = |rt: &mut Runtime<crate::app::App>| {
+            let mut t = String::new();
+            rt.update_if(|s, _| {
+                t = s.cur_edit().text.clone();
+                false
+            });
+            t
+        };
+        rt.update(|s, _| s.mode = crate::app::Mode::Source);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        let editor = focus(&rt).expect("the note has the keyboard");
+        for (button, drawer) in [("toggle-left", "sidebar-over"), ("toggle-right", "outline-over")] {
+            let at = rt.find(button).expect("the drawer's button");
+            rt.pointer_move(at.0, at.1);
+            rt.pointer_down(at.0, at.1);
+            rt.pointer_up(at.0, at.1);
+            settle(&mut rt);
+            let (r, path) = shown(&rt, drawer).unwrap_or_else(|| panic!("{drawer} opens"));
+            let inside = |f: Option<String>| f.is_some_and(|f| f.starts_with(&path));
+            assert!(inside(focus(&rt)), "{drawer}: the keyboard moves into it, not {:?}", focus(&rt));
+            for _ in 0..6 {
+                key(&mut rt, Key::Tab);
+                assert!(inside(focus(&rt)), "{drawer}: Tab stays in it, not {:?}", focus(&rt));
+            }
+            let before = text(&mut rt);
+            key(&mut rt, Key::Text("Q".into()));
+            assert_eq!(text(&mut rt), before, "{drawer}: typing never reaches the note");
+            let page = shown(&rt, "editor").unwrap().0;
+            let x = if r[0] > 100.0 { 150.0 } else { 500.0 };
+            rt.wheel(x, 300.0, -600.0);
+            settle(&mut rt);
+            assert_eq!(shown(&rt, "editor").unwrap().0, page, "{drawer}: a wheel over the scrim scrolls nothing");
+            key(&mut rt, Key::Escape);
+            assert!(shown(&rt, drawer).is_none(), "{drawer}: Esc closes it");
+            assert_eq!(focus(&rt).as_deref(), Some(editor.as_str()), "{drawer}: the keyboard goes back to the note");
+        }
+        let at = rt.find("toggle-left").expect("the sidebar button");
+        rt.pointer_move(at.0, at.1);
+        rt.pointer_down(at.0, at.1);
+        rt.pointer_up(at.0, at.1);
+        settle(&mut rt);
+        let at = rt.find("mode").expect("the mode button");
+        rt.pointer_move(at.0, at.1);
+        rt.pointer_down(at.0, at.1);
+        rt.pointer_up(at.0, at.1);
+        settle(&mut rt);
+        let mut mode = crate::app::Mode::Source;
+        rt.update_if(|s, _| {
+            mode = s.mode;
+            false
+        });
+        assert!(shown(&rt, "sidebar-over").is_none() && mode == crate::app::Mode::Preview, "one press on the mode button closes the drawer and acts");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: entering zen mode from its button, the floating pill shows where it stays while
     /// the sidebar goes and the page widens.
     #[test]

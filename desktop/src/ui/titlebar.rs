@@ -28,7 +28,7 @@ fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help
 
 /// A title bar button's press: it closes an open drawer, then acts, as the sidebar and outline
 /// toggles do through `App::toggle_drawer`. So every title bar button answers a drawer alike.
-fn act(f: fn(&mut App, &mut Tx)) -> impl Fn(&mut App, &mut Tx) + 'static {
+pub(super) fn act(f: fn(&mut App, &mut Tx)) -> impl Fn(&mut App, &mut Tx) + 'static {
     move |s, tx| {
         s.drawer = None;
         f(s, tx);

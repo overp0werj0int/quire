@@ -1403,11 +1403,10 @@ impl App {
         (shown && !self.focus && self.screen == Screen::Vault).then_some(d)
     }
 
-    /// Closes the open drawer, and gives the keyboard back to the note.
-    pub fn close_drawer(&mut self, tx: &mut Tx) {
-        if self.drawer.take().is_some() {
-            self.focus_editor(tx);
-        }
+    /// Closes the open drawer. The keyboard goes back where it was before the drawer opened
+    /// (Rune's modal returns it).
+    pub fn close_drawer(&mut self, _tx: &mut Tx) {
+        self.drawer = None;
     }
 
     pub fn toggle_settings(&mut self, _tx: &mut Tx) {

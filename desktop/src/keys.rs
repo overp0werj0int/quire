@@ -28,6 +28,10 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     } else if s.palette.is_some() {
         // An editing key never changes the note behind the palette.
         &[Ctx::Palette, Ctx::Global]
+    } else if s.shown_drawer().is_some() {
+        // A drawer holds the keyboard: the reader's and the writer's keys never reach the page
+        // behind it.
+        &[Ctx::Global]
     } else if s.reader.help {
         // Only the keys that close the sheet act; the rest are swallowed (RD-80).
         &[Ctx::Help]

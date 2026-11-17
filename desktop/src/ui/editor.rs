@@ -408,7 +408,7 @@ pub(super) fn crumb(v: V) -> El {
                 .label("Rename note")
                 .help("Rename note")
                 .cursor(rune::Cursor::Text)
-                .on_press_tx(|s: &mut App, tx| s.start_rename(tx))
+                .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
                 .child(label(md::base(&active), style, p.ink2))
                 .child(label(".md", style, quiet.faint)),
         ),
