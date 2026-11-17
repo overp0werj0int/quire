@@ -272,8 +272,9 @@ const TOOLBAR_H: f32 = super::reader::FIND_H;
 /// The toolbar's width: 13 buttons of 28, 4 separators of 11, 16 gaps of 2 and 4 of padding
 /// at each end.
 pub(crate) const TOOLBAR_W: f32 = 448.0;
-/// From the text column's left edge to the toolbar's.
-const TOOLBAR_X: f32 = -13.5;
+/// From the text column's left edge to the toolbar's: its 4 points of padding and the 6 from a
+/// button's edge to its icon, so the first icon's box starts on the column's edge (C4).
+pub(crate) const TOOLBAR_X: f32 = -10.0;
 
 /// Whether the formatting toolbar shows: source mode, the setting on, a note open and not
 /// locked, and not in focus mode.
@@ -304,10 +305,8 @@ fn lock_button(v: V) -> El {
         .child(icon(&LOCK, 16.0).color(if open { p.acc } else { p.mute }).group_color(if open { p.acc } else { p.ink }))
 }
 
-/// The formatting toolbar: a row over the note, lined up with its text column. The ink of the
-/// first icon sits on the text's left edge: its button reaches 6 points past the icon, and the
-/// B starts 3.5 points into its box.
-/// The formatting toolbar: a pill at the top of the note column. It scrolls with the note
+/// The formatting toolbar: a pill at the top of the note column, its first icon's box on the
+/// column's left edge, as the text is. It scrolls with the note
 /// until it reaches TOOLBAR_TOP below the title bar, then stays there, and the note scrolls
 /// under it.
 fn toolbar(v: V) -> El {
@@ -354,8 +353,8 @@ fn toolbar(v: V) -> El {
         .self_start()
         .h(TOOLBAR_H)
         .mb(64.0 - TOOLBAR_TOP - TOOLBAR_H)
-        // The ink of the first icon lines up with the text: 4 points of padding, then the 9.5
-        // points from a button's edge to its glyph.
+        // The first icon lines up with the text: 4 points of padding, then the 6 points from
+        // a button's edge to its icon.
         .ml(TOOLBAR_X)
         .px(4.0)
         .gap(2.0)

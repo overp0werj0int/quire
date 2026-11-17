@@ -1821,6 +1821,36 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// C4: the formatting toolbar's first icon starts on the text column's left edge, at every
+    /// window size and both line widths.
+    #[test]
+    fn the_toolbar_stands_on_the_text_column() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toolbar-x-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, "A plain line.\n\nAnother one.\n", crate::app::Mode::Source);
+        rt.update(|s, tx| {
+            s.cur_edit().set_selection(0, 0);
+            s.focus_editor(tx);
+        });
+        for wide in [false, true] {
+            for (w, h) in [(1280.0, 800.0), (1000.0, 700.0), (1600.0, 1000.0), (800.0, 600.0)] {
+                rt.set_viewport((w, h), 1.0);
+                rt.update(move |s, _| s.reader.wide = Some(wide));
+                // The caret eases to its new place, so the frames run until it lands.
+                for _ in 0..120 {
+                    rt.frame(DT);
+                }
+                // The column's left edge is where a plain line starts: the caret at the note's start,
+                // drawn on whole pixels.
+                let caret = info(&rt, "editor").and_then(|e| e.caret).expect("the editor shows a caret");
+                let icon = rt.elements().into_iter().find(|e| e.path.split('/').any(|seg| seg == "fmt-bold") && e.role == "icon").expect("the toolbar shows its bold button").rect;
+                let col = caret[0];
+                assert!((icon[0] - col).abs() < 1.0, "{w}x{h}, wide {wide}: the first icon at {}, the column at {col}", icon[0]);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-47, WR-100: the outline's current section has the accent dot left of its text, one
     /// dot only, and in the reader it moves with the scroll.
     #[test]
