@@ -1422,4 +1422,50 @@ mod note_mode_tests {
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Edits save on their own 0.5 s later, with no Ctrl+S, in both modes (WR-141).
+    #[test]
+    fn edits_autosave_in_both_modes() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-autosave-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (folder, loose) = (dir.join("folder"), dir.join("loose"));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(folder.join("f.md"), "folder").unwrap();
+        std::fs::write(loose.join("n.md"), "note").unwrap();
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        let saved_by_itself = |rt: &mut Runtime<crate::app::App>, file: &std::path::Path, want: &str| {
+            for _ in 0..60 {
+                rt.frame(DT);
+            }
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while std::fs::read_to_string(file).unwrap() != want && std::time::Instant::now() < until {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert_eq!(std::fs::read_to_string(file).unwrap(), want, "{} saved by itself", file.display());
+        };
+        let f = folder.clone();
+        rt.update(move |s, tx| {
+            s.open_vault(f, tx);
+            s.open_file("f.md", None, tx);
+            s.set_text("f.md", "folder edited".into());
+        });
+        saved_by_itself(&mut rt, &folder.join("f.md"), "folder edited");
+        let n = loose.join("n.md");
+        rt.update(move |s, _| {
+            assert!(s.start_note(&n) && s.note_mode());
+            s.set_text("n.md", "note edited".into());
+        });
+        saved_by_itself(&mut rt, &loose.join("n.md"), "note edited");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
