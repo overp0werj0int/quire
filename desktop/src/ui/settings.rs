@@ -82,7 +82,7 @@ pub fn settings(v: V) -> El {
                 .w_full()
                 .scroll(ScrollSpec { stick_bottom: false })
                 .scroll_margin(FADE)
-                .child(col().key("set-page").w_full().child(col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body)).child(fade(v))),
+                .child(col().key("set-page").w_full().child(fade_top(v)).child(col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body)).child(fade(v))),
         );
     let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
@@ -126,7 +126,8 @@ fn max_h(v: V) -> f32 {
     (v.vh - 48.0).min(720.0)
 }
 
-/// How far the page fades out above the box's bottom edge while more of it is below.
+/// How far the page fades out at the box's edges: above its bottom while more of it is below,
+/// and under its title while it is scrolled.
 const FADE: f32 = 28.0;
 
 /// The fade at the box's bottom edge. It holds to the edge while the page runs on below it and
@@ -139,6 +140,22 @@ fn fade(v: V) -> El {
             .pin(Some(0.0), Some(-FADE), Some(0.0), None)
             .h(FADE)
             .linear_gradient(std::f32::consts::PI, [(0.0, bg.alpha(0.0)), (1.0, bg)])
+            .inert()
+            .stuck_reveal(12.0),
+    )
+}
+
+/// The fade under the box's title. It holds to the top edge once the page scrolls and shows as
+/// far as it is held, so a page at its top shows none, and the first 12 points of scroll bring
+/// it in whole.
+fn fade_top(v: V) -> El {
+    let bg = v.p.bg;
+    el().key("set-fade-top-hold").w_full().h(0.0).sticky_top(0.0).paint_order(1).child(
+        el()
+            .key("set-fade-top")
+            .pin(Some(0.0), Some(0.0), Some(0.0), None)
+            .h(FADE)
+            .linear_gradient(std::f32::consts::PI, [(0.0, bg), (1.0, bg.alpha(0.0))])
             .inert()
             .stuck_reveal(12.0),
     )

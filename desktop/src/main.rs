@@ -190,8 +190,10 @@ pub(crate) mod scroll_tests {
         assert!(mcp[3] < 400.0, "a short page gets a short box: {mcp:?}");
         assert!((keys[3] - 720.0).abs() < 0.5, "a long page fills the box's room: {keys:?}");
         assert_eq!(mcp[1], keys[1], "the box keeps its top");
-        let stuck = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("set-fade-hold")).unwrap().stuck;
+        let held = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().stuck;
+        let stuck = |rt: &Runtime<crate::app::App>| held(rt, "set-fade-hold");
         assert!(stuck(&rt).abs() > 12.0, "the fade shows while more page is below");
+        assert_eq!(held(&rt, "set-fade-top-hold"), 0.0, "no fade under the title at the page's top");
         let (x, y) = rt.find("set-scroll").unwrap();
         rt.pointer_move(x, y);
         rt.wheel(x, y, -100_000.0);
@@ -199,6 +201,7 @@ pub(crate) mod scroll_tests {
             rt.frame(DT);
         }
         assert_eq!(stuck(&rt), 0.0, "and goes at the page's end");
+        assert!(held(&rt, "set-fade-top-hold").abs() > 12.0, "while the scrolled page fades under the title");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
