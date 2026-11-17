@@ -782,12 +782,11 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// WR-189: the status line at the outline's foot shows the caret's line and column in the
-    /// writer, then the word count and reading time, split by dots and centred. In preview it
-    /// keeps the counts, drops the position and says nothing of "preview". The title bar holds
-    /// none of them.
+    /// WR-189: the word count and reading time sit centred at the bottom of the outline, in
+    /// both modes. In the writer a footer of fixed height opens under them with the caret's
+    /// line and column; in preview there is no footer and nothing says "preview".
     #[test]
-    fn wr_189_counts_sit_centred_at_the_outline_foot() {
+    fn wr_189_counts_above_the_writers_footer() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-counts-{}", std::process::id()));
         let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
@@ -796,37 +795,33 @@ mod writer_chrome_tests {
             rt.frame(DT);
         }
         let inside = |r: [f32; 4], o: [f32; 4]| r[0] >= o[0] - 0.5 && r[1] >= o[1] - 0.5 && r[0] + r[2] <= o[0] + o[2] + 0.5 && r[1] + r[3] <= o[1] + o[3] + 0.5;
-        let check = |rt: &rune::Runtime<crate::app::App>, keys: &[&str]| {
+        // The counts centre in the outline, on one line, and end where `below` begins.
+        let counts_end_at = |rt: &rune::Runtime<crate::app::App>, below: f32| {
             let outline = rt.presented("outline").unwrap().0;
-            let status = rt.presented("status").expect("the status line shows").0;
-            assert!(inside(status, outline), "the status line {status:?} sits in the outline {outline:?}");
-            assert!((status[1] + status[3] - (outline[1] + outline[3])).abs() < 1.0, "at its foot");
-            let bar = rt.presented("titlebar").unwrap().0;
-            let rects: Vec<[f32; 4]> = keys.iter().map(|k| info(rt, k).unwrap_or_else(|| panic!("{k} shows")).rect).collect();
-            for (k, r) in keys.iter().zip(&rects) {
-                assert!(inside(*r, status), "{k} {r:?} sits in the status line {status:?}");
-                assert!(!inside(*r, bar));
-            }
-            // Each line centres in the status line, and a dot parts each pair on a line.
-            let mid = status[0] + status[2] / 2.0;
-            let lines: Vec<[f32; 4]> = (0..).map_while(|i| rt.presented(&format!("status-line-{i}")).map(|r| r.0)).collect();
-            assert!(!lines.is_empty());
-            for l in &lines {
-                assert!((l[0] + l[2] / 2.0 - mid).abs() < 1.0 && l[2] <= status[2] - 32.0 + 0.5, "line {l:?} centres in {status:?}");
-            }
-            let dots = rt.elements().iter().filter(|e| e.text.as_deref() == Some("·") && inside(e.rect, status)).count();
-            assert_eq!(dots, keys.len() - lines.len(), "a dot between the parts on each line");
+            let counts = rt.presented("counts").expect("the counts show").0;
+            assert!(inside(counts, outline), "the counts {counts:?} sit in the outline {outline:?}");
+            assert!((counts[1] + counts[3] - below).abs() < 1.0, "the counts {counts:?} end at {below}");
             let (wc, rd) = (info(rt, "word-count").unwrap().rect, info(rt, "read-time").unwrap().rect);
             assert!((wc[1] - rd[1]).abs() < 0.5, "the count and the reading time share a line");
-            lines.len()
+            let mid = outline[0] + outline[2] / 2.0;
+            assert!(((wc[0] + rd[0] + rd[2]) / 2.0 - mid).abs() < 1.0, "centred: {wc:?} {rd:?}, middle {mid}");
+            let bar = rt.presented("titlebar").unwrap().0;
+            assert!(!inside(wc, bar));
         };
-        assert_eq!(check(&rt, &["caret-pos", "word-count", "read-time"]), 2, "the counts go under the position");
+        let outline = rt.presented("outline").unwrap().0;
+        let foot = rt.presented("status").expect("the writer's footer shows").0;
+        assert!(inside(foot, outline) && (foot[1] + foot[3] - (outline[1] + outline[3])).abs() < 1.0, "the footer {foot:?} sits at the outline's foot");
+        assert!((foot[3] - 29.0).abs() < 0.5, "the footer keeps its height: {}", foot[3]);
+        assert!(inside(info(&rt, "caret-pos").expect("the caret's position shows").rect, foot));
+        counts_end_at(&rt, foot[1]);
         rt.update(|s, tx| s.toggle_mode(tx));
         for _ in 0..30 {
             rt.frame(DT);
         }
-        assert_eq!(check(&rt, &["word-count", "read-time"]), 1, "the counts share a line");
-        assert!(info(&rt, "caret-pos").is_none(), "no position in preview");
+        assert!(rt.presented("status").is_none(), "no footer in preview");
+        assert!(info(&rt, "caret-pos").is_none());
+        let outline = rt.presented("outline").unwrap().0;
+        counts_end_at(&rt, outline[1] + outline[3]);
         assert!(!rt.elements().iter().any(|e| e.text.as_deref() == Some("preview")), "nothing says preview");
         let _ = std::fs::remove_dir_all(&dir);
     }
