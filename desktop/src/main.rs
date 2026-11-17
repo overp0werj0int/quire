@@ -889,6 +889,65 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Zen mode's floating bar: the title bar's buttons on a pill in the top-right corner,
+    /// hidden until the pointer comes to the top band. The editor's set has the writer's view
+    /// toggles, the preview's has the reader's chips, and neither has the outline toggle.
+    #[test]
+    fn zen_mode_floats_the_bar_buttons_on_hover() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-zen-bar-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, tx| s.toggle_focus(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let bar = rt.presented("titlebar").unwrap().0;
+        let pill = info(&rt, "zen-actions").expect("the floating bar");
+        let r = pill.rect;
+        assert!(r[1] >= bar[1] - 0.5 && r[1] + r[3] <= bar[1] + bar[3] + 0.5, "in the top band: {r:?} in {bar:?}");
+        assert!(r[0] > bar[0] + bar[2] / 2.0 && bar[0] + bar[2] - (r[0] + r[2]) < 24.0, "at the right: {r:?} in {bar:?}");
+        assert!(pill.opacity < 0.05, "hidden without a hover: {}", pill.opacity);
+        let inside = |key: &str| info(&rt, key).is_some_and(|e| e.rect[0] >= r[0] && e.rect[0] + e.rect[2] <= r[0] + r[2] + 0.5);
+        for key in ["mode", "focus", "paragraph-focus", "typewriter", "next-font"] {
+            assert!(inside(key), "{key} on the editor's pill");
+        }
+        for key in ["toggle-right", "find", "help"] {
+            assert!(info(&rt, key).is_none(), "{key} is not on the editor's pill");
+        }
+        let (cx, cy) = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        rt.pointer_move(cx, cy);
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let shown = info(&rt, "zen-actions").unwrap().opacity;
+        assert!(shown > 0.99, "shown under the pointer: {shown}");
+        let (px, py) = rt.find("paragraph-focus").expect("the paragraph focus button");
+        rt.pointer_move(px, py);
+        rt.pointer_down(px, py);
+        rt.pointer_up(px, py);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut on = (false, false);
+        rt.update_if(|s, _| {
+            on = (s.settings().paragraph_focus, s.focus);
+            false
+        });
+        assert_eq!(on, (true, true), "the button turns paragraph focus on and zen mode stays");
+        rt.update(|s, tx| s.toggle_mode(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let r = info(&rt, "zen-actions").expect("the floating bar in preview").rect;
+        for key in ["mode", "focus", "find", "copy-all", "wide", "help"] {
+            assert!(info(&rt, key).is_some_and(|e| e.rect[0] >= r[0] && e.rect[0] + e.rect[2] <= r[0] + r[2] + 0.5), "{key} on the preview's pill");
+        }
+        for key in ["paragraph-focus", "toggle-right"] {
+            assert!(info(&rt, key).is_none(), "{key} is not on the preview's pill");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A press in the editor dragged below the page and held there scrolls the page, and the
     /// selection grows with it, as in a text view.
     #[test]

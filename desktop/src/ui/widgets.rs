@@ -22,6 +22,11 @@ svg!(CHEVRON_RIGHT, 8.0, r#"<path d="M2.5 1l3 3-3 3" fill="none" stroke="current
 svg!(FOLDER_PLUS, 16.0, r#"<path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.5 1.6h4.9A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8 7v4M6 9h4" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>"#);
 svg!(SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>"#);
 svg!(EYE, 16.0, r#"<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/>"#);
+// The writer's view toggles in the title bar: paragraph focus (the middle line at full ink),
+// typewriter scrolling (the line held in the middle) and the next font.
+svg!(PARAGRAPH, 16.0, r#"<path d="M2.5 3.5h11M2.5 12.5h8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".4"/><path d="M2.5 8h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>"#);
+svg!(TYPEWRITER, 16.0, r#"<path d="M2 8h12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 2.5L8 5l2.5-2.5M5.5 13.5L8 11l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
+svg!(FONT, 16.0, r#"<path d="M1.5 13L5 3l3.5 10M2.8 9.6h4.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11.6" cy="10.6" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M13.9 8v5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
 // The formatting toolbar.
 svg!(BOLD, 16.0, r#"<path d="M4.8 2.8h3.9a2.6 2.6 0 0 1 0 5.2H4.8zM4.8 8h4.6a2.6 2.6 0 0 1 0 5.2H4.8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>"#);
 svg!(ITALIC, 16.0, r#"<path d="M7 2.8h5.2M3.8 13.2H9M9.6 2.8L6.4 13.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
