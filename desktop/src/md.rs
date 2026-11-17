@@ -528,6 +528,104 @@ pub fn search(files: &BTreeMap<String, String>, q: &str) -> Vec<SearchResult> {
     out
 }
 
+/// A search hit's line as the sidebar shows it (C17): its Markdown syntax gone, cut at word
+/// edges to what `rows` lines of `cols` monospaced characters hold, with whole words ahead of
+/// the match while they fit `before` characters, and "…" where it was cut. Returns the text and
+/// the match's byte range in it, empty when the match was all syntax, such as a link's address.
+pub fn snippet(line: &str, col: usize, len: usize, before: usize, cols: usize, rows: usize) -> (String, std::ops::Range<usize>) {
+    let (plain, map) = strip_line(line);
+    let inside: Vec<usize> = (0..plain.len()).filter(|&i| plain.is_char_boundary(i) && (col..col + len).contains(&map[i])).collect();
+    let m0 = inside.first().copied().unwrap_or_else(|| (0..plain.len()).find(|&i| map[i] >= col).unwrap_or(plain.len()));
+    let m1 = inside.last().map_or(m0, |&i| i + plain[i..].chars().next().map_or(1, char::len_utf8));
+    let space = |i: usize| plain.as_bytes()[i] == b' ';
+    let starts: Vec<usize> = (0..=plain.len()).filter(|&i| plain.is_char_boundary(i) && (i == 0 || (i < plain.len() && !space(i) && space(i - 1)))).collect();
+    let ends: Vec<usize> = (0..=plain.len()).filter(|&i| plain.is_char_boundary(i) && (i == plain.len() || (i > 0 && space(i) && !space(i - 1)))).collect();
+    let show = |a: usize, b: usize| format!("{}{}{}", if a > 0 { "…" } else { "" }, &plain[a..b], if b < plain.len() { "…" } else { "" });
+    // The match's own words always show.
+    let first = starts.iter().rev().find(|&&a| a <= m0).copied().unwrap_or(0);
+    let last = ends.iter().find(|&&b| b >= m1).copied().unwrap_or(plain.len());
+    let a = starts.iter().copied().filter(|&a| a <= first && plain[a..m0].chars().count() <= before && wrapped(&show(a, last), cols) <= rows).min().unwrap_or(first);
+    let b = ends.iter().copied().filter(|&b| b >= last && wrapped(&show(a, b), cols) <= rows).max().unwrap_or(last);
+    let lead = if a > 0 { "…".len() } else { 0 };
+    (show(a, b), m0 - a + lead..m1 - a + lead)
+}
+
+/// How many lines of `cols` monospaced characters `text` takes, broken at spaces.
+fn wrapped(text: &str, cols: usize) -> usize {
+    let (mut lines, mut used) = (1, 0);
+    for w in text.split(' ').map(|w| w.chars().count()) {
+        let need = if used == 0 { w } else { used + 1 + w };
+        if need <= cols || used == 0 {
+            used = need;
+        } else {
+            lines += 1 + (w.saturating_sub(1)) / cols.max(1);
+            used = w % cols.max(1);
+        }
+    }
+    lines
+}
+
+/// One line of Markdown as text: no heading, quote, list or task marks, and inline syntax
+/// reduced to what it shows. Each byte of the text comes with its byte in `ln`.
+fn strip_line(ln: &str) -> (String, Vec<usize>) {
+    let mut i = ln.len() - ln.trim_start().len();
+    loop {
+        let rest = &ln[i..];
+        let hashes = rest.len() - rest.trim_start_matches('#').len();
+        if (1..=6).contains(&hashes) && rest[hashes..].starts_with(' ') {
+            i += hashes + 1;
+        } else if let Some(r) = rest.strip_prefix('>') {
+            i += 1 + (r.len() - r.trim_start().len());
+        } else if let Some(l) = list_line(rest) {
+            i += l.task.map_or(l.after, |t| t.end).max(l.after);
+        } else {
+            break;
+        }
+    }
+    let (mut out, mut map) = (String::new(), Vec::new());
+    strip_inline(&ln[i..], i, &mut out, &mut map);
+    let lead = out.len() - out.trim_start().len();
+    (out.trim().to_string(), map[lead..lead + out.trim().len()].to_vec())
+}
+
+fn strip_inline(s: &str, base: usize, out: &mut String, map: &mut Vec<usize>) {
+    let keep = |from: usize, to: usize, out: &mut String, map: &mut Vec<usize>| {
+        out.push_str(&s[from..to]);
+        map.extend((from..to).map(|k| base + k));
+    };
+    let mut at = 0;
+    for (tok, r) in inline_tokens(s) {
+        let mut upto = r.start;
+        // An image's "!" goes with its link.
+        if matches!(tok, Tok::Link) && s[..r.start].ends_with('!') {
+            upto -= 1;
+        }
+        keep(at, upto, out, map);
+        let t = &s[r.clone()];
+        let inner = match tok {
+            Tok::Tag => Some(0..t.len()),
+            Tok::Code => {
+                let n = t.len() - t.trim_start_matches('`').len();
+                Some(n..t.len() - n)
+            }
+            Tok::Bold | Tok::Strike => Some(2..t.len() - 2),
+            Tok::Italic => Some(1..t.len() - 1),
+            Tok::Wiki => {
+                let body = 2..t.len() - 2;
+                Some(t[body.clone()].find('|').map_or(body.clone(), |bar| body.start + bar + 1..body.end))
+            }
+            Tok::Link => t.find("](").map(|close| 1..close),
+        };
+        match inner {
+            Some(x) if x.start <= x.end && matches!(tok, Tok::Code | Tok::Tag) => keep(r.start + x.start, r.start + x.end, out, map),
+            Some(x) if x.start <= x.end => strip_inline(&t[x.clone()], base + r.start + x.start, out, map),
+            _ => keep(r.start, r.end, out, map),
+        }
+        at = r.end;
+    }
+    keep(at, s.len(), out, map);
+}
+
 /// Line index and byte offset of the line start for byte `pos`.
 pub fn line_col(text: &str, pos: usize) -> (usize, usize) {
     let pos = pos.min(text.len());
@@ -711,6 +809,31 @@ mod tests {
     #[test]
     fn links_rewrite_with_alias() {
         assert_eq!(rewrite_links("x [[Old|o]] [[old]] [[Other]]", "Old", "New"), "x [[New|o]] [[New]] [[Other]]");
+    }
+
+    /// C17: a search snippet shows the text, not the Markdown, cut at word edges with "…" at a
+    /// cut, fits its lines, and keeps the match marked.
+    #[test]
+    fn snippets_read_as_text() {
+        let ln = "- [x] Link **notes** with [[Reading list|a list]] and [the site](https://notes.example) or `code` here";
+        let col = ln.find("notes").unwrap();
+        let (t, m) = snippet(ln, col, 5, 20, 80, 1);
+        assert_eq!(&t[m.clone()], "notes");
+        assert!(t.starts_with("Link notes with a list and the site"), "{t}");
+        assert!(!t.contains("**") && !t.contains("[[") && !t.contains("](") && !t.contains('`'), "{t}");
+        let long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
+        let (t, m) = snippet(long, long.find("eight").unwrap(), 5, 12, 14, 2);
+        assert_eq!(t, "…six seven eight nine…");
+        assert_eq!(&t[m], "eight");
+        assert!(wrapped(&t, 14) <= 2);
+        let (t, _) = snippet("# Plain notes", 8, 5, 20, 30, 2);
+        assert_eq!(t, "Plain notes");
+        // A match inside a link's address shows the link's text, unmarked.
+        let ln = "see [here](https://notes.example) now";
+        let (t, m) = snippet(ln, ln.find("notes").unwrap(), 5, 20, 30, 2);
+        assert_eq!((t.as_str(), m.is_empty()), ("see here now", true));
+        assert_eq!(snippet("x_y and *é* done", 0, 1, 20, 30, 2).0, "x_y and é done");
+        assert_eq!(wrapped("aaa bbb ccc", 7), 2);
     }
 
     #[test]

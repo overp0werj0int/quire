@@ -683,24 +683,27 @@ fn search_panel(v: V) -> El {
         );
         for (hi, h) in r.hits.iter().take(4).enumerate() {
             let ln = lines.get(h.line).copied().unwrap_or("");
-            let a0 = floor_char(ln, h.col.saturating_sub(28));
-            let b0 = (h.col + ql).min(ln.len());
-            let c1 = floor_char(ln, (b0 + 90).min(ln.len()));
-            let pre = format!("{}{}", if a0 > 0 { "…" } else { "" }, ln[a0..h.col].trim_start());
-            // `<mark>` has 1 px of padding on each side: a mono space 1 px wide takes it.
-            let text_ = format!("{pre} {} {}", &ln[h.col..b0], &ln[b0..c1]);
-            let (m0, m1) = (pre.len(), pre.len() + 1 + (b0 - h.col) + 1);
-            let pad = Span { mono: true, size: Some(1.0 / 0.6), bg: Some(p.soft), ..Span::default() };
-            let spans = vec![
-                Span { start: m0 as u32, end: (m0 + 1) as u32, ..pad },
-                Span { bg: Some(p.soft), color: Some(p.ink), ..Span::new(m0 + 1, m1 - 1) },
-                Span { start: (m1 - 1) as u32, end: m1 as u32, ..pad },
-            ];
+            // The line as text, cut at words to two of the panel's lines (C17).
+            let (snip, m) = md::snippet(ln, h.col, ql, SNIP_BEFORE, SNIP_COLS, 2);
+            let (text_, spans) = if m.is_empty() {
+                (snip, Vec::new())
+            } else {
+                // `<mark>` has 1 px of padding on each side: a mono space 1 px wide takes it.
+                let text_ = format!("{} {} {}", &snip[..m.start], &snip[m.clone()], &snip[m.end..]);
+                let (m0, m1) = (m.start, m.end + 2);
+                let pad = Span { mono: true, size: Some(1.0 / 0.6), bg: Some(p.soft), ..Span::default() };
+                let spans = vec![
+                    Span { start: m0 as u32, end: (m0 + 1) as u32, ..pad },
+                    Span { bg: Some(p.soft), color: Some(p.ink), ..Span::new(m0 + 1, m1 - 1) },
+                    Span { start: (m1 - 1) as u32, end: m1 as u32, ..pad },
+                ];
+                (text_, spans)
+            };
             let path = r.path.clone();
             let sel = Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true };
             block = block.child(
                 el().key(format!("hit-{hi}")).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button").on_press_tx(move |s: &mut App, tx| s.open_file(&path, Some(sel), tx)).child(
-                    rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).wrap().wrap_anywhere().w_full(),
+                    rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).max_lines(2).w_full(),
                 ),
             );
         }
@@ -712,12 +715,10 @@ fn search_panel(v: V) -> El {
     out
 }
 
-fn floor_char(s: &str, mut i: usize) -> usize {
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
+/// A search snippet's room: at most this many characters ahead of the match, and the characters
+/// a line of the panel holds, its family being monospaced at 0.6 em.
+const SNIP_BEFORE: usize = 16;
+const SNIP_COLS: usize = ((248.0 - panel::TEXT_X - panel::RIGHT) / (panel::BODY_SMALL * 0.6)) as usize - 1;
 
 fn tags_panel(v: V) -> El {
     let c = Roles::panel(v.p);
