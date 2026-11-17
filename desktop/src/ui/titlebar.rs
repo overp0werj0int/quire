@@ -111,7 +111,7 @@ fn actions(v: V, mut r: El) -> El {
     }
     if !zen {
         let outline = tip("Outline", if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
-        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, 15.0, &outline, preview && v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
+        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, 15.0, &outline, v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
     }
     if preview {
         let help = tip("Shortcuts", "reader.help");

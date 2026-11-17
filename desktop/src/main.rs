@@ -340,6 +340,15 @@ pub(crate) mod scroll_tests {
         }
         assert!(rt.find("copy-all").is_none(), "source mode keeps its own bar");
         check(tips(&rt), 7);
+        // The outline button shows as on while the outline is open, in source mode too.
+        rt.update(|s, _| s.persist.right_open = true);
+        rt.pointer_move(700.0, 600.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(rt.find("outline").is_some(), "the outline is open");
+        let button = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-right") && !e.exiting).expect("the outline button");
+        assert!(button.fill.a > 0.0, "the outline button shows as on in source mode");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
