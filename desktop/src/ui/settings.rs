@@ -4,7 +4,7 @@ use crate::roles::Roles;
 use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::V;
-use super::widgets::{CLOSE_THIN, Control, label, outline_button, seg, settings_seg, switch};
+use super::widgets::{CLOSE_THIN, Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
 use super::styles::{self, literal, note, sans};
@@ -81,8 +81,8 @@ pub fn settings(v: V) -> El {
                 .min_h(0.0)
                 .w_full()
                 .scroll(ScrollSpec { stick_bottom: false })
-                .scroll_margin(FADE)
-                .child(col().key("set-page").w_full().child(fade_top(v)).child(col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body)).child(fade(v))),
+                .scroll_margin(SCROLL_FADE)
+                .child(faded("set", v.p.bg, col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body))),
         );
     let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
@@ -124,41 +124,6 @@ pub fn settings(v: V) -> El {
 /// would start, so the section list never moves when the section changes.
 fn max_h(v: V) -> f32 {
     (v.vh - 48.0).min(720.0)
-}
-
-/// How far the page fades out at the box's edges: above its bottom while more of it is below,
-/// and under its title while it is scrolled.
-const FADE: f32 = 28.0;
-
-/// The fade at the box's bottom edge. It holds to the edge while the page runs on below it and
-/// shows as far as it is held, so a page that fits, or one scrolled to its end, shows no fade.
-fn fade(v: V) -> El {
-    let bg = v.p.bg;
-    el().key("set-fade-hold").w_full().h(0.0).sticky_bottom(0.0).child(
-        el()
-            .key("set-fade")
-            .pin(Some(0.0), Some(-FADE), Some(0.0), None)
-            .h(FADE)
-            .linear_gradient(std::f32::consts::PI, [(0.0, bg.alpha(0.0)), (1.0, bg)])
-            .inert()
-            .stuck_reveal(12.0),
-    )
-}
-
-/// The fade under the box's title. It holds to the top edge once the page scrolls and shows as
-/// far as it is held, so a page at its top shows none, and the first 12 points of scroll bring
-/// it in whole.
-fn fade_top(v: V) -> El {
-    let bg = v.p.bg;
-    el().key("set-fade-top-hold").w_full().h(0.0).sticky_top(0.0).paint_order(1).child(
-        el()
-            .key("set-fade-top")
-            .pin(Some(0.0), Some(0.0), Some(0.0), None)
-            .h(FADE)
-            .linear_gradient(std::f32::consts::PI, [(0.0, bg), (1.0, bg.alpha(0.0))])
-            .inert()
-            .stuck_reveal(12.0),
-    )
 }
 
 /// Whether the window is small: the section list and the page's margins narrow in it.

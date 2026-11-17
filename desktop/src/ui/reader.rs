@@ -225,8 +225,17 @@ pub fn help_sheet(v: V) -> El {
     for column in columns {
         body = body.child(column);
     }
-    // The card fits the window, 24 px clear of each edge, and its rows scroll inside it.
-    let card = popup(&c).key("help-card").child(col().key("help-scroll").max_h(v.vh - 48.0).scroll(ScrollSpec { stick_bottom: false }).child(card.child(body)));
+    // The card fits the window, 24 px clear of each edge, and its rows scroll inside it, fading
+    // at the card's edges as Settings' page does.
+    let scroll = col()
+        .key("help-scroll")
+        .max_h(v.vh - 48.0)
+        .radius(6.0)
+        .clip_rounded(6.0)
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_margin(super::widgets::SCROLL_FADE)
+        .child(super::widgets::faded("help", c.bg, card.child(body)));
+    let card = popup(&c).key("help-card").child(scroll);
     // Modal: the note behind takes no wheel or press while help is open.
     col()
         .key("help-scrim")

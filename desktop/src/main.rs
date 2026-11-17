@@ -205,6 +205,42 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// HS: help and the palette's list fade at their edges as Settings' page does, through the
+    /// one helper: at the bottom while more is below, at the top once scrolled.
+    #[test]
+    fn every_scrolling_sheet_fades_alike() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-sheet-fades-{}", std::process::id()));
+        let notes: Vec<(String, &str)> = (0..40).map(|i| (format!("note {i:02}.md"), "# A\n")).collect();
+        let notes: Vec<(&str, &str)> = notes.iter().map(|(n, t)| (n.as_str(), *t)).collect();
+        let mut rt = vault(&dir, &notes, crate::watch::EVERY);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        let held = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{key} is drawn")).stuck;
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let check = |rt: &mut Runtime<crate::app::App>, name: &str| {
+            settle(rt);
+            assert!(held(rt, &format!("{name}-fade-hold")).abs() > 12.0, "{name}: the bottom fade shows while more is below");
+            assert_eq!(held(rt, &format!("{name}-fade-top-hold")), 0.0, "{name}: no top fade at the top");
+            let (x, y) = rt.find(&format!("{name}-scroll")).unwrap();
+            rt.pointer_move(x, y);
+            rt.wheel(x, y, -100_000.0);
+            settle(rt);
+            assert_eq!(held(rt, &format!("{name}-fade-hold")), 0.0, "{name}: no bottom fade at the end");
+            assert!(held(rt, &format!("{name}-fade-top-hold")).abs() > 12.0, "{name}: the top fade shows once scrolled");
+        };
+        rt.update(|s, _| s.reader.help = true);
+        check(&mut rt, "help");
+        rt.update(|s, _| s.reader.help = false);
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
+        check(&mut rt, "pal");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar's panel tabs read as tabs, not as section labels: the open one carries a mark
     /// and the others are a step brighter than a label. With no note open, the Open label goes
     /// with its list.

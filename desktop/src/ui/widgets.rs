@@ -91,6 +91,25 @@ pub fn padded(s: impl Into<String>, style: TextStyle, c: Color, px: f32, py: f32
 /// A menu or popup over the window (D4): the window's colour, the hairline edge the palette,
 /// Settings and the lock dialog have, and the menu's shadow, whose own 1 point ring is too faint
 /// to show on a dark theme. Every menu, popup, toast and floating notice takes it.
+/// How far a scrolling sheet's page fades out at its edges (`faded`). Its scroll area takes it
+/// as its scroll margin, so a row scrolled into view clears the fade.
+pub const SCROLL_FADE: f32 = 28.0;
+
+/// A scrolling sheet's page with its fades, for Settings, help and the palette's list alike:
+/// at the bottom edge while more of the page is below, and at the top edge once it is scrolled.
+/// Each fade holds to its edge and shows as far as it is held, so a page that fits shows
+/// none, and the first 12 points of scroll bring one in whole. `name` keys them:
+/// `{name}-page`, `{name}-fade` and `{name}-fade-top`, each fade in a `-hold` box.
+pub fn faded(name: &str, bg: Color, page: El) -> El {
+    let fade = |key: String, top: bool| {
+        let stops = if top { [(0.0, bg), (1.0, bg.alpha(0.0))] } else { [(0.0, bg.alpha(0.0)), (1.0, bg)] };
+        el().key(key).pin(Some(0.0), Some(if top { 0.0 } else { -SCROLL_FADE }), Some(0.0), None).h(SCROLL_FADE).linear_gradient(std::f32::consts::PI, stops).inert().stuck_reveal(12.0)
+    };
+    let top = el().key(format!("{name}-fade-top-hold")).w_full().h(0.0).sticky_top(0.0).paint_order(1).child(fade(format!("{name}-fade-top"), true));
+    let bottom = el().key(format!("{name}-fade-hold")).w_full().h(0.0).sticky_bottom(0.0).child(fade(format!("{name}-fade"), false));
+    rune::col().key(format!("{name}-page")).w_full().child(top).child(page).child(bottom)
+}
+
 pub fn floating(e: El, c: &Roles) -> El {
     let [a, b] = theme::menu_shadows();
     e.fill(c.bg).border(1.0, c.hairline).box_shadow(a).box_shadow(b)

@@ -97,7 +97,14 @@ pub fn palette(v: V) -> El {
     // inside it: the layer's top and bottom padding, the head and the foot come off its height.
     let top = (v.vh * 0.11).round();
     let room = v.vh - top - LAYER_BOTTOM - HEAD_H - FOOT_H;
-    let scroller = col().key("pal-scroll").w_full().max_h(room.clamp(0.0, 392.0)).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
+    let scroller = col()
+        .key("pal-scroll")
+        .w_full()
+        .max_h(room.clamp(0.0, 392.0))
+        .min_h(0.0)
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_margin(super::widgets::SCROLL_FADE)
+        .child(super::widgets::faded("pal", p.bg, list));
 
     // A key in the keys' face, then what it does (C14).
     let hint = |k: String, what: &str| row().gap(5.0).center_y().child(label(k, keys(11.0), p.mute)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
