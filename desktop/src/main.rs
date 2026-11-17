@@ -1672,6 +1672,40 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-118 (adapted), RD-59: find in source marks every match as preview does, the current
+    /// one solid accent with its letters in the page colour, on the letters of the match.
+    #[test]
+    fn wr_118_find_marks_every_match() {
+        use rune::render::{KIND_GLYPH, KIND_RECT};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-find-marks-{}", std::process::id()));
+        let text = "# Notes\n\nMost of it isn't. A tool that responds disappears, and a tool that hesitates does not.\n\n## A tool\n";
+        let (mut rt, _) = open(&dir, text, crate::app::Mode::Source);
+        rt.update(|s, tx| {
+            s.reader.find.q = rune::TextEdit::new("tool".to_string());
+            s.writer_find(tx);
+        });
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let mut roles = None;
+        rt.update(|s, _| roles = Some(crate::roles::Roles::new(s.palette(false))));
+        let c = roles.unwrap();
+        let painted = |kind: f32, col: rune::Color| -> Vec<[f32; 4]> {
+            let want = [col.premul(1.0), col.premul_srgb(1.0)];
+            rt.instances.iter().filter(|q| q.params[1] == kind && want.iter().any(|w| (0..4).all(|k| (q.fill[k] - w[k]).abs() < 0.004))).map(|q| q.rect).collect()
+        };
+        let current = painted(KIND_RECT, c.find_current);
+        assert_eq!(current.len(), 1, "one current match: {current:?}");
+        assert_eq!(painted(KIND_RECT, c.find).len(), 2, "and the two others marked");
+        // Its letters take the page colour, all under its mark, past the editor's gutter.
+        let [x, y, w, h] = current[0];
+        let letters: Vec<_> = painted(KIND_GLYPH, c.find_current_text).into_iter().filter(|r| r[1] < y + h && r[1] + r[3] > y).collect();
+        assert_eq!(letters.len(), 4, "the letters of tool: {letters:?} under {:?}", current[0]);
+        assert!(letters.iter().all(|r| r[0] >= x - 1.0 && r[0] + r[2] <= x + w + 1.0), "inside the mark: {letters:?} under {:?}", current[0]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-93: the thumb is hidden at rest, shows while the note scrolls, and is as tall as the
     /// view is of the note; WR-177: the bands sit at the top and foot of the sheet and let
     /// presses through.

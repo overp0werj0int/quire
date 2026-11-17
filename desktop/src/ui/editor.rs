@@ -502,10 +502,13 @@ fn source(v: V, width: f32, room: f32) -> El {
             marks.push(TextHighlight::new(a..a + ch.len_utf8(), Color::TRANSPARENT).key(crate::writer_app::LINE_AT));
         }
     }
-    if s.find_query().is_some()
-        && let Some(r) = s.source_matches().get(s.reader.find.cur).cloned()
-    {
-        marks.push(TextHighlight::new(r, c.selection).key(crate::reader::FIND_CUR));
+    // Find paints every match as the reader does (RD-59, WR-118): the find background, and the
+    // current one solid accent with background-coloured letters.
+    if s.find_query().is_some() {
+        let cur = s.reader.find.cur;
+        for (k, r) in s.source_matches().into_iter().enumerate() {
+            marks.push(if k == cur { TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR) } else { TextHighlight::new(r, c.find) });
+        }
     }
     let empty = TextEdit::new("");
     let pad_top = if s.settings().typewriter_scroll { v.vh * 0.5 } else { 0.0 };
