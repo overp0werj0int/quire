@@ -228,7 +228,9 @@ fn doc_scroll(v: V) -> El {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
         // float on a clear band. The caret stays below them while you type.
         let below = if find_row(v) { find_top(v) + super::reader::FIND_H } else { TOOLBAR_TOP + TOOLBAR_H };
-        scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(below + 12.0);
+        // The caret, and a match find shows, stay below the band's fade.
+        let clear = if find_row(v) { FIND_FADE_OUT } else { 12.0 };
+        scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(below + clear);
     }
     scroll.child(content)
 }
@@ -260,8 +262,11 @@ fn find_row(v: V) -> bool {
 const FIND_CLEAR: f32 = 16.0;
 /// From the toolbar to the find bar under it.
 const FIND_GAP: f32 = 8.0;
-/// The fade under the band that covers a find bar on its own row.
-const FIND_FADE: f32 = 24.0;
+/// The fade at the foot of the band that covers a find bar on its own row: it starts
+/// `FIND_FADE_IN` above the bar's foot and ends `FIND_FADE_OUT` below it, longer than a heading's
+/// line, so a line crossing it dims gradually instead of showing only its lower half.
+const FIND_FADE_IN: f32 = 12.0;
+const FIND_FADE_OUT: f32 = 40.0;
 
 /// The space above the floating toolbar, at rest and while it sticks.
 const TOOLBAR_TOP: f32 = 10.0;
@@ -329,13 +334,19 @@ fn toolbar(v: V) -> El {
         .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })
         .stuck_reveal(8.0);
     // With the find bar on its own row, the stuck toolbar hangs a band of the page's colour
-    // from the view's top edge to that row's foot, the width of the note area, and a short fade
-    // under it. Text scrolling up goes under the band, never beside the bar.
+    // from the view's top edge to that row's foot, the width of the note area, which eases out
+    // across the row's foot. Text scrolling up goes under the band, never beside the bar.
     let band = find_row(v).then(|| {
         let (left, right) = docked(v);
         let below = find_top(v) + super::reader::FIND_H;
-        let h = below + FIND_FADE;
-        let stops = [(0.0, p.bg), (below / h, p.bg), (1.0, p.bg.alpha(0.0))];
+        let h = below + FIND_FADE_OUT;
+        let start = below - FIND_FADE_IN;
+        let mut stops = vec![(0.0, p.bg)];
+        stops.extend((0..=8).map(|k| {
+            let t = k as f32 / 8.0;
+            let y = start + t * (FIND_FADE_IN + FIND_FADE_OUT);
+            (y / h, p.bg.alpha(1.0 - t * t * (3.0 - 2.0 * t)))
+        }));
         el().key("find-band")
             .pin(Some(-(source_column(v).gutter + TOOLBAR_X)), Some(-TOOLBAR_TOP), None, None)
             .size(v.vw - left - right, h)

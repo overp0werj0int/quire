@@ -591,6 +591,47 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-122: with the find bar on its own row, the band over the text eases out across the
+    /// bar's foot to 40 pt under it, and the caret moving up stays below the fade.
+    #[test]
+    fn wr_122_the_caret_stays_below_the_find_band() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findband-{}", std::process::id()));
+        let long = format!("# A\n\n{}", "A line of text.\n\n".repeat(60));
+        let mut rt = vault(&dir, &[("note.md", long.as_str())], crate::watch::EVERY);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            s.writer_find(tx);
+        });
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+        };
+        settle(&mut rt);
+        rt.update(|s, tx| {
+            let n = s.cur_edit().text.len();
+            s.cur_edit().set_selection(n, n);
+            s.focus_editor(tx);
+        });
+        settle(&mut rt);
+        for _ in 0..30 {
+            rt.key(KeyEvent { key: Key::Up, mods: Mods::default() });
+            rt.frame(DT);
+        }
+        settle(&mut rt);
+        let els = rt.elements();
+        let get = |key: &str| els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("{key}"));
+        let (find, band) = (get("find-bar").rect, get("find-band").rect);
+        assert_eq!(band[1] + band[3], find[1] + find[3] + 40.0, "the band eases out to 40 pt under the bar");
+        let caret = get("editor").caret.expect("the editor has a caret");
+        assert!(caret[1] >= band[1] + band[3] - 0.5, "the caret {caret:?} stays below the band's fade {band:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-40, WR-96: below 1100 pt the outline button opens the outline as a drawer over the
     /// page's right edge, the page keeps its width, and Esc, the button, a press outside it or
     /// a picked heading closes it. It never shows with the find bar. From 1100 pt up it docks
