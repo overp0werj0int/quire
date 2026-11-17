@@ -98,7 +98,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(titlebar::titlebar(v)).child(editor::body(v));
             let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
             let root = root.child(frame);
-            if v.focus() { root.children(editor::progress(v)) } else { root }
+            if v.focus() { root.children(editor::progress(v)) } else { root.child(titlebar::corner(v)) }
         }
     };
     if s.tree_menu.is_some() {

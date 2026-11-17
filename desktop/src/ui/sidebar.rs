@@ -101,7 +101,7 @@ pub fn sidebar(v: V) -> El {
         .min_h(0.0)
         .border_sides([0.0, 1.0, 0.0, 0.0], p.line)
         .border_layout()
-        .child(super::titlebar::corner(v));
+        .child(super::titlebar::corner_room());
     // Note mode has no folder: no folder menu, files, search or tags.
     let side = if note_mode { side.child(open_notes(v)).child(el().grow(1.0)) } else { side.child(open_notes(v)).child(head).child(tabs).child(list) };
     let mut side = side.child(foot);

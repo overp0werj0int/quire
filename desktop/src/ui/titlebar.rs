@@ -24,13 +24,20 @@ fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size
     toggle_button(p, key, glyph, size, help, on).size(BUTTON, BUTTON)
 }
 
-/// The window's top-left corner: the window dots and the sidebar toggle. It heads the sidebar
-/// when that is open and the title bar when it is closed, at the same place, so the toggle
-/// never moves. Its icons centre on the bar's middle.
+/// The corner's width: its padding, the dots, the gap and the toggle.
+const CORNER_W: f32 = 14.0 + super::widgets::DOTS_W + 10.0 + BUTTON + 8.0;
+
+/// The window's top-left corner: the window dots and the sidebar toggle. It lies over the
+/// window, outside the sidebar, which leaves room for it at its top, as the title bar does when
+/// the sidebar is closed. So there is one toggle, and it stays under the pointer while the
+/// sidebar comes and goes. Its icons centre on the bar's middle.
 pub fn corner(v: V) -> El {
     let p = v.p;
     row()
         .key("left-zone")
+        .pin(Some(0.0), Some(0.0), None, None)
+        .w(CORNER_W)
+        .paint_order(37)
         .h(BAR_H)
         .pl(14.0)
         .pr(8.0)
@@ -40,6 +47,11 @@ pub fn corner(v: V) -> El {
         .preserve_focus_on_press(true)
         .child(dots(p))
         .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press(|s: &mut App| s.toggle_left()))
+}
+
+/// The room under the corner, at the sidebar's top or the title bar's start.
+pub fn corner_room() -> El {
+    el().key("corner-room").h(BAR_H)
 }
 
 pub fn titlebar(v: V) -> El {
@@ -66,7 +78,7 @@ fn bar(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .paint_order(3)
-        .children((!left_visible).then(|| corner(v)))
+        .children((!left_visible).then(|| corner_room().w(CORNER_W)))
         .child(title)
         .child(right)
         .child(el().w(v.trailing))

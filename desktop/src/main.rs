@@ -620,6 +620,32 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// One sidebar toggle: while the sidebar closes and opens again, one toggle shows, and it
+    /// stays under the pointer.
+    #[test]
+    fn one_sidebar_toggle_stays_put() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toggle-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text.\n")], crate::watch::EVERY);
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let toggles = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("toggle-left") && e.opacity > 0.1).map(|e| e.rect).collect::<Vec<_>>();
+        let at = toggles(&rt)[0];
+        for _ in 0..2 {
+            let (x, y) = rt.find("toggle-left").expect("the sidebar toggle");
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            for i in 1..=20 {
+                rt.frame(DT);
+                assert_eq!(toggles(&rt), vec![at], "frame {i}: one toggle, where it was");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

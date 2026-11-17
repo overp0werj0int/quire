@@ -213,6 +213,10 @@ pub fn primary_button(p: &Pal, key: &str, text_: &str, h: f32, px: f32, size: f3
         .child(label(text_, sans(size, 500.0), p.on_acc))
 }
 
+/// The width `dots` takes: none where the system or the window manager draws the window's
+/// buttons elsewhere.
+pub const DOTS_W: f32 = if cfg!(any(target_os = "windows", target_os = "linux")) { 0.0 } else { 52.0 };
+
 /// The design's window dots. On Linux they are the window's close, minimize and maximize
 /// buttons. macOS draws its own traffic lights in the same place, so there they leave room.
 pub fn dots(p: &Pal) -> El {
