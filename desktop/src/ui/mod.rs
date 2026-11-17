@@ -93,6 +93,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     map_page(s);
     let v = V { s, p, dark, vw, vh, trailing };
     cx.caption_color(p.ink2);
+    // The keyboard's focus ring, on the controls Tab reaches (Settings, buttons): 2 points of
+    // the accent, 2 points outside the control.
+    cx.focus_ring(2.0, 2.0, p.acc.alpha(0.7));
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };

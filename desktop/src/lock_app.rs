@@ -125,7 +125,11 @@ impl App {
                 self.rebuild_names_pub();
                 self.focus_editor(tx);
             }
-            Err(e) => self.unlock_error = Some(e),
+            Err(e) => {
+                self.unlock_error = Some(e);
+                // After a press on Unlock, the field takes the keyboard back for another try.
+                tx.focus("unlock-pass", false);
+            }
         }
     }
 

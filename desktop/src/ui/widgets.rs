@@ -1,6 +1,6 @@
 //! Small pieces the screens share: the design's icons, segmented controls and switches.
 
-use rune::{Color, El, Icon, Shadow, TextStyle, Tx, el, icon, row, text};
+use rune::{Color, El, Icon, Key, KeyEvent, Mods, Shadow, TextStyle, Tx, el, icon, row, text};
 
 use crate::app::App;
 use crate::theme::{self, Pal, mono, sans};
@@ -120,6 +120,36 @@ fn seg_shadow(on: bool) -> Vec<Shadow> {
     if on { theme::seg_shadows().to_vec() } else { Vec::new() }
 }
 
+/// Controls the keyboard reaches, as Settings has them.
+pub trait Control {
+    /// Tab stops on it, and a press, Space or Return runs `run`. Focused from the keyboard, it
+    /// shows the view's focus ring (`ui::view`).
+    fn control(self, run: impl Fn(&mut App, &mut Tx) + 'static) -> El;
+    /// One of a group of choices, as a radio: Tab stops on the chosen one, and the arrow keys
+    /// move to the others and choose them. Its container sets `focus_group`.
+    fn choice(self, on: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El;
+}
+
+impl Control for El {
+    fn control(self, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
+        let run = std::rc::Rc::new(run);
+        let on_return = run.clone();
+        self.focusable(true).on_press_tx(move |s: &mut App, tx| run(s, tx)).on_key(move |s: &mut App, ev: &KeyEvent, tx| {
+            // Rune presses a focused control on Space. Return would go to a default button, so
+            // it is taken here.
+            let enter = ev.key == Key::Enter && ev.mods == Mods::default();
+            if enter {
+                on_return(s, tx);
+            }
+            enter
+        })
+    }
+
+    fn choice(self, on: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
+        self.role("radio").checked(on).control(run).focus_selected(on)
+    }
+}
+
 /// One button of a segmented control.
 pub struct Seg {
     pub label: String,
@@ -133,7 +163,7 @@ pub fn seg(label: impl Into<String>, on: bool, run: impl Fn(&mut App, &mut Tx) +
 
 /// The design's segmented control: a tinted track with raised buttons.
 pub fn segmented(p: &Pal, key: &str, segs: Vec<Seg>, h: f32, pad_x: f32, radius: f32, style: TextStyle, track: Color, track_radius: f32) -> El {
-    let mut r = row().key(key).gap(2.0).padding(2.0).radius(track_radius).fill(track).role("radiogroup");
+    let mut r = row().key(key).gap(2.0).padding(2.0).radius(track_radius).fill(track).role("radiogroup").focus_group();
     for (i, sg) in segs.into_iter().enumerate() {
         let on = sg.on;
         let run = sg.run;
@@ -144,15 +174,12 @@ pub fn segmented(p: &Pal, key: &str, segs: Vec<Seg>, h: f32, pad_x: f32, radius:
             .center()
             .radius(radius)
             .fill(if on { p.bg } else { Color::TRANSPARENT })
-            .role("radio")
-            .checked(on)
             .label(sg.label.clone())
-            .on_press_tx(move |s: &mut App, tx| run(s, tx))
             .child(label(sg.label, style, if on { p.ink } else { p.mute }));
         for sh in seg_shadow(on) {
             b = b.box_shadow(sh);
         }
-        r = r.child(b);
+        r = r.child(b.choice(on, move |s, tx| run(s, tx)));
     }
     r
 }
@@ -169,20 +196,14 @@ pub fn settings_seg_mono(p: &Pal, key: &str, segs: Vec<Seg>) -> El {
 
 /// A 36 by 20 switch.
 pub fn switch(p: &Pal, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    el().key(key)
-        .size(36.0, 20.0)
-        .radius(10.0)
-        .fill(if on { p.button } else { p.mark })
-        .role("switch")
-        .checked(on)
-        .label(label_text)
-        .on_press_tx(move |s: &mut App, tx| run(s, tx))
+    let e = el().key(key).size(36.0, 20.0).radius(10.0).fill(if on { p.button } else { p.mark }).role("switch").checked(on).label(label_text);
+    e.control(run)
         .child(el().key("knob").size(16.0, 16.0).radius(8.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { 18.0 } else { 2.0 }, 2.0))
 }
 
 /// A bordered button such as "Switch folder…" or "Restore".
 pub fn outline_button(p: &Pal, key: &str, text_: &str, h: f32, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    row()
+    let e = row()
         .key(key)
         .h(h)
         .px(12.0)
@@ -193,13 +214,13 @@ pub fn outline_button(p: &Pal, key: &str, text_: &str, h: f32, run: impl Fn(&mut
         .hover(p.hover)
         .role("button")
         .label(text_)
-        .on_press_tx(move |s: &mut App, tx| run(s, tx))
-        .child(label(text_, sans(12.5, 400.0), p.ink))
+        .child(label(text_, sans(12.5, 400.0), p.ink));
+    e.control(run)
 }
 
 /// The solid purple button.
 pub fn primary_button(p: &Pal, key: &str, text_: &str, h: f32, px: f32, size: f32, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    row()
+    let e = row()
         .key(key)
         .h(h)
         .px(px)
@@ -209,8 +230,8 @@ pub fn primary_button(p: &Pal, key: &str, text_: &str, h: f32, px: f32, size: f3
         .hover(p.button_hover)
         .role("button")
         .label(text_)
-        .on_press_tx(move |s: &mut App, tx| run(s, tx))
-        .child(label(text_, sans(size, 500.0), p.on_acc))
+        .child(label(text_, sans(size, 500.0), p.on_acc));
+    e.control(run)
 }
 
 /// The width `dots` takes: none where the system or the window manager draws the window's

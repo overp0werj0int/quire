@@ -722,6 +722,71 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Settings works from the keyboard: Tab reaches each control in reading order, Space and
+    /// Return press one, the arrows move through a group's choices, and Esc still closes it.
+    #[test]
+    fn settings_work_from_the_keyboard() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-setkeys-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        rt.update(|s, _| {
+            s.settings_open = true;
+            s.set_sec = crate::app::Sec::Editor;
+        });
+        let key = |rt: &mut Runtime<crate::app::App>, k: Key, shift: bool| {
+            rt.key(KeyEvent { key: k, mods: Mods { shift, ..Mods::default() } });
+            for _ in 0..4 {
+                rt.frame(DT);
+            }
+        };
+        let focused = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key);
+        let read = |rt: &mut Runtime<crate::app::App>| {
+            let mut out = None;
+            rt.update(|s, _| out = Some((s.settings_open, s.settings().toolbar, s.settings().code_font.clone(), s.settings().size)));
+            out.unwrap()
+        };
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert_eq!(focused(&rt).as_deref(), Some("nav-Editor"), "the open section's tab has the keyboard");
+        let mut seen = Vec::new();
+        for _ in 0..7 {
+            key(&mut rt, Key::Tab, false);
+            seen.push(focused(&rt).unwrap_or_default());
+        }
+        let font = seen[1].clone();
+        assert!(font.starts_with("font-"), "{seen:?}");
+        assert_eq!(seen[0], "set-close");
+        assert_eq!(&seen[2..], ["code-seg-0", "size-down", "size-up", "width-seg-0", "toolbar-switch"], "one stop per control, chosen ones for groups");
+        let (_, toolbar, _, _) = read(&mut rt);
+        key(&mut rt, Key::Text(" ".into()), false);
+        assert_eq!(read(&mut rt).1, !toolbar, "Space flips the switch");
+        key(&mut rt, Key::Enter, false);
+        assert_eq!(read(&mut rt).1, toolbar, "and Return flips it back");
+        // Back to the stepper: Return makes the text larger.
+        for _ in 0..2 {
+            key(&mut rt, Key::Tab, true);
+        }
+        assert_eq!(focused(&rt).as_deref(), Some("size-up"), "Shift+Tab goes back");
+        let size = read(&mut rt).3;
+        key(&mut rt, Key::Enter, false);
+        assert_eq!(read(&mut rt).3, size + 1);
+        // In the code font's segments, the arrow picks the next one.
+        for _ in 0..2 {
+            key(&mut rt, Key::Tab, true);
+        }
+        assert_eq!(focused(&rt).as_deref(), Some("code-seg-0"));
+        let code = read(&mut rt).2;
+        key(&mut rt, Key::Right, false);
+        assert_eq!(focused(&rt).as_deref(), Some("code-seg-1"));
+        assert_ne!(read(&mut rt).2, code, "the arrow chose it");
+        key(&mut rt, Key::Escape, false);
+        assert!(!read(&mut rt).0, "Esc closes Settings");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: entering zen mode from its button, the floating pill shows where it stays while
     /// the sidebar goes and the page widens.
     #[test]

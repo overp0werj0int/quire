@@ -4,7 +4,7 @@ use crate::roles::Roles;
 use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::V;
-use super::widgets::{CLOSE_THIN, label, outline_button, seg, settings_seg, switch};
+use super::widgets::{CLOSE_THIN, Control, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
 use crate::theme::{self, EDITOR_FONTS, mono, sans};
@@ -12,15 +12,16 @@ use crate::theme::{self, EDITOR_FONTS, mono, sans};
 pub fn settings(v: V) -> El {
     let p = v.p;
     let s = v.s;
-    let mut nav = col().key("set-nav").w(190.0).h_full().gap(2.0).py(18.0).px(10.0).fill(p.side).child(text("settings").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0));
+    // The sections are tabs: Tab stops on the open one, and the arrow keys open the others.
+    let mut tabs = col().key("set-tabs").gap(2.0).role("tablist").focus_group();
     for (id, lbl) in SECS {
         let on = s.set_sec == id;
         let mut tab = row().key(format!("nav-{lbl}"));
         // The open section's tab takes the focus, so no text field shows a caret unasked.
         if on {
-            tab = tab.focusable(true).autofocus();
+            tab = tab.autofocus();
         }
-        nav = nav.child(
+        tabs = tabs.child(
             tab
                 .h(30.0)
                 .px(10.0)
@@ -29,10 +30,12 @@ pub fn settings(v: V) -> El {
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .hover_group()
                 .role("tab")
-                .on_press(move |s: &mut App| s.set_sec = id)
+                .control(move |s: &mut App, _: &mut Tx| s.set_sec = id)
+                .focus_selected(on)
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
     }
+    let nav = col().key("set-nav").w(190.0).h_full().py(18.0).px(10.0).fill(p.side).child(text("settings").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0)).child(tabs);
     let title = SECS.iter().find(|x| x.0 == s.set_sec).map_or("", |x| x.1);
     let head = row()
         .key("set-head")
@@ -53,7 +56,7 @@ pub fn settings(v: V) -> El {
                 .hover_group()
                 .label("Close")
                 .help("Close")
-                .on_press(|s: &mut App| s.settings_open = false)
+                .control(|s: &mut App, _: &mut Tx| s.settings_open = false)
                 .child(icon(&CLOSE_THIN, 10.0).color(p.mute).group_color(p.ink)),
         );
     let body = match s.set_sec {
@@ -70,7 +73,7 @@ pub fn settings(v: V) -> El {
         .min_w(0.0)
         .h_full()
         .child(head)
-        .child(col().key("set-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).child(col().key(format!("set-body-{title}")).w_full().px(32.0).pb(28.0).child(body)));
+        .child(col().key("set-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).scroll_margin(16.0).child(col().key(format!("set-body-{title}")).w_full().px(32.0).pb(28.0).child(body)));
     let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
     let panel = el()
@@ -171,7 +174,7 @@ fn theme_grid(v: V, dark: bool) -> El {
     let cols = if body_width(v) >= 640.0 { 4 } else { 3 };
     let cw = ((body_width(v) - 10.0 * (cols as f32 - 1.0)) / cols as f32).floor();
     let slot = if dark { "dark" } else { "light" };
-    let mut grid = col().key(format!("{slot}-themes")).w_full().gap(10.0).mt(14.0);
+    let mut grid = col().key(format!("{slot}-themes")).w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
     for chunk in items.chunks(cols) {
         let mut r = row().w_full().gap(10.0);
         for &(id, name) in chunk {
@@ -208,10 +211,8 @@ fn theme_grid(v: V, dark: bool) -> El {
                 .border(1.0, if on { p.acc } else { Color::TRANSPARENT })
                 .border_layout()
                 .hover(p.hover)
-                .role("radio")
-                .checked(on)
                 .label(name)
-                .on_press(move |s: &mut App| {
+                .choice(on, move |s: &mut App, _: &mut Tx| {
                     let set = s.settings_mut();
                     if dark {
                         set.dark_theme = Some(id.into());
@@ -250,7 +251,7 @@ fn accent_block(v: V) -> El {
             e.set_selection(n, n);
         }
     };
-    let mut swatches = row().key("swatches").gap(8.0).center_y().wrap();
+    let mut swatches = row().key("swatches").gap(8.0).center_y().wrap().role("radiogroup").focus_group();
     for &(hex, name) in theme::ACCENTS {
         let on = current == hex;
         if hex.is_empty() {
@@ -266,11 +267,9 @@ fn accent_block(v: V) -> El {
                     .border(1.0, if on { p.acc } else { p.line })
                     .border_layout()
                     .hover(p.hover)
-                    .role("radio")
-                    .checked(on)
                     .label(name)
                     .help(name)
-                    .on_press(move |s: &mut App| set_accent(s, ""))
+                    .choice(on, move |s: &mut App, _: &mut Tx| set_accent(s, ""))
                     .child(el().size(14.0, 14.0).radius(7.0).fill(own))
                     .child(label("Theme", sans(12.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 })),
             );
@@ -281,11 +280,9 @@ fn accent_block(v: V) -> El {
             .size(24.0, 24.0)
             .radius(12.0)
             .fill(theme::hex(hex))
-            .role("radio")
-            .checked(on)
             .label(name)
             .help(format!("{name} {hex}"))
-            .on_press(move |s: &mut App| set_accent(s, hex));
+            .choice(on, move |s: &mut App, _: &mut Tx| set_accent(s, hex));
         if on {
             dot = dot.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 4.0, color: p.ink2, inset: false }).box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: p.bg, inset: false });
         }
@@ -309,7 +306,7 @@ fn editor(v: V) -> El {
     let p = v.p;
     let set = v.s.settings();
     let editor_id = theme::editor_font(&set.font).id;
-    let mut cards = col().key("font-cards").w_full().gap(10.0).mt(14.0);
+    let mut cards = col().key("font-cards").w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
     let mut card_row = row().w_full().gap(10.0);
     for (i, f) in EDITOR_FONTS.iter().enumerate() {
         let on = editor_id == f.id;
@@ -326,10 +323,8 @@ fn editor(v: V) -> El {
             .fill(p.bg)
             .border(1.0, if on { p.acc } else { p.line })
             .border_layout()
-            .role("radio")
-            .checked(on)
             .label(f.label)
-            .on_press(move |s: &mut App| {
+            .choice(on, move |s: &mut App, _: &mut Tx| {
                 s.settings_mut().font = id.into();
             })
             .child(label(f.label, sans(11.5, 400.0), if on { p.acc } else { p.mute }))
@@ -361,7 +356,7 @@ fn editor(v: V) -> El {
             .hover(p.bg)
             .role("button")
             .label(if d < 0 { "Smaller" } else { "Larger" })
-            .on_press(move |s: &mut App| {
+            .control(move |s: &mut App, _: &mut Tx| {
                 let n = (s.settings().size as i32 + d).clamp(crate::store::SIZE_MIN as i32, crate::store::SIZE_MAX as i32) as u32;
                 s.settings_mut().size = n;
             })
@@ -423,7 +418,7 @@ fn files(v: V) -> El {
         )
         .child(outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)));
     let cur = s.settings().new_folder.clone();
-    let mut opts = row().key("folder-opts").w_full().flex_wrap().gap(6.0).mt(12.0);
+    let mut opts = row().key("folder-opts").w_full().flex_wrap().gap(6.0).mt(12.0).role("radiogroup").focus_group();
     let mut list = vec![(String::new(), "Folder root".to_string())];
     list.extend(s.folder_list().into_iter().map(|f| (f.clone(), format!("{f}/"))));
     for (i, (val, lbl)) in list.into_iter().enumerate() {
@@ -437,9 +432,7 @@ fn files(v: V) -> El {
             .border(1.0, p.line)
             .border_layout()
             .fill(if on { p.bg } else { Color::TRANSPARENT })
-            .role("radio")
-            .checked(on)
-            .on_press(move |s: &mut App| s.settings_mut().new_folder = val.clone())
+            .choice(on, move |s: &mut App, _: &mut Tx| s.settings_mut().new_folder = val.clone())
             .child(label(lbl, mono(12.0, 400.0), if on { p.ink } else { p.mute }));
         if on {
             for sh in theme::seg_shadows() {

@@ -1,11 +1,11 @@
 //! Settings: Sync & backup. "Test connection" checks the form, then reaches the store; once it
 //! passes, notes sync on save, every 5 minutes or by hand.
 
-use rune::{Color, El, TextEdit, col, row, text, text_input};
+use rune::{Color, El, TextEdit, Tx, col, row, text, text_input};
 
 use super::V;
 use super::settings::{block, body_width, desc_text, row_};
-use super::widgets::{label, primary_button, seg, settings_seg, switch};
+use super::widgets::{Control, label, primary_button, seg, settings_seg, switch};
 use crate::app::{App, SyncStatus};
 use crate::theme::{self, mono, sans};
 
@@ -224,7 +224,7 @@ pub fn sync(v: V) -> El {
     let w = body_width(v);
     let cols = (((w + 8.0) / 158.0).floor() as usize).max(1);
     let card_w = (w - 8.0 * (cols as f32 - 1.0)) / cols as f32;
-    let mut grid = col().key("providers").w_full().gap(8.0).mt(14.0);
+    let mut grid = col().key("providers").w_full().gap(8.0).mt(14.0).role("radiogroup").focus_group();
     let mut line = row().key("prow-0").w_full().gap(8.0);
     for (i, pv) in PROVIDERS.iter().enumerate() {
         if i > 0 && i % cols == 0 {
@@ -243,10 +243,8 @@ pub fn sync(v: V) -> El {
             .fill(p.bg)
             .border(1.0, if on { p.acc } else { p.line })
             .border_layout()
-            .role("radio")
-            .checked(on)
             .label(pv.name)
-            .on_press(move |s: &mut App| {
+            .choice(on, move |s: &mut App, _: &mut Tx| {
                 if s.settings().sync.provider != id {
                     s.settings_mut().sync.provider = id.into();
                     s.sync_changed();
@@ -384,7 +382,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
             c = c.child(text_box(v, &field_key(s, pid, key), value, fd.ph, fd.kind == Kind::Secret, bad, f32::INFINITY, move |s, t| set_cfg(s, key, t)));
         }
         Kind::Choice => {
-            let mut r = row().key("opts").w_full().flex_wrap().gap(6.0);
+            let mut r = row().key("opts").w_full().flex_wrap().gap(6.0).role("radiogroup").focus_group();
             for (i, (ov, ol)) in fd.opts.iter().enumerate() {
                 let on = value == *ov;
                 let ov = *ov;
@@ -397,9 +395,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                         .radius(7.0)
                         .border(1.0, if on { p.acc } else { p.line })
                         .border_layout()
-                        .role("radio")
-                        .checked(on)
-                        .on_press(move |s: &mut App| set_cfg(s, key, ov.into()))
+                        .choice(on, move |s: &mut App, _: &mut Tx| set_cfg(s, key, ov.into()))
                         .child(label(*ol, mono(11.5, 400.0), if on { p.acc } else { p.ink2 })),
                 );
             }
@@ -499,7 +495,7 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
                 .border_layout()
                 .hover_group()
                 .role("button")
-                .on_press(move |s: &mut App| {
+                .control(move |s: &mut App, _: &mut Tx| {
                     if !s.reveal.remove(&rk) {
                         s.reveal.insert(rk.clone());
                     }

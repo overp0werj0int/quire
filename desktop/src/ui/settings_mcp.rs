@@ -1,12 +1,12 @@
 //! Settings: MCP. `quire mcp --folder <path>` is the stdio server an AI app starts; the HTTP
 //! transport runs inside this window while it is open.
 
-use rune::{El, col, el, icon, row, text};
+use rune::{El, Tx, col, el, icon, row, text};
 
 use super::V;
 use super::settings::{block, row_};
 use super::settings_sync::text_box;
-use super::widgets::{CHECK, label, outline_button, seg, settings_seg, settings_seg_mono, switch};
+use super::widgets::{CHECK, Control, label, outline_button, seg, settings_seg, settings_seg_mono, switch};
 use crate::app::App;
 use crate::store::{MCP_TOOLS, new_token};
 use crate::theme::{mono, sans};
@@ -131,7 +131,7 @@ pub fn mcp(v: V) -> El {
             .role("checkbox")
             .checked(on)
             .label(id)
-            .on_press(move |s: &mut App| {
+            .control(move |s: &mut App, _: &mut Tx| {
                 if avail {
                     let cur = s.settings().mcp.tools.get(id).copied().unwrap_or(false);
                     s.settings_mut().mcp.tools.insert(id.into(), !cur);
@@ -164,7 +164,7 @@ pub fn mcp(v: V) -> El {
                 .border_layout()
                 .role("checkbox")
                 .checked(on)
-                .on_press(move |s: &mut App| {
+                .control(move |s: &mut App, _: &mut Tx| {
                     let h = &mut s.settings_mut().mcp.hidden;
                     if let Some(k) = h.iter().position(|x| *x == val) {
                         h.remove(k);
@@ -268,7 +268,7 @@ fn token_box(v: V, token: &str) -> El {
                 .border_layout()
                 .hover_group()
                 .role("button")
-                .on_press(|s: &mut App| {
+                .control(|s: &mut App, _: &mut Tx| {
                     if !s.reveal.remove("mcp-token") {
                         s.reveal.insert("mcp-token".into());
                     }
