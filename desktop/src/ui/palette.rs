@@ -7,7 +7,8 @@ use super::V;
 use super::widgets::label;
 use crate::app::{App, PalMode};
 use crate::commands::{self, pal_data};
-use crate::theme::{self, mono, sans};
+use super::styles::{keys, sans};
+use crate::theme;
 
 const HEAD_H: f32 = 53.0;
 const FOOT_H: f32 = 35.0;
@@ -28,7 +29,7 @@ pub fn palette(v: V) -> El {
         .center_y()
         .border_sides([0.0, 0.0, 1.0, 0.0], p.line)
         .border_layout()
-        .child(super::widgets::padded(if cmds { "run" } else { "open" }, mono(11.0, 400.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
+        .child(super::widgets::padded(if cmds { "run" } else { "open" }, sans(11.5, 500.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
         .child(
             text_input(&pal.q, sans(15.0, 400.0))
                 .key("pal-input")
@@ -82,7 +83,7 @@ pub fn palette(v: V) -> El {
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
                 .child(rich(t, spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0))
-                .child(label(it.sub.clone(), mono(11.5, 400.0), p.mute)),
+                .child(label(it.sub.clone(), keys(11.5), p.mute)),
         );
     }
     if d.items.is_empty() {
@@ -94,7 +95,8 @@ pub fn palette(v: V) -> El {
     let room = v.vh - top - LAYER_BOTTOM - HEAD_H - FOOT_H;
     let scroller = col().key("pal-scroll").w_full().max_h(room.clamp(0.0, 392.0)).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
 
-    let foot_style = mono(11.0, 400.0);
+    // A key in the keys' face, then what it does (C14).
+    let hint = |k: String, what: &str| row().gap(5.0).center_y().child(label(k, keys(11.0), p.mute)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
     let foot = row()
         .key("pal-foot")
         .h(FOOT_H)
@@ -105,11 +107,11 @@ pub fn palette(v: V) -> El {
         .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
         .border_layout()
         .clip_rounded(0.0)
-        .child(label("↑↓ select", foot_style, p.mute))
-        .child(label(if cmds { "↵ run" } else { "↵ open" }, foot_style, p.mute))
-        .child(label("esc close", foot_style, p.mute))
+        .child(hint("↑↓".into(), "select"))
+        .child(hint("↵".into(), if cmds { "run" } else { "open" }))
+        .child(hint("esc".into(), "close"))
         .child(el().grow(1.0))
-        .child(label(if cmds { format!("{} for notes", crate::keymap::label(v.s.preset(), "app.quick-switcher")) } else { "type > for commands".into() }, foot_style, p.mute));
+        .child(if cmds { hint(crate::keymap::label(v.s.preset(), "app.quick-switcher"), "for notes") } else { row().gap(5.0).center_y().child(label("type", sans(11.5, 400.0), p.mute)).child(label(">", keys(11.0), p.mute)).child(label("for commands", sans(11.5, 400.0), p.mute)) });
 
     let [a, b] = theme::palette_shadows();
     let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).border(1.0, Roles::new(p).hairline).box_shadow(a).box_shadow(b).child(

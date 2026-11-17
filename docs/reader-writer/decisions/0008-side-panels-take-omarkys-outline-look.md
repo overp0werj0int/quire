@@ -41,3 +41,10 @@ Update, 2026-11-17: the panels' small text must read in every theme. Their dim a
 toward the text colour until faint is at least 4.5:1 against the window, the sidebar and the
 outline's wash, and dim a step more (`Roles::panel`). In Paper the inactive tabs and the
 footer's keys were 2.25:1 on the sidebar.
+
+Update, 2026-11-17: the panel family now has a role across the chrome (PAGE-09). It is the
+family of everything inside the panels and of the menus opened from them, which were in
+Instrument Sans inside the monospace sidebar. Key names and literal values take it too, in
+every view, so a key looks the same in the sidebar's footer, the palette and the shortcut list.
+Dialogs, bars and toasts are Instrument Sans, and IBM Plex Mono is left only as a font the
+user can pick for the editor. The panels' own type is unchanged.

@@ -12,7 +12,8 @@ use crate::app::{App, Mode};
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
 use crate::md::{self, Tok};
-use crate::theme::{self, mono, sans};
+use super::styles::{keys, literal, note, sans};
+use crate::theme;
 
 pub fn body(v: V) -> El {
     let p = v.p;
@@ -386,7 +387,7 @@ pub(super) fn crumb(v: V) -> El {
     let s = v.s;
     let active = s.active.clone().unwrap_or_default();
     let dir = md::dir(&active).to_string();
-    let style = mono(12.0, 400.0);
+    let style = literal(12.0);
     let mut r = row().key("crumb").h(24.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
         r = r.child(label(dir, style, p.mute)).child(label("/", style, p.mark));
@@ -448,7 +449,7 @@ pub(super) fn crumb(v: V) -> El {
 pub fn ed_style(v: V) -> TextStyle {
     let set = v.s.settings();
     let size = set.size as f32;
-    TextStyle::new(size, 400.0).family(theme::editor_font(&set.font).family).lh(line_h(size)).features("'liga' 0, 'clig' 0, 'calt' 0")
+    note(theme::editor_font(&set.font).family, size, line_h(size)).features("'liga' 0, 'clig' 0, 'calt' 0")
 }
 
 /// The source's line height at size `e` (WR-07).
@@ -629,8 +630,8 @@ fn no_tab(v: V) -> El {
                 .hover_group()
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| run(s, tx))
-                .child(label(l, mono(12.5, 400.0), p.ink2).group_color(p.acc))
-                .child(label(crate::keymap::label(v.s.preset(), id), mono(12.5, 400.0), p.mute)),
+                .child(label(l, sans(13.5, 400.0), p.ink2).group_color(p.acc))
+                .child(label(crate::keymap::label(v.s.preset(), id), keys(12.0), p.mute)),
         );
     }
     c
@@ -644,7 +645,7 @@ fn empty_vault(v: V) -> El {
         .max_w(380.0)
         .gap(14.0)
         .items_start()
-        .child(label("Nothing here yet.", theme::serif(32.0, 400.0).lh(32.0 * 1.15), p.ink))
+        .child(label("Nothing here yet.", sans(32.0, 500.0).lh(32.0 * 1.15).tracking(-0.02 * 32.0), p.ink))
         .child(text(md::pretty(&format!("Notes you write here are saved as plain .md files in {path}."))).font(sans(14.0, 400.0).lh(14.0 * 1.6)).color(p.ink2).wrap())
         .child(
             row()
@@ -660,6 +661,6 @@ fn empty_vault(v: V) -> El {
                 .role("button")
                 .on_press_tx(|s: &mut App, tx| s.new_note(None, tx))
                 .child(label("Create your first note", sans(13.5, 500.0), p.on_acc))
-                .child(label(crate::keymap::label(v.s.preset(), "app.new-note"), mono(11.0, 400.0), p.on_acc.alpha(0.8))),
+                .child(label(crate::keymap::label(v.s.preset(), "app.new-note"), keys(11.0), p.on_acc.alpha(0.8))),
         )
 }

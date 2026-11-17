@@ -3,7 +3,8 @@
 use rune::{Color, El, Icon, Key, KeyEvent, Mods, Shadow, TextStyle, Tx, el, icon, row, text};
 
 use crate::app::App;
-use crate::theme::{self, Pal, mono, sans};
+use super::styles::{fixed_advance, literal, sans};
+use crate::theme::{self, Pal};
 
 macro_rules! svg {
     ($name:ident, $view:expr, $body:expr) => {
@@ -62,7 +63,7 @@ svg!(CHECK, 10.0, r##"<path d="M1.5 5.2l2.4 2.4L8.5 2.6" fill="none" stroke="#ff
 /// Rune rounds text boxes up to device pixels and those fractions add up along a row.
 pub fn label(s: impl Into<String>, style: TextStyle, c: Color) -> El {
     let s: String = s.into();
-    let mono = matches!(style.family, rune::Family::Named("IBM Plex Mono" | "Courier Prime" | "Spline Sans Mono"));
+    let mono = fixed_advance(style.family);
     let n = s.chars().count();
     let ascii = in_mono_face(&s);
     let e = text(s).font(style).color(c);
@@ -78,7 +79,7 @@ fn in_mono_face(s: &str) -> bool {
 /// A label with padding inside its exact width (`extra` adds borders that take room).
 pub fn padded(s: impl Into<String>, style: TextStyle, c: Color, px: f32, py: f32, extra: f32) -> El {
     let s: String = s.into();
-    let mono = matches!(style.family, rune::Family::Named("IBM Plex Mono" | "Courier Prime" | "Spline Sans Mono"));
+    let mono = fixed_advance(style.family);
     let n = s.chars().count();
     let ascii = in_mono_face(&s);
     let e = text(s).font(style).color(c).px(px).py(py);
@@ -199,9 +200,9 @@ fn settings_seg_pad(v: super::V) -> f32 {
     if super::settings::stacked(v) { 7.0 } else { 12.0 }
 }
 
-/// The settings segmented control in mono (MCP transport).
-pub fn settings_seg_mono(v: super::V, key: &str, segs: Vec<Seg>) -> El {
-    segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, mono(12.0, 400.0), v.p.side, 8.0)
+/// The settings segmented control for literal names (MCP transport).
+pub fn settings_seg_literal(v: super::V, key: &str, segs: Vec<Seg>) -> El {
+    segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, literal(12.0), v.p.side, 8.0)
 }
 
 /// A 36 by 20 switch.

@@ -7,7 +7,8 @@ use super::V;
 use super::widgets::{CLOSE_THIN, Control, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
-use crate::theme::{self, EDITOR_FONTS, mono, sans};
+use super::styles::{self, literal, note, sans};
+use crate::theme::{self, EDITOR_FONTS};
 
 pub fn settings(v: V) -> El {
     let p = v.p;
@@ -35,7 +36,7 @@ pub fn settings(v: V) -> El {
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
     }
-    let nav = col().key("set-nav").w(nav_w(v)).h_full().py(18.0).px(10.0).fill(p.side).child(text("settings").font(mono(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0)).child(tabs);
+    let nav = col().key("set-nav").w(nav_w(v)).h_full().py(18.0).px(10.0).fill(p.side).child(text("settings").font(sans(11.0, 400.0)).color(p.mute).px(10.0).pb(10.0)).child(tabs);
     let title = SECS.iter().find(|x| x.0 == s.set_sec).map_or("", |x| x.1);
     let head = row()
         .key("set-head")
@@ -395,8 +396,8 @@ fn editor(v: V) -> El {
                 s.settings_mut().font = id.into();
             })
             .child(label(f.label, sans(11.5, 400.0), if on { p.acc } else { p.mute }))
-            .child(label("## Field notes", rune::TextStyle::new(15.0, 400.0).family(f.family).lh(22.5), p.ink))
-            .child(label("Rain until 14:00.", rune::TextStyle::new(13.0, 400.0).family(f.family).lh(19.5), p.ink2));
+            .child(label("## Field notes", note(f.family, 15.0, 22.5), p.ink))
+            .child(label("Rain until 14:00.", note(f.family, 13.0, 19.5), p.ink2));
         if on {
             b = b.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
         }
@@ -437,7 +438,7 @@ fn editor(v: V) -> El {
         .fill(p.side)
         .center_y()
         .child(step("size-down", "−", -1))
-        .child(row().key("size-label").min_w(48.0).justify_center().child(label(format!("{size} px"), mono(12.0, 400.0), p.ink)))
+        .child(row().key("size-label").min_w(48.0).justify_center().child(label(format!("{size} px"), sans(12.5, 400.0), p.ink)))
         .child(step("size-up", "+", 1));
     let width = |id: &'static str, l: &str| seg(l, set.width == id, move |s, _| s.settings_mut().width = id.into());
     let mut c = col()
@@ -469,7 +470,7 @@ fn files(v: V) -> El {
     let loc = pair(
         v,
         "location",
-        col().key("text").child(label("Folder location", sans(14.0, 500.0), p.ink)).child(text(path).font(mono(12.0, 400.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
+        col().key("text").child(label("Folder location", sans(14.0, 500.0), p.ink)).child(text(path).font(literal(12.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
         outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)),
     );
     let cur = s.settings().new_folder.clone();
@@ -488,7 +489,7 @@ fn files(v: V) -> El {
             .border_layout()
             .fill(if on { p.bg } else { Color::TRANSPARENT })
             .choice(on, move |s: &mut App, _: &mut Tx| s.settings_mut().new_folder = val.clone())
-            .child(label(lbl, mono(12.0, 400.0), if on { p.ink } else { p.mute }));
+            .child(label(lbl, sans(12.5, 400.0), if on { p.ink } else { p.mute }));
         if on {
             for sh in theme::seg_shadows() {
                 b = b.box_shadow(sh);
@@ -532,7 +533,7 @@ fn keys(v: V) -> El {
     // Only keys whose feature is built: the rest arrive with the reader and writer work.
     let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor")];
     for (ctx, title) in groups {
-        c = c.child(label(title, mono(11.0, 400.0), p.mute).key(format!("keys-{title}")).pt(18.0).pb(6.0));
+        c = c.child(label(title, sans(11.0, 400.0), p.mute).key(format!("keys-{title}")).pt(18.0).pb(6.0));
         let shown = keymap::TABLE.iter().filter(|a| {
             a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape" && crate::keys::handler(a.id).is_some()
         });
@@ -549,7 +550,7 @@ fn keys(v: V) -> El {
                     .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
                     .border_layout()
                     .child(label(a.name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
-                    .child(super::widgets::padded(kb, mono(11.5, 400.0), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
+                    .child(super::widgets::padded(kb, styles::keys(11.5), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
             );
         }
     }

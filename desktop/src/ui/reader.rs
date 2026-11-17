@@ -5,7 +5,8 @@ use rune::{Color, El, Key, KeyEvent, ScrollSpec, TextCase, Tx, col, el, icon, ro
 
 use super::V;
 use super::chip::Chip;
-use super::panel::{BODY, BODY_SMALL, CAPTION, font};
+use super::panel::{BODY, CAPTION};
+use super::styles::{keys, sans};
 use super::widgets::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
@@ -43,7 +44,7 @@ pub fn find_bar(v: V) -> El {
     let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, run: fn(&mut App, &mut Tx)| {
         Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: c.faint, active: false, fill: None }.el(&c).label(help.clone()).help(help).on_press_tx(run)
     };
-    let field = text_input(&f.q, font(BODY, false))
+    let field = text_input(&f.q, sans(13.0, 400.0))
         .key("find-input")
         .single_line()
         .grow(1.0)
@@ -69,7 +70,7 @@ pub fn find_bar(v: V) -> El {
                 .center_y()
                 .child(icon(&SEARCH, 14.0).color(c.faint))
                 .child(field)
-                .child(text(count).key("find-count").font(font(BODY_SMALL, false)).color(tone))
+                .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
                 .child(button("find-prev", &CHEVRON_UP, 10.0, tip("Previous", "find.previous"), |s, tx| s.find_step(false, tx)))
                 .child(button("find-next", &CHEVRON_DOWN, 10.0, tip("Next", "find.next"), |s, tx| s.find_step(true, tx)))
                 .child(button("find-close", &CLOSE, 8.0, tip("Close", "find.close"), |s, tx| s.close_find(tx))),
@@ -179,7 +180,7 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
 /// A key cap (RD-91): caption text in dim on a raised fill, hairline border, 12 by 6 px of
 /// padding in all.
 pub(super) fn cap(t: String, c: &Roles) -> El {
-    row().px(6.0).py(3.0).radius(3.0).fill(c.raised).border(1.0, c.hairline).child(text(t).font(font(CAPTION, false)).color(c.dim))
+    row().px(6.0).py(3.0).radius(3.0).fill(c.raised).border(1.0, c.hairline).child(text(t).font(keys(CAPTION)).color(c.dim))
 }
 
 /// The help sheet (RD-86 to RD-91; in the writer WR-158 to WR-166).
@@ -196,14 +197,14 @@ pub fn help_sheet(v: V) -> El {
     card = card.child(
         text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
             .key("help-version")
-            .font(font(CAPTION, false))
+            .font(sans(11.0, 400.0))
             .color(c.ghost)
             .pin(None, Some(22.0), Some(24.0), None),
     );
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
     for (gi, (title, rows)) in groups.iter().enumerate() {
         let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
-            text(title.to_string()).font(font(CAPTION, true).tracking(1.0)).color(c.faint).text_case(TextCase::Uppercase).mb(6.0),
+            text(title.to_string()).font(sans(10.5, 600.0).tracking(1.0)).color(c.faint).text_case(TextCase::Uppercase).mb(6.0),
         );
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();
@@ -213,7 +214,7 @@ pub fn help_sheet(v: V) -> El {
                     keys = keys.child(cap(keymap::label_of(k), &c));
                 }
             }
-            g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(font(BODY_SMALL, false)).color(c.text)));
+            g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text)));
         }
         // The first group fills the left column; the rest go to the right one.
         let k = if cols == 2 && gi > 0 { 1 } else { 0 };
@@ -244,7 +245,7 @@ pub fn help_sheet(v: V) -> El {
 /// inside the foot's fade, so the text it covers is already faint.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
-    toast_row(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(font(BODY, false)).color(c.text).truncate().shrink().min_w(0.0)))
+    toast_row(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(sans(13.0, 400.0)).color(c.text).truncate().shrink().min_w(0.0)))
 }
 
 /// The row that holds a toast, 16 px clear of the note area's sides, so the pill always fits
@@ -258,7 +259,7 @@ fn toast_row(pill: El) -> El {
 /// button.
 pub fn undo_toast(v: V, name: &str) -> El {
     let c = Roles::new(v.p);
-    let body = font(BODY, false);
+    let body = sans(13.0, 400.0);
     let key = keymap::label(v.s.preset(), "app.undo-delete");
     let undo = row()
         .key("toast-undo")
@@ -273,7 +274,7 @@ pub fn undo_toast(v: V, name: &str) -> El {
         .help(format!("Undo ({key})"))
         .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
         .child(text("Undo").font(body).color(c.accent))
-        .child(text(key).font(font(CAPTION, false)).color(c.faint));
+        .child(text(key).font(keys(11.0)).color(c.faint));
     let msg = row()
         .key("toast-msg")
         .shrink()
@@ -302,5 +303,5 @@ pub fn reloaded(v: V) -> El {
         .ml(8.0)
         .center_y()
         .child(el().size(6.0, 6.0).radius(3.0).fill(accent))
-        .child(text("reloaded").font(font(CAPTION, false)).color(accent))
+        .child(text("reloaded").font(sans(11.0, 400.0)).color(accent))
 }

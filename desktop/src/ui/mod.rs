@@ -6,6 +6,7 @@ mod lock;
 mod outline;
 mod octicons;
 mod panel;
+mod styles;
 mod palette;
 mod preview;
 mod reader;
@@ -230,9 +231,9 @@ fn notice(v: V, msg: &str) -> El {
         .box_shadow(theme::menu_shadows()[0])
         .box_shadow(theme::menu_shadows()[1])
         .paint_order(60)
-        .child(widgets::label(msg, theme::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
+        .child(widgets::label(msg, styles::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
         .child(
-            widgets::label("dismiss", theme::mono(11.0, 400.0), p.mute)
+            widgets::label("dismiss", styles::sans(11.5, 400.0), p.mute)
                 .key("notice-x")
                 .on_press(|s: &mut App| s.notice = None),
         )

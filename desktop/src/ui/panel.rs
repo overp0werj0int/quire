@@ -1,13 +1,11 @@
 //! The side panels' type and spacing, taken from omarky's outline panel
 //! (`components/Outline.qml`, decision 0008). omarky sizes its chrome from a 12 px base:
-//! captions 10 px, small body 11 px, body 12 px, all in the system's monospace font.
+//! captions 10 px, small body 11 px, body 12 px, all in the panel family (`styles::nav`).
 
-use std::sync::OnceLock;
-
-use rune::{Color, El, Family, TextStyle, row, text};
+use rune::{Color, El, TextStyle, row, text};
 
 use crate::roles::{Roles, mix};
-use crate::theme::px;
+use super::styles::{nav, panel_line};
 
 pub const CAPTION: f32 = 10.0;
 pub const BODY_SMALL: f32 = 11.0;
@@ -26,39 +24,14 @@ pub const INDENT: f32 = 14.0;
 pub const RIGHT: f32 = 18.0;
 const RADIUS: f32 = 3.0;
 
-/// The family fontconfig's `monospace` resolves to (JetBrains Mono on Omarchy), read once, as
-/// omarky reads it. Named rather than `Family::SystemMono`, which loads only the regular face.
-fn family() -> Family {
-    static F: OnceLock<&'static str> = OnceLock::new();
-    Family::Named(F.get_or_init(|| {
-        std::process::Command::new("fc-match")
-            .args(["-f", "%{family[0]}", "monospace"])
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .map_or("IBM Plex Mono", |s| Box::leak(s.into_boxed_str()))
-    }))
-}
-
-pub fn font(size: f32, bold: bool) -> TextStyle {
-    TextStyle::new(size, if bold { 700.0 } else { 400.0 }).family(family()).lh(line(size))
-}
-
-/// The line as Qt sets it for JetBrains Mono: ascent 1.02 em and descent 0.3 em, each rounded.
-fn line(size: f32) -> f32 {
-    px(1.02 * size) + px(0.3 * size)
-}
-
 /// A row is its text's line plus 12 px.
 pub fn row_h(size: f32) -> f32 {
-    line(size) + 12.0
+    panel_line(size) + 12.0
 }
 
 /// A section caption: bold capitals, 1 px apart, in the faint colour.
 pub fn caption(t: &str, c: &Roles) -> El {
-    text(t.to_uppercase()).font(font(CAPTION, true).tracking(1.0)).color(c.faint)
+    text(t.to_uppercase()).font(nav(CAPTION, true).tracking(1.0)).color(c.faint)
 }
 
 /// A row's shade: inset `INSET` each side, the hover colour under the pointer, a tenth of the
@@ -104,7 +77,7 @@ pub fn ink(c: &Roles, depth: usize, current: bool) -> Color {
 
 /// Body text of a row at `depth`: 12 px bold at the top level, 11 px below.
 pub fn row_font(depth: usize) -> TextStyle {
-    if depth == 0 { font(BODY, true) } else { font(BODY_SMALL, false) }
+    if depth == 0 { nav(BODY, true) } else { nav(BODY_SMALL, false) }
 }
 
 #[cfg(test)]

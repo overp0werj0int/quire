@@ -2,11 +2,10 @@
 
 use std::sync::OnceLock;
 
-use rune::{Color, Family, Shadow, TextStyle};
+use rune::{Color, Family, Shadow};
 
 pub const SANS: Family = Family::Named("Instrument Sans");
 pub const SERIF: Family = Family::Named("Newsreader");
-pub const MONO: Family = Family::Named("IBM Plex Mono");
 
 
 /// The bundled font files, as shipped. `fonts()` is what the app registers.
@@ -311,20 +310,6 @@ pub fn metrics(family: Family) -> (f32, f32) {
         Family::Named("Spline Sans Mono") => (0.964, 0.237),
         _ => (1.025, 0.275),
     }
-}
-
-/// Instrument Sans at `size` with CSS `line-height: normal`.
-pub fn sans(size: f32, weight: f32) -> TextStyle {
-    TextStyle::new(size, weight).family(SANS).lh(normal_lh(SANS, size))
-}
-
-/// IBM Plex Mono at `size` with CSS `line-height: normal`.
-pub fn mono(size: f32, weight: f32) -> TextStyle {
-    TextStyle::new(size, weight).family(MONO).lh(normal_lh(MONO, size))
-}
-
-pub fn serif(size: f32, weight: f32) -> TextStyle {
-    TextStyle::new(size, weight).family(SERIF).lh(normal_lh(SERIF, size))
 }
 
 /// `0 1px 2px rgba(40,28,10,.14), 0 0 0 1px rgba(40,28,10,.05)`: the raised segment.

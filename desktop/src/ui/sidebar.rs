@@ -12,7 +12,8 @@ use crate::folders::{MenuOn, row_key};
 use crate::app::{App, Panel, Sel};
 use crate::md;
 use crate::roles::{Roles, mix};
-use crate::theme::{self, mono, sans};
+use super::styles::{keys, literal, nav};
+use crate::theme;
 
 /// The size of a sidebar button and of a panel tab: the smallest pointer target. The drawn
 /// icons stay small inside it.
@@ -36,7 +37,7 @@ pub fn sidebar(v: V) -> El {
             .role("button")
             .label(name.clone())
             .on_press(|s: &mut App| s.vault_menu = !s.vault_menu)
-            .child(text(name).font(panel::font(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
+            .child(text(name).font(nav(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
 
@@ -90,8 +91,8 @@ pub fn sidebar(v: V) -> El {
             .hover_group()
             .role("button")
             .on_press_tx(move |s: &mut App, tx| run(s, tx))
-            .child(text(t).font(panel::font(panel::BODY, false)).color(c.dim).group_color(c.text))
-            .child(text(kbd).font(panel::font(panel::CAPTION, false)).color(c.faint))
+            .child(text(t).font(nav(panel::BODY, false)).color(c.dim).group_color(c.text))
+            .child(text(kbd).font(keys(panel::CAPTION)).color(c.faint))
     };
     let note_mode = s.note_mode();
     let foot = col()
@@ -132,7 +133,7 @@ fn open_notes(v: V) -> El {
         .mx(panel::INSET)
         .pl(panel::TEXT_X - panel::INSET)
         .center_y()
-        .child(text("Open").font(panel::font(panel::BODY, true)).color(c.text));
+        .child(text("Open").font(nav(panel::BODY, true)).color(c.text));
     let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
     if s.note_mode() {
         let shown = s.note_path();
@@ -178,7 +179,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
                 s.open_note(&open_file);
             }
         })
-        .child(text(name).font(panel::font(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
         .child(close)
 }
 
@@ -212,7 +213,7 @@ fn open_row(v: V, path: &str) -> El {
                 s.open_file(&open_path, None, tx);
             }
         })
-        .child(text(md::base(path)).font(panel::font(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
         .child(close)
 }
 
@@ -230,7 +231,7 @@ fn vault_menu(v: V) -> El {
             .hover(p.hover)
             .role("menuitem")
             .on_press_tx(move |s: &mut App, tx| run(s, tx))
-            .child(label(t, sans(13.0, 400.0), p.ink))
+            .child(label(t, nav(panel::BODY, false), p.ink))
     };
     let [a, b] = theme::menu_shadows();
     // Under the folder's name, below the corner and the Open list.
@@ -247,7 +248,7 @@ fn vault_menu(v: V) -> El {
         .box_shadow(b)
         .role("menu")
         .modal(true, |s: &mut App| s.vault_menu = false)
-        .child(text(path).font(mono(11.0, 400.0).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0))
+        .child(text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0))
         .child(item("menu-switch", "Switch folder…", |s, tx| s.go_welcome(tx)))
         .child(item("menu-settings", "Settings", |s, _| s.open_settings()));
     el().key("vault-menu-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(31).child(panel)
@@ -302,7 +303,7 @@ fn files_panel(v: V) -> El {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
     }
     if vault.files.is_empty() && s.new_folder.is_none() {
-        c = c.child(text("No notes yet.").font(panel::font(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
+        c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
     }
     c.children(rows)
 }
@@ -388,7 +389,7 @@ fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool,
     if folder {
         r = r.expanded(open);
     }
-    r.child(text(name).font(panel::font(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+    r.child(text(name).font(nav(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
 }
 
 /// The row where a new folder gets its name.
@@ -399,7 +400,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .child(el().w(CHEV).h(CHEV))
         .child(
             el().key("new-folder-box").grow(1.0).min_w(0.0).px(4.0).py(1.0).radius(3.0).fill(c.hover).child(
-                text_input(edit, panel::font(panel::BODY, true))
+                text_input(edit, nav(panel::BODY, true))
                     .key("new-folder")
                     .single_line()
                     .w_full()
@@ -486,9 +487,9 @@ pub fn menu(v: V, key: &str, at: (f32, f32), items: Vec<Item>, close: fn(&mut Ap
     let mut panel = col().key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).fill(p.bg).box_shadow(a).box_shadow(b).role("menu").modal_tx(true, close);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
-        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, sans(13.0, 400.0), ink).grow(1.0));
+        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
         if let Some(k) = it.keys {
-            r = r.child(label(k, sans(12.0, 400.0), p.mute));
+            r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
         }
         if it.enabled {
             let run = it.run;
@@ -535,7 +536,7 @@ fn confirm_delete_folder(v: V, folder: &str, mx: f32, my: f32) -> El {
     let [a, b] = theme::menu_shadows();
     let f = folder.to_string();
     let button = |key: &str, t: &str, color: Color| {
-        row().key(key).h(30.0).px(12.0).center_y().radius(6.0).hover(p.hover).role("button").label(t).child(label(t, sans(13.0, 500.0), color))
+        row().key(key).h(30.0).px(12.0).center_y().radius(6.0).hover(p.hover).role("button").label(t).child(label(t, nav(panel::BODY, true), color))
     };
     let panel = col()
         .key("tree-menu")
@@ -550,7 +551,7 @@ fn confirm_delete_folder(v: V, folder: &str, mx: f32, my: f32) -> El {
         .role("alertdialog")
         .label(msg.clone())
         .modal(true, |s: &mut App| s.tree_menu = None)
-        .child(label(msg, sans(13.0, 400.0).lh(19.0), p.ink).wrap())
+        .child(label(msg, nav(panel::BODY, false).lh(18.0), p.ink).wrap())
         .child(
             row()
                 .gap(4.0)
@@ -587,9 +588,9 @@ pub fn drag_ghost(v: V) -> El {
         .box_shadow(b)
         .paint_order(70)
         .inert()
-        .child(label(md::base(&d.path), sans(13.0, 500.0), p.ink));
+        .child(label(md::base(&d.path), nav(panel::BODY, true), p.ink));
     if !hint.is_empty() {
-        r = r.child(label(hint, mono(11.0, 400.0), p.acc));
+        r = r.child(label(hint, nav(panel::BODY_SMALL, false), p.acc));
     }
     r
 }
@@ -612,7 +613,7 @@ fn search_panel(v: V) -> El {
         .fill(p.bg)
         .child(icon(&SEARCH, 11.0).color(c.faint))
         .child(
-            text_input(&s.query, panel::font(panel::BODY, false))
+            text_input(&s.query, nav(panel::BODY, false))
                 .key("search")
                 .single_line()
                 .px(2.0)
@@ -653,14 +654,14 @@ fn search_panel(v: V) -> El {
     let mut out = col()
         .key("search-panel")
         .w_full()
-        .child(col().key("search-top").px(panel::INSET).child(box_).child(text(summary).font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pt(10.0).pl(panel::TEXT_X - panel::INSET).pb(4.0)));
+        .child(col().key("search-top").px(panel::INSET).child(box_).child(text(summary).font(nav(panel::BODY_SMALL, false)).color(c.faint).pt(10.0).pl(panel::TEXT_X - panel::INSET).pb(4.0)));
     let ql = q.len();
     for (ri, r) in results.iter().enumerate() {
         let lines: Vec<&str> = s.files().get(&r.path).map(|t| t.split('\n').collect()).unwrap_or_default();
         let first = r.hits.first().map(|h| Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true });
         let path = r.path.clone();
-        let name_style = panel::font(panel::BODY, true);
-        let small = panel::font(panel::CAPTION, false);
+        let name_style = nav(panel::BODY, true);
+        let small = nav(panel::CAPTION, false);
         let shift = super::baseline_shift(name_style, small);
         let mut block = col().key(format!("res-{ri}")).py(4.0).child(
             panel::shade("res-head", panel::BODY, 0, 0.0, &c, false)
@@ -690,12 +691,12 @@ fn search_panel(v: V) -> El {
             let sel = Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true };
             block = block.child(
                 el().key(format!("hit-{hi}")).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button").on_press_tx(move |s: &mut App, tx| s.open_file(&path, Some(sel), tx)).child(
-                    rich(text_, spans).font(panel::font(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).wrap().wrap_anywhere().w_full(),
+                    rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).wrap().wrap_anywhere().w_full(),
                 ),
             );
         }
         if r.hits.len() > 4 {
-            block = block.child(text(format!("+ {} more", r.hits.len() - 4)).font(panel::font(panel::CAPTION, false)).color(c.faint).py(2.0).pl(panel::TEXT_X));
+            block = block.child(text(format!("+ {} more", r.hits.len() - 4)).font(nav(panel::CAPTION, false)).color(c.faint).py(2.0).pl(panel::TEXT_X));
         }
         out = out.child(block);
     }
@@ -714,7 +715,7 @@ fn tags_panel(v: V) -> El {
     let tags = md::tags(v.s.files());
     let mut out = col().key("tags").w_full();
     if tags.is_empty() {
-        return out.child(text("No tags yet. Write #something in a note.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).py(6.0).pl(panel::TEXT_X).pr(panel::RIGHT).wrap());
+        return out.child(text("No tags yet. Write #something in a note.").font(nav(panel::BODY_SMALL, false)).color(c.faint).py(6.0).pl(panel::TEXT_X).pr(panel::RIGHT).wrap());
     }
     for (tag, n) in tags {
         let t = tag.clone();
@@ -723,8 +724,8 @@ fn tags_panel(v: V) -> El {
                 .justify_between()
                 .role("button")
                 .on_press(move |s: &mut App| s.search_tag(&t))
-                .child(text(format!("#{tag}")).font(panel::font(panel::BODY, false)).color(c.accent))
-                .child(text(n.to_string()).font(panel::font(panel::CAPTION, false)).color(c.faint)),
+                .child(text(format!("#{tag}")).font(nav(panel::BODY, false)).color(c.accent))
+                .child(text(n.to_string()).font(nav(panel::CAPTION, false)).color(c.faint)),
         );
     }
     out

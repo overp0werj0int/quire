@@ -7,7 +7,8 @@ use super::V;
 use super::settings::{block, body_width, desc_text, row_};
 use super::widgets::{Control, label, primary_button, seg, settings_seg, switch};
 use crate::app::{App, SyncStatus};
-use crate::theme::{self, mono, sans};
+use super::styles::{literal, sans};
+use crate::theme;
 
 pub struct Provider {
     pub id: &'static str,
@@ -252,7 +253,7 @@ pub fn sync(v: V) -> El {
                 }
             })
             .child(text(pv.name).font(sans(13.0, 500.0)).color(p.ink).truncate().max_w(card_w - 26.0))
-            .child(text(pv.kind).font(mono(10.5, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
+            .child(text(pv.kind).font(sans(11.0, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
         if on {
             card = card.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
         }
@@ -361,7 +362,7 @@ pub fn sync(v: V) -> El {
             })
             .child(text(msg).font(sans(12.5, 400.0).lh(12.5 * 1.45)).color(color).wrap().grow(1.0).min_w(180.0)),
     );
-    c.child(text("Keys are saved in Quire's settings file, never inside the notes folder.").font(mono(11.0, 400.0).lh(16.5)).color(p.mute).pt(14.0).wrap().w_full())
+    c.child(text("Keys are saved in Quire's settings file, never inside the notes folder.").font(sans(12.0, 400.0).lh(17.0)).color(p.mute).pt(14.0).wrap().w_full())
 }
 
 fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
@@ -396,7 +397,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                         .border(1.0, if on { p.acc } else { p.line })
                         .border_layout()
                         .choice(on, move |s: &mut App, _: &mut Tx| set_cfg(s, key, ov.into()))
-                        .child(label(*ol, mono(11.5, 400.0), if on { p.acc } else { p.ink2 })),
+                        .child(label(*ol, sans(12.0, 400.0), if on { p.acc } else { p.ink2 })),
                 );
             }
             c = c.child(r);
@@ -418,7 +419,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                     .border_layout()
                     .scroll(rune::ScrollSpec { stick_bottom: false })
                     .child(
-                        text_input(&edit, mono(11.5, 400.0).lh(11.5 * 1.5))
+                        text_input(&edit, literal(11.5).lh(11.5 * 1.5))
                             .key(fk.clone())
                             .w_full()
                             .color(p.ink)
@@ -436,7 +437,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
             );
         }
         Kind::Read => {
-            c = c.child(text(value).font(mono(12.0, 400.0)).color(p.ink2).wrap().wrap_anywhere().w_full().py(7.0).px(10.0).radius(7.0).fill(p.code));
+            c = c.child(text(value).font(literal(12.0)).color(p.ink2).wrap().wrap_anywhere().w_full().py(7.0).px(10.0).radius(7.0).fill(p.code));
         }
     }
     c
@@ -465,7 +466,7 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
         .border_layout()
         .clip_rounded(7.0)
         .child(
-            text_input(&edit, mono(12.5, 400.0))
+            text_input(&edit, literal(12.5))
                 .key(fk.to_string())
                 .single_line()
                 .grow(1.0)
@@ -503,7 +504,7 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
                         e.set_secure(!s.reveal.contains(&rk));
                     }
                 })
-                .child(label(if revealed { "hide" } else { "show" }, mono(11.0, 400.0), p.mute).group_color(p.ink)),
+                .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
         );
     }
     let _ = (desc_text, Color::TRANSPARENT);

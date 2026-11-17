@@ -3,14 +3,13 @@
 
 use rune::{El, Live, ScrollSpec, col, el, row, text};
 
-use super::{V, panel};
+use super::{V, panel, styles};
 use super::editor::{group, link_at_caret};
 use super::widgets::label;
 use crate::app::{App, Mode};
 use crate::keys::mod_click;
 use crate::md;
 use crate::roles::Roles;
-use crate::theme::mono;
 
 /// The panel's width, and the side padding of its counts and footer.
 const PANEL_W: f32 = 236.0;
@@ -78,15 +77,15 @@ pub fn outline(v: V) -> El {
         list = list.child(shade.role("button").on_press_tx(move |s: &mut App, tx| s.jump(line, tx)).child(dot).child(name));
     }
     if shown.is_empty() {
-        list = list.child(text("No headings in this note.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
+        list = list.child(text("No headings in this note.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
     list = list.child(panel::caption("Linked from", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
     let mut back = s.active.as_ref().map(|a| md::backlinks(s.files(), a)).unwrap_or_default();
     if let Some(vault) = &s.vault {
         back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
     }
-    let name_style = panel::font(panel::BODY, false);
-    let small = panel::font(panel::CAPTION, false);
+    let name_style = styles::nav(panel::BODY, false);
+    let small = styles::nav(panel::CAPTION, false);
     let shift = super::baseline_shift(name_style, small);
     for (i, (bp, _)) in back.iter().enumerate() {
         let path = bp.clone();
@@ -101,7 +100,7 @@ pub fn outline(v: V) -> El {
         );
     }
     if back.is_empty() {
-        list = list.child(text("No notes link here yet.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
+        list = list.child(text("No notes link here yet.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
     let scroll = col().key("outline-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
     col()
@@ -124,7 +123,7 @@ fn counts(v: V) -> El {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
-    let style = mono(11.0, 400.0);
+    let style = styles::nav(panel::BODY_SMALL, false);
     let sel = (s.mode == Mode::Source)
         .then(|| s.active.as_ref().and_then(|a| s.edits.get(a)))
         .flatten()
@@ -157,7 +156,7 @@ fn footer(v: V) -> Option<El> {
         return None;
     }
     let doc = s.active_text();
-    let style = mono(11.0, 400.0);
+    let style = styles::nav(panel::BODY_SMALL, false);
     let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
     let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
     let pos = edit.map_or(0, |e| e.focus.min(doc.len()));

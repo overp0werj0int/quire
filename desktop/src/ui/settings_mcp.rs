@@ -6,10 +6,10 @@ use rune::{El, Tx, col, el, icon, row, text};
 use super::V;
 use super::settings::{block, row_};
 use super::settings_sync::text_box;
-use super::widgets::{CHECK, Control, label, outline_button, seg, settings_seg, settings_seg_mono, switch};
+use super::widgets::{CHECK, Control, label, outline_button, seg, settings_seg, settings_seg_literal, switch};
 use crate::app::App;
 use crate::store::{MCP_TOOLS, new_token};
-use crate::theme::{mono, sans};
+use super::styles::{literal, sans};
 
 pub fn config_json(v: V) -> String {
     let s = v.s;
@@ -52,7 +52,7 @@ pub fn mcp(v: V) -> El {
         "transport",
         "Transport",
         Some("With stdio, the AI app starts Quire's helper itself. HTTP serves a local endpoint on this computer."),
-        settings_seg_mono(v, "tr-seg", vec![tr("stdio", "stdio"), tr("http", "HTTP")]),
+        settings_seg_literal(v, "tr-seg", vec![tr("stdio", "stdio"), tr("http", "HTTP")]),
     ));
     if http {
         let port = m.port.clone();
@@ -73,7 +73,7 @@ pub fn mcp(v: V) -> El {
                     })))
                     .child(
                         col().key("addr").grow(1.0).min_w(0.0).gap(6.0).child(label("Address", sans(12.5, 500.0), p.ink2)).child(
-                            row().key("addr-box").h(32.0).w_full().px(10.0).center_y().radius(7.0).fill(p.code).child(text(url(v)).font(mono(12.0, 400.0)).color(p.ink2).truncate().shrink().min_w(0.0)),
+                            row().key("addr-box").h(32.0).w_full().px(10.0).center_y().radius(7.0).fill(p.code).child(text(url(v)).font(literal(12.0)).color(p.ink2).truncate().shrink().min_w(0.0)),
                         ),
                     ),
             )
@@ -138,10 +138,10 @@ pub fn mcp(v: V) -> El {
                 }
             })
             .child(bx)
-            .child(label(id, mono(12.5, 400.0), p.ink).w(128.0))
+            .child(label(id, literal(12.5), p.ink).w(128.0))
             .child(text(desc).font(sans(12.5, 400.0)).color(p.ink2).grow(1.0).shrink().min_w(0.0).truncate());
         if write {
-            r = r.child(super::widgets::padded("writes", mono(10.5, 400.0), p.acc, 6.0, 2.0, 0.0).radius(4.0).fill(p.soft));
+            r = r.child(super::widgets::padded("writes", sans(11.0, 500.0), p.acc, 6.0, 2.0, 0.0).radius(4.0).fill(p.soft));
         }
         tools = tools.child(r);
     }
@@ -173,7 +173,7 @@ pub fn mcp(v: V) -> El {
                     }
                 })
                 .child({
-                    let mut t = rune::rich(lbl.clone(), Vec::new()).font(mono(12.0, 400.0)).color(if on { p.acc } else { p.mute });
+                    let mut t = rune::rich(lbl.clone(), Vec::new()).font(literal(12.0)).color(if on { p.acc } else { p.mute });
                     if !on {
                         t = t.strike(0, lbl.len(), Some(p.mute));
                     }
@@ -228,7 +228,7 @@ pub fn mcp(v: V) -> El {
                         s.mcp_copied_at = Some(std::time::Instant::now());
                     })),
             )
-            .child(el().key("cfg").w_full().mt(12.0).radius(8.0).fill(p.code).scroll_x().child(text(cfg).font(mono(11.5, 400.0).lh(11.5 * 1.6)).color(p.ink2).py(12.0).px(14.0)))
+            .child(el().key("cfg").w_full().mt(12.0).radius(8.0).fill(p.code).scroll_x().child(text(cfg).font(literal(11.5).lh(11.5 * 1.6)).color(p.ink2).py(12.0).px(14.0)))
             .child(
                 row()
                     .key("mcp-status")
@@ -237,7 +237,7 @@ pub fn mcp(v: V) -> El {
                     .mt(12.0)
                     .items_start()
                     .child(el().size(6.0, 6.0).mt(5.25).radius(3.0).fill(p.acc))
-                    .child(text(status).font(mono(11.0, 400.0).lh(16.5)).color(p.mute).wrap().grow(1.0).shrink().min_w(0.0)),
+                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(p.mute).wrap().grow(1.0).shrink().min_w(0.0)),
             ),
     )
 }
@@ -258,7 +258,7 @@ fn token_box(v: V, token: &str) -> El {
         .border(1.0, p.line)
         .border_layout()
         .clip_rounded(7.0)
-        .child(text(shown).font(mono(12.5, 400.0)).color(p.ink).selectable(revealed).truncate().grow(1.0).shrink().min_w(0.0).px(10.0))
+        .child(text(shown).font(literal(12.5)).color(p.ink).selectable(revealed).truncate().grow(1.0).shrink().min_w(0.0).px(10.0))
         .child(
             row()
                 .key("reveal")
@@ -274,6 +274,6 @@ fn token_box(v: V, token: &str) -> El {
                         s.reveal.insert("mcp-token".into());
                     }
                 })
-                .child(label(if revealed { "hide" } else { "show" }, mono(11.0, 400.0), p.mute).group_color(p.ink)),
+                .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
         )
 }

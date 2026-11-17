@@ -6,7 +6,7 @@ use super::widgets::{MARK, MARK_ON_INK, dots, label, primary_button};
 use super::{V, baseline_shift};
 use crate::app::App;
 use crate::store::tilde;
-use crate::theme::{mono, sans};
+use super::styles::{literal, sans};
 
 pub fn welcome(v: V) -> El {
     let p = v.p;
@@ -34,7 +34,7 @@ pub fn welcome(v: V) -> El {
         .key("brand")
         .gap(12.0)
         .child(lockup)
-        .child(label("A plain editor for folders of Markdown files.", mono(12.5, 400.0).lh(20.0), p.mute));
+        .child(label("A plain editor for folders of Markdown files.", sans(14.0, 400.0).lh(20.0), p.mute));
 
     let actions = match &s.creating {
         None => col()
@@ -56,7 +56,7 @@ pub fn welcome(v: V) -> El {
                 .border(1.0, p.line)
                 .border_layout()
                 .radius(10.0)
-                .child(label("folder name", mono(11.0, 400.0), p.mute))
+                .child(label("folder name", sans(11.0, 400.0), p.mute))
                 .child(
                     row()
                         .key("new-vault-box")
@@ -79,7 +79,7 @@ pub fn welcome(v: V) -> El {
                                 .on_submit(|s: &mut App, tx| s.create_vault(tx)),
                         ),
                 )
-                .child(label(path, mono(11.5, 400.0), p.mute))
+                .child(label(path, literal(11.5), p.mute))
                 .child(
                     row()
                         .key("create-buttons")
@@ -104,9 +104,9 @@ pub fn welcome(v: V) -> El {
         }
     };
 
-    let mut recent = col().key("recent").gap(2.0).child(label("recent", mono(11.0, 400.0), p.mute).pb(8.0));
+    let mut recent = col().key("recent").gap(2.0).child(label("recent", sans(11.0, 400.0), p.mute).pb(8.0));
     let name_style = sans(14.0, 500.0);
-    let small = mono(11.5, 400.0);
+    let small = literal(11.5);
     let shift = baseline_shift(name_style, small);
     for (i, r) in s.persist.vaults.iter().enumerate() {
         let n = s.counts.get(&r.path).copied().unwrap_or(0);
@@ -136,7 +136,7 @@ pub fn welcome(v: V) -> El {
                 })
                 .child(label(r.name.clone(), name_style, p.ink))
                 .child(text(tilde(&r.path)).font(small).color(p.mute).truncate().grow(1.0).shrink().mt(shift))
-                .child(label(format!("{n} {}", if n == 1 { "note" } else { "notes" }), small, p.mute).mt(shift)),
+                .child(label(format!("{n} {}", if n == 1 { "note" } else { "notes" }), sans(12.0, 400.0), p.mute).mt(baseline_shift(name_style, sans(12.0, 400.0)))),
         );
     }
 
@@ -175,7 +175,7 @@ fn card(v: V, key: &str, title: &str, desc: &str, run: fn(&mut App, &mut rune::T
                 .child(label(title, sans(14.5, 500.0), p.ink))
                 .child(label(desc, sans(12.5, 400.0), p.mute)),
         )
-        .child(label("→", mono(15.0, 400.0), p.mute))
+        .child(label("→", sans(15.0, 400.0), p.mute))
         // The hover border: CSS changes the border colour; this ring fades in over it.
         .child(el().key("ring").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(10.0).border(1.0, p.mark).fill(Color::TRANSPARENT).group_opacity(0.0, 1.0))
 }

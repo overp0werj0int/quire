@@ -7,7 +7,7 @@ use super::V;
 use super::widgets::{CODE, COPY_ALL, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
-use crate::theme::mono;
+use super::styles::sans;
 
 /// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
 /// each about the golden ratio (1.618) of the next size down, all centred 20 points down.
@@ -157,7 +157,7 @@ fn focus_bar(v: V) -> El {
         .justify_center()
         .center_y()
         .inert()
-        .child(label(words, mono(11.5, 400.0), p.mute));
+        .child(label(words, sans(12.0, 400.0), p.mute));
     let inner = row()
         .key("focus-inner")
         .h(BAR_H)

@@ -6,7 +6,8 @@ use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
 use super::V;
 use super::widgets::{LOCK, label, outline_button, primary_button};
 use crate::app::App;
-use crate::theme::{self, mono, sans};
+use super::styles::sans;
+use crate::theme;
 
 /// A password field kept in `App::fields`. Enter runs `submit`.
 fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mut App, &mut Tx)) -> El {
@@ -23,7 +24,7 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
         .border_layout()
         .clip_rounded(7.0)
         .child(
-            text_input(&edit, mono(12.5, 400.0))
+            text_input(&edit, sans(13.0, 400.0))
                 .key(key)
                 .single_line()
                 .grow(1.0)

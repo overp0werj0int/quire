@@ -5,7 +5,7 @@
 use rune::{Key, KeyEvent, ScrollFade, ScrollSpec, TextHighlight, Tx, col, el, row, text, text_input};
 
 use super::V;
-use super::panel::{BODY_SMALL, CAPTION, font};
+use super::styles::sans;
 use super::reader::{cap, popup};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
@@ -45,8 +45,8 @@ pub fn sheet(v: V) -> rune::El {
         .key("sheet-title")
         .gap(8.0)
         .center_y()
-        .child(text(crate::md::base(&sh.rel).to_string()).font(font(BODY_SMALL, true)).color(c.text).truncate().shrink().min_w(0.0))
-        .child(text(span).key("sheet-span").font(font(BODY_SMALL, false)).color(c.faint));
+        .child(text(crate::md::base(&sh.rel).to_string()).font(sans(12.5, 600.0)).color(c.text).truncate().shrink().min_w(0.0))
+        .child(text(span).key("sheet-span").font(sans(12.5, 400.0)).color(c.faint));
 
     // SHEET-022 to SHEET-026: a neighbour, clipped to three reading lines, fading at the edge
     // where it is cut.
@@ -95,7 +95,7 @@ pub fn sheet(v: V) -> rune::El {
     let preset = s.preset();
     let key_of = |id: &str| keymap::action(id).and_then(|a| a.chords(preset).first().copied()).map(keymap::label_of).unwrap_or_default();
     let foot = match sh.problem {
-        Some(p) => row().key("sheet-problem").h(KEY_ROW).w_full().center_y().child(text(p).font(font(CAPTION, false)).color(c.red).truncate().shrink().min_w(0.0)),
+        Some(p) => row().key("sheet-problem").h(KEY_ROW).w_full().center_y().child(text(p).font(sans(11.5, 400.0)).color(c.red).truncate().shrink().min_w(0.0)),
         None => {
             let armed = sh.armed.is_some();
             let (cancel, tone) = if armed { ("again to discard your edit", c.text) } else { ("cancels", c.faint) };
@@ -105,10 +105,10 @@ pub fn sheet(v: V) -> rune::El {
                 .gap(8.0)
                 .center_y()
                 .child(cap(key_of("sheet.cancel"), &c))
-                .child(text(cancel).key("sheet-cancel").font(font(CAPTION, false)).color(tone))
+                .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone))
                 .child(el().w(10.0 - 8.0))
                 .child(cap(key_of("sheet.save"), &c))
-                .child(text("saves").font(font(CAPTION, false)).color(c.faint))
+                .child(text("saves").font(sans(11.5, 400.0)).color(c.faint))
         }
     };
 
