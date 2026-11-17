@@ -114,8 +114,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(bar).child(editor::body(v));
             let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
             let mut root = root.child(frame);
-            if v.left_over() {
-                root = root.child(sidebar_drawer(v));
+            if let Some(drawer) = drawer(v) {
+                root = root.child(drawer_scrim(v)).child(drawer);
             }
             if focus {
                 root.child(titlebar::titlebar(v).pin(Some(0.0), Some(0.0), Some(0.0), None)).children(editor::progress(v))
@@ -156,22 +156,38 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if reduced { root.instant_changes() } else { root }
 }
 
-/// Too narrow to dock: the sidebar as a drawer over the page's left edge, on the sidebar's
-/// colour, so the page does not reflow under it. The window corner's buttons stay over its top.
-/// A press outside it, Esc, the sidebar button or an opened note closes it.
-fn sidebar_drawer(v: V) -> El {
+/// The drawer on screen, if any (`App::shown_drawer`): in a window too narrow to dock it, the
+/// sidebar over the page's left edge on the sidebar's colour, or the outline over its right
+/// edge on the page's, so the page does not reflow under it. Both slide in from their edge over
+/// 160 ms (WR-99). The window corner's buttons stay over the sidebar's top.
+fn drawer(v: V) -> Option<El> {
     let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
-    let shadow = rune::Shadow { x: 6.0, y: 0.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
-    el().key("sidebar-over")
-        .pin(Some(0.0), Some(0.0), None, Some(0.0))
-        .paint_order(35)
-        .fill(v.p.side)
-        .box_shadow(shadow)
-        .role("dialog")
-        .label("Sidebar")
-        .modal_tx(true, |s: &mut App, tx| s.close_drawer(tx))
-        .child(sidebar::sidebar(v))
-        .transition(rune::Transition::move_edge(rune::Edge::Leading).springs(slide))
+    let shadow = |x: f32| rune::Shadow { x, y: 0.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
+    let (panel, edge) = if v.left_over() {
+        let panel = el().key("sidebar-over").pin(Some(0.0), Some(0.0), None, Some(0.0)).fill(v.p.side).box_shadow(shadow(6.0)).label("Sidebar").child(sidebar::sidebar(v));
+        (panel, rune::Edge::Leading)
+    } else if v.right_over() {
+        // Under the title bar and the page's top border, where the docked outline sits.
+        let panel = el().key("outline-over").pin(None, Some(titlebar::BAR_H + 1.0), Some(0.0), Some(0.0)).fill(v.p.bg).box_shadow(shadow(-6.0)).label("Outline").child(outline::outline(v));
+        (panel, rune::Edge::Trailing)
+    } else {
+        return None;
+    };
+    Some(panel.paint_order(35).role("dialog").transition(rune::Transition::move_edge(edge).springs(slide)))
+}
+
+/// The scrim behind an open drawer: the modal layers' colour over the page, under the title
+/// bar. A press on it closes the drawer and does nothing else. The title bar stays live: its
+/// buttons close the drawer and act (`titlebar`), so both drawers answer an outside press by
+/// one rule.
+fn drawer_scrim(v: V) -> El {
+    let fade = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+    el().key("drawer-scrim")
+        .pin(Some(0.0), Some(titlebar::BAR_H), Some(0.0), Some(0.0))
+        .paint_order(34)
+        .fill(v.p.scrim)
+        .on_press_tx(|s: &mut App, tx| s.close_drawer(tx))
+        .transition(rune::Transition::opacity().springs(fade))
 }
 
 /// The reader is on screen: a note open in preview, not locked.

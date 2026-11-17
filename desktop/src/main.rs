@@ -888,6 +888,30 @@ pub(crate) mod scroll_tests {
         tap(&mut rt, at);
         settle(&mut rt);
         assert!(rect(&rt, "sidebar-over").is_none(), "an opened note closes it");
+        // Both drawers, one rule: a press on a title bar button closes the open drawer and does
+        // what the button does.
+        toggle(&mut rt);
+        settle(&mut rt);
+        let at = rt.find("toggle-right").expect("the outline button");
+        tap(&mut rt, at);
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none() && rect(&rt, "outline-over").is_some(), "the outline button swaps the sidebar for the outline");
+        toggle(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline-over").is_none() && rect(&rt, "sidebar-over").is_some(), "and the sidebar button swaps them back");
+        let mode = |rt: &mut Runtime<crate::app::App>| {
+            let mut m = crate::app::Mode::Source;
+            rt.update_if(|s, _| {
+                m = s.mode;
+                false
+            });
+            m
+        };
+        let was = mode(&mut rt);
+        let at = rt.find("mode").expect("the mode button");
+        tap(&mut rt, at);
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none() && mode(&mut rt) != was, "another button closes the drawer and acts");
         assert_eq!(docked(&mut rt), setting, "the docked setting never changed");
         // From 680 up, nothing changed: the button docks and undocks it.
         rt.set_viewport((1000.0, 600.0), 1.0);
