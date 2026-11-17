@@ -761,7 +761,7 @@ mod writer_chrome_tests {
     }
 
     /// Typing leaves the chrome where it is: the title bar, the file tree, the toolbar and the
-    /// status bar stay fully drawn through Enter and the pause after it (decision 0010).
+    /// word count stay fully drawn through Enter and the pause after it (decision 0010).
     #[test]
     fn typing_leaves_the_chrome_in_place() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -774,10 +774,48 @@ mod writer_chrome_tests {
         for _ in 0..60 {
             rt.frame(DT);
         }
-        for key in ["titlebar", "sidebar", "toolbar", "status"] {
+        for key in ["titlebar", "word-count", "sidebar", "toolbar"] {
             let o = info(&rt, key).unwrap_or_else(|| panic!("{key} is drawn")).opacity;
             assert!(o > 0.99, "{key} at opacity {o} after Enter");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-189: the word count and reading time are pills in the title bar beside the note's
+    /// name, in both modes. The status line sits at the outline's foot: the caret's line and
+    /// column in the writer, and nothing that says "preview" in the reader.
+    #[test]
+    fn wr_189_counts_in_the_title_bar_and_the_status_under_the_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-pills-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, _| s.persist.right_open = true);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let inside = |r: [f32; 4], o: [f32; 4]| r[0] >= o[0] - 0.5 && r[1] >= o[1] - 0.5 && r[0] + r[2] <= o[0] + o[2] + 0.5 && r[1] + r[3] <= o[1] + o[3] + 0.5;
+        let check_pills = |rt: &rune::Runtime<crate::app::App>| {
+            let bar = rt.presented("titlebar").unwrap().0;
+            let crumb = rt.presented("crumb").unwrap().0;
+            for key in ["word-count", "read-time"] {
+                let r = rt.presented(key).unwrap_or_else(|| panic!("{key} is drawn")).0;
+                assert!(inside(r, bar) && r[0] > crumb[0] + crumb[2], "{key} {r:?} sits in the title bar {bar:?} after the name {crumb:?}");
+            }
+        };
+        check_pills(&rt);
+        let outline = rt.presented("outline").unwrap().0;
+        let status = rt.presented("status").expect("the status line shows in the writer").0;
+        assert!(inside(status, outline), "the status line {status:?} sits in the outline {outline:?}");
+        assert!((status[1] + status[3] - (outline[1] + outline[3])).abs() < 1.0, "at its foot");
+        let pos = info(&rt, "caret-pos").expect("the caret's position shows");
+        assert!(inside(pos.rect, outline));
+        rt.update(|s, tx| s.toggle_mode(tx));
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        check_pills(&rt);
+        assert!(info(&rt, "caret-pos").is_none(), "no position in preview");
+        assert!(!rt.elements().iter().any(|e| e.text.as_deref() == Some("preview")), "nothing says preview");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1,4 +1,5 @@
-//! The right panel (outline and backlinks) and the status bar.
+//! The right panel: the outline, backlinks and, at its foot, the status line. The word count and
+//! reading time are pills in the title bar (`pills`).
 
 use rune::{El, Live, ScrollSpec, col, el, row, text};
 
@@ -92,6 +93,7 @@ pub fn outline(v: V) -> El {
     if back.is_empty() {
         list = list.child(text("No notes link here yet.").font(panel::font(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
+    let scroll = col().key("outline-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
     col()
         .key("outline")
         .w(236.0)
@@ -100,46 +102,38 @@ pub fn outline(v: V) -> El {
         .fill(c.wash)
         .border_sides([0.0, 0.0, 0.0, 1.0], c.hairline_soft)
         .border_layout()
-        .scroll(ScrollSpec { stick_bottom: false })
-        .child(list)
+        .child(scroll)
+        .children(status(v))
 }
 
-pub fn status(v: V) -> El {
+/// The status line at the panel's foot: in the writer the caret's line and column, or how many
+/// characters are selected, and the link under the caret; in both modes the sync state. None
+/// when it has nothing to show.
+fn status(v: V) -> Option<El> {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
-    let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
-    let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
-    let pos = edit.map_or(0, |e| e.focus.min(doc.len()));
-    let (line, ls) = md::line_col(doc, pos);
-    let col_ = doc[ls..pos].chars().count();
-    let sel = &doc[a..b];
     let style = mono(11.5, 400.0);
-    let preview = s.mode == Mode::Preview;
-    let pos_label = if preview {
-        "preview".to_string()
-    } else if !sel.is_empty() {
-        format!("{} selected", group(sel.chars().count()))
-    } else {
-        format!("Ln {}, Col {}", line + 1, col_ + 1)
-    };
-    // The writer's count (WR-188, WR-189): front matter, code fences and link targets left out.
-    let count = s.word_count();
-    let wc = count.words;
-    let word_label = if !sel.is_empty() {
-        format!("{} of {} words selected", group(crate::writer::count_words(sel)), group(wc))
-    } else {
-        format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
-    };
-    let read = format!("{} min read", count.minutes);
-    let mut r = row().key("status").h(29.0).w_full().gap(18.0).px(16.0).center_y().border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().clip_rounded(0.0).child(label(pos_label, style, p.mute));
-    if !preview {
+    let mut r = row().key("status").h(29.0).w_full().gap(12.0).px(16.0).center_y().border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().clip_rounded(0.0);
+    let mut any = false;
+    if s.mode == Mode::Source {
+        let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
+        let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
+        let pos = edit.map_or(0, |e| e.focus.min(doc.len()));
+        let (line, ls) = md::line_col(doc, pos);
+        let sel = &doc[a..b];
+        let pos_label = if sel.is_empty() {
+            format!("Ln {}, Col {}", line + 1, doc[ls..pos].chars().count() + 1)
+        } else {
+            format!("{} selected", group(sel.chars().count()))
+        };
+        r = r.child(label(pos_label, style, p.mute).key("caret-pos"));
         if let Some(t) = link_at_caret(doc, pos) {
             let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
             r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(p.acc).truncate().shrink().min_w(0.0));
         }
+        any = true;
     }
-    r = r.child(el().grow(1.0)).child(label(word_label, style, p.mute).key("word-count").help(format!("{} characters", group(count.chars)))).child(label(read, style, p.mute));
     if let Some((lbl, busy, failed)) = s.sync_label() {
         let dot = if failed { p.err } else if busy { p.acc } else { p.mark };
         let mut sync = row()
@@ -154,7 +148,34 @@ pub fn status(v: V) -> El {
         if let Some(e) = &s.sync.error {
             sync = sync.help(e.clone());
         }
-        r = r.child(sync);
+        r = r.child(el().grow(1.0)).child(sync);
+        any = true;
     }
-    r
+    any.then_some(r)
+}
+
+/// The word count and the reading time, as pills beside the note's name in the title bar
+/// (WR-189). The writer's count (WR-188): front matter, code fences and link targets left out.
+pub fn pills(v: V) -> [El; 2] {
+    let p = v.p;
+    let s = v.s;
+    let doc = s.active_text();
+    let sel = (s.mode == Mode::Source)
+        .then(|| s.active.as_ref().and_then(|a| s.edits.get(a)))
+        .flatten()
+        .map_or("", |e| &doc[e.anchor.min(e.focus).min(doc.len())..e.anchor.max(e.focus).min(doc.len())]);
+    let count = s.word_count();
+    let wc = count.words;
+    let words = if sel.is_empty() {
+        format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
+    } else {
+        format!("{} of {} words", group(crate::writer::count_words(sel)), group(wc))
+    };
+    let pill = |key: &str, t: String| {
+        row().key(key).h(20.0).px(8.0).center_y().radius(10.0).fill(p.soft).no_window_drag().child(label(t, mono(11.0, 400.0), p.mute))
+    };
+    [
+        pill("word-count", words).help(format!("{} characters", group(count.chars))),
+        pill("read-time", format!("{} min read", count.minutes)),
+    ]
 }

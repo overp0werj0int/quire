@@ -1,4 +1,4 @@
-//! The editor body: sidebar, the sheet with the note, the outline and the status bar.
+//! The editor body: the sheet with the note and the outline.
 //!
 //! Source mode works as the design does: highlighted lines draw underneath, and a text field
 //! with transparent text lies over them and takes the typing. Both lay out the same text in the
@@ -73,9 +73,6 @@ pub fn body(v: V) -> El {
         inner = inner.child(outline::outline(v).transition(t));
     }
     sheet = sheet.child(inner);
-    if v.has_doc() && !focus {
-        sheet = sheet.child(outline::status(v));
-    }
     if focus {
         sheet = sheet.child(focus_hint(v));
     }

@@ -28,3 +28,9 @@ from top to bottom, and the title bar spans only the rest. The window's corner (
 on macOS and the sidebar toggle) heads the sidebar when it is open and the title bar when it is
 closed, at the same place, so the toggle never moves (`titlebar::corner`). The sheet keeps only
 its top border.
+
+Update, 2026-11-17: the status bar under the sheet is gone. The word count and reading time are
+pills after the note's name in the title bar, in both modes (`outline::pills`). What else the
+bar held moved to a status line at the foot of the outline: the caret's line and column in the
+writer, the link under the caret, and the sync state. It no longer says "preview", and with the
+outline closed it is not shown (WR-189).
