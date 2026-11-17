@@ -9,6 +9,10 @@ use crate::app::{App, PalMode};
 use crate::commands::{self, pal_data};
 use crate::theme::{self, mono, sans};
 
+const HEAD_H: f32 = 53.0;
+const FOOT_H: f32 = 35.0;
+const LAYER_BOTTOM: f32 = 20.0;
+
 pub fn palette(v: V) -> El {
     let p = v.p;
     let s = v.s;
@@ -17,7 +21,7 @@ pub fn palette(v: V) -> El {
     let cmds = d.mode == PalMode::Commands;
     let head = row()
         .key("pal-head")
-        .h(53.0)
+        .h(HEAD_H)
         .w_full()
         .gap(12.0)
         .px(18.0)
@@ -84,12 +88,16 @@ pub fn palette(v: V) -> El {
     if d.items.is_empty() {
         list = list.child(label("Nothing matches.", sans(13.0, 400.0), p.mute).py(14.0).px(12.0));
     }
-    let scroller = col().key("pal-scroll").w_full().max_h(392.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
+    // The list is at most 392 tall, and less in a short window, so the head and the foot stay
+    // inside it: the layer's top and bottom padding, the head and the foot come off its height.
+    let top = (v.vh * 0.11).round();
+    let room = v.vh - top - LAYER_BOTTOM - HEAD_H - FOOT_H;
+    let scroller = col().key("pal-scroll").w_full().max_h(room.clamp(0.0, 392.0)).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
 
     let foot_style = mono(11.0, 400.0);
     let foot = row()
         .key("pal-foot")
-        .h(35.0)
+        .h(FOOT_H)
         .w_full()
         .gap(16.0)
         .px(18.0)
@@ -123,9 +131,9 @@ pub fn palette(v: V) -> El {
         .paint_order(50)
         .fill(p.scrim)
         .items_center()
-        .pt((v.vh * 0.11).round())
+        .pt(top)
         .px(20.0)
-        .pb(20.0)
+        .pb(LAYER_BOTTOM)
         .child(panel)
 }
 

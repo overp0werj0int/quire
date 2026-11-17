@@ -357,6 +357,29 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The command palette fits the smallest window: its frame and foot stay inside, and the
+    /// list scrolls in what is left.
+    #[test]
+    fn palette_fits_a_small_window() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-palette-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nText.\n")], crate::watch::EVERY);
+        for (w, h) in [(520.0, 400.0), (640.0, 480.0), (1400.0, 1000.0)] {
+            rt.set_viewport((w, h), 1.0);
+            rt.update(|s, tx| s.open_palette(crate::app::PalMode::Commands, tx));
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            let rect = |key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect).expect(key);
+            for key in ["palette-frame", "pal-foot"] {
+                let r = rect(key);
+                assert!(r[1] >= 0.0 && r[1] + r[3] <= h, "{key} {r:?} in a {w}x{h} window");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {
