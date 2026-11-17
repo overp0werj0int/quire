@@ -202,6 +202,24 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Every icon in the title bar is drawn at one size, in preview and in source.
+    #[test]
+    fn title_bar_icons_share_one_size() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-baricons-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        for mode in [crate::app::Mode::Preview, crate::app::Mode::Source] {
+            rt.update(|s, _| s.mode = mode);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+            let sizes: std::collections::BTreeSet<u32> = rt.elements().iter().filter(|e| e.role == "icon" && e.path.contains("/titlebar/")).map(|e| e.rect[2].round() as u32).collect();
+            assert_eq!(sizes.into_iter().collect::<Vec<_>>(), [15], "{mode:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar's small buttons and the panel tabs take a pointer over at least 24 by 24
     /// points, and the rows they sit in keep their height.
     #[test]

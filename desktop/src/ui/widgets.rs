@@ -20,7 +20,7 @@ svg!(CHEVRON_DOWN, 10.0, r#"<path d="M2 3.5l3 3 3-3" fill="none" stroke="current
 svg!(CHEVRON_UP, 10.0, r#"<path d="M2 6.5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 svg!(CHEVRON_RIGHT, 8.0, r#"<path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>"#);
 svg!(FOLDER_PLUS, 16.0, r#"<path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.5 1.6h4.9A1.5 1.5 0 0 1 14 6.1v5.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8 7v4M6 9h4" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>"#);
-svg!(SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>"#);
+svg!(SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.3 10.3L13.6 13.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
 svg!(EYE, 16.0, r#"<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/>"#);
 // The writer's view toggles in the title bar: paragraph focus (the middle line at full ink),
 // typewriter scrolling (the line held in the middle) and the next font.
@@ -49,6 +49,9 @@ svg!(WIDEN, 16.0, r#"<path d="M1.8 8h12.4M4.3 5.5L1.8 8l2.5 2.5M11.7 5.5L14.2 8l
 svg!(NARROW, 16.0, r#"<path d="M1.5 8h4.3M10.2 8h4.3M3.5 5.5L6 8l-2.5 2.5M12.5 5.5L10 8l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 // A question mark in a ring: the shortcuts sheet.
 svg!(HELP, 16.0, r#"<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.3a1.9 1.9 0 0 1 3.7.4c0 1.3-1.9 1.5-1.9 2.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".8" fill="currentColor"/>"#);
+// The title bar's Copy all: two sheets in the bar's line, unlike the filled octicon that code
+// blocks use.
+svg!(COPY_ALL, 16.0, r#"<rect x="6" y="6" width="7.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.5 6V4A1.5 1.5 0 0 0 8 2.5H4A1.5 1.5 0 0 0 2.5 4v4A1.5 1.5 0 0 0 4 9.5h2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 svg!(CODE, 16.0, r#"<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 // The logo's mark: three sheets in a stack, the violet one in front (assets/brand).
 svg!(MARK, 100.0, r##"<rect x="38" y="10" width="46" height="60" rx="6" fill="#e1dbcf"/><rect x="27" y="20" width="46" height="60" rx="6" fill="#c9bfae"/><rect x="16" y="30" width="46" height="60" rx="6" fill="#7a4fba"/>"##);

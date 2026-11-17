@@ -4,8 +4,7 @@
 use rune::{El, Tx, el, row};
 
 use super::V;
-use super::widgets::{CODE, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, dots, icon_button, label, toggle_button};
-use super::octicons::COPY;
+use super::widgets::{CODE, COPY_ALL, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
 use crate::theme::mono;
@@ -14,14 +13,17 @@ use crate::theme::mono;
 /// each about the golden ratio (1.618) of the next size down, all centred 20 points down.
 pub const BAR_H: f32 = 40.0;
 const BUTTON: f32 = 24.0;
+/// Every icon in the bar is drawn at this one size. A glyph that looks heavier or lighter than
+/// its neighbours is fixed in its own drawing, not by a size of its own.
+const ICON: f32 = 15.0;
 
 /// An icon button sized for the bar.
-fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size: f32, help: &str) -> El {
-    icon_button(p, key, glyph, size, help).size(BUTTON, BUTTON)
+fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str) -> El {
+    icon_button(p, key, glyph, ICON, help).size(BUTTON, BUTTON)
 }
 
-fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, size: f32, help: &str, on: bool) -> El {
-    toggle_button(p, key, glyph, size, help, on).size(BUTTON, BUTTON)
+fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, on: bool) -> El {
+    toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON)
 }
 
 /// A title bar button's press: it closes an open drawer, then acts, as the sidebar and outline
@@ -55,7 +57,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .child(dots(p))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.
@@ -106,39 +108,39 @@ fn actions(v: V, mut r: El) -> El {
         // One button flips between source and preview. Its icon shows where it goes.
         let (glyph, name) = if s.mode == Mode::Source { (&EYE, "Show preview") } else { (&CODE, "Show source") };
         let help = tip(name, "app.toggle-mode");
-        r = r.child(bar_button(p, "mode", glyph, 15.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(act(|s, tx| s.toggle_mode(tx))));
+        r = r.child(bar_button(p, "mode", glyph, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(act(|s, tx| s.toggle_mode(tx))));
         let help = if zen { tip("Leave zen mode", "app.escape") } else { tip("Zen mode", "app.focus-mode") };
-        r = r.child(bar_toggle(p, "focus", &FOCUS, 15.0, &help, zen).on_press_tx(act(|s, tx| s.toggle_focus(tx))));
+        r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen).on_press_tx(act(|s, tx| s.toggle_focus(tx))));
     }
     // In preview, omarky's header chips: find, copy all and the measure, then the outline and
     // the shortcuts (RD-34). Each shows as on while its feature is (RD-35).
     let preview = v.has_doc() && s.mode == Mode::Preview;
     if preview {
         let find = tip("Find", "reader.find");
-        r = r.child(bar_toggle(p, "find", &SEARCH, 13.0, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
+        r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
         let all = tip("Copy all", "reader.copy-all");
-        r = r.child(bar_button(p, "copy-all", &COPY, 12.0, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
+        r = r.child(bar_button(p, "copy-all", &COPY_ALL, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
         let wide = s.wide();
         let (glyph, name) = if wide { (&NARROW, "Readable width") } else { (&WIDEN, "Full width") };
         let help = tip(name, "reader.toggle-wide");
-        r = r.child(bar_toggle(p, "wide", glyph, 15.0, &help, wide).on_press_tx(act(|s, _| s.toggle_wide())));
+        r = r.child(bar_toggle(p, "wide", glyph, &help, wide).on_press_tx(act(|s, _| s.toggle_wide())));
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();
         let help = tip("Paragraph focus", "writer.paragraph-focus");
-        r = r.child(bar_toggle(p, "paragraph-focus", &PARAGRAPH, 15.0, &help, set.paragraph_focus).on_press_tx(act(|s, tx| s.toggle_paragraph_focus(tx))));
+        r = r.child(bar_toggle(p, "paragraph-focus", &PARAGRAPH, &help, set.paragraph_focus).on_press_tx(act(|s, tx| s.toggle_paragraph_focus(tx))));
         let help = tip("Typewriter scrolling", "writer.typewriter");
-        r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, 15.0, &help, set.typewriter_scroll).on_press_tx(act(|s, tx| s.toggle_typewriter(tx))));
+        r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, &help, set.typewriter_scroll).on_press_tx(act(|s, tx| s.toggle_typewriter(tx))));
         let help = tip("Next font", "writer.next-font");
-        r = r.child(bar_button(p, "next-font", &FONT, 15.0, &help).role("button").on_press_tx(act(|s, tx| s.next_font(tx))));
+        r = r.child(bar_button(p, "next-font", &FONT, &help).role("button").on_press_tx(act(|s, tx| s.next_font(tx))));
     }
     if !zen {
         let outline = tip("Outline", if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
-        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, 15.0, &outline, v.right_visible() || v.right_over()).on_press_tx(|s: &mut App, tx| s.toggle_right(tx)));
+        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over()).on_press_tx(|s: &mut App, tx| s.toggle_right(tx)));
     }
     if preview {
         let help = tip("Shortcuts", "reader.help");
-        r = r.child(bar_button(p, "help", &HELP, 14.0, &help).role("button").on_press_tx(act(|s, _| s.reader.help = !s.reader.help)));
+        r = r.child(bar_button(p, "help", &HELP, &help).role("button").on_press_tx(act(|s, _| s.reader.help = !s.reader.help)));
     }
     r
 }
