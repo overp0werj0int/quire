@@ -7,6 +7,7 @@ use super::V;
 use super::widgets::{CODE, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, dots, icon_button, label, toggle_button};
 use super::octicons::COPY;
 use crate::app::{App, Mode};
+use crate::keymap::tip;
 use crate::theme::mono;
 
 /// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
@@ -38,7 +39,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .child(dots(p))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, "Toggle sidebar").no_window_drag().on_press(|s: &mut App| s.toggle_left()))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press(|s: &mut App| s.toggle_left()))
 }
 
 pub fn titlebar(v: V) -> El {
@@ -77,17 +78,13 @@ fn actions(v: V, mut r: El) -> El {
     let p = v.p;
     let s = v.s;
     let zen = v.focus();
-    let tip = |name: &str, id: &str| format!("{name}  {}", crate::keymap::label(s.preset(), id));
+    let tip = |name: &str, id: &str| tip(s.preset(), name, id);
     if v.has_doc() {
         // One button flips between source and preview. Its icon shows where it goes.
-        let (glyph, help) = if s.mode == Mode::Source {
-            (&EYE, format!("Show preview ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
-        } else {
-            (&CODE, format!("Show source ({})", crate::keymap::label(s.preset(), "app.toggle-mode")))
-        };
+        let (glyph, name) = if s.mode == Mode::Source { (&EYE, "Show preview") } else { (&CODE, "Show source") };
+        let help = tip(name, "app.toggle-mode");
         r = r.child(bar_button(p, "mode", glyph, 15.0, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(|s: &mut App, tx| s.toggle_mode(tx)));
-        let name = if zen { "Leave zen mode" } else { "Zen mode" };
-        let help = format!("{name} ({})", crate::keymap::label(s.preset(), if zen { "app.escape" } else { "app.focus-mode" }));
+        let help = if zen { tip("Leave zen mode", "app.escape") } else { tip("Zen mode", "app.focus-mode") };
         r = r.child(bar_toggle(p, "focus", &FOCUS, 15.0, &help, zen).on_press_tx(|s: &mut App, tx| s.toggle_focus(tx)));
     }
     // In preview, omarky's header chips: find, copy all and the measure, then the outline and
@@ -113,7 +110,7 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_button(p, "next-font", &FONT, 15.0, &help).role("button").on_press_tx(|s: &mut App, tx| s.next_font(tx)));
     }
     if !zen {
-        let outline = if preview { tip("Outline", "reader.toggle-outline") } else { "Toggle outline".to_string() };
+        let outline = tip("Outline", if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, 15.0, &outline, preview && v.right_visible()).on_press(|s: &mut App| s.toggle_right()));
     }
     if preview {

@@ -316,12 +316,30 @@ pub(crate) mod scroll_tests {
         assert!(open, "the Find button opens the bar");
         let find = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("find")).expect("the Find button");
         assert!(find.fill.a > 0.0, "and shows as on, with the hover fill");
-        assert_eq!(find.help.as_deref(), Some("Find  Ctrl+F"), "its tooltip names the preset's key");
+        assert_eq!(find.help.as_deref(), Some("Find (Ctrl+F)"), "its tooltip names the preset's key");
+        // Every title bar button with a key names it the same way: "Name (Keys)".
+        let tips = |rt: &Runtime<crate::app::App>| -> Vec<(String, String)> {
+            rt.elements()
+                .into_iter()
+                .filter(|e| ["/titlebar/", "/left-zone/"].iter().any(|z| ("/".to_owned() + &e.path + "/").contains(z)) && matches!(e.role, "button" | "switch") && !e.exiting)
+                .filter_map(|e| Some((e.key?, e.help?)))
+                .collect()
+        };
+        let keyed = ["toggle-left", "mode", "focus", "find", "copy-all", "wide", "toggle-right", "help", "paragraph-focus", "typewriter", "next-font"];
+        let check = |tips: Vec<(String, String)>, want: usize| {
+            let named: Vec<_> = tips.iter().filter(|(k, _)| keyed.contains(&k.as_str())).collect();
+            assert_eq!(named.len(), want, "{tips:?}");
+            for (key, tip) in named {
+                assert!(tip.ends_with(')') && tip.contains(" (") && !tip.contains("  "), "{key}: {tip:?}");
+            }
+        };
+        check(tips(&rt), 8);
         rt.update(|s, tx| s.toggle_mode(tx));
         for _ in 0..3 {
             rt.frame(DT);
         }
         assert!(rt.find("copy-all").is_none(), "source mode keeps its own bar");
+        check(tips(&rt), 7);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

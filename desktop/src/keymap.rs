@@ -377,6 +377,14 @@ pub fn label(p: Preset, id: &str) -> String {
     action(id).and_then(|a| a.chords(p).first()).map(|s| label_of(s)).unwrap_or_default()
 }
 
+/// A button's tooltip: its name, then its first key in brackets when it has one.
+pub fn tip(p: Preset, name: &str, id: &str) -> String {
+    match label(p, id) {
+        k if k.is_empty() => name.to_string(),
+        k => format!("{name} ({k})"),
+    }
+}
+
 /// Every chord of `id` in preset `p`, labelled and joined.
 pub fn labels(p: Preset, id: &str) -> String {
     action(id).map(|a| a.chords(p).iter().map(|s| label_of(s)).collect::<Vec<_>>().join(" or ")).unwrap_or_default()

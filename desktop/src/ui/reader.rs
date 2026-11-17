@@ -32,7 +32,7 @@ pub fn find_bar(v: V) -> El {
         (false, n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), c.faint),
     };
     let preset = s.preset();
-    let tip = |name: &str, id: &str| format!("{name}  {}", keymap::label(preset, id));
+    let tip = |name: &str, id: &str| keymap::tip(preset, name, id);
     let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
     let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, run: fn(&mut App, &mut Tx)| {
         Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: c.faint, active: false, fill: None }.el(&c).label(help.clone()).help(help).on_press_tx(run)

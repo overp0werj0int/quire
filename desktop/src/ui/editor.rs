@@ -261,7 +261,7 @@ fn toolbar(v: V) -> El {
     use super::widgets::{BOLD, BULLETS, CODE, HEADING, IMAGE, ITALIC, LINK, NUMBERS, QUOTE, STRIKE, TASK, WIKI, icon_button};
     use crate::format::Fmt;
     let p = v.p;
-    let key = |id| crate::keymap::label(v.s.preset(), id);
+    let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).on_press_tx(move |s: &mut App, tx| s.format(f, tx));
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
     // No border. At rest the toolbar has no background, as the text around it. The background
@@ -293,21 +293,21 @@ fn toolbar(v: V) -> El {
         .role("toolbar")
         .label("Formatting")
         .child(back)
-        .child(btn("fmt-bold", &BOLD, format!("Bold ({})", key("writer.bold")), Fmt::Bold))
-        .child(btn("fmt-italic", &ITALIC, format!("Italic ({})", key("writer.italic")), Fmt::Italic))
-        .child(btn("fmt-strike", &STRIKE, "Strikethrough".into(), Fmt::Strike))
+        .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
+        .child(btn("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic))
+        .child(btn("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike))
         .child(btn("fmt-heading", &HEADING, "Heading".into(), Fmt::Heading))
         .child(sep("sep-1"))
-        .child(btn("fmt-link", &LINK, format!("Link ({})", key("writer.link")), Fmt::Link))
+        .child(btn("fmt-link", &LINK, tip("Link", "writer.link"), Fmt::Link))
         .child(btn("fmt-wiki", &WIKI, "Note link".into(), Fmt::Wiki))
         .child(sep("sep-2"))
         .child(btn("fmt-bullets", &BULLETS, "Bulleted list".into(), Fmt::Bullet))
         .child(btn("fmt-numbers", &NUMBERS, "Numbered list".into(), Fmt::Number))
         .child(btn("fmt-task", &TASK, "Task".into(), Fmt::Task))
         .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
-        .child(btn("fmt-code", &CODE, "Code".into(), Fmt::Code))
+        .child(btn("fmt-code", &CODE, tip("Code", "writer.inline-code"), Fmt::Code))
         .child(sep("sep-3"))
-        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &format!("Insert an image ({})", key("app.insert-image"))).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
+        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip("Insert an image", "app.insert-image")).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
         .child(lock_button(v))
 }
