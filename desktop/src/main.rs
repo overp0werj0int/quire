@@ -205,6 +205,35 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The sidebar's panel tabs read as tabs, not as section labels: the open one carries a mark
+    /// and the others are a step brighter than a label. With no note open, the Open label goes
+    /// with its list.
+    #[test]
+    fn panel_tabs_differ_from_section_labels() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-paneltabs-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.open_file("note.md", None, tx));
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let text = |t: &str| els.iter().find(|e| e.text.as_deref() == Some(t)).unwrap_or_else(|| panic!("{t}")).text_color;
+        assert_ne!(text("OPEN"), text("SEARCH"), "an inactive tab is not set as a label");
+        let path = |key: &str| els.iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{key}")).path.clone();
+        let marks: Vec<String> = els.iter().filter(|e| e.key.as_deref() == Some("tab-mark") && !e.exiting).map(|e| e.path.clone()).collect();
+        assert_eq!(marks.len(), 1, "one tab is marked");
+        assert!(marks[0].starts_with(&path("panel-files")), "the open one");
+        rt.update(|s, _| s.close_tab("note.md"));
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        assert!(!rt.elements().iter().any(|e| e.text.as_deref() == Some("OPEN")), "no Open label over an empty list");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Every icon in the title bar is drawn at one size, in preview and in source.
     #[test]
     fn title_bar_icons_share_one_size() {
@@ -2023,9 +2052,11 @@ mod writer_chrome_tests {
         let mut roles = None;
         rt.update(|s, _| roles = Some(crate::roles::Roles::new(s.palette(false))));
         let c = roles.unwrap();
+        // Only the note's: the sidebar's open tab is marked in the accent too.
+        let page = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("editor")).expect("the editor").rect;
         let painted = |kind: f32, col: rune::Color| -> Vec<[f32; 4]> {
             let want = [col.premul(1.0), col.premul_srgb(1.0)];
-            rt.instances.iter().filter(|q| q.params[1] == kind && want.iter().any(|w| (0..4).all(|k| (q.fill[k] - w[k]).abs() < 0.004))).map(|q| q.rect).collect()
+            rt.instances.iter().filter(|q| q.params[1] == kind && q.rect[0] >= page[0] && want.iter().any(|w| (0..4).all(|k| (q.fill[k] - w[k]).abs() < 0.004))).map(|q| q.rect).collect()
         };
         let current = painted(KIND_RECT, c.find_current);
         assert_eq!(current.len(), 1, "one current match: {current:?}");

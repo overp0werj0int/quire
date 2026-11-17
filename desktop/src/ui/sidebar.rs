@@ -41,8 +41,10 @@ pub fn sidebar(v: V) -> El {
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
 
-    // The panel switch is a row of section captions; the open one is in the text colour.
-    // The new folder button lines up with the rows' buttons below it.
+    // The panel switch is a row of tabs in the caption's type, so they read as tabs, not as
+    // labels: the others in the rows' colour, brighter under the pointer, and the open one in
+    // the text colour over a mark of the accent. The new folder button lines up with the rows'
+    // buttons below it.
     let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
     for (id, lbl) in [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")] {
         let on = s.left_panel == id;
@@ -59,7 +61,10 @@ pub fn sidebar(v: V) -> El {
                         tx.focus("search", false);
                     }
                 })
-                .child(panel::caption(lbl, &c).color(if on { c.text } else { c.faint }).group_color(c.dim)),
+                .child(super::styles::caption(lbl, true, if on { c.text } else { c.dim }).group_color(c.text))
+                .children(on.then(|| {
+                    el().key("tab-mark").pin(Some(0.0), None, Some(0.0), Some(1.0)).h(2.0).radius(1.0).fill(c.accent).transition(super::swap())
+                })),
         );
     }
 
@@ -112,7 +117,7 @@ pub fn sidebar(v: V) -> El {
         .border_layout()
         .child(super::titlebar::corner_room());
     // Note mode has no folder: no folder menu, files, search or tags.
-    let side = if note_mode { side.child(open_notes(v)).child(el().grow(1.0)) } else { side.child(open_notes(v)).child(head).child(tabs).child(list) };
+    let side = if note_mode { side.children(open_notes(v)).child(el().grow(1.0)) } else { side.children(open_notes(v)).child(head).child(tabs).child(list) };
     let mut side = side.child(foot);
     if s.vault_menu {
         side = side.child(vault_menu(v));
@@ -120,13 +125,16 @@ pub fn sidebar(v: V) -> El {
     side
 }
 
-/// The open notes, one row each in the order they were opened, under a heading set as the
-/// folder's name is. The current note has the tree's accent wash; a row's close button shows on
-/// hover and on the current row, and a middle click closes it too.
+/// The open notes, one row each in the order they were opened, under a section label. The
+/// current note has the tree's accent wash; a row's close button shows on hover and on the
+/// current row, and a middle click closes it too. With no note open, label and list are gone.
 const OPEN_PAD: f32 = 6.0;
-fn open_notes(v: V) -> El {
+fn open_notes(v: V) -> Option<El> {
     let s = v.s;
     let c = Roles::panel(v.p);
+    if open_count(v) == 0 {
+        return None;
+    }
     let heading = row()
         .key("open-head")
         .h(panel::row_h(panel::BODY))
@@ -140,12 +148,25 @@ fn open_notes(v: V) -> El {
         for file in &s.notes {
             list = list.child(note_row(v, file, shown.as_ref() == Some(file)));
         }
-        return list;
+        return Some(list);
     }
     for path in s.tabs.iter().filter(|t| s.files().contains_key(*t)) {
         list = list.child(open_row(v, path));
     }
-    list
+    Some(list)
+}
+
+/// How many rows the Open list has.
+fn open_count(v: V) -> usize {
+    if v.s.note_mode() { v.s.notes.len() } else { v.s.tabs.iter().filter(|t| v.s.files().contains_key(*t)).count() }
+}
+
+/// The Open list's height: its label, its rows and its padding, or nothing when it is gone.
+fn open_h(v: V) -> f32 {
+    match open_count(v) {
+        0 => 0.0,
+        n => OPEN_PAD * 2.0 + panel::row_h(panel::BODY) * (1 + n) as f32,
+    }
 }
 
 /// A row of Note mode's Open list: a note opened as a file, shown by its file name.
@@ -234,8 +255,7 @@ fn vault_menu(v: V) -> El {
             .child(label(t, nav(panel::BODY, false), p.ink))
     };
     // Under the folder's name, below the corner and the Open list.
-    let open = v.s.tabs.iter().filter(|t| v.s.files().contains_key(*t)).count() as f32;
-    let y = super::titlebar::BAR_H + OPEN_PAD * 2.0 + panel::row_h(panel::BODY) * (1.0 + open) + 40.0;
+    let y = super::titlebar::BAR_H + open_h(v) + 40.0;
     let panel = floating(col(), &Roles::new(p))
         .key("vault-menu")
         .absolute(10.0, y)
