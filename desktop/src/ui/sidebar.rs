@@ -105,7 +105,7 @@ pub fn sidebar(v: V) -> El {
         .pt(6.0)
         .pb(8.0)
         .children((!note_mode).then(|| foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx))))
-        .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
+        .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, tx| s.open_settings(tx)));
 
     // The sidebar runs the window's full height, its edge a line from top to bottom.
     let side = col()
@@ -263,7 +263,7 @@ fn vault_menu(v: V) -> El {
         .modal(true, |s: &mut App| s.vault_menu = false)
         .child(text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0))
         .child(item("menu-switch", "Switch folder…", |s, tx| s.go_welcome(tx)))
-        .child(item("menu-settings", "Settings", |s, _| s.open_settings()));
+        .child(item("menu-settings", "Settings", |s, tx| s.open_settings(tx)));
     el().key("vault-menu-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(31).child(panel)
 }
 

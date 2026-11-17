@@ -4,6 +4,7 @@ use crate::roles::Roles;
 use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
 
 use super::V;
+use super::layer::Card;
 use super::widgets::{LOCK, label, outline_button, primary_button};
 use crate::app::App;
 use super::styles::sans;
@@ -69,9 +70,9 @@ pub fn panel(v: V) -> El {
 }
 
 /// The dialog that locks the active note with a new password.
-pub fn dialog(v: V) -> El {
+pub(super) fn dialog(v: V) -> Card {
     let p = v.p;
-    let err = v.s.lock_dialog.clone().filter(|e| !e.is_empty());
+    let err = v.s.lock_error().map(str::to_string);
     let field = |key: &'static str, title: &str, ph: &'static str| {
         col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), |s, tx| s.lock_note(tx)))
     };
@@ -87,7 +88,6 @@ pub fn dialog(v: V) -> El {
         .box_shadow(theme::settings_shadows()[1])
         .role("dialog")
         .label("Lock this note")
-        .modal(true, |s: &mut App| s.lock_dialog = None)
         .child(
             col()
                 .gap(6.0)
@@ -106,8 +106,8 @@ pub fn dialog(v: V) -> El {
             .gap(8.0)
             .mt(4.0)
             .child(el().grow(1.0))
-            .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, _| s.lock_dialog = None))
+            .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)))
             .child(primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))),
     );
-    el().key("lock-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(60).fill(p.scrim).center().child(panel)
+    Card { el: panel, plane: Some(el().center()) }
 }

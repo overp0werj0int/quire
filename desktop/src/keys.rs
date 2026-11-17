@@ -32,7 +32,7 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // The sheet is modal: only its own keys act, and every other key stops here
         // (SHEET-014, SHEET-036).
         &[Ctx::Sheet]
-    } else if !vault || s.settings_open {
+    } else if !vault {
         &[Ctx::Global]
     } else if s.shown_drawer().is_some() {
         // A drawer holds the keyboard: the reader's and the writer's keys never reach the page

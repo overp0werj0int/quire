@@ -30,6 +30,8 @@ fn layer(v: V, l: &Layer) -> Option<El> {
     let kind = l.kind();
     let card = match l {
         Layer::Palette(pal) => super::palette::palette(v, pal)?,
+        Layer::Settings => super::settings::settings(v),
+        Layer::Lock(_) => super::lock::dialog(v),
     };
     let el = card.el.modal_tx(true, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind));
     let (key, paint) = plane(kind);
@@ -43,6 +45,8 @@ fn layer(v: V, l: &Layer) -> Option<El> {
 fn plane(kind: Kind) -> (&'static str, i16) {
     match kind {
         Kind::Palette => ("pal-layer", 50),
+        Kind::Settings => ("set-layer", 50),
+        Kind::Lock => ("lock-layer", 50),
     }
 }
 

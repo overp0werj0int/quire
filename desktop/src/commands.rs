@@ -89,7 +89,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
             v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
         }
     }
-    v.push(cmd("Open settings", "app.settings", |s, _| s.open_settings()));
+    v.push(cmd("Open settings", "app.settings", |s, tx| s.open_settings(tx)));
     if !cfg!(target_os = "macos") {
         v.push(cmd("Quit", "app.quit", |s, tx| s.quit(tx)));
     }

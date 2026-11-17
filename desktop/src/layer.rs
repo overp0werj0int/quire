@@ -18,18 +18,25 @@ use crate::app::{App, Mode, Palette, Screen};
 pub enum Layer {
     /// The quick switcher or the command palette.
     Palette(Palette),
+    Settings,
+    /// The dialog that locks the note, with why the last try was refused.
+    Lock(Option<String>),
 }
 
 /// Which layer, without its state: what a key toggles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Palette,
+    Settings,
+    Lock,
 }
 
 impl Layer {
     pub fn kind(&self) -> Kind {
         match self {
             Layer::Palette(_) => Kind::Palette,
+            Layer::Settings => Kind::Settings,
+            Layer::Lock(_) => Kind::Lock,
         }
     }
 }
@@ -88,17 +95,38 @@ impl App {
         self.layers.iter().map(|o| &o.layer)
     }
 
+    pub fn layer_is(&self, kind: Kind) -> bool {
+        self.layer().is_some_and(|l| l.kind() == kind)
+    }
+
     /// The open palette or quick switcher.
     pub fn pal(&self) -> Option<&Palette> {
         self.open_layers().find_map(|l| match l {
             Layer::Palette(p) => Some(p),
+            _ => None,
         })
     }
 
     pub fn pal_mut(&mut self) -> Option<&mut Palette> {
         self.layers.iter_mut().find_map(|o| match &mut o.layer {
             Layer::Palette(p) => Some(p),
+            _ => None,
         })
+    }
+
+    /// Why the lock dialog refused the last password, while it is open.
+    pub fn lock_error(&self) -> Option<&str> {
+        self.open_layers().find_map(|l| match l {
+            Layer::Lock(e) => e.as_deref(),
+            _ => None,
+        })
+    }
+
+    /// The lock dialog refuses a password, and says why.
+    pub fn refuse_lock(&mut self, why: String) {
+        if let Some(Layer::Lock(e)) = self.layers.last_mut().map(|o| &mut o.layer) {
+            *e = Some(why);
+        }
     }
 
     /// Opens `layer` over the page, closing whatever was open (a menu opens over the layer it
@@ -112,6 +140,13 @@ impl App {
         };
         self.handed = None;
         self.layers.push(Open { layer, back, over: self.context() });
+    }
+
+    /// Opens a layer outside any event (a scene, a test): focus goes back where Rune's modal
+    /// found it.
+    pub fn show_layer(&mut self, layer: Layer) {
+        self.layers.clear();
+        self.layers.push(Open { layer, back: None, over: self.context() });
     }
 
     /// Where focus is as a layer opens: what had it, and in the writer, the note. A press on a
@@ -180,6 +215,9 @@ impl App {
 
 /// The layer an action's key opens and closes again: pressed while that layer is open, it
 /// closes it, rather than closing it and acting.
-pub fn toggles(_id: &str) -> Option<Kind> {
-    None
+pub fn toggles(id: &str) -> Option<Kind> {
+    match id {
+        "app.settings" => Some(Kind::Settings),
+        _ => None,
+    }
 }

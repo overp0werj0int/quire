@@ -187,8 +187,8 @@ fn footer(v: V) -> Option<El> {
         let mut sync = row()
             .key("sync-state")
             .role("button")
-            .on_press(|s: &mut App| {
-                s.open_settings();
+            .on_press_tx(|s: &mut App, tx| {
+                s.open_settings(tx);
                 s.set_sec = crate::app::Sec::Sync;
             })
             .gap(6.0)

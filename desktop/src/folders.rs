@@ -136,7 +136,6 @@ impl App {
         self.rebuild_names_pub();
         self.mark_dirty_pub(&p);
         self.screen = crate::app::Screen::Vault;
-        self.settings_open = false;
         self.tree_menu = None;
         let end = content.len();
         self.open_file(&p, Some(Sel { start: end, end, line: None, force_source: false }), tx);

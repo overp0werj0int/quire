@@ -69,8 +69,8 @@ impl App {
         }
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
-        self.lock_dialog = Some(String::new());
         self.cover_page();
+        self.open_layer(crate::layer::Layer::Lock(None), tx);
         tx.focus("lock-pass", false);
     }
 
@@ -79,17 +79,17 @@ impl App {
         let pass = self.fields.get("lock-pass").map(|e| e.text.clone()).unwrap_or_default();
         let repeat = self.fields.get("lock-repeat").map(|e| e.text.clone()).unwrap_or_default();
         if pass.chars().count() < lock::MIN_PASSWORD {
-            self.lock_dialog = Some(format!("The password needs at least {} characters.", lock::MIN_PASSWORD));
+            self.refuse_lock(format!("The password needs at least {} characters.", lock::MIN_PASSWORD));
             return;
         }
         if pass != repeat {
-            self.lock_dialog = Some("The two passwords are not the same.".into());
+            self.refuse_lock("The two passwords are not the same.".into());
             return;
         }
         let Some(a) = self.active.clone() else { return };
         let text = self.active_text().to_string();
         let key = lock::new_key(&pass);
-        self.lock_dialog = None;
+        self.close_layer(tx);
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
         // The note stays open after the lock. It locks when its tab closes or with "Lock now".

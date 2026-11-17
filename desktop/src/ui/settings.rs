@@ -4,13 +4,15 @@ use crate::roles::Roles;
 use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::V;
+use super::layer::Card;
 use super::widgets::{CLOSE_THIN, Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
 use super::styles::{self, literal, note, sans};
 use crate::theme::{self, EDITOR_FONTS};
 
-pub fn settings(v: V) -> El {
+/// Settings, a box in the middle of the window (`super::layer`).
+pub(super) fn settings(v: V) -> Card {
     let p = v.p;
     let s = v.s;
     // The sections are tabs: Tab stops on the open one, and the arrow keys open the others.
@@ -57,7 +59,7 @@ pub fn settings(v: V) -> El {
                 .hover_group()
                 .label("Close")
                 .help("Close")
-                .control(|s: &mut App, _: &mut Tx| s.settings_open = false)
+                .control(|s: &mut App, tx: &mut Tx| s.close_layer(tx))
                 .child(icon(&CLOSE_THIN, 10.0).color(p.mute).group_color(p.ink)),
         );
     let body = match s.set_sec {
@@ -104,19 +106,10 @@ pub fn settings(v: V) -> El {
                 .clip_rounded(12.0)
                 .role("dialog")
                 .label("Settings")
-                .modal(true, |s: &mut App| s.settings_open = false)
                 .child(nav)
                 .child(content),
         );
-    col()
-        .key("set-layer")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .paint_order(40)
-        .fill(p.scrim)
-        .px(24.0)
-        .pt((v.vh - max_h(v)) / 2.0)
-        .items_center()
-        .child(panel)
+    Card { el: panel, plane: Some(col().px(24.0).pt((v.vh - max_h(v)) / 2.0).items_center()) }
 }
 
 /// The tallest the settings box grows: the window less a 24 point margin, up to 720 points.

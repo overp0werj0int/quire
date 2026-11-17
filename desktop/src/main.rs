@@ -55,7 +55,7 @@ fn scene_focus(s: &mut App) {
     s.focus = true;
 }
 fn scene_settings(s: &mut App) {
-    s.settings_open = true;
+    s.show_layer(layer::Layer::Settings);
 }
 /// The reader as omarky's screenshots show it, for the parity pass (VER-30): preview mode, body
 /// size 14, the Omarchy theme under `HOME`, no side panels. With `QUIRE_FOLDER` and `QUIRE_NOTE`.
@@ -70,7 +70,7 @@ fn scene_parity(s: &mut App) {
     s.persist.right_open = false;
 }
 fn scene_keys(s: &mut App) {
-    s.settings_open = true;
+    s.show_layer(layer::Layer::Settings);
     s.set_sec = app::Sec::Keys;
 }
 
@@ -147,7 +147,7 @@ pub(crate) mod scroll_tests {
             std::env::set_var("XDG_DATA_HOME", dir.join("data"));
         }
         let mut s = crate::app::init();
-        s.settings_open = true;
+        s.show_layer(crate::layer::Layer::Settings);
         s.set_sec = crate::app::Sec::Mcp;
         s.persist.settings.mcp.enabled = true;
         let mut rt = Runtime::new(s, crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
@@ -177,8 +177,8 @@ pub(crate) mod scroll_tests {
         let dir = std::env::temp_dir().join(format!("quire-setbox-{}", std::process::id()));
         let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
         let show = |rt: &mut Runtime<crate::app::App>, sec: crate::app::Sec| {
-            rt.update(|s, _| {
-                s.settings_open = true;
+            rt.update(|s, tx| {
+                s.open_settings(tx);
                 s.set_sec = sec;
             });
             for _ in 0..30 {
@@ -407,8 +407,8 @@ pub(crate) mod scroll_tests {
         for (w, h) in [(520.0, 400.0), (640.0, 480.0)] {
             rt.set_viewport((w, h), 1.0);
             for sec in [Sec::Appearance, Sec::Editor, Sec::Files, Sec::Sync, Sec::Mcp, Sec::Keys] {
-                rt.update(|s, _| {
-                    s.settings_open = true;
+                rt.update(|s, tx| {
+                    s.open_settings(tx);
                     s.set_sec = sec;
                 });
                 for _ in 0..30 {
@@ -1150,8 +1150,8 @@ pub(crate) mod scroll_tests {
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-setkeys-{}", std::process::id()));
         let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
-        rt.update(|s, _| {
-            s.settings_open = true;
+        rt.update(|s, tx| {
+            s.open_settings(tx);
             s.set_sec = crate::app::Sec::Editor;
         });
         let key = |rt: &mut Runtime<crate::app::App>, k: Key, shift: bool| {
@@ -1163,7 +1163,7 @@ pub(crate) mod scroll_tests {
         let focused = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key);
         let read = |rt: &mut Runtime<crate::app::App>| {
             let mut out = None;
-            rt.update(|s, _| out = Some((s.settings_open, s.settings().toolbar, s.settings().code_font.clone(), s.settings().size)));
+            rt.update(|s, _| out = Some((s.layer_is(crate::layer::Kind::Settings), s.settings().toolbar, s.settings().code_font.clone(), s.settings().size)));
             out.unwrap()
         };
         for _ in 0..10 {
@@ -1305,7 +1305,7 @@ pub(crate) mod scroll_tests {
         tap(&mut rt, at);
         settle(&mut rt);
         assert!(rect(&rt, "settings-frame").is_some() && rect(&rt, "sidebar-over").is_none(), "Settings closes the sidebar's drawer");
-        rt.update(|s, _| s.settings_open = false);
+        rt.update(|s, tx| s.close_layer(tx));
         settle(&mut rt);
         let at = rt.find("toggle-right").expect("the outline button");
         tap(&mut rt, at);
@@ -1657,11 +1657,11 @@ mod lock_tests {
             set(s, "lock-pass", "short");
             set(s, "lock-repeat", "short");
             s.lock_note(tx);
-            assert!(s.lock_dialog.as_deref().is_some_and(|e| e.contains("at least 8")), "a short password is refused");
+            assert!(s.lock_error().is_some_and(|e| e.contains("at least 8")), "a short password is refused");
             set(s, "lock-pass", "tiger lily");
             set(s, "lock-repeat", "tiger lily");
             s.lock_note(tx);
-            assert!(s.lock_dialog.is_none());
+            assert!(s.layer().is_none());
             assert!(crate::lock::is_locked(&s.files()[&a]), "the folder copy is sealed");
             assert_eq!(s.active_text(), "# Secret\n\nThe code is 4711.", "the note stays open");
             // An edit while open is sealed too.

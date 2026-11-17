@@ -110,7 +110,6 @@ pub struct App {
     /// Where focus goes back to, from a layer that closed in this change, for a layer that
     /// opens in its place (`crate::layer`).
     pub(crate) handed: Option<Option<String>>,
-    pub settings_open: bool,
     pub set_sec: Sec,
     pub focus: bool,
     pub vault_menu: bool,
@@ -171,8 +170,6 @@ pub struct App {
     /// Locked notes open for reading and editing, by path. The plain text lives only here and
     /// in the note's editor. The folder copy in `vault.files` stays sealed.
     pub unlocked: HashMap<String, Unlocked>,
-    /// The "Lock this note" dialog is open, with this error, or an empty string for none.
-    pub lock_dialog: Option<String>,
     /// Why the last unlock failed.
     pub unlock_error: Option<String>,
     /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
@@ -225,7 +222,6 @@ pub fn init() -> App {
         query: TextEdit::new(""),
         layers: Vec::new(),
         handed: None,
-        settings_open: false,
         set_sec: Sec::Appearance,
         focus: false,
         vault_menu: false,
@@ -268,7 +264,6 @@ pub fn init() -> App {
         images: Default::default(),
         drop_over: false,
         unlocked: HashMap::new(),
-        lock_dialog: None,
         notes: Vec::new(),
         parked: HashMap::new(),
         folder_left: None,
@@ -922,7 +917,6 @@ impl App {
         self.query = TextEdit::new("");
         self.left_panel = Panel::Files;
         self.layers.clear();
-        self.settings_open = false;
         self.vault_menu = false;
         self.renaming = None;
         self.ensure_edit();
@@ -982,7 +976,6 @@ impl App {
         self.store_session();
         self.screen = Screen::Welcome;
         self.layers.clear();
-        self.settings_open = false;
         self.vault_menu = false;
         self.focus = false;
         self.renaming = None;
@@ -1415,10 +1408,13 @@ impl App {
         self.drawer = None;
     }
 
-    pub fn toggle_settings(&mut self, _tx: &mut Tx) {
-        self.settings_open = !self.settings_open;
-        self.layers.clear();
-        self.cover_page();
+    /// Settings' key: opens Settings, or closes it when it is open.
+    pub fn toggle_settings(&mut self, tx: &mut Tx) {
+        if self.layer_is(crate::layer::Kind::Settings) {
+            self.close_layer(tx);
+        } else {
+            self.open_settings(tx);
+        }
     }
 
     /// A layer opens over the page (the palette or quick switcher, Settings, a dialog, help or
@@ -1448,11 +1444,10 @@ impl App {
         tx.close_window();
     }
 
-    pub fn open_settings(&mut self) {
-        self.settings_open = true;
+    pub fn open_settings(&mut self, tx: &mut Tx) {
         self.vault_menu = false;
-        self.layers.clear();
         self.cover_page();
+        self.open_layer(crate::layer::Layer::Settings, tx);
     }
 
     pub fn open_search(&mut self, tx: &mut Tx) {
@@ -1463,7 +1458,6 @@ impl App {
         self.left_panel = Panel::Search;
         self.focus = false;
         self.layers.clear();
-        self.settings_open = false;
         let n = self.query.text.len();
         self.query.set_selection(0, n);
         tx.focus("search", false);
@@ -1484,7 +1478,6 @@ impl App {
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {
         self.vault_menu = false;
-        self.settings_open = false;
         self.cover_page();
         self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0 }), tx);
         tx.focus("pal-input", false);
@@ -1494,8 +1487,6 @@ impl App {
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
         if self.layer().is_some() {
             self.dismiss(tx);
-        } else if self.settings_open {
-            self.settings_open = false;
         } else if self.vault_menu {
             self.vault_menu = false;
         } else if self.tree_menu.is_some() {
