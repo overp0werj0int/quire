@@ -566,7 +566,9 @@ fn emphasis(ln: &str, from: usize, to: usize, m: &str, taken: &mut [bool], out: 
     let n = m.len();
     let star = m == "*";
     let under = m == "_";
-    let is_mark = |taken: &[bool], i: usize| i + n <= to && &ln[i..i + n] == m && !taken[i..i + n].iter().any(|&t| t);
+    // Bytes, not `&str`: the scan steps a byte at a time, and a slice of the line would panic
+    // inside a character such as `…`. The marks are ASCII, so a byte match is a char match.
+    let is_mark = |taken: &[bool], i: usize| i + n <= to && &b[i..i + n] == m.as_bytes() && !taken[i..i + n].iter().any(|&t| t);
     // A single `*` touching another `*`, or after a backslash, is no mark.
     let lone = |i: usize| !star || ((i == 0 || b[i - 1] != b'*') && b.get(i + 1) != Some(&b'*') && (i == 0 || b[i - 1] != b'\\'));
     let word = |i: Option<usize>| i.and_then(|i| ln[i..].chars().next()).is_some_and(|c| c.is_alphanumeric());
@@ -925,6 +927,17 @@ mod tests {
             m.italic |= x.italic;
         }
         m
+    }
+
+    #[test]
+    fn marks_next_to_wide_characters_style_without_panicking() {
+        // Every emphasis mark at every spot around characters of two, three and four bytes:
+        // the scanner steps byte by byte and must not cut one of them in half.
+        for ln in ["a…*b*", "…_x_…", "→**b**…", "é*", "*…", "~~é~~", "==😀==", "“_”", "*a…*", "x…_"] {
+            style(ln, State::default());
+        }
+        let (s, _) = style("so… *this* stays", State::default());
+        assert!(span_at(&s, "so… *".len()).italic, "the mark after the ellipsis still works");
     }
 
     #[test]
