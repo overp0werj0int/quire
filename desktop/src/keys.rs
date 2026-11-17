@@ -9,23 +9,6 @@ pub fn is_mac() -> bool {
     cfg!(target_os = "macos")
 }
 
-/// A shortcut label as the platform writes it: `⌘⇧F` on macOS, `Ctrl+Shift+F` elsewhere.
-pub fn k(keys: &[&str]) -> String {
-    let mac = is_mac();
-    let parts: Vec<String> = keys
-        .iter()
-        .map(|x| match (*x, mac) {
-            ("Mod", true) => "⌘".into(),
-            ("Shift", true) => "⇧".into(),
-            ("Alt", true) => "⌥".into(),
-            ("Mod", false) => "Ctrl".into(),
-            (s, _) if s.chars().count() == 1 => s.to_uppercase(),
-            (s, _) => s.into(),
-        })
-        .collect();
-    if mac { parts.concat() } else { parts.join("+") }
-}
-
 pub fn mod_click() -> String {
     format!("{}-click", if is_mac() { "⌘" } else { "Ctrl" })
 }
