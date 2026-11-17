@@ -297,7 +297,13 @@ pub fn preview(v: V) -> El {
                 rune::memo(key.clone(), version, || {
                     let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref() };
                     let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
-                    el().w_full().pt(gap).child(cx.top_block(bl, tone)).on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
+                    // A right-click on the row, its gap above included, opens its block's menu (RD-68).
+                    let line = bl.lines.start;
+                    el().w_full()
+                        .pt(gap)
+                        .child(cx.top_block(bl, tone))
+                        .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
+                        .on_secondary_press(move |s: &mut App, at, _| s.reader.menu = Some((at.x, at.y, line)))
                 })
             },
         )
@@ -376,7 +382,7 @@ impl Cx<'_> {
     }
 
     /// A top-level block of the page. The block under the pointer is the one Ctrl+Shift+C and e
-    /// act on (RD-100); a right-click copies its Markdown (RD-68).
+    /// act on (RD-100).
     fn top_block(&self, bl: &Block, tone: Tone) -> El {
         let line = bl.lines.start;
         self.block(bl, tone)
@@ -391,7 +397,6 @@ impl Cx<'_> {
                 // pointer runs no view.
                 tx.live_only();
             })
-            .on_secondary_press(move |s: &mut App, _, tx| s.copy_block(line, tx))
     }
 
     /// Blocks one under another inside a block (a quote, an alert, a list item), each with the

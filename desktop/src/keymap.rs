@@ -123,7 +123,7 @@ pub const TABLE: &[Action] = &[
     same(35, "reader.copy-selection", "Copy the selection", &[Reader], In, &["Ctrl+C"]),
     same(36, "reader.copy-block-under-pointer", "Copy the block's Markdown", &[Reader], In, &["Ctrl+Shift+C"]),
     same(37, "reader.copy-all", "Copy the whole note", &[Reader], In, &["Ctrl+Shift+A"]),
-    same(38, "reader.copy-block-source", "Copy a block's Markdown", &[Reader], In, &["Right-click"]),
+    same(38, "reader.block-menu", "Copy or edit a block", &[Reader], In, &["Right-click"]),
     same(39, "reader.read-from-disk", "Read from disk", &[Reader], In, &["Ctrl+R"]),
     same(40, "reader.zoom-reset", "Text size 14 px", &[Reader], In, &["Ctrl+0"]),
     same(41, "reader.edit-block", "Edit this block", &[Reader], In, &["e"]),

@@ -2542,6 +2542,62 @@ mod edit_menu_tests {
 
     const DT: f64 = 1.0 / 60.0;
 
+    /// RD-68: a right-click on a preview block, or in the gap above it, opens Quire's menu for
+    /// that block instead of copying at once, and its rows act on that block.
+    #[test]
+    fn rd_68_a_right_click_in_preview_opens_the_block_menu() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-block-menu-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Head\n\nFirst *one*.\n\nSecond one.\n", crate::app::Mode::Preview);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let blocks: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("block")).map(|e| e.rect).collect();
+        let [x, y, _, _] = blocks[2];
+        let open = |rt: &mut Runtime<crate::app::App>, at: (f32, f32)| {
+            rt.secondary_down(at.0, at.1);
+            rt.secondary_up(at.0, at.1);
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            let mut got = (None, None);
+            rt.update_if(|s, _| {
+                got = (s.reader.menu.map(|m| m.2), s.reader.toast.as_ref().map(|t| t.0.clone()));
+                false
+            });
+            got
+        };
+        // 4 points above the block: the gap above it belongs to its row.
+        assert_eq!(open(&mut rt, (x + 10.0, y - 4.0)), (Some(4), None), "the menu opens for the block, and nothing is copied yet");
+        let press = |rt: &mut Runtime<crate::app::App>, row: &str| {
+            let (cx, cy) = rt.find(&format!("block-menu/{row}")).expect(row);
+            rt.pointer_move(cx, cy);
+            rt.frame(DT);
+            rt.pointer_down(cx, cy);
+            rt.pointer_up(cx, cy);
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+        };
+        press(&mut rt, "tm-1");
+        let mut after = (Some(0), None);
+        rt.update_if(|s, _| {
+            after = (s.reader.menu.map(|m| m.2), s.reader.toast.as_ref().map(|t| t.0.clone()));
+            false
+        });
+        assert_eq!(after, (None, Some("Copied the block's text".into())), "Copy text copies and closes the menu");
+        let [x, y, w, h] = blocks[1];
+        assert_eq!(open(&mut rt, (x + w / 2.0, y + h / 2.0)).0, Some(2));
+        press(&mut rt, "tm-2");
+        let mut lines = None;
+        rt.update_if(|s, _| {
+            lines = s.sheet.as_ref().map(|sh| sh.pick.lines.clone());
+            false
+        });
+        assert_eq!(lines, Some(2..3), "Edit block opens the sheet on the clicked block");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-135: a right-click with no selection moves the caret to the click and opens Quire's
     /// menu with Cut and Copy off; one in the selection keeps it, Cut takes the text out, and
     /// focus is back in the editor after.

@@ -68,7 +68,7 @@ Notes on reading this file:
 - **KEY-35** [in] [verify: unit, script] reader.copy-selection (reader): omarky preset `Ctrl+C`; quire preset `Ctrl+C`. Copies the selected page text and toasts "Copied" (RD-67).
 - **KEY-36** [in] [verify: unit, script] reader.copy-block-under-pointer (reader): omarky preset `Ctrl+Shift+C`; quire preset `Ctrl+Shift+C`. Copies the Markdown source of the block under the pointer (RD-69, RD-100).
 - **KEY-37** [in] [verify: unit, script] reader.copy-all (reader): omarky preset `Ctrl+Shift+A`; quire preset `Ctrl+Shift+A`. Copies the whole note and toasts "Copied the whole file" (RD-70).
-- **KEY-38** [in] [verify: unit, script] reader.copy-block-source (reader): omarky preset `Right-click`; quire preset `Right-click`. Mouse-only. Copies the exact Markdown of the clicked block (RD-68, RD-90).
+- **KEY-38** [in] [verify: unit, script] reader.block-menu (reader): omarky preset `Right-click`; quire preset `Right-click`. Mouse-only. Opens the clicked block's menu: copy its Markdown or text, or edit it or its section (RD-68, RD-90).
 - **KEY-39** [in] [verify: unit, script] reader.read-from-disk (reader): omarky preset `Ctrl+R`; quire preset `Ctrl+R`. Reads the note from disk now and keeps the place (RD-18).
 - **KEY-40** [in] [verify: unit, script] reader.zoom-reset (reader): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets the text size to 14 px (RD-82, PAGE-19). In the writer `Ctrl+0` clears a heading instead (KEY-56).
 - **KEY-41** [in] [verify: unit, script] reader.edit-block (reader): omarky preset `e`; quire preset `e`. Opens the edit sheet on one block (RD-78, SHEET-001, SHEET-002).

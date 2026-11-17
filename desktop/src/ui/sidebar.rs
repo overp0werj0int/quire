@@ -480,28 +480,31 @@ pub fn tree_menu(v: V) -> El {
     menu(v, "tree-menu", (m.x, m.y), items, |s, _| s.tree_menu = None).paint_order(55)
 }
 
-type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
+pub type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
 
 /// A row of Quire's in-app menu (WR-193): its name, its shortcut, and what it does.
 pub struct Item {
     pub label: &'static str,
-    pub keys: Option<&'static str>,
+    pub keys: Option<String>,
     pub enabled: bool,
     pub run: Run,
 }
 
-/// Quire's in-app menu at `at`, kept inside the window: the tree's and the editor's. `close`
+/// Quire's in-app menu at `at`, kept inside the window: the tree's, the editor's and the
+/// preview's. `close`
 /// runs before a picked item's action, and on Esc or a click outside.
 pub fn menu(v: V, key: &str, at: (f32, f32), items: Vec<Item>, close: fn(&mut App, &mut rune::Tx)) -> El {
     let p = v.p;
-    let w = 200.0;
+    // Wide enough for the longest row's name and key, at about 7.2 points a character.
+    let need = |it: &Item| 30.0 + 7.2 * (it.label.len() + it.keys.as_ref().map_or(0, |k| k.len() + 2)) as f32;
+    let w = items.iter().map(need).fold(200f32, f32::max).ceil();
     let h = 10.0 + 30.0 * items.len() as f32;
     let x = at.0.min(v.vw - w - 8.0).max(8.0);
     let y = at.1.min(v.vh - h - 8.0).max(8.0);
     let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").modal_tx(true, close);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
-        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
+        let mut r = row().key(format!("tm-{i}")).w_full().h(30.0).px(10.0).gap(14.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
         if let Some(k) = it.keys {
             r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
         }
@@ -530,9 +533,9 @@ pub fn edit_menu(v: V) -> El {
         Box::new(move |_, tx| tx.send_key(rune::KeyEvent { key: rune::Key::Command(c), mods }))
     };
     let items = vec![
-        Item { label: "Cut", keys: Some("Ctrl+X"), enabled: selected, run: send('x') },
-        Item { label: "Copy", keys: Some("Ctrl+C"), enabled: selected, run: send('c') },
-        Item { label: "Paste", keys: Some("Ctrl+V"), enabled: true, run: send('v') },
+        Item { label: "Cut", keys: Some("Ctrl+X".into()), enabled: selected, run: send('x') },
+        Item { label: "Copy", keys: Some("Ctrl+C".into()), enabled: selected, run: send('c') },
+        Item { label: "Paste", keys: Some("Ctrl+V".into()), enabled: true, run: send('v') },
     ];
     menu(v, "edit-menu", (m.x, m.y), items, |s, tx| s.close_edit_menu(tx)).paint_order(80)
 }

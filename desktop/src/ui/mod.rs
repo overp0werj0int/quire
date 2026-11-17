@@ -143,6 +143,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if s.edit_menu.is_some() {
         root = root.child(sidebar::edit_menu(v));
     }
+    if s.reader.menu.is_some() && reading(s) {
+        root = root.child(reader::block_menu(v));
+    }
     if s.lock_dialog.is_some() {
         root = root.child(lock::dialog(v));
     }

@@ -121,7 +121,7 @@ const HELP: &[(&str, &[HelpRow])] = &[
         &[
             h("Find", &["reader.find"]),
             h("Next / previous match", &["reader.find-next", "reader.find-previous"]),
-            h("Copy a block's Markdown", &["reader.copy-block-source"]),
+            h("Copy or edit a block", &["reader.block-menu"]),
             h("Copy the block under the mouse", &["reader.copy-block-under-pointer"]),
             h("Copy the whole file", &["reader.copy-all"]),
         ],
@@ -284,6 +284,32 @@ pub fn undo_toast(v: V, name: &str) -> El {
         .child(text(" to the trash").font(body).color(c.text));
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
     toast_row(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+}
+
+/// The block menu (RD-68): a right-click on a block of the page opens Quire's in-app menu,
+/// as in the tree and the editor, with what can be done to that block. Each row names its key
+/// from the active keymap where it has one.
+pub fn block_menu(v: V) -> El {
+    use super::sidebar::{Item, Run, menu};
+    use crate::sheet::Scope;
+    let Some((x, y, line)) = v.s.reader.menu else { return el() };
+    let p = v.s.preset();
+    let keys = |id: &str| Some(keymap::label(p, id)).filter(|k| !k.is_empty());
+    let item = |label: &'static str, keys: Option<String>, run: Run| Item { label, keys, enabled: true, run };
+    let mut items = vec![
+        item("Copy Markdown", keys("reader.copy-block-under-pointer"), Box::new(move |s, tx| s.copy_block(line, tx))),
+        item("Copy text", None, Box::new(move |s, tx| s.copy_block_text(line, tx))),
+    ];
+    let doc = v.s.doc();
+    if let Some(crate::blocks::Kind::Heading { slug, .. }) = doc.blocks.iter().find(|b| b.lines.start == line).map(|b| &b.kind) {
+        let slug = slug.clone();
+        items.push(item("Copy link", None, Box::new(move |s, tx| s.copy_heading_link(&slug, tx))));
+    }
+    if v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
+        items.push(item("Edit block", keys("reader.edit-block"), Box::new(move |s, tx| s.edit_block_at(line, Scope::Block, tx))));
+        items.push(item("Edit section", keys("reader.edit-section"), Box::new(move |s, tx| s.edit_block_at(line, Scope::Section, tx))));
+    }
+    menu(v, "block-menu", (x, y), items, |s, _| s.reader.menu = None).paint_order(80)
 }
 
 /// The progress line (RD-37, RD-38, WR-178): 2 px of accent along the top of the note area,

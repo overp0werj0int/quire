@@ -40,12 +40,14 @@ pub struct Reader {
     pub reloaded: Option<f64>,
     /// The first source line of the top-level block under the pointer (RD-100).
     pub hover: Option<usize>,
+    /// The block menu a right-click opened (RD-68): where, and its block's first line.
+    pub menu: Option<(f32, f32, usize)>,
     /// Where the page's blocks sit, from the last view. Shared with the scroll handler, which
     /// draws the reading progress from it without running the view (VER-32).
     pub map: Rc<RefCell<PageMap>>,
     /// The viewport's offset, scroll range, height and width, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
-    /// The writer's progress bar, [x, y, w, h], set with the scroll in the frame it draws (WR-178).
+    /// The progress line, [x, y, w, h], set with the scroll in the frame it draws (RD-38, WR-178).
     pub bar: Live<[f32; 4]>,
     /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
     pub thumb: Live<[f32; 4]>,
@@ -70,6 +72,7 @@ impl Default for Reader {
             copied: None,
             reloaded: None,
             hover: None,
+            menu: None,
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
             bar: Live::new([0.0; 4]),
@@ -714,6 +717,22 @@ impl App {
             tx.copy(source_lines(self.active_text(), b.lines.clone()));
             self.toast("Copied the block's Markdown", tx);
         }
+    }
+
+    /// The text a reader sees in the block at `line`, without its Markdown (RD-68).
+    pub fn copy_block_text(&mut self, line: usize, tx: &mut Tx) {
+        let doc = self.doc();
+        if let Some(i) = doc.blocks.iter().position(|b| b.lines.start == line) {
+            let text: Vec<&str> = doc.pieces.iter().filter(|p| p.block == i).map(|p| p.text.as_str()).collect();
+            tx.copy(text.join("\n"));
+            self.toast("Copied the block's text", tx);
+        }
+    }
+
+    /// The edit sheet on the block at `line`, or on its section (RD-68, SHEET-001).
+    pub fn edit_block_at(&mut self, line: usize, scope: crate::sheet::Scope, tx: &mut Tx) {
+        self.reader.hover = Some(line);
+        self.open_sheet(scope, tx);
     }
 
     pub fn copy_block_here(&mut self, tx: &mut Tx) {
