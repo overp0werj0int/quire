@@ -126,7 +126,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
 }
 
 /// The reader is on screen: a note open in preview, not locked.
-fn reading(s: &App) -> bool {
+pub(crate) fn reading(s: &App) -> bool {
     s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
 }
 

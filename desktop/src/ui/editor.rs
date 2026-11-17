@@ -38,10 +38,20 @@ pub fn body(v: V) -> El {
     let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
     // In zen mode the progress bar runs along the window's top edge (`ui::view`).
     let progress = if focus { None } else { progress(v) };
+    // Text fades under the title bar and into the sheet's foot (WR-177). The bands let presses
+    // through to the text.
+    let c = Roles::new(v.p);
+    let pin = |top: bool| el().pin(Some(0.0), top.then_some(0.0), Some(0.0), (!top).then_some(0.0)).inert();
+    let fade_top = || pin(true).key("fade-top").h(28.0).gradient(c.bg, c.bg.alpha(0.0));
+    let foot = [(0.0, c.bg.alpha(0.0)), (0.6, c.bg), (1.0, c.bg)];
+    let fade_foot = || pin(false).key("fade-foot").h(64.0).linear_gradient(std::f32::consts::PI, foot);
     if super::reading(v.s) {
+        // The reader has the writer's fades in zen mode, where no bar sits over the page.
+        if focus {
+            area = area.child(fade_top()).child(fade_foot());
+        }
         area = area.children(progress).child(super::reader::find_bar(v));
     } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
-        let c = Roles::new(v.p);
         // The thumb fades over 300 ms (WR-93).
         let thumb = el()
             .key("thumb")
@@ -51,14 +61,11 @@ pub fn body(v: V) -> El {
             .paint_order(30)
             .live_rect(&v.s.reader.thumb)
             .live_opacity(v.s.reader.thumb_shown.smooth(rune::Spring::new(0.3, 0.0)));
-        // Text fades under the title bar and into the sheet's foot (WR-177). The bands let
-        // presses through to the text. While the toolbar shows, its own fade does the top.
-        let pin = |top: bool| el().pin(Some(0.0), top.then_some(0.0), Some(0.0), (!top).then_some(0.0)).inert();
+        // While the toolbar shows, its own fade does the top.
         if !shows_toolbar(v) {
-            area = area.child(pin(true).key("fade-top").h(28.0).gradient(c.bg, c.bg.alpha(0.0)));
+            area = area.child(fade_top());
         }
-        let foot = [(0.0, c.bg.alpha(0.0)), (0.6, c.bg), (1.0, c.bg)];
-        area = area.child(pin(false).key("fade-foot").h(64.0).linear_gradient(std::f32::consts::PI, foot));
+        area = area.child(fade_foot());
         area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
     }
     if let Some((msg, _)) = &v.s.reader.toast {

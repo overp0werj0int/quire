@@ -889,6 +889,36 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-177 in zen mode's preview: the page's text fades at the top and into the foot, as the
+    /// writer's does. Outside zen mode the preview has no fades.
+    #[test]
+    fn zen_preview_fades_the_page_edges() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-zen-fade-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Preview);
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let mut reading = false;
+        rt.update_if(|s, _| {
+            reading = crate::ui::reading(s);
+            false
+        });
+        assert!(reading, "the preview shows");
+        assert!(info(&rt, "fade-top").is_none() && info(&rt, "fade-foot").is_none(), "no fades in the preview outside zen mode");
+        rt.update(|s, tx| s.toggle_focus(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+        let top = info(&rt, "fade-top").expect("the top fade").rect;
+        let foot = info(&rt, "fade-foot").expect("the foot fade").rect;
+        assert!((top[1] - page[1]).abs() < 0.5 && top[3] == 28.0, "the top fade {top:?} at the page's top {page:?}");
+        assert!((foot[1] + foot[3] - (page[1] + page[3])).abs() < 0.5 && foot[3] == 64.0, "the foot fade {foot:?} at the page's foot {page:?}");
+        assert!(top[2] >= page[2] - 0.5 && foot[2] >= page[2] - 0.5, "both span the page");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Zen mode's floating bar: the title bar's buttons on a pill in the top-right corner,
     /// hidden until the pointer comes to the top band. The editor's set has the writer's view
     /// toggles, the preview's has the reader's chips, and neither has the outline toggle.
