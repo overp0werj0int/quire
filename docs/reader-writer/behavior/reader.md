@@ -141,7 +141,7 @@ reading them:
 
 ## 13. Help sheet
 
-- **RD-86** [adapted: 0003] [verify: script] `?` (omarky preset) or the Help button opens the shortcut sheet over a scrim alpha(bg, 0.72). The sheet is modal: the note behind takes no wheel, press or key while it is open. Clicking outside the card closes it (`reader/ui/app/ShortcutSheet.qml:13`, `reader/ui/app/ReaderWindow.qml:443`).
+- **RD-86** [adapted: 0003] [verify: script] `?` (omarky preset) or the Help button opens the shortcut sheet over the modal scrim, a dark neutral of the page's hue at 40% in a light theme and 60% in a dark one (decision 0005; omarky: alpha(bg, 0.72)). The sheet is modal: the note behind takes no wheel, press or key while it is open. Clicking outside the card closes it (`reader/ui/app/ShortcutSheet.qml:13`, `reader/ui/app/ReaderWindow.qml:443`).
 - **RD-87** [adapted: 0001] [verify: geometry] The card is min(window width - 48 px, 520 px) wide and at most the window height - 48 px tall, its rows scrolling inside it when they do not fit (omarky's card does not scroll), popup background, 1 px hairline, padding 24 px sideways and 22 px vertically, groups 18 px apart, rows 24 px tall, a key cap and then the description at x 190 px in UI bodySmall text colour (`reader/ui/app/ShortcutSheet.qml:41-92`).
 - **RD-88** [adapted: 0001] [verify: state] "Quire <version>" sits top-right in ghost caption. omarky: "OmarkyReader <version>" (`reader/ui/app/ShortcutSheet.qml:49-55`).
 - **RD-89** [in] [verify: golden] Group titles are UI caption bold capitals in faint (`reader/ui/app/ShortcutSheet.qml:72-76`).

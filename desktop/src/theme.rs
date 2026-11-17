@@ -180,7 +180,8 @@ pub struct Pal {
     pub sel: Color,
     pub sel_editor: Color,
     /// The layer under every modal panel (the palette, settings, the lock dialog, help and the
-    /// edit sheet): the page colour at `SCRIM`, so the note behind fades back.
+    /// edit sheet and the drawers): a dark neutral of the page's hue (`scrim`), so the window
+    /// behind darkens.
     pub scrim: Color,
     pub named: Named,
 }
@@ -214,8 +215,12 @@ fn named_of(id: &str) -> Named {
     THEMES.iter().find(|t| t.id == id).map(named).unwrap_or_default()
 }
 
-/// How much of the page colour the modal scrim lays over the window (omarky's help sheet).
-pub const SCRIM: f32 = 0.72;
+/// The modal scrim over a page of colour `bg`: a dark neutral of the page's hue, the page's
+/// colour at 15% of its light, laid at 40% over a light page and 60% over a dark one. It darkens what is behind a dialog without
+/// putting it out, where the page colour at 72% (omarky's help sheet) only faded it.
+pub fn scrim(bg: Color, dark: bool) -> Color {
+    bg.mix(Color::BLACK, 0.85).alpha(if dark { 0.6 } else { 0.4 })
+}
 
 pub fn pal(dark: bool) -> &'static Pal {
     static L: OnceLock<Pal> = OnceLock::new();
@@ -244,7 +249,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             on_acc: Color::WHITE,
             sel: rgba("#8a5fc9", 0.22),
             sel_editor: rgba("#8a5fc9", 0.26),
-            scrim: hex("#1f1d1a").alpha(SCRIM),
+            scrim: scrim(hex("#1f1d1a"), true),
             named: named_of("ink"),
         })
     } else {
@@ -271,7 +276,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             on_acc: Color::WHITE,
             sel: rgba("#8a5fc9", 0.22),
             sel_editor: rgba("#8a5fc9", 0.26),
-            scrim: hex("#f8f5ef").alpha(SCRIM),
+            scrim: scrim(hex("#f8f5ef"), false),
             named: named_of("paper"),
         })
     }
@@ -416,7 +421,7 @@ pub fn omarchy_pal(src: &str) -> Option<Pal> {
         on_acc,
         sel: acc.alpha(0.24),
         sel_editor: acc.alpha(0.3),
-        scrim: bg.alpha(SCRIM),
+        scrim: scrim(bg, dark),
         // A missing named key falls back to its numbered terminal colour (PAGE-41, PAGE-42).
         named: Named {
             green: c("green").or_else(|| c("color2")),
@@ -563,7 +568,7 @@ fn build(t: &ThemeDef) -> Pal {
         on_acc: Color::WHITE,
         sel: acc,
         sel_editor: acc,
-        scrim: bg.alpha(SCRIM),
+        scrim: scrim(bg, t.dark),
         named: named(t),
     };
     with_accent(&base, acc)
@@ -612,7 +617,11 @@ mod theme_tests {
             assert!(contrast(p.ink2, p.bg) >= 4.5, "{} ink2 {}", t.id, contrast(p.ink2, p.bg));
             assert!(contrast(p.mute, p.bg) >= 3.0, "{} mute {}", t.id, contrast(p.mute, p.bg));
             assert!(contrast(p.acc, p.bg) >= 3.0, "{} accent {}", t.id, contrast(p.acc, p.bg));
-            assert_eq!(p.scrim, p.bg.alpha(SCRIM), "{}: the modal scrim is the page colour", t.id);
+            // The scrim darkens the page under it by at least a fifth, with a dark neutral of the
+            // page's own hue, at 40% or more.
+            let under = p.bg.mix(p.scrim.alpha(1.0), p.scrim.a);
+            assert!(p.scrim.a >= 0.4 && p.scrim.alpha(1.0).luminance() <= 0.15 * p.bg.luminance() + 0.001, "{}: scrim {:?}", t.id, p.scrim);
+            assert!(under.luminance() <= 0.8 * p.bg.luminance(), "{}: the scrim leaves {:.2} of the page's luminance", t.id, under.luminance() / p.bg.luminance());
         }
     }
 

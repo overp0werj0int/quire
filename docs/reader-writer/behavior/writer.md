@@ -243,7 +243,7 @@ The editor handles editing keys itself. Window commands go through the keymap (d
 
 - **WR-158** [adapted: 0003] [verify: script] Ctrl+/ (omarky preset) toggles the sheet. Esc or a click outside the card closes it, and clicks on the card do nothing. Closing focuses the editor. The command palette also lists it. omarky: also a `?` chip in the header (`writer/ui/app/WriterWindow.qml:173`, `writer/ui/app/HelpSheet.qml:37`, `writer/ui/app/HelpSheet.qml:82`)
 - **WR-159** [in] [verify: script] The sheet is modal. Typed characters do not reach the editor while it shows. omarky code: the editor keeps the keyboard under the sheet and typing edits the hidden text (`writer/ui/app/WriterWindow.qml:621-626`)
-- **WR-160** [adapted: 0005] [verify: golden] The scrim is the page background at alpha 0.72 over the whole window (`writer/ui/app/HelpSheet.qml:12`)
+- **WR-160** [adapted: 0005] [verify: golden] The scrim is Quire's modal scrim over the whole window: a dark neutral of the page's hue at 40% in a light theme and 60% in a dark one (`theme::scrim`). omarky: the page background at alpha 0.72 (`writer/ui/app/HelpSheet.qml:12`)
 - **WR-161** [in] [verify: geometry] The card is centred, `min(window - S(48), content + S(48))` wide and content plus `S(44)` tall, radius `max(6, cornerRadius)`, popup background, 1 px hairline border. Content starts at `(S(24), S(22))` (`writer/ui/app/HelpSheet.qml:74-97`)
 - **WR-162** [adapted: 0001] [verify: state] "Quire VERSION" sits at the card's top right, `S(24)` from the right and `S(22)` from the top, at caption size in the ghost colour. omarky: "OmarkyWriter VERSION" (`writer/ui/app/HelpSheet.qml:84-92`)
 - **WR-163** [in] [verify: geometry] Two columns when the window is wider than `S(1040)`, else one. Columns are `S(470)` wide and `S(40)` apart. The first column takes the first `ceil(groups / 2)` groups. Groups are `S(18)` apart (`writer/ui/app/HelpSheet.qml:39-42`, `writer/ui/app/HelpSheet.qml:94-108`)
@@ -333,7 +333,7 @@ omarky's factors (decision 0005). They follow theme changes.
 - **WR-213** [adapted: 0005] [verify: unit] raised, for keycaps, is the foreground at alpha 0.045 (light) or 0.04 (dark) (`services/Theme.qml:52`)
 - **WR-214** [adapted: 0005] [verify: unit] popup background (find bar, help card, toasts) is Quire's menu background (`Commons/ShellColor.qml:80`)
 - **WR-215** [adapted: 0005] [verify: unit] Light or dark is the Quire palette's own flag. omarky: the theme's declared mode, else background luminance above 0.5 (`services/Theme.qml:24`)
-- **WR-216** [in] [verify: unit] The opacities in one place. Help scrim 0.72 of the page colour, progress bar 0.55, scroll thumb 0.5 while scrolling, highlight wash 0.22. The outline's opacities are in `reader.md`. The conflict banner is not ported (WR-147) (WR-160, WR-178, WR-93, WR-208)
+- **WR-216** [adapted: 0005] [verify: unit] The opacities in one place. Help scrim as WR-160 (omarky: 0.72 of the page colour), progress bar 0.55, scroll thumb 0.5 while scrolling, highlight wash 0.22. The outline's opacities are in `reader.md`. The conflict banner is not ported (WR-147) (WR-160, WR-178, WR-93, WR-208)
 
 ## 15. Durations (all in one place)
 

@@ -14,3 +14,9 @@ a named colour that omarky reads (green, red, yellow, blue, magenta, cyan, orang
 order in the behaviour file applies.
 
 Quire's own chrome (title bar, sidebar, settings) keeps its current colours.
+
+Update, 2026-11-17: the modal scrim is no longer the page colour at 72% (omarky's help sheet).
+That faded the note while the page stayed as bright as before, so a dialog did not stand out
+from it. Every modal layer, the drawers' too, now lays one dark neutral over the window: the
+page's colour at 15% of its light, at 40% in a light theme and 60% in a dark one
+(`theme::scrim`). The page under it loses at least a fifth of its luminance in every theme.
