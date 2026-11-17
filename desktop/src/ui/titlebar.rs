@@ -96,7 +96,7 @@ fn actions(v: V, mut r: El) -> El {
         let all = tip("Copy all", "reader.copy-all");
         r = r.child(bar_button(p, "copy-all", &COPY, 12.0, &all).role("button").on_press_tx(|s: &mut App, tx| s.copy_all(tx)));
         let wide = s.wide();
-        let (glyph, name) = if wide { (&NARROW, "Reading width") } else { (&WIDEN, "Wide width") };
+        let (glyph, name) = if wide { (&NARROW, "Readable width") } else { (&WIDEN, "Full width") };
         let help = tip(name, "reader.toggle-wide");
         r = r.child(bar_toggle(p, "wide", glyph, 15.0, &help, wide).on_press(|s: &mut App| s.toggle_wide()));
     } else if v.has_doc() {

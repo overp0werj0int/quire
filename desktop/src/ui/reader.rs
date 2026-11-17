@@ -105,7 +105,7 @@ const HELP: &[(&str, &[HelpRow])] = &[
             h("Page down / up", &["reader.page-down", "reader.page-up"]),
             h("Top / bottom", &["reader.top", "reader.bottom"]),
             h("Outline", &["reader.toggle-outline"]),
-            h("Reading / wide measure", &["reader.toggle-wide"]),
+            h("Readable / full width", &["reader.toggle-wide"]),
             h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
         ],
     ),

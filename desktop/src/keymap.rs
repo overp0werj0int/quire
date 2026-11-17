@@ -115,7 +115,7 @@ pub const TABLE: &[Action] = &[
     same(28, "reader.top", "Top of the note", &[Reader], In, &["g g", "Home"]),
     same(29, "reader.bottom", "End of the note", &[Reader], In, &["G", "End"]),
     same(30, "reader.toggle-outline", "Toggle outline", &[Reader], In, &["o", "O"]),
-    same(31, "reader.toggle-wide", "Wide measure", &[Reader], In, &["w", "W"]),
+    same(31, "reader.toggle-wide", "Readable or full width", &[Reader], In, &["w", "W"]),
     same(32, "reader.find", "Find", &[Reader], In, &["Ctrl+F", "/"]),
     Action { guard: Some("a find query exists"), ..same(33, "reader.find-next", "Next match", &[Reader], In, &["n"]) },
     same(34, "reader.find-previous", "Previous match", &[Reader], In, &["N"]),
