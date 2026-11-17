@@ -128,7 +128,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if v.is_vault() && s.sheet.is_some() {
         root = root.child(sheet::sheet(v));
     }
-    root
+    // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
+    // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.
+    if reduced { root.instant_changes() } else { root }
 }
 
 /// The reader is on screen: a note open in preview, not locked.

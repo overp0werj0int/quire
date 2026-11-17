@@ -52,7 +52,10 @@ pub fn body(v: V) -> El {
         }
         area = area.children(progress).child(super::reader::find_bar(v));
     } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
-        // The thumb fades over 300 ms (WR-93).
+        // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
+        // (PAGE-84).
+        let shown = &v.s.reader.thumb_shown;
+        let shown = if crate::motion::reduced() { shown.into() } else { shown.smooth(rune::Spring::new(0.3, 0.0)) };
         let thumb = el()
             .key("thumb")
             .pin(Some(0.0), Some(0.0), None, None)
@@ -60,7 +63,7 @@ pub fn body(v: V) -> El {
             .fill(c.faint)
             .paint_order(30)
             .live_rect(&v.s.reader.thumb)
-            .live_opacity(v.s.reader.thumb_shown.smooth(rune::Spring::new(0.3, 0.0)));
+            .live_opacity(shown);
         // While the toolbar shows, its own fade does the top.
         if !shows_toolbar(v) {
             area = area.child(fade_top());

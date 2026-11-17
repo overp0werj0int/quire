@@ -592,6 +592,34 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// PAGE-84: under reduced motion the mode switch and the sidebar show and hide at once, with
+    /// no frame mid-fade.
+    #[test]
+    fn page_84_reduced_motion_lands_at_once() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-reduced-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text to read.\n")], crate::watch::EVERY);
+        rt.set_system_reduced_motion(true);
+        rt.update(|s, _| s.mode = crate::app::Mode::Source);
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let shown = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some(key)).map(|e| e.opacity).fold(0.0f32, f32::max);
+        for (button, key) in [("mode", "preview"), ("toggle-left", "sidebar")] {
+            let (x, y) = rt.find(button).expect(button);
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            for i in 1..=15 {
+                rt.frame(DT);
+                let o = shown(&rt, key);
+                assert!(o <= 0.03 || o >= 0.97, "{key} at {o} in frame {i} after {button}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-102: `[[other#Far Heading]]` opens the other note and travels to that heading.
     #[test]
     fn rd_102_wiki_link_to_a_heading() {

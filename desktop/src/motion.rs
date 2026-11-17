@@ -1,6 +1,8 @@
-//! Reduced motion: one gate for every animation (PAGE-84). Rune snaps its own springs, flights
-//! and scroll glides when the view asks; Quire's own durations go through `ms`. Timers (toast
-//! hold, chord timeout, debounces) are not animations and never pass through here.
+//! Reduced motion: one gate for every animation (PAGE-84). The view hands it to Rune, which
+//! snaps its springs, flights and scroll glides, and lands every entrance, exit and opacity
+//! change in the window at once (`ui::view` sets `El::instant_changes` on the root, since Rune
+//! alone would still fade them). Quire's own durations go through `ms`. Timers (toast hold,
+//! chord timeout, debounces) are not animations and never pass through here.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
