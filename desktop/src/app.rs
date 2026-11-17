@@ -903,6 +903,8 @@ impl App {
         }
         self.vault = Some(v);
         self.edits.clear();
+        // An Undo offer puts a note back into the folder it left, so it ends with that folder.
+        self.deleted = None;
         // Paths name notes only within one vault: a note unlocked in the last one locks again.
         self.unlocked.clear();
         self.rebuild_names();

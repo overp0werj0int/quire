@@ -719,6 +719,22 @@ pub(crate) mod scroll_tests {
         }
         assert!(rt.find("toast-undo").is_none(), "the offer ended");
         assert!(root.join(".trash/a.md").is_file());
+
+        // The offer belongs to its folder: opening another folder ends it, so Undo can never
+        // put a note into a folder it did not come from.
+        let other = dir.join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("o.md"), "# O\n").unwrap();
+        rt.update(|s, _| s.delete_path("c.md"));
+        settle(&mut rt);
+        assert!(rt.find("toast-undo").is_some());
+        rt.update(|s, tx| s.open_vault(other.clone(), tx));
+        settle(&mut rt);
+        assert!(rt.find("toast-undo").is_none(), "the offer ended with its folder");
+        rt.update(|s, tx| s.undo_delete(tx));
+        settle(&mut rt);
+        rt.update(|s, _| assert!(!s.files().contains_key("c.md") && s.notice.is_none(), "nothing came into the other folder"));
+        assert!(!other.join("c.md").exists() && root.join(".trash/c.md").is_file(), "c waits in its own folder's trash");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
