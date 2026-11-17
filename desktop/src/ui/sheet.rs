@@ -127,7 +127,7 @@ pub fn sheet(v: V) -> rune::El {
     col()
         .key("sheet-scrim")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(c.bg.alpha(0.72))
+        .fill(v.p.scrim)
         .center()
         .paint_order(75)
         .label(if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" })

@@ -1,5 +1,6 @@
 //! The settings sheet.
 
+use crate::roles::Roles;
 use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::V;
@@ -79,6 +80,7 @@ pub fn settings(v: V) -> El {
         .h(580.0f32.min(v.vh - 48.0))
         .radius(12.0)
         .fill(p.bg)
+        .border(1.0, Roles::new(p).hairline)
         .box_shadow(a)
         .box_shadow(b)
         .child(
@@ -98,7 +100,7 @@ pub fn settings(v: V) -> El {
         .key("set-layer")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
         .paint_order(40)
-        .fill(p.scrim_settings)
+        .fill(p.scrim)
         .padding(24.0)
         .center()
         .child(panel)

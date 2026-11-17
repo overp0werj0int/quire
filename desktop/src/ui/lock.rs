@@ -1,5 +1,6 @@
 //! Locked notes on screen: the panel that asks for the password, and the dialog that sets one.
 
+use crate::roles::Roles;
 use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
 
 use super::V;
@@ -80,6 +81,7 @@ pub fn dialog(v: V) -> El {
         .gap(16.0)
         .radius(12.0)
         .fill(p.bg)
+        .border(1.0, Roles::new(p).hairline)
         .box_shadow(theme::settings_shadows()[0])
         .box_shadow(theme::settings_shadows()[1])
         .role("dialog")
@@ -106,5 +108,5 @@ pub fn dialog(v: V) -> El {
             .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, _| s.lock_dialog = None))
             .child(primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))),
     );
-    el().key("lock-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(60).fill(p.scrim_settings).center().child(panel)
+    el().key("lock-layer").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(60).fill(p.scrim).center().child(panel)
 }

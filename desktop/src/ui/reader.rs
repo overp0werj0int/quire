@@ -222,7 +222,7 @@ pub fn help_sheet(v: V) -> El {
     col()
         .key("help-scrim")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(c.bg.alpha(0.72))
+        .fill(v.p.scrim)
         .center()
         .paint_order(70)
         .on_press(|s: &mut App| s.reader.help = false)

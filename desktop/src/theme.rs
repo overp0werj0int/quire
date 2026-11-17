@@ -180,8 +180,9 @@ pub struct Pal {
     /// The selection in single-line fields, and in the editor.
     pub sel: Color,
     pub sel_editor: Color,
-    pub scrim_palette: Color,
-    pub scrim_settings: Color,
+    /// The layer under every modal panel (the palette, settings, the lock dialog, help and the
+    /// edit sheet): the page colour at `SCRIM`, so the note behind fades back.
+    pub scrim: Color,
     pub named: Named,
 }
 
@@ -214,6 +215,9 @@ fn named_of(id: &str) -> Named {
     THEMES.iter().find(|t| t.id == id).map(named).unwrap_or_default()
 }
 
+/// How much of the page colour the modal scrim lays over the window (omarky's help sheet).
+pub const SCRIM: f32 = 0.72;
+
 pub fn pal(dark: bool) -> &'static Pal {
     static L: OnceLock<Pal> = OnceLock::new();
     static D: OnceLock<Pal> = OnceLock::new();
@@ -241,8 +245,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             on_acc: Color::WHITE,
             sel: rgba("#8a5fc9", 0.22),
             sel_editor: rgba("#8a5fc9", 0.26),
-            scrim_palette: rgba("#281e0f", 0.16),
-            scrim_settings: rgba("#281e0f", 0.22),
+            scrim: hex("#1f1d1a").alpha(SCRIM),
             named: named_of("ink"),
         })
     } else {
@@ -269,8 +272,7 @@ pub fn pal(dark: bool) -> &'static Pal {
             on_acc: Color::WHITE,
             sel: rgba("#8a5fc9", 0.22),
             sel_editor: rgba("#8a5fc9", 0.26),
-            scrim_palette: rgba("#281e0f", 0.16),
-            scrim_settings: rgba("#281e0f", 0.22),
+            scrim: hex("#f8f5ef").alpha(SCRIM),
             named: named_of("paper"),
         })
     }
@@ -429,8 +431,7 @@ pub fn omarchy_pal(src: &str) -> Option<Pal> {
         on_acc,
         sel: acc.alpha(0.24),
         sel_editor: acc.alpha(0.3),
-        scrim_palette: if dark { Color::BLACK.alpha(0.3) } else { rgba("#281e0f", 0.16) },
-        scrim_settings: if dark { Color::BLACK.alpha(0.38) } else { rgba("#281e0f", 0.22) },
+        scrim: bg.alpha(SCRIM),
         // A missing named key falls back to its numbered terminal colour (PAGE-41, PAGE-42).
         named: Named {
             green: c("green").or_else(|| c("color2")),
@@ -577,8 +578,7 @@ fn build(t: &ThemeDef) -> Pal {
         on_acc: Color::WHITE,
         sel: acc,
         sel_editor: acc,
-        scrim_palette: if dark { Color::BLACK.alpha(0.3) } else { rgba("#281e0f", 0.16) },
-        scrim_settings: if dark { Color::BLACK.alpha(0.38) } else { rgba("#281e0f", 0.22) },
+        scrim: bg.alpha(SCRIM),
         named: named(t),
     };
     with_accent(&base, acc)
@@ -627,6 +627,7 @@ mod theme_tests {
             assert!(contrast(p.ink2, p.bg) >= 4.5, "{} ink2 {}", t.id, contrast(p.ink2, p.bg));
             assert!(contrast(p.mute, p.bg) >= 3.0, "{} mute {}", t.id, contrast(p.mute, p.bg));
             assert!(contrast(p.acc, p.bg) >= 3.0, "{} accent {}", t.id, contrast(p.acc, p.bg));
+            assert_eq!(p.scrim, p.bg.alpha(SCRIM), "{}: the modal scrim is the page colour", t.id);
         }
     }
 

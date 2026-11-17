@@ -1,5 +1,6 @@
 //! The quick switcher and command palette.
 
+use crate::roles::Roles;
 use rune::{Color, El, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text_input};
 
 use super::V;
@@ -103,7 +104,7 @@ pub fn palette(v: V) -> El {
         .child(label(if cmds { format!("{} for notes", crate::keymap::label(v.s.preset(), "app.quick-switcher")) } else { "type > for commands".into() }, foot_style, p.mute));
 
     let [a, b] = theme::palette_shadows();
-    let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).box_shadow(a).box_shadow(b).child(
+    let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).border(1.0, Roles::new(p).hairline).box_shadow(a).box_shadow(b).child(
         col()
             .key("palette")
             .w_full()
@@ -120,7 +121,7 @@ pub fn palette(v: V) -> El {
         .key("pal-layer")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
         .paint_order(50)
-        .fill(p.scrim_palette)
+        .fill(p.scrim)
         .items_center()
         .pt((v.vh * 0.11).round())
         .px(20.0)
