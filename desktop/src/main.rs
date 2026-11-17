@@ -30,6 +30,8 @@ mod sheet;
 mod store;
 mod sync;
 mod theme;
+#[cfg(test)]
+mod throw_tests;
 mod ui;
 mod vault;
 mod watch;

@@ -329,7 +329,8 @@ Desktop:
 - `cargo test` runs the unit tests, including the sync tests against an S3 test server.
 - Tests that run the UI use `rune::Runtime` without a window, as in the tests in `main.rs`.
   They set `HOME` and the XDG folders to a temporary folder, and hold the
-  `scroll_tests::ENV` lock while they do.
+  `scroll_tests::ENV` lock while they do. `src/throw_tests.rs` drives the reader with
+  timestamped touchpad frames to check Rune's fling against Chrome's numbers (RD-27).
 - `src/bench.rs` holds the budgets as ignored tests: the reader scroll (VER-32) and typing
   latency (WR-224). Run them on a release build with
   `cargo test --release bench -- --ignored --nocapture --test-threads 1`; add
@@ -365,8 +366,9 @@ decided, not why. Each point says how sure it is.
   is not recorded.
 - **Vendored winit.** Confirmed. `desktop/vendor/winit` is Rune's winit with
   one change: file drops on Wayland (`vendor/winit/src/platform_impl/linux/wayland/dnd.rs`).
-  Rune's own winit already scales touchpad scrolling as Chromium does (12 points per unit).
-  `Cargo.toml` points the `winit` patch at it.
+  Rune's own winit already scales touchpad scrolling as Chromium does (12 points per unit),
+  gives each Wayland scroll event its own time and reports the touchpad hold gesture, which
+  Rune's Chrome-style fling uses (decision 0012). `Cargo.toml` points the `winit` patch at it.
 - **Storage the user owns.** The docs say "object storage that you control", with optional
   encryption so "the store sees no note names and no note text". Privacy and having no
   server to run are the likely reasons, but they are not written down. Other options, such as

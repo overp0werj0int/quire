@@ -64,6 +64,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 
 - On Linux, the title bar has no window buttons. The window manager closes and places the window. To quit, press `Ctrl+Q` or use **Quit** in the command palette.
 - On Wayland, a touchpad swipe scrolls a note as far as Chromium scrolls a web page. Rune's winit scales the touchpad value by 12, as Chromium does.
+- On Linux, lifting the fingers mid-swipe throws the page on Chrome's fling curve. Resting the fingers on the touchpad stops it, and so does a new swipe. A quick second swipe the same way adds to the throw, as in Chrome.
 - On macOS the shortcuts use `⌘` in place of `Ctrl`.
 
 On first launch Quire writes a sample folder, Field Notes, to `~/Documents/Field Notes`. If that folder already exists, the sample goes to Quire's data folder instead. Settings and open tabs live in `state.json` in Quire's config folder, `~/.config/quire/` on Linux, never in a notes folder.

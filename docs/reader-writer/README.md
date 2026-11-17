@@ -202,8 +202,8 @@ one at a time:
 
 - A. Reader motion and find: long jumps travel in two parts (RD-24), find waits for typing
   to pause (RD-56) and keeps the match in a band (RD-60), and a match in a long code line
-  scrolls into view sideways (BLK-52). Done. Touchpad fling tuning (RD-27) waits for the
-  user's feel.
+  scrolls into view sideways (BLK-52). Done. The touchpad fling (RD-27) follows Chrome on
+  Linux (decision 0012); its feel waits for the user's touchpad.
 - B. Hover details: the heading `#` fades over 120 ms and turns accent under the pointer
   (BLK-15), an open task box takes an accent edge (BLK-30), chip buttons share omarky's look
   and 120 ms fades (BLK-100, BLK-51), and inline code and tag chips get their hairline edge

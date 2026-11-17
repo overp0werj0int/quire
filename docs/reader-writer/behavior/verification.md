@@ -164,9 +164,10 @@ Two more fixture sets are needed.
   figures are parse 45 to 60 ms and open about 650 ms. Results are recorded with the commit and
   the machine. Phase 1 runs it on today's preview as the baseline, and phase 5 makes the budget a
   gate. Guards RD-30, BLK-01 and the highlighter cost behind PAGE-49 to PAGE-53.
-- **VER-33** Fling curve as a pure function. Test the fling simulation against speed(t) =
-  (|v0| + 172) e^(-3.7 t) - 172, the 50 px/s floor, the 20,946 px/s cap, the 200 ms lift window
-  and the three-sample velocity. Separately, record a real swipe's raw deltas on the target
+- **VER-33** Fling curve as a pure function. Test Rune's fling (`runtime/scroll/fling.rs`)
+  against a line-by-line port of Chromium's `PhysicsBasedFlingCurve`, and the reader against
+  v² / 2a, the 200 ms lift window, the hold, the boost and frames that arrive together
+  (`quire: desktop/src/throw_tests.rs`, decision 0012). Separately, record a real swipe's raw deltas on the target
   machine (after the vendored winit's touchpad scaling), replay them as a script, and compare the
   distance travelled with the same swipe in Chromium. Phase 6. Guards RD-26 to RD-28 and BLK-47.
 - **VER-34** File-system scripts for reload. Port `check-live`'s six operations against a note
@@ -204,7 +205,7 @@ Two more fixture sets are needed.
   and Bold files. Phase 3. Guards PAGE-01 to PAGE-04, PAGE-07, PAGE-87 and PAGE-88, and omarky
   decision 0003.
 - **VER-40** Reduced motion. Run the scripted suites again with `QUIRE_REDUCED_MOTION=1` and
-  Rune's reduced-motion flag. Assert that every move lands in the same frame, no fling happens,
+  Rune's reduced-motion flag. Assert that every move lands in the same frame, a touchpad fling still runs (decision 0012),
   the fade-in is skipped, and timers keep their durations. Phase 6. Guards PAGE-84, PAGE-85,
   RD-27 and WR-217.
 - **VER-41** Rune patch proof (decision 0004). Headless tests on the patched text field cover
