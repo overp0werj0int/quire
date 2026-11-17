@@ -133,7 +133,7 @@ fn open_notes(v: V) -> El {
         .mx(panel::INSET)
         .pl(panel::TEXT_X - panel::INSET)
         .center_y()
-        .child(text("Open").font(nav(panel::BODY, true)).color(c.text));
+        .child(panel::caption("Open", &c));
     let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
     if s.note_mode() {
         let shown = s.note_path();

@@ -48,3 +48,7 @@ Instrument Sans inside the monospace sidebar. Key names and literal values take 
 every view, so a key looks the same in the sidebar's footer, the palette and the shortcut list.
 Dialogs, bars and toasts are Instrument Sans, and IBM Plex Mono is left only as a font the
 user can pick for the editor. The panels' own type is unchanged.
+
+Update, 2026-11-17: "Open", above the open notes, is a caption like the others, faint bold
+capitals in place of the text colour's bold title case. The same caption style, in Instrument
+Sans, labels the sections of Settings, the shortcut list, the help sheet and the welcome screen.

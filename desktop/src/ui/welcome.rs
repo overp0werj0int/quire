@@ -6,7 +6,7 @@ use super::widgets::{MARK, MARK_ON_INK, dots, label, primary_button};
 use super::{V, baseline_shift};
 use crate::app::App;
 use crate::store::tilde;
-use super::styles::{literal, sans};
+use super::styles::{caption, literal, sans};
 
 pub fn welcome(v: V) -> El {
     let p = v.p;
@@ -56,7 +56,7 @@ pub fn welcome(v: V) -> El {
                 .border(1.0, p.line)
                 .border_layout()
                 .radius(10.0)
-                .child(label("folder name", sans(11.0, 400.0), p.mute))
+                .child(label("Folder name", sans(12.5, 500.0), p.ink2))
                 .child(
                     row()
                         .key("new-vault-box")
@@ -104,7 +104,7 @@ pub fn welcome(v: V) -> El {
         }
     };
 
-    let mut recent = col().key("recent").gap(2.0).child(label("recent", sans(11.0, 400.0), p.mute).pb(8.0));
+    let mut recent = col().key("recent").gap(2.0).child(caption("recent", false, p.mute).pb(8.0));
     let name_style = sans(14.0, 500.0);
     let small = literal(11.5);
     let shift = baseline_shift(name_style, small);

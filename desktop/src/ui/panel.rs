@@ -2,7 +2,7 @@
 //! (`components/Outline.qml`, decision 0008). omarky sizes its chrome from a 12 px base:
 //! captions 10 px, small body 11 px, body 12 px, all in the panel family (`styles::nav`).
 
-use rune::{Color, El, TextStyle, row, text};
+use rune::{Color, El, TextStyle, row};
 
 use crate::roles::{Roles, mix};
 use super::styles::{nav, panel_line};
@@ -29,9 +29,9 @@ pub fn row_h(size: f32) -> f32 {
     panel_line(size) + 12.0
 }
 
-/// A section caption: bold capitals, 1 px apart, in the faint colour.
+/// A panel's section caption (`styles::caption`), in the faint colour.
 pub fn caption(t: &str, c: &Roles) -> El {
-    text(t.to_uppercase()).font(nav(CAPTION, true).tracking(1.0)).color(c.faint)
+    super::styles::caption(t, true, c.faint)
 }
 
 /// A row's shade: inset `INSET` each side, the hover colour under the pointer, a tenth of the

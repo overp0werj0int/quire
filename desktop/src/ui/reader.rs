@@ -1,12 +1,12 @@
 //! The reader's chrome over the page (`behavior/reader.md`): the find bar, the help sheet,
 //! toasts, the reading progress line and the "reloaded" mark.
 
-use rune::{Color, El, Key, KeyEvent, ScrollSpec, TextCase, Tx, col, el, icon, row, text, text_input};
+use rune::{Color, El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
 use super::chip::Chip;
 use super::panel::{BODY, CAPTION};
-use super::styles::{keys, sans};
+use super::styles::{caption, keys, sans};
 use super::widgets::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
@@ -204,7 +204,7 @@ pub fn help_sheet(v: V) -> El {
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
     for (gi, (title, rows)) in groups.iter().enumerate() {
         let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
-            text(title.to_string()).font(sans(10.5, 600.0).tracking(1.0)).color(c.faint).text_case(TextCase::Uppercase).mb(6.0),
+            caption(title, false, c.faint).mb(6.0),
         );
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();

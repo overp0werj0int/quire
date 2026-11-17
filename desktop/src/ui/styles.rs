@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use rune::{Family, TextStyle};
+use rune::{Color, El, Family, TextStyle, text};
 
 use crate::theme::{SANS, normal_lh, px};
 
@@ -63,6 +63,13 @@ pub fn literal(size: f32) -> TextStyle {
 /// Instrument Sans with CSS `line-height: normal`: dialogs, bars and everything else.
 pub fn sans(size: f32, weight: f32) -> TextStyle {
     TextStyle::new(size, weight).family(SANS).lh(normal_lh(SANS, size))
+}
+
+/// A section label (C15): bold capitals 1 px apart at caption size, in the panel family in
+/// navigation (`nav`) and in Instrument Sans elsewhere. Every section label takes it.
+pub fn caption(t: &str, nav_: bool, c: Color) -> El {
+    let style = if nav_ { nav(10.0, true) } else { sans(10.5, 600.0) };
+    text(t.to_uppercase()).font(style.tracking(1.0)).color(c)
 }
 
 /// The note's own type in `family`, not chrome: the editor's field and Settings' font samples.
