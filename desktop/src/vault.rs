@@ -126,11 +126,15 @@ pub fn count_notes(root: &Path) -> usize {
 pub enum Op {
     Write { root: PathBuf, rel: String, text: String },
     Rename { root: PathBuf, from: String, to: String },
+    /// Moves a note to `.trash`.
     Delete { root: PathBuf, rel: String },
     /// Writes a file that is not a note, such as an image from sync.
     WriteBytes { root: PathBuf, rel: String, bytes: Vec<u8> },
     /// Moves a folder, with every file in it, to `.trash`.
     DeleteFolder { root: PathBuf, rel: String },
+    /// Moves the note or folder that the last `Delete` or `DeleteFolder` of `rel` put in
+    /// `.trash` back to `rel`. It fails if something else is at `rel` by then.
+    Restore { root: PathBuf, rel: String },
     Mkdir { root: PathBuf, rel: String },
     SaveState(Box<crate::store::Persist>),
     /// Answers once every operation sent before it is done.
@@ -160,6 +164,7 @@ impl Writer {
         std::thread::Builder::new()
             .name("quire-writer".into())
             .spawn(move || {
+                let mut trash = Trash::new();
                 while let Ok(op) = rx.recv() {
                     if let Op::Barrier(done) = &op {
                         let _ = done.send(());
@@ -176,16 +181,17 @@ impl Writer {
                         }
                         continue;
                     }
-                    if let Err(e) = apply(&op) {
+                    if let Err(e) = apply(&op, &mut trash) {
                         failed2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         let what = match &op {
-                            Op::Write { rel, .. } | Op::WriteBytes { rel, .. } | Op::Delete { rel, .. } | Op::DeleteFolder { rel, .. } | Op::Mkdir { rel, .. } => rel.clone(),
-                            Op::Rename { from, .. } => from.clone(),
-                            Op::SaveState(_) => "settings".into(),
-                            Op::Barrier(_) | Op::SaveSyncBase { .. } => String::new(),
+                            Op::Write { rel, .. } | Op::WriteBytes { rel, .. } | Op::Delete { rel, .. } | Op::DeleteFolder { rel, .. } | Op::Mkdir { rel, .. } => format!("save {rel}"),
+                            Op::Restore { rel, .. } => format!("put back {rel}"),
+                            Op::Rename { from, .. } => format!("save {from}"),
+                            Op::SaveState(_) => "save settings".into(),
+                            Op::Barrier(_) | Op::SaveSyncBase { .. } => "save".into(),
                         };
                         if let Ok(mut v) = errs.lock() {
-                            v.push(format!("Could not save {what}: {e}"));
+                            v.push(format!("Could not {what}: {e}"));
                         }
                         if let Some(w) = &waker {
                             w();
@@ -214,7 +220,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 /// Writes a note atomically: a temporary file next to it, then a rename.
 pub fn write_note(root: &Path, rel: &str, text: &str) -> std::io::Result<()> {
-    apply(&Op::Write { root: root.to_path_buf(), rel: rel.to_string(), text: text.to_string() })
+    apply(&Op::Write { root: root.to_path_buf(), rel: rel.to_string(), text: text.to_string() }, &mut Trash::new())
 }
 
 impl Writer {
@@ -233,7 +239,10 @@ impl Writer {
     }
 }
 
-fn apply(op: &Op) -> std::io::Result<()> {
+/// Where each deleted path went in `.trash`, by its old full path, for `Op::Restore`.
+type Trash = std::collections::HashMap<PathBuf, PathBuf>;
+
+fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
     match op {
         Op::Write { root, rel, text } => {
             let p = root.join(rel);
@@ -255,31 +264,34 @@ fn apply(op: &Op) -> std::io::Result<()> {
         Op::Delete { root, rel } => {
             // Move the file to `.trash` inside the folder, so it can come back.
             let src = root.join(rel);
-            let trash = root.join(".trash");
-            std::fs::create_dir_all(&trash)?;
             let name = rel.replace('/', " - ");
             let (stem, ext) = name.rsplit_once('.').map_or((name.as_str(), "md"), |(s, e)| (s, e));
-            let mut dst = trash.join(&name);
-            let mut n = 2;
-            while dst.exists() {
-                dst = trash.join(format!("{stem} {n}.{ext}"));
-                n += 1;
-            }
-            std::fs::rename(src, dst)
+            let dst = free(&root.join(".trash"), &name, |n| format!("{stem} {n}.{ext}"))?;
+            std::fs::rename(&src, &dst)?;
+            trash.insert(src, dst);
+            Ok(())
         }
         Op::DeleteFolder { root, rel } => {
             let src = root.join(rel);
             if !src.is_dir() {
                 return Ok(());
             }
-            let trash = root.join(".trash");
-            std::fs::create_dir_all(&trash)?;
             let name = rel.replace('/', " - ");
-            let mut dst = trash.join(&name);
-            let mut n = 2;
-            while dst.exists() {
-                dst = trash.join(format!("{name} {n}"));
-                n += 1;
+            let dst = free(&root.join(".trash"), &name, |n| format!("{name} {n}"))?;
+            std::fs::rename(&src, &dst)?;
+            trash.insert(src, dst);
+            Ok(())
+        }
+        Op::Restore { root, rel } => {
+            let dst = root.join(rel);
+            let Some(src) = trash.remove(&dst) else {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "it is not in .trash"));
+            };
+            if dst.exists() {
+                return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "something else has its name"));
+            }
+            if let Some(d) = dst.parent() {
+                std::fs::create_dir_all(d)?;
             }
             std::fs::rename(src, dst)
         }
@@ -287,6 +299,19 @@ fn apply(op: &Op) -> std::io::Result<()> {
         Op::SaveState(p) => crate::store::save(p),
         Op::Barrier(_) | Op::SaveSyncBase { .. } => Ok(()),
     }
+}
+
+/// A path in `.trash` (made if missing) named `name`, or `numbered(2)`, `numbered(3)` and on
+/// while the name is taken.
+fn free(trash: &Path, name: &str, numbered: impl Fn(u32) -> String) -> std::io::Result<PathBuf> {
+    std::fs::create_dir_all(trash)?;
+    let mut dst = trash.join(name);
+    let mut n = 2;
+    while dst.exists() {
+        dst = trash.join(numbered(n));
+        n += 1;
+    }
+    Ok(dst)
 }
 
 /// Writes the sample notes into `root`, replacing files with the same names.
@@ -317,7 +342,8 @@ mod tests {
             std::fs::create_dir_all(root.join(p).parent().unwrap()).unwrap();
             std::fs::write(root.join(p), "x").unwrap();
         }
-        let del = |rel: &str| apply(&Op::DeleteFolder { root: root.clone(), rel: rel.into() }).unwrap();
+        let mut trash = Trash::new();
+        let mut del = |rel: &str| apply(&Op::DeleteFolder { root: root.clone(), rel: rel.into() }, &mut trash).unwrap();
         del("Drafts/Old");
         assert!(root.join(".trash/Drafts - Old/A.md").is_file());
         assert!(root.join(".trash/Drafts - Old/img.png").is_file(), "files that are not notes move too");
@@ -328,6 +354,32 @@ mod tests {
         assert!(root.join(".trash/Drafts - Old 2").is_dir());
         // A folder that is not on disk is no error.
         del("Missing");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_restore_puts_back_what_the_last_delete_moved() {
+        let root = std::env::temp_dir().join(format!("quire-restore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut trash = Trash::new();
+        let mut run = |op: Op| apply(&op, &mut trash);
+        let (r, rel) = (root.clone(), String::from("Drafts/A.md"));
+        // Two notes of the same name were deleted. The second went to "Drafts - A 2.md".
+        for text in ["one", "two"] {
+            std::fs::create_dir_all(root.join("Drafts")).unwrap();
+            std::fs::write(root.join(&rel), text).unwrap();
+            run(Op::Delete { root: r.clone(), rel: rel.clone() }).unwrap();
+        }
+        std::fs::remove_dir(root.join("Drafts")).unwrap();
+        run(Op::Restore { root: r.clone(), rel: rel.clone() }).unwrap();
+        assert_eq!(std::fs::read_to_string(root.join(&rel)).unwrap(), "two", "the last delete comes back, folder and all");
+        assert!(root.join(".trash/Drafts - A.md").is_file(), "the older one stays in the trash");
+        // A restore never replaces a file that took the name, and asks only once.
+        run(Op::Delete { root: r.clone(), rel: rel.clone() }).unwrap();
+        std::fs::write(root.join(&rel), "new").unwrap();
+        assert!(run(Op::Restore { root: r.clone(), rel: rel.clone() }).is_err());
+        assert_eq!(std::fs::read_to_string(root.join(&rel)).unwrap(), "new");
+        assert!(run(Op::Restore { root: r.clone(), rel: rel.clone() }).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

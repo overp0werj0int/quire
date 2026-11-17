@@ -71,7 +71,9 @@ pub fn body(v: V) -> El {
         area = area.child(fade_foot());
         area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
     }
-    if let Some((msg, _)) = &v.s.reader.toast {
+    if let Some(d) = &v.s.deleted {
+        area = area.child(super::reader::undo_toast(v, &d.name));
+    } else if let Some((msg, _)) = &v.s.reader.toast {
         area = area.child(super::reader::toast(v, msg));
     }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);

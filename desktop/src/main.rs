@@ -174,6 +174,7 @@ pub(crate) mod scroll_tests {
         let root = dir.join("notes");
         std::fs::create_dir_all(&root).unwrap();
         for (name, text) in files {
+            std::fs::create_dir_all(root.join(name).parent().unwrap()).unwrap();
             std::fs::write(root.join(name), text).unwrap();
         }
         // SAFETY: the caller holds the ENV lock, which keeps other tests that read these out.
@@ -643,6 +644,81 @@ pub(crate) mod scroll_tests {
                 assert_eq!(toggles(&rt), vec![at], "frame {i}: one toggle, where it was");
             }
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A delete says what went and offers Undo for a while. Undo puts the note back on disk,
+    /// with its tab where it was and shown again; a folder comes back with its notes.
+    #[test]
+    fn a_delete_can_be_undone() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-undo-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("a.md", "# A\n"), ("Drafts/b.md", "# B\n"), ("c.md", "# C\n")], crate::watch::EVERY);
+        let root = dir.join("notes");
+        rt.update(|s, tx| {
+            s.open_file("Drafts/b.md", None, tx);
+            s.open_file("c.md", None, tx);
+            s.open_file("Drafts/b.md", None, tx);
+            // An edit not yet saved goes to the trash with the note.
+            s.set_text("Drafts/b.md", "# B edited\n".into());
+        });
+        // The open tabs, the shown note, and whether b and its folder are in the vault.
+        let look = |rt: &mut Runtime<crate::app::App>| {
+            let mut out = None;
+            rt.update(|s, _| {
+                let v = s.vault.as_ref().unwrap();
+                out = Some((s.tabs.clone(), s.active.clone(), v.files.contains_key("Drafts/b.md"), v.folders.iter().any(|f| f == "Drafts")));
+            });
+            out.unwrap()
+        };
+        let tabs = look(&mut rt).0;
+        let press = |rt: &mut Runtime<crate::app::App>, key: &str| {
+            let (x, y) = rt.find(key).unwrap_or_else(|| panic!("no {key}"));
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+        };
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..20 {
+                rt.frame(DT);
+            }
+            rt.update(|s, _| s.writer.wait(std::time::Duration::from_secs(5)));
+        };
+
+        rt.update(|s, _| s.delete_note());
+        settle(&mut rt);
+        assert!(!root.join("Drafts/b.md").exists() && root.join(".trash/Drafts - b.md").is_file());
+        assert!(rt.find("toast-undo").is_some(), "the toast offers Undo");
+        press(&mut rt, "toast-undo");
+        settle(&mut rt);
+        assert_eq!(std::fs::read_to_string(root.join("Drafts/b.md")).unwrap(), "# B edited\n", "back with its last text");
+        assert!(!root.join(".trash/Drafts - b.md").exists());
+        let (t, active, ..) = look(&mut rt);
+        assert_eq!(t, tabs, "its tab is back in its place");
+        assert_eq!(active.as_deref(), Some("Drafts/b.md"), "and shown");
+        assert!(rt.find("toast-undo").is_none(), "the toast went");
+
+        // A folder comes back with its notes and its open tab.
+        rt.update(|s, _| s.delete_folder("Drafts"));
+        settle(&mut rt);
+        assert!(!root.join("Drafts").exists());
+        assert!(matches!(look(&mut rt), (_, _, false, false)), "b and Drafts left the vault");
+        press(&mut rt, "toast-undo");
+        settle(&mut rt);
+        assert!(root.join("Drafts/b.md").is_file());
+        assert_eq!(look(&mut rt), (tabs.clone(), Some("Drafts/b.md".into()), true, true), "both back, b open and shown");
+
+        // The offer ends after a while; the note stays in the trash.
+        rt.update(|s, _| s.delete_path("a.md"));
+        settle(&mut rt);
+        assert!(rt.find("toast-undo").is_some());
+        assert_eq!(look(&mut rt).1.as_deref(), Some("Drafts/b.md"), "deleting another note leaves the shown one");
+        for _ in 0..(crate::folders::UNDO_FOR / DT) as usize {
+            rt.frame(DT);
+        }
+        assert!(rt.find("toast-undo").is_none(), "the offer ended");
+        assert!(root.join(".trash/a.md").is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -251,6 +251,31 @@ pub fn toast(v: V, msg: &str) -> El {
         .child(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(font(BODY, false)).color(c.text)))
 }
 
+/// After a delete, the toast's place holds what went and an Undo button, until the button is
+/// pressed or `folders::UNDO_FOR` is up.
+pub fn undo_toast(v: V, name: &str) -> El {
+    let c = Roles::new(v.p);
+    let undo = row()
+        .key("toast-undo")
+        .h(24.0)
+        .px(10.0)
+        .center_y()
+        .radius(999.0)
+        .hover(c.hover)
+        .role("button")
+        .label("Undo")
+        .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
+        .child(text("Undo").font(font(BODY, false)).color(c.accent));
+    let msg = text(format!("Moved {name} to the trash")).font(font(BODY, false)).color(c.text);
+    let pill = row().gap(6.0).center_y().child(msg).child(undo);
+    row()
+        .key("toast-row")
+        .pin(Some(0.0), None, Some(0.0), Some(28.0))
+        .justify_center()
+        .paint_order(65)
+        .child(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+}
+
 /// The reading progress line (RD-37, RD-38): 2 px of accent along the top of the note area.
 pub fn progress(v: V) -> El {
     let c = Roles::new(v.p);

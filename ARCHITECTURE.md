@@ -80,7 +80,8 @@ The UI thread never writes to disk. Each write is an `Op`, sent to the `Writer`,
 on one background thread called `quire-writer`. The thread applies the ops in the order they
 were sent. A note is written to a temporary file and then renamed over the old one, so a note
 on disk is never half-written. `Op::Barrier` lets other code wait until the writes before it
-are done.
+are done. A delete moves the note or folder to `.trash`, and the thread remembers where.
+`Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`).
 
 ```mermaid
 flowchart LR

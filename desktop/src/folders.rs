@@ -19,6 +19,25 @@ pub struct DragNote {
     pub target: Option<String>,
 }
 
+/// How long a delete's toast offers Undo, in seconds.
+pub const UNDO_FOR: f64 = 6.0;
+
+/// What a delete took from the open vault, so Undo can put it back: the notes' texts, the
+/// folders, the open tabs and which one was shown. The files themselves wait in `.trash`.
+pub struct Deleted {
+    /// The note or folder's name, for the toast.
+    pub name: String,
+    /// When it went.
+    pub at: f64,
+    rel: String,
+    folder: bool,
+    notes: Vec<(String, String, Option<u128>)>,
+    folders: Vec<String>,
+    tabs: Vec<(usize, String)>,
+    active: Option<String>,
+    expanded: Vec<String>,
+}
+
 /// What the tree's menu was opened on.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MenuOn {
@@ -303,7 +322,10 @@ impl App {
         if self.refuse_in_note_mode() {
             return;
         }
+        self.flush_notes();
+        let deleted = self.record_delete(folder, true);
         self.remove_folder(folder);
+        self.deleted = Some(deleted);
         self.sync_after_save();
     }
 
@@ -341,12 +363,87 @@ impl App {
         self.persist_later();
     }
 
+    /// What deleting `rel`, a note or a folder, will take, for Undo. Call it before the delete,
+    /// after unsaved notes went to disk.
+    pub(crate) fn record_delete(&self, rel: &str, folder: bool) -> Deleted {
+        let pre = format!("{rel}/");
+        let inside = |p: &str| p == rel || (folder && p.starts_with(&pre));
+        let (notes, folders) = self.vault.as_ref().map_or_else(Default::default, |v| {
+            let notes = v.files.iter().filter(|(p, _)| inside(p)).map(|(p, t)| (p.clone(), t.clone(), v.born.get(p).copied())).collect();
+            (notes, v.folders.iter().filter(|f| inside(f)).cloned().collect())
+        });
+        let name = if folder { rel.rsplit('/').next().unwrap_or(rel) } else { md::base(rel) };
+        Deleted {
+            name: name.to_string(),
+            at: self.now.get(),
+            rel: rel.to_string(),
+            folder,
+            notes,
+            folders,
+            tabs: self.tabs.iter().enumerate().filter(|(_, t)| inside(t)).map(|(i, t)| (i, t.clone())).collect(),
+            active: self.active.clone().filter(|a| inside(a)),
+            expanded: self.expanded.iter().filter(|e| inside(e)).cloned().collect(),
+        }
+    }
+
+    /// Undo for the last delete: the Writer moves the note or folder back from `.trash`, and
+    /// its notes, tabs and folders come back as they were. A sync since then deleted it on the
+    /// other devices. Back here it is a new file, so the next sync uploads it again.
+    pub fn undo_delete(&mut self, tx: &mut Tx) {
+        let Some(d) = self.deleted.take() else { return };
+        let Some(v) = &mut self.vault else { return };
+        if d.notes.iter().any(|(p, _, _)| v.files.contains_key(p)) || (d.folder && v.folders.contains(&d.rel)) {
+            self.notice = Some(format!("Could not put back {}: something else has its name", d.name));
+            return;
+        }
+        self.writer.send(Op::Restore { root: v.path.clone(), rel: d.rel.clone() });
+        for (p, text, born) in d.notes {
+            if let Some(b) = born {
+                v.born.insert(p.clone(), b);
+            }
+            v.files.insert(p, text);
+        }
+        for f in d.folders {
+            if !v.folders.contains(&f) {
+                v.folders.push(f);
+            }
+        }
+        v.folders.sort();
+        for (i, t) in d.tabs {
+            let i = i.min(self.tabs.len());
+            self.tabs.insert(i, t);
+        }
+        self.expanded.extend(d.expanded);
+        self.rebuild_names_pub();
+        match d.active {
+            Some(a) => self.open_file(&a, None, tx),
+            None => self.persist_later(),
+        }
+        self.sync_after_save();
+    }
+
+    /// Ends the Undo offer when its time is up, or wakes then. True when it went.
+    pub(crate) fn expire_deleted(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let Some(d) = &self.deleted else { return false };
+        let left = d.at + UNDO_FOR - t;
+        if left > 0.0 {
+            tx.wake_after(std::time::Duration::from_secs_f64(left));
+            return false;
+        }
+        self.deleted = None;
+        true
+    }
+
     /// Moves a note to `.trash` in the folder, open or not.
     pub fn delete_path(&mut self, p: &str) {
         let was = self.active.clone();
         self.active = Some(p.to_string());
         self.delete_note();
         if was.as_deref() != Some(p) {
+            // Undo leaves the shown note shown.
+            if let Some(d) = &mut self.deleted {
+                d.active = None;
+            }
             self.active = was.filter(|a| self.files().contains_key(a));
         }
     }

@@ -116,6 +116,8 @@ pub struct App {
     pub sync_status: SyncStatus,
     pub mcp_copied: bool,
     pub notice: Option<String>,
+    /// The last delete, while its toast offers Undo.
+    pub deleted: Option<crate::folders::Deleted>,
     pub writer: Writer,
     pub(crate) dirty: BTreeSet<String>,
     save_at: Option<f64>,
@@ -226,6 +228,7 @@ pub fn init() -> App {
         sync_status: SyncStatus::Idle,
         mcp_copied: false,
         notice: None,
+        deleted: None,
         writer,
         dirty: BTreeSet::new(),
         save_at: None,
@@ -491,6 +494,7 @@ impl App {
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
         changed |= self.expire_sheet(t);
+        changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
         changed |= self.search_due(t, tx);
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
@@ -1159,11 +1163,14 @@ impl App {
             return;
         }
         let Some(p) = self.active.clone() else { return };
+        // Unsaved text goes to disk first, so the trash and Undo have it.
+        self.flush_notes();
+        self.deleted = Some(self.record_delete(&p, false));
         self.unlocked.remove(&p);
         let Some(v) = &mut self.vault else { return };
         v.files.remove(&p);
+        v.born.remove(&p);
         let root = v.path.clone();
-        self.dirty.remove(&p);
         self.writer.send(Op::Delete { root, rel: p.clone() });
         self.recent.retain(|x| x != &p);
         self.close_tab(&p);
