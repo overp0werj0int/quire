@@ -119,7 +119,7 @@ fn actions(v: V, mut r: El) -> El {
         let help = tip(name, "reader.toggle-wide");
         r = r.child(bar_toggle(p, "wide", glyph, &help, wide).on_press_tx(act(|s, _| s.toggle_wide())));
         let help = tip("Show shortcuts", "reader.help");
-        r = r.child(bar_button(p, "help", &HELP, &help).role("button").on_press_tx(act(|s, _| s.reader.help = !s.reader.help)));
+        r = r.child(bar_button(p, "help", &HELP, &help).role("button").on_press_tx(act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();

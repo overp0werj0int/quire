@@ -32,8 +32,11 @@ fn layer(v: V, l: &Layer) -> Option<El> {
         Layer::Palette(pal) => super::palette::palette(v, pal)?,
         Layer::Settings => super::settings::settings(v),
         Layer::Lock(_) => super::lock::dialog(v),
+        Layer::Help => super::reader::help_sheet(v),
+        Layer::Sheet(sh) => super::sheet::sheet(v, sh),
     };
-    let el = card.el.modal_tx(true, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind));
+    // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
+    let el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind));
     let (key, paint) = plane(kind);
     Some(match card.plane {
         Some(plane) => plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).child(el),
@@ -47,10 +50,17 @@ fn plane(kind: Kind) -> (&'static str, i16) {
         Kind::Palette => ("pal-layer", 50),
         Kind::Settings => ("set-layer", 50),
         Kind::Lock => ("lock-layer", 50),
+        Kind::Help => ("help-scrim", 50),
+        Kind::Sheet => ("sheet-scrim", 50),
     }
 }
 
-/// What stays live to the pointer outside the card: the toast and the notice.
-fn keeps(_kind: Kind) -> Vec<&'static str> {
-    vec!["toast-row", "notice"]
+/// What stays live to the pointer outside the card: the toast and the notice, and over the
+/// edit sheet the strip that moves the window (SHEET-015).
+fn keeps(kind: Kind) -> Vec<&'static str> {
+    let mut keys = vec!["toast-row", "notice"];
+    if kind == Kind::Sheet {
+        keys.push("sheet-drag");
+    }
+    keys
 }

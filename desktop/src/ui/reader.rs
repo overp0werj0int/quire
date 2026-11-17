@@ -4,6 +4,7 @@
 use rune::{Color, El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
+use super::layer::Card;
 use super::chip::Chip;
 use super::panel::{BODY, CAPTION};
 use super::styles::{caption, keys, sans};
@@ -184,7 +185,8 @@ pub(super) fn cap(t: String, c: &Roles) -> El {
 }
 
 /// The help sheet (RD-86 to RD-91; in the writer WR-158 to WR-166).
-pub fn help_sheet(v: V) -> El {
+/// The keyboard help, a card in the middle of the window (`super::layer`).
+pub(super) fn help_sheet(v: V) -> Card {
     let c = Roles::new(v.p);
     let preset = v.s.preset();
     let writer = v.s.mode == crate::app::Mode::Source;
@@ -193,7 +195,7 @@ pub fn help_sheet(v: V) -> El {
     let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let mut card = col().key("help-body").w(w).px(24.0).py(22.0).gap(18.0).on_press(|_: &mut App| {});
+    let mut card = col().key("help-body").w(w).px(24.0).py(22.0).gap(18.0);
     card = card.child(
         text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
             .key("help-version")
@@ -235,19 +237,8 @@ pub fn help_sheet(v: V) -> El {
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)
         .child(super::widgets::faded("help", c.bg, card.child(body)));
-    let card = popup(&c).key("help-card").child(scroll);
-    // Modal: the note behind takes no wheel or press while help is open.
-    col()
-        .key("help-scrim")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(v.p.scrim)
-        .center()
-        .paint_order(70)
-        .role("dialog")
-        .label("Keyboard help")
-        .modal_tx(false, |s: &mut App, tx| s.close_help(tx))
-        .on_press_tx(|s: &mut App, tx| s.close_help(tx))
-        .child(card)
+    let card = popup(&c).key("help-card").role("dialog").label("Keyboard help").child(scroll);
+    Card { el: card, plane: Some(col().center()) }
 }
 
 /// A toast (RD-98): a pill at the bottom centre of the note area, 28 px above its bottom edge,

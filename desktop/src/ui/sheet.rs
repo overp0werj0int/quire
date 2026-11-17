@@ -5,13 +5,14 @@
 use rune::{Key, KeyEvent, ScrollFade, ScrollSpec, TextHighlight, Tx, col, el, row, text, text_input};
 
 use super::V;
+use super::layer::Card;
 use super::styles::sans;
 use super::reader::{cap, popup};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
 use crate::page::r;
 use crate::roles::Roles;
-use crate::sheet::{EDITOR, Scope};
+use crate::sheet::{EDITOR, Scope, Sheet};
 use crate::theme;
 
 const PAD: f32 = 22.0;
@@ -21,9 +22,9 @@ const KEY_ROW: f32 = 24.0;
 /// The title row's height: one line of bodySmall.
 const TITLE: f32 = 18.0;
 
-pub fn sheet(v: V) -> rune::El {
+/// The edit sheet, a card in the middle of the window over the reader (`super::layer`).
+pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     let s = v.s;
-    let Some(sh) = &s.sheet else { return el() };
     let c = Roles::new(v.p);
     let b = s.settings().size as f32;
     let style = super::editor::ed_style(v);
@@ -112,7 +113,7 @@ pub fn sheet(v: V) -> rune::El {
         }
     };
 
-    let mut card = col().key("sheet-card").w(w).padding(PAD).gap(GAP).on_press(|_: &mut App| {}).child(title);
+    let mut card = col().key("sheet-card").w(w).padding(PAD).gap(GAP).child(title);
     if let Some(i) = sh.pick.before {
         card = card.child(context("sheet-before", i, true));
     }
@@ -121,20 +122,12 @@ pub fn sheet(v: V) -> rune::El {
         card = card.child(context("sheet-after", i, false));
     }
     card = card.child(foot.mt(14.0 - GAP));
-    let card = popup(&c).key("sheet-pop").radius(6.0).child(card);
+    let label = if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" };
+    let card = popup(&c).key("sheet-pop").radius(6.0).role("dialog").label(label).child(card);
 
     // SHEET-015: the scrim takes every click and wheel, and only moving the window stays live.
-    col()
-        .key("sheet-scrim")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(v.p.scrim)
-        .center()
-        .paint_order(75)
-        .label(if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" })
-        .modal_tx(false, |s: &mut App, tx| s.sheet_escape(tx))
-        .on_press(|_: &mut App| {})
-        .child(row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0)))
-        .child(card)
+    let drag = row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0));
+    Card { el: card, plane: Some(col().center().child(drag)) }
 }
 
 /// Keys in the sheet's editor (SHEET-033 to SHEET-037): the sheet's own, then the writer's

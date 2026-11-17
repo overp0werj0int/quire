@@ -136,7 +136,7 @@ impl App {
     /// Whether the menu's field has text selected, for Cut and Copy.
     pub fn edit_menu_selected(&self) -> bool {
         let Some(m) = &self.edit_menu else { return false };
-        let edit = if m.field == crate::sheet::EDITOR { self.sheet.as_ref().map(|s| &s.edit) } else { self.active.as_ref().and_then(|a| self.edits.get(a)) };
+        let edit = if m.field == crate::sheet::EDITOR { self.sheet().map(|s| &s.edit) } else { self.active.as_ref().and_then(|a| self.edits.get(a)) };
         edit.is_some_and(|e| e.anchor != e.focus)
     }
 }
@@ -190,13 +190,13 @@ impl App {
 
     /// The writer's editing keys act: in the edit sheet, or on an open note in source mode.
     pub(crate) fn writing(&self) -> bool {
-        self.sheet.is_some() || (self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a)))
+        self.sheet().is_some() || (self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a)))
     }
 
     /// The editor the editing keys change: the edit sheet's while it is open (SHEET-035), else
     /// the open note's.
     pub(crate) fn target_edit(&mut self) -> &mut TextEdit {
-        if self.sheet.is_some() {
+        if self.sheet().is_some() {
             return self.sheet_edit().expect("the sheet is open");
         }
         self.cur_edit()
@@ -205,7 +205,7 @@ impl App {
     /// The target editor's text changed: the note saves soon, and the sheet keeps its text
     /// until it saves.
     pub(crate) fn target_changed(&mut self, tx: &mut Tx) {
-        if self.sheet.is_some() {
+        if self.sheet().is_some() {
             tx.focus(crate::sheet::EDITOR, false);
         } else {
             self.after_edit();
@@ -296,13 +296,9 @@ impl App {
         self.toast("Saved", tx);
     }
 
-    /// Esc in the writer (WR-77): the help sheet, the find bar, then Quire's own overlays and
-    /// zen mode, then the preview.
+    /// Esc in the writer (WR-77): the find bar, then Quire's own overlays and zen mode, then
+    /// the preview. Help and every other layer take Esc first (`keys::on_key`).
     pub fn writer_escape(&mut self, tx: &mut Tx) -> bool {
-        if self.reader.help {
-            self.close_help(tx);
-            return true;
-        }
         if self.reader.find.open {
             self.close_find(tx);
             self.focus_editor(tx);

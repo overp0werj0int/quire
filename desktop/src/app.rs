@@ -176,8 +176,6 @@ pub struct App {
     pub reader: crate::reader::Reader,
     /// The writer's state: typewriter scrolling (`crate::writer_app`).
     pub wstate: crate::writer_app::WriterState,
-    /// The edit sheet over the reader, while it is open (`crate::sheet`).
-    pub sheet: Option<crate::sheet::Sheet>,
     /// Note mode's Open list: the notes opened as files, by full path, in order. Each is a
     /// vault of its own, rooted at its folder; the one shown is `vault`, read again from disk
     /// each time it is shown.
@@ -270,7 +268,6 @@ pub fn init() -> App {
         unlock_error: None,
         reader: Default::default(),
         wstate: Default::default(),
-        sheet: None,
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.

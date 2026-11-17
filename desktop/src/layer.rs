@@ -14,6 +14,7 @@
 use rune::Tx;
 
 use crate::app::{App, Mode, Palette, Screen};
+use crate::sheet::Sheet;
 
 pub enum Layer {
     /// The quick switcher or the command palette.
@@ -21,6 +22,10 @@ pub enum Layer {
     Settings,
     /// The dialog that locks the note, with why the last try was refused.
     Lock(Option<String>),
+    /// The keyboard help.
+    Help,
+    /// The edit sheet over the reader.
+    Sheet(Box<Sheet>),
 }
 
 /// Which layer, without its state: what a key toggles.
@@ -29,6 +34,8 @@ pub enum Kind {
     Palette,
     Settings,
     Lock,
+    Help,
+    Sheet,
 }
 
 impl Layer {
@@ -37,6 +44,8 @@ impl Layer {
             Layer::Palette(_) => Kind::Palette,
             Layer::Settings => Kind::Settings,
             Layer::Lock(_) => Kind::Lock,
+            Layer::Help => Kind::Help,
+            Layer::Sheet(_) => Kind::Sheet,
         }
     }
 }
@@ -114,6 +123,26 @@ impl App {
         })
     }
 
+    /// The open edit sheet.
+    pub fn sheet(&self) -> Option<&Sheet> {
+        self.open_layers().find_map(|l| match l {
+            Layer::Sheet(sh) => Some(&**sh),
+            _ => None,
+        })
+    }
+
+    pub fn sheet_mut(&mut self) -> Option<&mut Sheet> {
+        self.layers.iter_mut().find_map(|o| match &mut o.layer {
+            Layer::Sheet(sh) => Some(&mut **sh),
+            _ => None,
+        })
+    }
+
+    /// The layer under the top one.
+    pub fn layer_under(&self) -> Option<&Layer> {
+        self.layers.iter().rev().nth(1).map(|o| &o.layer)
+    }
+
     /// Why the lock dialog refused the last password, while it is open.
     pub fn lock_error(&self) -> Option<&str> {
         self.open_layers().find_map(|l| match l {
@@ -178,9 +207,14 @@ impl App {
         }
     }
 
-    /// Esc, or a press outside the top layer.
+    /// Esc, or a press outside the top layer. The edit sheet asks before it drops a change
+    /// (SHEET-037 to SHEET-039).
     pub fn dismiss(&mut self, tx: &mut Tx) {
-        self.close_layer(tx);
+        match self.layer() {
+            Some(Layer::Sheet(_)) => self.sheet_escape(tx),
+            Some(_) => self.close_layer(tx),
+            None => {}
+        }
     }
 
     /// Focus goes back where it was, unless this change already put it somewhere (a picked
@@ -218,6 +252,7 @@ impl App {
 pub fn toggles(id: &str) -> Option<Kind> {
     match id {
         "app.settings" => Some(Kind::Settings),
+        "reader.help" | "writer.help" => Some(Kind::Help),
         _ => None,
     }
 }

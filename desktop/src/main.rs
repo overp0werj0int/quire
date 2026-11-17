@@ -234,9 +234,9 @@ pub(crate) mod scroll_tests {
             assert_eq!(held(rt, &format!("{name}-fade-hold")), 0.0, "{name}: no bottom fade at the end");
             assert!(held(rt, &format!("{name}-fade-top-hold")).abs() > 12.0, "{name}: the top fade shows once scrolled");
         };
-        rt.update(|s, _| s.reader.help = true);
+        rt.update(|s, tx| s.toggle_help(tx));
         check(&mut rt, "help");
-        rt.update(|s, _| s.reader.help = false);
+        rt.update(|s, tx| s.close_layer(tx));
         rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
         check(&mut rt, "pal");
         let _ = std::fs::remove_dir_all(&dir);
@@ -742,12 +742,12 @@ pub(crate) mod scroll_tests {
         let help = |rt: &mut Runtime<crate::app::App>| {
             let mut on = false;
             rt.update_if(|s, _| {
-                on = s.reader.help;
+                on = s.layer_is(crate::layer::Kind::Help);
                 false
             });
             on
         };
-        rt.update(|s, _| s.reader.help = true);
+        rt.update(|s, tx| s.toggle_help(tx));
         settle(&mut rt);
         let card = rect(&rt, "help-card").expect("the help card");
         assert!(card[1] >= 0.0 && card[1] + card[3] <= 480.0, "the card fits the window: {card:?}");
@@ -760,7 +760,7 @@ pub(crate) mod scroll_tests {
         rt.key(KeyEvent { key: Key::Text("?".into()), mods: Mods { shift: true, ..Default::default() } });
         settle(&mut rt);
         assert!(!help(&mut rt), "? closes help");
-        rt.update(|s, _| s.reader.help = true);
+        rt.update(|s, tx| s.toggle_help(tx));
         settle(&mut rt);
         rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
         settle(&mut rt);
@@ -771,7 +771,7 @@ pub(crate) mod scroll_tests {
             s.focus_editor(tx);
         });
         settle(&mut rt);
-        rt.update(|s, _| s.reader.help = true);
+        rt.update(|s, tx| s.toggle_help(tx));
         settle(&mut rt);
         rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
         settle(&mut rt);
@@ -2759,7 +2759,7 @@ mod edit_menu_tests {
         press(&mut rt, "tm-2");
         let mut lines = None;
         rt.update_if(|s, _| {
-            lines = s.sheet.as_ref().map(|sh| sh.pick.lines.clone());
+            lines = s.sheet().map(|sh| sh.pick.lines.clone());
             false
         });
         assert_eq!(lines, Some(2..3), "Edit block opens the sheet on the clicked block");

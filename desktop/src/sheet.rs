@@ -8,6 +8,7 @@ use std::rc::Rc;
 use rune::{TextEdit, Tx};
 
 use crate::app::{App, Mode};
+use crate::layer::Layer;
 use crate::blocks::Doc;
 
 /// The editor's element key.
@@ -107,8 +108,8 @@ impl App {
         let mut edit = TextEdit::new(orig.clone());
         edit.set_selection(0, 0);
         self.reader.pending = None;
-        self.sheet = Some(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None });
         self.cover_page();
+        self.open_layer(Layer::Sheet(Box::new(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None })), tx);
         tx.clear_text_selection();
         tx.focus(EDITOR, false);
     }
@@ -134,14 +135,14 @@ impl App {
 
     /// Ctrl+Enter and Ctrl+S (SHEET-033, SHEET-044 to SHEET-048).
     pub fn sheet_save(&mut self, tx: &mut Tx) {
-        let Some(rel) = self.sheet.as_ref().map(|sh| sh.rel.clone()) else { return };
+        let Some(rel) = self.sheet().map(|sh| sh.rel.clone()) else { return };
         let gone = !self.files().contains_key(&rel) || !self.tabs.contains(&rel);
         let now = if let Some(u) = self.unlocked.get(&rel) {
             Some(u.text.clone())
         } else {
             self.files().get(&rel).filter(|t| !crate::lock::is_locked(t)).cloned()
         };
-        let Some(sh) = &mut self.sheet else { return };
+        let Some(sh) = self.sheet_mut() else { return };
         if gone {
             sh.problem = Some(GONE);
             return;
@@ -153,7 +154,7 @@ impl App {
         let r = line_bytes(&sh.base, &sh.pick.lines);
         let with = sh.edit.text.clone();
         let text = splice(&sh.base, &sh.pick.lines, &with);
-        self.sheet = None;
+        self.close_layer(tx);
         // One step in the note's source history (edit-sheet.md, open questions).
         self.ensure_edit();
         if let Some(e) = self.edits.get_mut(&rel) {
@@ -176,10 +177,10 @@ impl App {
     /// discard.
     pub fn sheet_escape(&mut self, tx: &mut Tx) {
         let now = self.now.get();
-        let Some(sh) = &mut self.sheet else { return };
+        let Some(sh) = self.sheet_mut() else { return };
         let armed = sh.armed.is_some_and(|at| now - at < DISCARD);
         if sh.edit.text == sh.orig || armed {
-            self.sheet = None;
+            self.close_layer(tx);
             tx.blur();
         } else {
             sh.armed = Some(now);
@@ -189,7 +190,7 @@ impl App {
 
     /// The armed discard lapses (SHEET-038). True when it did.
     pub(crate) fn expire_sheet(&mut self, t: f64) -> bool {
-        match &mut self.sheet {
+        match self.sheet_mut() {
             Some(sh) if sh.armed.is_some_and(|at| t - at >= DISCARD) => {
                 sh.armed = None;
                 true
@@ -200,13 +201,13 @@ impl App {
 
     /// The editor the writer's editing keys act on: the sheet's while it is open.
     pub fn sheet_edit(&mut self) -> Option<&mut TextEdit> {
-        self.sheet.as_mut().map(|s| &mut s.edit)
+        self.sheet_mut().map(|s| &mut s.edit)
     }
 
     /// The sheet's field, for its edit hook, which can still run in the frame the sheet
     /// closes; that last edit lands in a scratch field.
     pub fn sheet_field(&mut self) -> &mut TextEdit {
-        if self.sheet.is_some() {
+        if self.sheet().is_some() {
             return self.sheet_edit().expect("checked above");
         }
         self.field("sheet-closed", String::new)

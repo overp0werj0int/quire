@@ -28,19 +28,12 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if let Some(kind) = s.layer().map(Layer::kind) {
         return layer_key(s, kind, ev, tx);
     }
-    let stack: &[Ctx] = if s.sheet.is_some() {
-        // The sheet is modal: only its own keys act, and every other key stops here
-        // (SHEET-014, SHEET-036).
-        &[Ctx::Sheet]
-    } else if !vault {
+    let stack: &[Ctx] = if !vault {
         &[Ctx::Global]
     } else if s.shown_drawer().is_some() {
         // A drawer holds the keyboard: the reader's and the writer's keys never reach the page
         // behind it.
         &[Ctx::Global]
-    } else if s.reader.help {
-        // Only the keys that close the sheet act; the rest are swallowed (RD-80).
-        &[Ctx::Help]
     } else if s.mode == crate::app::Mode::Preview {
         &[Ctx::Reader, Ctx::Global]
     } else {
@@ -76,47 +69,74 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             if a.id == "writer.escape" {
                 return s.writer_escape(tx);
             }
-            if a.id == "sheet.cancel" {
-                s.sheet_escape(tx);
-                return true;
-            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
             }
         }
     }
-    s.reader.help || s.sheet.is_some()
+    false
 }
 
 /// A key while a layer is open, which holds the keyboard: the page behind never hears it.
-/// The layer's own keys act; Esc dismisses it; a window shortcut closes it first and then
-/// acts, as if it had not been there, unless it is the shortcut that toggles that layer.
-/// Light layers (a menu, a drawer) take the page's shortcuts with a modifier, a sheet with a
-/// field the window's, and the help and the edit sheet only their own. Any other key goes on
-/// to Rune, which keeps it inside the layer.
+///
+/// A light layer (a menu, a drawer) takes Esc, and lets a shortcut with a modifier act as if
+/// it had not been there: it closes, and the key goes to what is under it. The key that
+/// toggles it closes it. A heavier layer acts on its own keys, then on the window's
+/// shortcuts (none over help and the edit sheet), which close it first unless they toggle
+/// it. Any other key goes on to Rune, which keeps it inside the layer, except over help and
+/// the edit sheet, which swallow it.
 fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let preset = s.preset();
-    let page: &[Ctx] = if kind.light() { page_stack(s) } else { &[Ctx::Global] };
-    let chord = ev.mods.cmd || ev.mods.ctrl || ev.mods.alt;
-    for ctx in page {
-        for a in keymap::lookup(preset, *ctx, ev) {
-            if matches!(a.id, "app.escape" | "reader.escape" | "writer.escape") {
-                s.dismiss(tx);
-                return true;
-            }
-            if kind.light() && !chord {
-                continue;
-            }
-            let Some(run) = handler(a.id) else { continue };
-            if crate::layer::toggles(a.id) != Some(kind) {
-                s.close_layers(tx);
-            }
+    if kind.light() {
+        if matches!(ev.key, rune::Key::Escape) {
+            s.dismiss(tx);
+            return true;
+        }
+        if !(ev.mods.cmd || ev.mods.ctrl || ev.mods.alt) {
+            return false;
+        }
+        let under = s.layer_under().map(Layer::kind);
+        let (own, window) = under.map_or((page_stack(s), &[][..]), layer_stack);
+        let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some()) else { return false };
+        if crate::layer::toggles(a.id) == Some(kind) {
+            handler(a.id).expect("found above")(s, tx);
+            return true;
+        }
+        s.close_layer(tx);
+        return on_key(s, ev, tx);
+    }
+    let (own, window) = layer_stack(kind);
+    for a in own.iter().flat_map(|c| keymap::lookup(preset, *c, ev)) {
+        if let Some(run) = handler(a.id) {
             run(s, tx);
             return true;
         }
     }
-    false
+    for a in window.iter().flat_map(|c| keymap::lookup(preset, *c, ev)) {
+        if a.id == "app.escape" {
+            s.dismiss(tx);
+            return true;
+        }
+        let Some(run) = handler(a.id) else { continue };
+        if crate::layer::toggles(a.id) != Some(kind) {
+            s.close_layers(tx);
+        }
+        run(s, tx);
+        return true;
+    }
+    // Help and the edit sheet swallow every other key (RD-80, SHEET-014).
+    matches!(kind, Kind::Help | Kind::Sheet)
+}
+
+/// A heavy layer's own contexts, and the window's it takes: help and the edit sheet take
+/// only their own keys (RD-80, SHEET-036).
+fn layer_stack(kind: Kind) -> (&'static [Ctx], &'static [Ctx]) {
+    match kind {
+        Kind::Help => (&[Ctx::Help], &[]),
+        Kind::Sheet => (&[Ctx::Sheet], &[]),
+        _ => (&[], &[Ctx::Global]),
+    }
 }
 
 /// The contexts a key goes through with no layer open, top first (KEY-02).
@@ -192,15 +212,12 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.copy-block-under-pointer" => |s, tx| s.copy_block_here(tx),
         "reader.copy-all" => |s, tx| s.copy_all(tx),
         "reader.read-from-disk" => |s, _| s.read_from_disk(),
-        "reader.help" => |s, _| {
-            s.cover_page();
-            s.reader.help = true;
-        },
+        "reader.help" | "writer.help" => |s, tx| s.toggle_help(tx),
         "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
         "sheet.save" => |s, tx| s.sheet_save(tx),
         "sheet.cancel" => |s, tx| s.sheet_escape(tx),
-        "help.close" => |s, tx| s.close_help(tx),
+        "help.close" => |s, tx| s.close_layer(tx),
         "writer.bold" => |s, tx| s.format(Fmt::Bold, tx),
         "writer.italic" => |s, tx| s.format(Fmt::Italic, tx),
         "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),
@@ -220,10 +237,6 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.find" => |s, tx| s.writer_find(tx),
         "writer.find-next" => |s, tx| s.source_step(true, tx),
         "writer.find-previous" => |s, tx| s.source_step(false, tx),
-        "writer.help" => |s, _| {
-            s.cover_page();
-            s.reader.help = !s.reader.help;
-        },
         "writer.paragraph-focus" => |s, tx| s.toggle_paragraph_focus(tx),
         "writer.typewriter" => |s, tx| s.toggle_typewriter(tx),
         "writer.next-font" => |s, tx| s.next_font(tx),

@@ -159,12 +159,6 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if let Some(n) = &s.notice {
         root = root.child(notice(v, n));
     }
-    if v.is_vault() && s.reader.help {
-        root = root.child(reader::help_sheet(v));
-    }
-    if v.is_vault() && s.sheet.is_some() {
-        root = root.child(sheet::sheet(v));
-    }
     root = root.children(layer::layers(v));
     // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
     // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.

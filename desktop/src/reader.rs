@@ -32,7 +32,6 @@ pub struct Reader {
     pub wide: Option<bool>,
     /// The find bar. Kept while closed, because its field's edit hook needs somewhere to write.
     pub find: Find,
-    pub help: bool,
     pub toast: Option<(String, f64)>,
     /// The code block whose chip says Copied, by its first source line, and since when.
     pub copied: Option<(usize, f64)>,
@@ -67,7 +66,6 @@ impl Default for Reader {
         Reader {
             wide: None,
             find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0 },
-            help: false,
             toast: None,
             copied: None,
             reloaded: None,
@@ -908,17 +906,20 @@ impl App {
         self.center_match(tx);
     }
 
-    /// Closes the help sheet. In the writer the caret goes back to the note (WR-158).
-    pub fn close_help(&mut self, tx: &mut Tx) {
-        self.reader.help = false;
-        self.focus_editor(tx);
+    /// `?` in the reader and Ctrl+/ in the writer: the keyboard help, or closes it. As it
+    /// closes, the caret goes back to the note (WR-158).
+    pub fn toggle_help(&mut self, tx: &mut Tx) {
+        if self.layer_is(crate::layer::Kind::Help) {
+            self.close_layer(tx);
+        } else {
+            self.cover_page();
+            self.open_layer(crate::layer::Layer::Help, tx);
+        }
     }
 
     /// Esc in the reader (RD-85): close find, else clear the selection, else Quire's Esc.
     pub fn reader_escape(&mut self, tx: &mut Tx) -> bool {
-        if self.reader.help {
-            self.reader.help = false;
-        } else if self.reader.find.open {
+        if self.reader.find.open {
             self.close_find(tx);
         } else if tx.text_selection().is_some() {
             tx.clear_text_selection();
