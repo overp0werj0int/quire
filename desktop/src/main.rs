@@ -855,8 +855,9 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// WR-109: on a mode switch the old text goes at once and the new one fades in, so the two
-    /// never show together, and the switch is over within 250 ms.
+    /// WR-109: on a mode switch the old text goes at once and the new one fades in from 40%, so
+    /// the two never show together, the page never falls below 40%, and the switch is over
+    /// within 250 ms.
     #[test]
     fn wr_109_the_mode_switch_shows_one_text() {
         use crate::bench::DT;
@@ -877,6 +878,7 @@ pub(crate) mod scroll_tests {
             rt.frame(DT);
             let (src, pre) = (shown(&rt, "source"), shown(&rt, "preview"));
             assert!(src.min(pre) <= 0.05, "frame {i}: source at {src} and preview at {pre} show together");
+            assert!(src.max(pre) >= crate::ui::SWAP_FROM - 0.01, "frame {i}: the page shows its text at {}", src.max(pre));
             faded |= pre > 0.0 && pre < 0.9;
             if i as f64 * DT >= 0.25 {
                 assert!(pre >= 0.97, "the preview shows whole by 250 ms: {pre}");

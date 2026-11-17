@@ -75,10 +75,16 @@ pub(crate) fn focus_ring(p: &Pal) -> (f32, f32, rune::Color) {
 }
 
 /// How one thing gives way to another in its place: the old one goes at once and the new one
-/// fades in over 160 ms, so the two never show together.
+/// comes in at 40% and rises to full over 160 ms. So the two never show together, and the place
+/// never looks empty (WR-109). Under reduced motion the new one shows whole at once.
 pub(crate) fn swap() -> rune::Transition {
-    rune::Transition::opacity().springs(rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::NONE))
+    let mut t = rune::Transition::opacity().springs(rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::NONE));
+    t.insertion = rune::Effect::opacity(SWAP_FROM);
+    t
 }
+
+/// The opacity a swapped-in element starts at.
+pub(crate) const SWAP_FROM: f32 = 0.4;
 
 /// Where a text's baseline sits below its box top, for CSS `align-items: baseline` rows.
 pub fn baseline(style: TextStyle) -> f32 {

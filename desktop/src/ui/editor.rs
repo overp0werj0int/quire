@@ -172,8 +172,9 @@ fn doc_scroll(v: V) -> El {
             }
             column = column.child(el().key("toolbar-gap").h(TOOLBAR_GAP));
         }
-        // On a mode switch the old text and toolbar go at once and the new ones fade in (WR-109),
-        // so the two texts, at their different line pitches, never show together.
+        // On a mode switch the old text and toolbar go at once and the new ones fade in from 40%
+        // (WR-109), so the two texts, at their different line pitches, never show together, and
+        // the page never looks empty.
         column = column.child(
             if locked {
                 super::lock::panel(v)
