@@ -730,7 +730,7 @@ fn tags_panel(v: V) -> El {
             panel::shade(format!("tag-{tag}"), panel::BODY, 0, 0.0, &c, false)
                 .justify_between()
                 .role("button")
-                .on_press(move |s: &mut App| s.search_tag(&t))
+                .on_press_tx(move |s: &mut App, tx| s.search_tag(&t, tx))
                 .child(text(format!("#{tag}")).font(nav(panel::BODY, false)).color(c.accent))
                 .child(text(n.to_string()).font(nav(panel::CAPTION, false)).color(c.faint)),
         );

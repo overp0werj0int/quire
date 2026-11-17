@@ -55,7 +55,7 @@ impl V<'_> {
     }
     /// The sidebar over the page's left edge, in a window too narrow to dock it.
     pub fn left_over(&self) -> bool {
-        self.is_vault() && self.s.drawer == Some(crate::app::Drawer::Sidebar) && !self.focus() && self.vw < crate::app::SIDEBAR_DOCK_W
+        self.is_vault() && self.s.drawer() == Some(crate::app::Drawer::Sidebar) && !self.focus() && self.vw < crate::app::SIDEBAR_DOCK_W
     }
     /// The outline docked beside the page, which makes room for it.
     pub fn right_visible(&self) -> bool {
@@ -63,7 +63,7 @@ impl V<'_> {
     }
     /// The outline over the page's right edge, in a window too narrow to dock it.
     pub fn right_over(&self) -> bool {
-        self.is_vault() && self.s.drawer == Some(crate::app::Drawer::Outline) && !self.focus() && self.has_doc() && self.vw < crate::app::OUTLINE_DOCK_W
+        self.is_vault() && self.s.drawer() == Some(crate::app::Drawer::Outline) && !self.focus() && self.has_doc() && self.vw < crate::app::OUTLINE_DOCK_W
     }
 }
 
@@ -133,14 +133,10 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(bar).child(editor::body(v));
             let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
             let root = root.child(frame);
-            let root = if focus {
+            if focus {
                 root.child(titlebar::titlebar(v).pin(Some(0.0), Some(0.0), Some(0.0), None)).children(editor::progress(v))
             } else {
                 root.child(titlebar::corner(v))
-            };
-            match drawer(v) {
-                Some(drawer) => root.child(drawer_scrim(v)).child(drawer),
-                None => root,
             }
         }
     };
@@ -165,16 +161,13 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if reduced { root.instant_changes() } else { root }
 }
 
-/// The drawer on screen, if any (`App::shown_drawer`): in a window too narrow to dock it, the
-/// sidebar over the page's left edge on the sidebar's colour, or the outline over its right
-/// edge on the page's, so the page does not reflow under it. Both slide in from their edge over
-/// 160 ms (WR-99). The window corner's buttons stay over the sidebar's top.
-///
-/// It is modal: the keyboard moves into it as it opens, Tab stays in it, keys and the wheel
-/// never reach the page behind, and focus goes back where it was as it closes. A press outside
-/// it or Esc closes it. The title bar and the window corner stay live to the pointer: their
-/// buttons close the drawer and act (`titlebar`), so both drawers answer them by one rule.
-fn drawer(v: V) -> Option<El> {
+/// A drawer (`crate::layer`): in a window too narrow to dock it, the sidebar over the page's
+/// left edge on the sidebar's colour, or the outline over its right edge on the page's, so the
+/// page does not reflow under it. Both slide in from their edge over 160 ms (WR-99). The window
+/// corner's buttons stay over the sidebar's top. The title bar and the window corner stay live
+/// to the pointer: their buttons close the drawer and act (`titlebar`), so both drawers answer
+/// them by one rule.
+fn drawer(v: V) -> Option<layer::Card> {
     let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
     let shadow = |x: f32| rune::Shadow { x, y: 0.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
     let (panel, edge) = if v.left_over() {
@@ -187,19 +180,8 @@ fn drawer(v: V) -> Option<El> {
     } else {
         return None;
     };
-    let panel = panel.paint_order(35).role("dialog").modal_tx(true, |s: &mut App, tx| s.close_drawer(tx)).modal_keeps(["titlebar", "left-zone"]);
-    Some(panel.transition(rune::Transition::move_edge(edge).springs(slide)))
-}
-
-/// The scrim behind an open drawer: the modal layers' colour over the page, under the title
-/// bar. A press on it lands outside the drawer, so it closes the drawer and does nothing else.
-fn drawer_scrim(v: V) -> El {
-    let fade = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
-    el().key("drawer-scrim")
-        .pin(Some(0.0), Some(titlebar::BAR_H), Some(0.0), Some(0.0))
-        .paint_order(34)
-        .fill(v.p.scrim)
-        .transition(rune::Transition::opacity().springs(fade))
+    let panel = panel.role("dialog").transition(rune::Transition::move_edge(edge).springs(slide));
+    Some(layer::Card { el: panel, plane: None })
 }
 
 /// The reader is on screen: a note open in preview, not locked.

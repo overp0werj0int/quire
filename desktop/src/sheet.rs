@@ -108,7 +108,6 @@ impl App {
         let mut edit = TextEdit::new(orig.clone());
         edit.set_selection(0, 0);
         self.reader.pending = None;
-        self.cover_page();
         self.open_layer(Layer::Sheet(Box::new(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None })), tx);
         tx.clear_text_selection();
         tx.focus(EDITOR, false);

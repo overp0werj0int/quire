@@ -69,7 +69,6 @@ impl App {
         }
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
-        self.cover_page();
         self.open_layer(crate::layer::Layer::Lock(None), tx);
         tx.focus("lock-pass", false);
     }

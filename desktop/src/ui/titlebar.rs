@@ -26,11 +26,12 @@ fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help
     toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON)
 }
 
-/// A title bar button's press: it closes an open drawer, then acts, as the sidebar and outline
-/// toggles do through `App::toggle_drawer`. So every title bar button answers a drawer alike.
+/// A title bar button's press, which stays live over a drawer: the drawer closes, then the
+/// button acts, as a window shortcut does over it (`keys::on_key`). The sidebar and outline
+/// toggles answer a drawer through `App::toggle_drawer`.
 pub(super) fn act(f: fn(&mut App, &mut Tx)) -> impl Fn(&mut App, &mut Tx) + 'static {
     move |s, tx| {
-        s.drawer = None;
+        s.close_layers(tx);
         f(s, tx);
     }
 }

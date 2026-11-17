@@ -156,7 +156,7 @@ impl App {
         if !parent.is_empty() {
             self.expanded.insert(parent.to_string());
         }
-        self.show_left();
+        self.show_left(tx);
         self.left_panel = crate::app::Panel::Files;
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
         self.tree_menu = None;
@@ -325,8 +325,6 @@ impl App {
         let deleted = self.record_delete(folder, true);
         self.remove_folder(folder);
         self.deleted = Some(deleted);
-        // The Undo toast shows on the page, so a drawer over it closes.
-        self.drawer = None;
         self.sync_after_save();
     }
 

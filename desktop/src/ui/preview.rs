@@ -215,7 +215,7 @@ fn on_link(s: &mut App, id: &str, tx: &mut Tx) {
     } else if let Some(l) = id.strip_prefix("line:").and_then(|l| l.parse().ok()) {
         s.jump(l, tx);
     } else if let Some(t) = id.strip_prefix("tag:") {
-        s.search_tag(t);
+        s.search_tag(t, tx);
     } else if let Some(u) = id.strip_prefix("url:") {
         s.follow(u, tx);
     }
@@ -731,7 +731,7 @@ fn tag_line(cx: &Cx, runs: &[Run], tone: Tone) -> El {
                 .cursor(rune::Cursor::Pointer)
                 .role("link")
                 .label(run.t.clone())
-                .on_press(move |s: &mut App| s.search_tag(&tag))
+                .on_press_tx(move |s: &mut App, tx| s.search_tag(&tag, tx))
                 .child(text(run.t.clone()).font(look.mono_at(size, 1.3)).color(look.c.accent)),
         );
     }

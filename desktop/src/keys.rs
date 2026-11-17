@@ -30,10 +30,6 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
     let stack: &[Ctx] = if !vault {
         &[Ctx::Global]
-    } else if s.shown_drawer().is_some() {
-        // A drawer holds the keyboard: the reader's and the writer's keys never reach the page
-        // behind it.
-        &[Ctx::Global]
     } else if s.mode == crate::app::Mode::Preview {
         &[Ctx::Reader, Ctx::Global]
     } else {

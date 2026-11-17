@@ -13,7 +13,7 @@
 
 use rune::Tx;
 
-use crate::app::{App, Mode, Palette, Screen};
+use crate::app::{App, Drawer, Mode, Palette, Screen};
 use crate::sheet::Sheet;
 
 pub enum Layer {
@@ -26,6 +26,8 @@ pub enum Layer {
     Help,
     /// The edit sheet over the reader.
     Sheet(Box<Sheet>),
+    /// The sidebar or the outline over the page, in a window too narrow to dock it.
+    Drawer(Drawer),
 }
 
 /// Which layer, without its state: what a key toggles.
@@ -36,6 +38,7 @@ pub enum Kind {
     Lock,
     Help,
     Sheet,
+    Drawer(Drawer),
 }
 
 impl Layer {
@@ -46,6 +49,7 @@ impl Layer {
             Layer::Lock(_) => Kind::Lock,
             Layer::Help => Kind::Help,
             Layer::Sheet(_) => Kind::Sheet,
+            Layer::Drawer(d) => Kind::Drawer(*d),
         }
     }
 }
@@ -54,7 +58,7 @@ impl Kind {
     /// A menu or a drawer: the page around it stays in view, so a window shortcut closes it and
     /// acts as if it had not been there, and a change to the page closes it.
     pub fn light(self) -> bool {
-        false
+        matches!(self, Kind::Drawer(_))
     }
 }
 
@@ -119,6 +123,14 @@ impl App {
     pub fn pal_mut(&mut self) -> Option<&mut Palette> {
         self.layers.iter_mut().find_map(|o| match &mut o.layer {
             Layer::Palette(p) => Some(p),
+            _ => None,
+        })
+    }
+
+    /// The open drawer.
+    pub fn drawer(&self) -> Option<Drawer> {
+        self.open_layers().find_map(|l| match l {
+            Layer::Drawer(d) => Some(*d),
             _ => None,
         })
     }
@@ -235,7 +247,11 @@ impl App {
             return false;
         }
         let now = self.context();
-        let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now);
+        let gone = |o: &Open| match o.layer {
+            Layer::Drawer(d) => !self.drawer_fits(d),
+            _ => false,
+        };
+        let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now) || gone(o);
         let Some(i) = self.layers.iter().position(stale) else { return false };
         let back = self.layers[i].back.clone();
         self.layers.truncate(i);
@@ -253,6 +269,8 @@ pub fn toggles(id: &str) -> Option<Kind> {
     match id {
         "app.settings" => Some(Kind::Settings),
         "reader.help" | "writer.help" => Some(Kind::Help),
+        "app.toggle-sidebar" => Some(Kind::Drawer(Drawer::Sidebar)),
+        "app.toggle-outline" | "reader.toggle-outline" => Some(Kind::Drawer(Drawer::Outline)),
         _ => None,
     }
 }

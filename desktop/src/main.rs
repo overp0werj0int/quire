@@ -356,7 +356,7 @@ pub(crate) mod scroll_tests {
             let (lines, per_line) = (((r[3] - 14.0) / line).round(), ((r[2] - 24.0) / (0.6 * 11.0)).floor());
             assert!(lines * per_line >= t.chars().count() as f32, "the search hint '{t}' runs past its {lines} line(s) of {per_line} characters");
         }
-        rt.update(|s, _| s.drawer = None);
+        rt.update(|s, tx| s.close_layers(tx));
         rt.set_viewport((1280.0, 800.0), 1.0);
         rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
         settle(&mut rt);

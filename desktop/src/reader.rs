@@ -817,7 +817,7 @@ impl App {
     /// Ctrl+F or `/` (RD-52): open the bar, or select its text when it is open.
     pub fn open_find(&mut self, tx: &mut Tx) {
         // Find and a drawer never share the page.
-        self.drawer = None;
+        self.close_layers(tx);
         let f = &mut self.reader.find;
         f.open = true;
         let n = f.q.text.len();
@@ -912,7 +912,6 @@ impl App {
         if self.layer_is(crate::layer::Kind::Help) {
             self.close_layer(tx);
         } else {
-            self.cover_page();
             self.open_layer(crate::layer::Layer::Help, tx);
         }
     }

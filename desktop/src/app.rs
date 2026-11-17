@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use rune::{FileDialogOptions, TextEdit, Tx};
 
+use crate::layer::Layer;
 use crate::md::{self, Names};
 use crate::store::{self, Persist, Session, Settings, VaultRef};
 use crate::vault::{self, Op, Scope, Vault, Writer};
@@ -141,8 +142,6 @@ pub struct App {
     pub view_h: std::cell::Cell<f32>,
     /// The window width as the last view saw it.
     pub view_w: std::cell::Cell<f32>,
-    /// The drawer open over the page, if any.
-    pub drawer: Option<Drawer>,
     pub mcp_copied_at: Option<Instant>,
     pub mcp_http: Option<crate::mcp::HttpServer>,
     pub mcp_http_error: Option<String>,
@@ -242,7 +241,6 @@ pub fn init() -> App {
         sys_dark: std::cell::Cell::new(false),
         view_h: std::cell::Cell::new(800.0),
         view_w: std::cell::Cell::new(1280.0),
-        drawer: None,
         mcp_copied_at: None,
         mcp_http: None,
         mcp_http_error: None,
@@ -1082,7 +1080,6 @@ impl App {
         if self.files().get(path).is_none() {
             return;
         }
-        self.drawer = None;
         if !self.tabs.iter().any(|t| t == path) {
             self.tabs.push(path.to_string());
         }
@@ -1167,8 +1164,6 @@ impl App {
         // Unsaved text goes to disk first, so the trash and Undo have it.
         self.flush_notes();
         self.deleted = Some(self.record_delete(&p, false));
-        // The Undo toast shows on the page, so a drawer over it closes.
-        self.drawer = None;
         self.unlocked.remove(&p);
         let Some(v) = &mut self.vault else { return };
         v.files.remove(&p);
@@ -1348,16 +1343,17 @@ impl App {
 
     /// Whether the sidebar button's sidebar is open, docked or as a drawer.
     pub fn sidebar_open(&self) -> bool {
-        if self.view_w.get() >= SIDEBAR_DOCK_W { self.persist.left_open } else { self.drawer == Some(Drawer::Sidebar) }
+        if self.view_w.get() >= SIDEBAR_DOCK_W { self.persist.left_open } else { self.drawer() == Some(Drawer::Sidebar) }
     }
 
     /// Shows the sidebar for search, a tag or a new folder: docked, or as the drawer.
-    pub(crate) fn show_left(&mut self) {
+    pub(crate) fn show_left(&mut self, tx: &mut Tx) {
+        self.focus = false;
         if self.view_w.get() >= SIDEBAR_DOCK_W {
             self.persist.left_open = true;
-        } else {
+        } else if self.drawer() != Some(Drawer::Sidebar) {
             self.drop_find();
-            self.drawer = Some(Drawer::Sidebar);
+            self.open_layer(Layer::Drawer(Drawer::Sidebar), tx);
         }
     }
 
@@ -1374,35 +1370,29 @@ impl App {
 
     /// Whether the outline button's outline is open, docked or as a drawer.
     pub fn outline_open(&self) -> bool {
-        if self.view_w.get() >= OUTLINE_DOCK_W { self.persist.right_open } else { self.drawer == Some(Drawer::Outline) }
+        if self.view_w.get() >= OUTLINE_DOCK_W { self.persist.right_open } else { self.drawer() == Some(Drawer::Outline) }
     }
 
     /// Opens drawer `d`, or closes it when it is open. A drawer and the find bar never share
     /// the page, so opening one closes find.
     pub fn toggle_drawer(&mut self, d: Drawer, tx: &mut Tx) {
-        if self.drawer == Some(d) {
-            self.close_drawer(tx);
+        if self.drawer() == Some(d) {
+            self.close_layers(tx);
         } else {
             self.close_find(tx);
-            self.drawer = Some(d);
+            self.open_layer(Layer::Drawer(d), tx);
         }
     }
 
-    /// The drawer on screen: one is open, zen mode is off and the window is too narrow to show
-    /// the panel beside the page. The outline's also needs a note.
-    pub fn shown_drawer(&self) -> Option<Drawer> {
-        let d = self.drawer?;
-        let shown = match d {
+    /// Whether drawer `d` has its reason to be: zen mode is off and the window is too narrow to
+    /// show its panel beside the page. The outline's also needs a note. A drawer that loses it
+    /// closes (`crate::layer`).
+    pub(crate) fn drawer_fits(&self, d: Drawer) -> bool {
+        let narrow = match d {
             Drawer::Outline => self.view_w.get() < OUTLINE_DOCK_W && self.active.is_some(),
             Drawer::Sidebar => self.view_w.get() < SIDEBAR_DOCK_W,
         };
-        (shown && !self.focus && self.screen == Screen::Vault).then_some(d)
-    }
-
-    /// Closes the open drawer. The keyboard goes back where it was before the drawer opened
-    /// (Rune's modal returns it).
-    pub fn close_drawer(&mut self, _tx: &mut Tx) {
-        self.drawer = None;
+        narrow && !self.focus && self.screen == Screen::Vault
     }
 
     /// Settings' key: opens Settings, or closes it when it is open.
@@ -1412,12 +1402,6 @@ impl App {
         } else {
             self.open_settings(tx);
         }
-    }
-
-    /// A layer opens over the page (the palette or quick switcher, Settings, a dialog, help or
-    /// the edit sheet): an open drawer closes, so it never shows over or through that layer.
-    pub fn cover_page(&mut self) {
-        self.drawer = None;
     }
 
     /// A toolbar action on the active note's selection, as one undo step.
@@ -1443,7 +1427,6 @@ impl App {
 
     pub fn open_settings(&mut self, tx: &mut Tx) {
         self.vault_menu = false;
-        self.cover_page();
         self.open_layer(crate::layer::Layer::Settings, tx);
     }
 
@@ -1451,31 +1434,26 @@ impl App {
         if self.note_mode() {
             return;
         }
-        self.show_left();
+        self.show_left(tx);
         self.left_panel = Panel::Search;
-        self.focus = false;
-        self.layers.clear();
         let n = self.query.text.len();
         self.query.set_selection(0, n);
         tx.focus("search", false);
     }
 
-    pub fn search_tag(&mut self, tag: &str) {
+    pub fn search_tag(&mut self, tag: &str, tx: &mut Tx) {
         if self.note_mode() {
             return;
         }
-        self.show_left();
+        self.show_left(tx);
         self.left_panel = Panel::Search;
         self.query = TextEdit::new(format!("#{tag}"));
         let n = self.query.text.len();
         self.query.set_selection(n, n);
-        self.focus = false;
-        self.layers.clear();
     }
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {
         self.vault_menu = false;
-        self.cover_page();
         self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0 }), tx);
         tx.focus("pal-input", false);
     }
@@ -1494,8 +1472,6 @@ impl App {
             self.cancel_rename(tx);
         } else if self.creating.is_some() {
             self.creating = None;
-        } else if self.shown_drawer().is_some() {
-            self.close_drawer(tx);
         } else if self.focus {
             self.focus = false;
         } else {
@@ -1506,7 +1482,8 @@ impl App {
 
     /// Moves the caret, or the preview, to line `line`.
     pub fn jump(&mut self, line: usize, tx: &mut Tx) {
-        self.drawer = None;
+        // From the outline's drawer: the page moves, and the drawer gives it back.
+        self.close_layers(tx);
         if self.mode == Mode::Source {
             self.source_jump(line, tx);
         } else {
