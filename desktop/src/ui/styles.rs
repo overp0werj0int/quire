@@ -18,7 +18,8 @@ use std::sync::OnceLock;
 
 use rune::{Color, El, Family, TextStyle, text};
 
-use crate::theme::{SANS, normal_lh, px};
+use crate::roles::Roles;
+use crate::theme::{Pal, SANS, normal_lh, px};
 
 /// The family fontconfig's `monospace` resolves to (JetBrains Mono on Omarchy), read once, as
 /// omarky reads it. Named rather than `Family::SystemMono`, which loads only the regular face.
@@ -71,11 +72,26 @@ pub fn sans(size: f32, weight: f32) -> TextStyle {
     TextStyle::new(size, weight).family(SANS).lh(normal_lh(SANS, size))
 }
 
-/// A section label (C15): bold capitals 1 px apart at caption size, in the panel family in
-/// navigation (`nav`) and in Instrument Sans elsewhere. Every section label takes it.
-pub fn caption(t: &str, nav_: bool, c: Color) -> El {
-    let style = if nav_ { nav(10.0, true) } else { sans(10.5, 600.0) };
-    text(t.to_uppercase()).font(style.tracking(1.0)).color(c)
+/// Every caption's size, in both families: omarky's caption size.
+pub const CAPTION: f32 = 10.0;
+
+/// A caption's capitals: bold, 1 px apart, at `CAPTION`, in the panel family in navigation
+/// (`nav`) and in Instrument Sans elsewhere, with no colour. The panel tabs take it with their
+/// own colours; a section label takes `caption`.
+pub fn caps(t: &str, nav_: bool) -> El {
+    let style = if nav_ { nav(CAPTION, true) } else { sans(CAPTION, 600.0) };
+    text(t.to_uppercase()).font(style.tracking(1.0))
+}
+
+/// A section label (C15, HC): `caps` in the caption ink. Every section label takes it.
+pub fn caption(t: &str, nav_: bool, p: &Pal) -> El {
+    caps(t, nav_).color(caption_ink(p))
+}
+
+/// The ink of every section label: the side panels' faint, which reaches 4.5:1 on the window,
+/// the sidebar and the outline's wash, the fills every panel and dialog sits on.
+pub fn caption_ink(p: &Pal) -> Color {
+    Roles::panel(p).faint
 }
 
 /// The note's own type in `family`, not chrome: the editor's field and Settings' font samples.

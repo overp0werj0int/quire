@@ -61,7 +61,7 @@ pub fn sidebar(v: V) -> El {
                         tx.focus("search", false);
                     }
                 })
-                .child(super::styles::caption(lbl, true, if on { c.text } else { c.dim }).group_color(c.text))
+                .child(super::styles::caps(lbl, true).color(if on { c.text } else { c.dim }).group_color(c.text))
                 .children(on.then(|| {
                     el().key("tab-mark").pin(Some(0.0), None, Some(0.0), Some(1.0)).h(2.0).radius(1.0).fill(c.accent).transition(super::swap())
                 })),
@@ -131,7 +131,6 @@ pub fn sidebar(v: V) -> El {
 const OPEN_PAD: f32 = 6.0;
 fn open_notes(v: V) -> Option<El> {
     let s = v.s;
-    let c = Roles::panel(v.p);
     if open_count(v) == 0 {
         return None;
     }
@@ -141,7 +140,7 @@ fn open_notes(v: V) -> Option<El> {
         .mx(panel::INSET)
         .pl(panel::TEXT_X - panel::INSET)
         .center_y()
-        .child(panel::caption("Open", &c));
+        .child(super::styles::caption("Open", true, v.p));
     let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
     if s.note_mode() {
         let shown = s.note_path();

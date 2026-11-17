@@ -104,7 +104,7 @@ pub fn welcome(v: V) -> El {
         }
     };
 
-    let mut recent = col().key("recent").gap(2.0).child(caption("recent", false, p.mute).pb(8.0));
+    let mut recent = col().key("recent").gap(2.0).child(caption("recent", false, p).pb(8.0));
     let name_style = sans(14.0, 500.0);
     let small = literal(11.5);
     let shift = baseline_shift(name_style, small);

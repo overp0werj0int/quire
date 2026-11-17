@@ -36,7 +36,7 @@ pub fn settings(v: V) -> El {
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
     }
-    let nav = col().key("set-nav").w(nav_w(v)).h_full().py(18.0).px(10.0).fill(p.side).child(styles::caption("settings", false, p.mute).px(10.0).pb(10.0)).child(tabs);
+    let nav = col().key("set-nav").w(nav_w(v)).h_full().py(18.0).px(10.0).fill(p.side).child(styles::caption("settings", false, p).px(10.0).pb(10.0)).child(tabs);
     let title = SECS.iter().find(|x| x.0 == s.set_sec).map_or("", |x| x.1);
     let head = row()
         .key("set-head")
@@ -550,7 +550,7 @@ fn keys(v: V) -> El {
     // Only keys whose feature is built: the rest arrive with the reader and writer work.
     let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor")];
     for (ctx, title) in groups {
-        c = c.child(styles::caption(title, false, p.mute).key(format!("keys-{title}")).pt(18.0).pb(6.0));
+        c = c.child(styles::caption(title, false, p).key(format!("keys-{title}")).pt(18.0).pb(6.0));
         let shown = keymap::TABLE.iter().filter(|a| {
             a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape" && crate::keys::handler(a.id).is_some()
         });

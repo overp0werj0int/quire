@@ -29,11 +29,6 @@ pub fn row_h(size: f32) -> f32 {
     panel_line(size) + 12.0
 }
 
-/// A panel's section caption (`styles::caption`), in the faint colour.
-pub fn caption(t: &str, c: &Roles) -> El {
-    super::styles::caption(t, true, c.faint)
-}
-
 /// A row's shade: inset `INSET` each side, the hover colour under the pointer, a tenth of the
 /// accent on the current row. `lead` is the room left of the text for a chevron.
 pub fn shade(key: impl Into<String>, size: f32, depth: usize, lead: f32, c: &Roles, current: bool) -> El {

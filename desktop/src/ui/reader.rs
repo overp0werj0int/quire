@@ -204,7 +204,7 @@ pub fn help_sheet(v: V) -> El {
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
     for (gi, (title, rows)) in groups.iter().enumerate() {
         let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
-            caption(title, false, c.faint).mb(6.0),
+            caption(title, false, v.p).mb(6.0),
         );
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();

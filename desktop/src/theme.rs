@@ -617,6 +617,12 @@ mod theme_tests {
             assert!(contrast(p.ink2, p.bg) >= 4.5, "{} ink2 {}", t.id, contrast(p.ink2, p.bg));
             assert!(contrast(p.mute, p.bg) >= 3.0, "{} mute {}", t.id, contrast(p.mute, p.bg));
             assert!(contrast(p.acc, p.bg) >= 3.0, "{} accent {}", t.id, contrast(p.acc, p.bg));
+            // HC: every section label, in the panels and in every dialog (help, Settings, the
+            // welcome screen), reads at 4.5:1 on the window and the sidebar, the fills they sit on.
+            let cap = crate::ui::styles::caption_ink(p);
+            for fill in [p.bg, p.side] {
+                assert!(contrast(cap, fill) >= 4.5, "{}: captions {:.2}:1 on {:?}", t.id, contrast(cap, fill), fill);
+            }
             // The scrim darkens the page under it by at least a fifth, with a dark neutral of the
             // page's own hue, at 40% or more.
             let under = p.bg.mix(p.scrim.alpha(1.0), p.scrim.a);
