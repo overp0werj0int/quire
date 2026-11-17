@@ -36,6 +36,7 @@ pub fn corner(v: V) -> El {
         .gap(10.0)
         .center_y()
         .window_drag()
+        .preserve_focus_on_press(true)
         .child(dots(p))
         .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, "Toggle sidebar").no_window_drag().on_press(|s: &mut App| s.toggle_left()))
 }
@@ -55,11 +56,14 @@ fn bar(v: V) -> El {
 
     let right = actions(v, row().key("right-zone").h(BAR_H).pl(6.0).pr(10.0).gap(6.0).center_y());
 
+    // A press on the bar's buttons, or a drag of the window by it, leaves the keyboard where
+    // it was: the caret stays in the note. The rename field still takes focus.
     row()
         .key("titlebar")
         .h(BAR_H)
         .w_full()
         .window_drag()
+        .preserve_focus_on_press(true)
         .paint_order(3)
         .children((!left_visible).then(|| corner(v)))
         .child(title)
@@ -162,5 +166,5 @@ fn focus_bar(v: V) -> El {
             ),
         )
         .child(el().w(v.trailing));
-    el().key("titlebar").h(BAR_H).w_full().window_drag().hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(hint).child(inner)
+    el().key("titlebar").h(BAR_H).w_full().window_drag().preserve_focus_on_press(true).hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(hint).child(inner)
 }

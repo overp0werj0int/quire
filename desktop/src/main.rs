@@ -1284,6 +1284,121 @@ mod escape_tests {
 }
 
 #[cfg(test)]
+mod bar_focus_tests {
+    use crate::app::Mode;
+    use rune::{Env, Key, KeyEvent, Mods, Runtime};
+
+    const DT: f64 = 1.0 / 60.0;
+
+    /// A press on a title bar button leaves the keyboard where it was: typing after it still
+    /// goes into the note, in the bar and on zen mode's floating pill.
+    #[test]
+    fn bar_buttons_leave_the_editor_focused() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-bar-focus-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.on_key = Some(crate::keys::on_key);
+        rt.frame(DT);
+        rt.update(|s, tx| {
+            s.mode = Mode::Source;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, "alpha\n".into());
+            s.focus_editor(tx);
+            s.cur_edit().set_selection(5, 5);
+        });
+        let mut typed = |rt: &mut Runtime<crate::app::App>, button: &str, ch: &str| {
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            let (x, y) = rt.find(button).unwrap_or_else(|| panic!("the {button} button"));
+            rt.pointer_move(x, y);
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            rt.key(KeyEvent { key: Key::Text(ch.into()), mods: Mods::default() });
+            rt.frame(DT);
+            let mut text = String::new();
+            rt.update_if(|s, _| {
+                text = s.active_text().to_string();
+                false
+            });
+            text
+        };
+        assert_eq!(typed(&mut rt, "typewriter", "X"), "alphaX\n", "typing goes on after the typewriter button");
+        assert_eq!(typed(&mut rt, "next-font", "Y"), "alphaXY\n", "and after the next font button");
+        rt.update(|s, tx| s.toggle_focus(tx));
+        assert_eq!(typed(&mut rt, "paragraph-focus", "Z"), "alphaXYZ\n", "and after a button on zen mode's pill");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// In preview Down and Space still scroll the page after a press on a title bar button,
+    /// and Space does not press the button again.
+    #[test]
+    fn bar_buttons_leave_the_preview_scrolling() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-bar-focus-preview-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, crate::bench::LONG, Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        let (px, py) = rt.find(crate::reader::SCROLL).expect("the page");
+        rt.pointer_down(px, py);
+        rt.pointer_up(px, py);
+        let down = |rt: &mut Runtime<crate::app::App>, key: Key| {
+            let y = |rt: &mut Runtime<crate::app::App>| {
+                let mut y = 0.0;
+                rt.update_if(|s, _| {
+                    y = s.reader.scroll.get()[0];
+                    false
+                });
+                y
+            };
+            let before = y(rt);
+            for _ in 0..4 {
+                rt.key(KeyEvent { key: key.clone(), mods: Mods::default() });
+                rt.frame(DT);
+            }
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+            y(rt) - before
+        };
+        assert!(down(&mut rt, Key::Down) > 1.0, "Down scrolls the page");
+        let (x, y) = rt.find("wide").expect("the width button");
+        rt.pointer_move(x, y);
+        rt.frame(DT);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let wide = |rt: &mut Runtime<crate::app::App>| {
+            let mut w = false;
+            rt.update_if(|s, _| {
+                w = s.wide();
+                false
+            });
+            w
+        };
+        assert!(wide(&mut rt), "the button made the page wide");
+        assert!(down(&mut rt, Key::Down) > 1.0, "Down still scrolls after the width button");
+        assert!(down(&mut rt, Key::Text(" ".into())) > 1.0, "and so does Space");
+        assert!(wide(&mut rt), "Space did not press the width button again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod edit_menu_tests {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
 
