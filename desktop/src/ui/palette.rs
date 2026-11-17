@@ -1,11 +1,12 @@
 //! The quick switcher and command palette.
 
 use crate::roles::Roles;
-use rune::{Color, El, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text, text_input};
+use rune::{Color, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text, text_input};
 
 use super::V;
 use super::widgets::label;
-use crate::app::{App, PalMode};
+use super::layer::Card;
+use crate::app::{App, PalMode, Palette};
 use crate::commands::{self, pal_data};
 use super::styles::{keys, sans};
 use crate::theme;
@@ -16,11 +17,11 @@ const LAYER_BOTTOM: f32 = 20.0;
 /// The widest a row's folder or key runs: about two fifths of the row, so the name keeps the rest.
 const SUB_W: f32 = 220.0;
 
-pub fn palette(v: V) -> El {
+/// The quick switcher or the command palette, near the window's top (`super::layer`).
+pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
     let p = v.p;
     let s = v.s;
-    let Some(pal) = &s.palette else { return el() };
-    let Some(d) = pal_data(s, v.dark) else { return el() };
+    let d = pal_data(s, v.dark)?;
     let cmds = d.mode == PalMode::Commands;
     let head = row()
         .key("pal-head")
@@ -43,9 +44,9 @@ pub fn palette(v: V) -> El {
                 .color(p.ink)
                 .placeholder(if cmds { "Type a command…" } else { "Find a note by name…" }, theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
-                .on_edit(|s: &mut App| &mut s.palette.get_or_insert_with(|| crate::app::Palette { mode: PalMode::Files, q: rune::TextEdit::new(""), idx: 0 }).q)
+                .on_edit(pal_field)
                 .on_input_change(|s: &mut App, _| {
-                    if let Some(p) = &mut s.palette {
+                    if let Some(p) = s.pal_mut() {
                         p.idx = 0;
                     }
                 })
@@ -77,10 +78,10 @@ pub fn palette(v: V) -> El {
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .role("option")
                 .on_hover(move |s: &mut App| {
-                    if let Some(p) = &mut s.palette {
-                        if p.idx != i {
-                            p.idx = i;
-                        }
+                    if let Some(p) = s.pal_mut()
+                        && p.idx != i
+                    {
+                        p.idx = i;
                     }
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
@@ -133,21 +134,20 @@ pub fn palette(v: V) -> El {
             .clip_rounded(12.0)
             .role("dialog")
             .label(if cmds { "Commands" } else { "Quick switcher" })
-            .modal_tx(true, |s: &mut App, tx| s.close_palette(tx))
             .child(head)
             .child(scroller)
             .child(foot),
     );
-    col()
-        .key("pal-layer")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .paint_order(50)
-        .fill(p.scrim)
-        .items_center()
-        .pt(top)
-        .px(20.0)
-        .pb(LAYER_BOTTOM)
-        .child(panel)
+    Some(Card { el: panel, plane: Some(col().items_center().pt(top).px(20.0).pb(LAYER_BOTTOM)) })
+}
+
+/// The palette's field, for its edit hook, which can still run in the frame the palette
+/// closes; that last edit lands in a scratch field.
+fn pal_field(s: &mut App) -> &mut rune::TextEdit {
+    if s.pal().is_some() {
+        return &mut s.pal_mut().expect("checked above").q;
+    }
+    s.field("pal-closed", String::new)
 }
 
 fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
@@ -157,14 +157,14 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let n = d.items.len().max(1);
     match ev.key {
         Key::Down => {
-            if let Some(p) = &mut s.palette {
+            if let Some(p) = s.pal_mut() {
                 p.idx = (d.idx + 1) % n;
                 tx.scroll_into_view(format!("pal-{}", p.idx));
             }
             true
         }
         Key::Up => {
-            if let Some(p) = &mut s.palette {
+            if let Some(p) = s.pal_mut() {
                 p.idx = (d.idx + n - 1) % n;
                 tx.scroll_into_view(format!("pal-{}", p.idx));
             }
@@ -177,7 +177,7 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             true
         }
         Key::Backspace => {
-            let Some(p) = &mut s.palette else { return false };
+            let Some(p) = s.pal_mut() else { return false };
             if p.q.text.is_empty() && p.mode == PalMode::Commands {
                 p.mode = PalMode::Files;
                 p.idx = 0;
@@ -186,7 +186,7 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
             false
         }
         Key::Escape => {
-            s.close_palette(tx);
+            s.dismiss(tx);
             true
         }
         _ => false,

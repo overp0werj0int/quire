@@ -105,7 +105,11 @@ pub struct App {
     pub mode: Mode,
     pub left_panel: Panel,
     pub query: TextEdit,
-    pub palette: Option<Palette>,
+    /// The layers open over the page, bottom first (`crate::layer`).
+    pub(crate) layers: Vec<crate::layer::Open>,
+    /// Where focus goes back to, from a layer that closed in this change, for a layer that
+    /// opens in its place (`crate::layer`).
+    pub(crate) handed: Option<Option<String>>,
     pub settings_open: bool,
     pub set_sec: Sec,
     pub focus: bool,
@@ -219,7 +223,8 @@ pub fn init() -> App {
         mode: Mode::Source,
         left_panel: Panel::Files,
         query: TextEdit::new(""),
-        palette: None,
+        layers: Vec::new(),
+        handed: None,
         settings_open: false,
         set_sec: Sec::Appearance,
         focus: false,
@@ -498,6 +503,7 @@ impl App {
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
         changed |= self.expire_sheet(t);
+        changed |= self.drop_stale_layers(tx);
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
         changed |= self.search_due(t, tx);
@@ -915,7 +921,7 @@ impl App {
         self.creating = None;
         self.query = TextEdit::new("");
         self.left_panel = Panel::Files;
-        self.palette = None;
+        self.layers.clear();
         self.settings_open = false;
         self.vault_menu = false;
         self.renaming = None;
@@ -975,7 +981,7 @@ impl App {
         self.flush_notes();
         self.store_session();
         self.screen = Screen::Welcome;
-        self.palette = None;
+        self.layers.clear();
         self.settings_open = false;
         self.vault_menu = false;
         self.focus = false;
@@ -1100,7 +1106,6 @@ impl App {
         self.recent.retain(|x| x != path);
         self.recent.insert(0, path.to_string());
         self.recent.truncate(30);
-        self.palette = None;
         self.renaming = None;
         self.vault_menu = false;
         if sel.is_some_and(|s| s.force_source) {
@@ -1337,7 +1342,6 @@ impl App {
             return;
         }
         self.focus = !self.focus;
-        self.palette = None;
         self.focus_editor(tx);
     }
 
@@ -1413,7 +1417,7 @@ impl App {
 
     pub fn toggle_settings(&mut self, _tx: &mut Tx) {
         self.settings_open = !self.settings_open;
-        self.palette = None;
+        self.layers.clear();
         self.cover_page();
     }
 
@@ -1447,7 +1451,7 @@ impl App {
     pub fn open_settings(&mut self) {
         self.settings_open = true;
         self.vault_menu = false;
-        self.palette = None;
+        self.layers.clear();
         self.cover_page();
     }
 
@@ -1458,7 +1462,7 @@ impl App {
         self.show_left();
         self.left_panel = Panel::Search;
         self.focus = false;
-        self.palette = None;
+        self.layers.clear();
         self.settings_open = false;
         let n = self.query.text.len();
         self.query.set_selection(0, n);
@@ -1475,26 +1479,21 @@ impl App {
         let n = self.query.text.len();
         self.query.set_selection(n, n);
         self.focus = false;
-        self.palette = None;
+        self.layers.clear();
     }
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {
-        self.palette = Some(Palette { mode, q: TextEdit::new(""), idx: 0 });
         self.vault_menu = false;
         self.settings_open = false;
         self.cover_page();
+        self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0 }), tx);
         tx.focus("pal-input", false);
-    }
-
-    pub fn close_palette(&mut self, tx: &mut Tx) {
-        self.palette = None;
-        self.focus_editor(tx);
     }
 
     /// Escape closes the topmost thing, as in the design.
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
-        if self.palette.is_some() {
-            self.close_palette(tx);
+        if self.layer().is_some() {
+            self.dismiss(tx);
         } else if self.settings_open {
             self.settings_open = false;
         } else if self.vault_menu {

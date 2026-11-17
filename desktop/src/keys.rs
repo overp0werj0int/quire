@@ -4,6 +4,7 @@ use rune::{KeyEvent, Tx};
 
 use crate::app::{App, Screen};
 use crate::keymap::{self, Ctx};
+use crate::layer::{Kind, Layer};
 
 pub fn is_mac() -> bool {
     cfg!(target_os = "macos")
@@ -19,15 +20,20 @@ pub fn mod_click() -> String {
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let preset = s.preset();
     let vault = s.screen == Screen::Vault;
+    // The toast is not a layer: its Undo key acts whatever is open.
+    if vault && keymap::lookup(preset, Ctx::Global, ev).iter().any(|a| a.id == "app.undo-delete") {
+        s.undo_delete(tx);
+        return true;
+    }
+    if let Some(kind) = s.layer().map(Layer::kind) {
+        return layer_key(s, kind, ev, tx);
+    }
     let stack: &[Ctx] = if s.sheet.is_some() {
         // The sheet is modal: only its own keys act, and every other key stops here
         // (SHEET-014, SHEET-036).
         &[Ctx::Sheet]
     } else if !vault || s.settings_open {
         &[Ctx::Global]
-    } else if s.palette.is_some() {
-        // An editing key never changes the note behind the palette.
-        &[Ctx::Palette, Ctx::Global]
     } else if s.shown_drawer().is_some() {
         // A drawer holds the keyboard: the reader's and the writer's keys never reach the page
         // behind it.
@@ -81,6 +87,47 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
     }
     s.reader.help || s.sheet.is_some()
+}
+
+/// A key while a layer is open, which holds the keyboard: the page behind never hears it.
+/// The layer's own keys act; Esc dismisses it; a window shortcut closes it first and then
+/// acts, as if it had not been there, unless it is the shortcut that toggles that layer.
+/// Light layers (a menu, a drawer) take the page's shortcuts with a modifier, a sheet with a
+/// field the window's, and the help and the edit sheet only their own. Any other key goes on
+/// to Rune, which keeps it inside the layer.
+fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    let preset = s.preset();
+    let page: &[Ctx] = if kind.light() { page_stack(s) } else { &[Ctx::Global] };
+    let chord = ev.mods.cmd || ev.mods.ctrl || ev.mods.alt;
+    for ctx in page {
+        for a in keymap::lookup(preset, *ctx, ev) {
+            if matches!(a.id, "app.escape" | "reader.escape" | "writer.escape") {
+                s.dismiss(tx);
+                return true;
+            }
+            if kind.light() && !chord {
+                continue;
+            }
+            let Some(run) = handler(a.id) else { continue };
+            if crate::layer::toggles(a.id) != Some(kind) {
+                s.close_layers(tx);
+            }
+            run(s, tx);
+            return true;
+        }
+    }
+    false
+}
+
+/// The contexts a key goes through with no layer open, top first (KEY-02).
+fn page_stack(s: &App) -> &'static [Ctx] {
+    if s.screen != Screen::Vault {
+        &[Ctx::Global]
+    } else if s.mode == crate::app::Mode::Preview {
+        &[Ctx::Reader, Ctx::Global]
+    } else {
+        &[Ctx::Writer, Ctx::Global]
+    }
 }
 
 type Run = fn(&mut App, &mut Tx);

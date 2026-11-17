@@ -260,7 +260,7 @@ pub fn toast(v: V, msg: &str) -> El {
 /// The row that holds a toast, 16 px clear of the note area's sides, so the pill always fits
 /// and its text is cut instead.
 fn toast_row(pill: El) -> El {
-    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(28.0)).px(16.0).justify_center().paint_order(65).child(pill.shrink().min_w(0.0))
+    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(28.0)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
 }
 
 /// After a delete, the toast's place holds what went and an Undo button with its key, until

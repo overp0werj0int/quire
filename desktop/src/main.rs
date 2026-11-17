@@ -14,6 +14,7 @@ mod format;
 mod images;
 mod keymap;
 mod keys;
+mod layer;
 mod lock;
 mod lock_app;
 mod mcp;
@@ -1313,7 +1314,7 @@ pub(crate) mod scroll_tests {
         rt.update(|s, tx| s.open_palette(crate::app::PalMode::Commands, tx));
         settle(&mut rt);
         assert!(rect(&rt, "palette-frame").is_some() && rect(&rt, "outline-over").is_none(), "the palette closes the outline's drawer");
-        rt.update(|s, tx| s.close_palette(tx));
+        rt.update(|s, tx| s.close_layer(tx));
         assert_eq!(docked(&mut rt), setting, "the docked setting never changed");
         // From 680 up, nothing changed: the button docks and undocks it.
         rt.set_viewport((1000.0, 600.0), 1.0);
@@ -2940,7 +2941,7 @@ mod note_mode_tests {
         rt.update(|s, tx| {
             s.mode = Mode::Source;
             s.quick_open(tx);
-            assert!(s.palette.is_none(), "no quick switcher");
+            assert!(s.pal().is_none(), "no quick switcher");
         });
         assert!(rt.file_dialog().is_some(), "the file picker is up");
         rt.resolve_file_dialog(Some(other.join("a.md"))).unwrap();

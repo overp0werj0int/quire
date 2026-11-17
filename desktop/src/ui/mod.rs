@@ -2,6 +2,7 @@
 
 pub(crate) mod editor;
 mod chip;
+mod layer;
 mod lock;
 mod outline;
 mod octicons;
@@ -158,9 +159,6 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if s.dragging.as_ref().is_some_and(|d| d.active) {
         root = root.child(sidebar::drag_ghost(v));
     }
-    if s.palette.is_some() {
-        root = root.child(palette::palette(v));
-    }
     if s.settings_open && v.is_vault() {
         root = root.child(settings::settings(v));
     }
@@ -173,6 +171,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if v.is_vault() && s.sheet.is_some() {
         root = root.child(sheet::sheet(v));
     }
+    root = root.children(layer::layers(v));
     // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
     // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.
     if reduced { root.instant_changes() } else { root }
@@ -253,7 +252,7 @@ fn notice(v: V, msg: &str) -> El {
         .gap(12.0)
         .padding(12.0)
         .radius(9.0)
-        .paint_order(60)
+        .raise()
         .child(widgets::label(msg, styles::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
         .child(
             widgets::label("dismiss", styles::sans(11.5, 400.0), p.mute)

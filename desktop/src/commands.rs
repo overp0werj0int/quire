@@ -144,7 +144,7 @@ pub fn segs(s: &str, idx: &[usize]) -> Vec<(String, bool)> {
 }
 
 pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
-    let p = s.palette.as_ref()?;
+    let p = s.pal()?;
     let mut mode = p.mode;
     let mut q = p.q.text.as_str();
     if mode == PalMode::Files && q.starts_with('>') {
@@ -198,16 +198,13 @@ pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
     Some(PalData { mode, items, idx })
 }
 
+/// Runs a row: the palette closes first, so a command that opens a layer opens it in the
+/// palette's place.
 pub fn run(s: &mut App, action: Action, tx: &mut Tx) {
+    s.close_layer(tx);
     match action {
         Action::Open(p) => s.open_file(&p, None, tx),
-        Action::Create(q) => {
-            s.palette = None;
-            s.new_note(Some(&q), tx);
-        }
-        Action::Cmd(f) => {
-            s.palette = None;
-            f(s, tx);
-        }
+        Action::Create(q) => s.new_note(Some(&q), tx),
+        Action::Cmd(f) => f(s, tx),
     }
 }

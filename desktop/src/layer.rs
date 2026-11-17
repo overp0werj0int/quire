@@ -1,0 +1,185 @@
+//! The layers over the window: everything that opens over the page and takes the keyboard
+//! while it is open (ARCHITECTURE.md, "Layers"). One model for all of them:
+//!
+//! - At most one layer is open. A menu can open over the layer it was opened in (a field's
+//!   menu over the edit sheet, a row's menu over the sidebar's drawer); anything else replaces
+//!   whatever was open.
+//! - Each layer remembers where focus was when it opened, and gives it back as it closes, by
+//!   whatever way it closes.
+//! - Each remembers what the page showed when it opened. A light layer (a menu or a drawer)
+//!   closes when that changes; every layer closes when the window leaves the folder.
+//! - `keys::on_key` decides what a key does while one is open, and `ui::layer` gives each its
+//!   plane, its scrim and its outside-press behaviour.
+
+use rune::Tx;
+
+use crate::app::{App, Mode, Palette, Screen};
+
+pub enum Layer {
+    /// The quick switcher or the command palette.
+    Palette(Palette),
+}
+
+/// Which layer, without its state: what a key toggles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Palette,
+}
+
+impl Layer {
+    pub fn kind(&self) -> Kind {
+        match self {
+            Layer::Palette(_) => Kind::Palette,
+        }
+    }
+}
+
+impl Kind {
+    /// A menu or a drawer: the page around it stays in view, so a window shortcut closes it and
+    /// acts as if it had not been there, and a change to the page closes it.
+    pub fn light(self) -> bool {
+        false
+    }
+}
+
+/// An open layer.
+pub struct Open {
+    pub layer: Layer,
+    /// The element focus goes back to as it closes; `None` leaves it to Rune's modal, which
+    /// gives it back to what had it.
+    back: Option<String>,
+    /// What the page showed as it opened.
+    over: Context,
+}
+
+/// What the page shows: the screen, the folder, the note and how it shows. A light layer
+/// closes when it changes.
+#[derive(Clone, PartialEq, Debug)]
+struct Context {
+    screen: Screen,
+    folder: Option<std::path::PathBuf>,
+    note: Option<String>,
+    mode: Mode,
+    locked: bool,
+    zen: bool,
+    docked: (bool, bool),
+}
+
+impl App {
+    fn context(&self) -> Context {
+        Context {
+            screen: self.screen,
+            folder: self.vault.as_ref().map(|v| v.path.clone()),
+            note: self.active.clone(),
+            mode: self.mode,
+            locked: self.active.as_deref().is_some_and(|a| self.note_locked(a)),
+            zen: self.focus,
+            docked: (self.persist.left_open, self.persist.right_open),
+        }
+    }
+
+    /// The top layer, if one is open.
+    pub fn layer(&self) -> Option<&Layer> {
+        self.layers.last().map(|o| &o.layer)
+    }
+
+    /// Every open layer, bottom first.
+    pub fn open_layers(&self) -> impl Iterator<Item = &Layer> {
+        self.layers.iter().map(|o| &o.layer)
+    }
+
+    /// The open palette or quick switcher.
+    pub fn pal(&self) -> Option<&Palette> {
+        self.open_layers().find_map(|l| match l {
+            Layer::Palette(p) => Some(p),
+        })
+    }
+
+    pub fn pal_mut(&mut self) -> Option<&mut Palette> {
+        self.layers.iter_mut().find_map(|o| match &mut o.layer {
+            Layer::Palette(p) => Some(p),
+        })
+    }
+
+    /// Opens `layer` over the page, closing whatever was open (a menu opens over the layer it
+    /// was opened in). It takes over where focus goes back to from the layer it replaces, so a
+    /// palette that gives way to Settings still hands the keyboard back to the note.
+    pub fn open_layer(&mut self, layer: Layer, tx: &mut Tx) {
+        let replaced = std::mem::take(&mut self.layers);
+        let back = match replaced.into_iter().next() {
+            Some(first) => first.back,
+            None => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
+        };
+        self.handed = None;
+        self.layers.push(Open { layer, back, over: self.context() });
+    }
+
+    /// Where focus is as a layer opens: what had it, and in the writer, the note. A press on a
+    /// button in the window's chrome leaves the note's caret where it was, so a layer opened by
+    /// the pointer hands the keyboard back to the note.
+    fn focus_now(&self, tx: &Tx) -> Option<String> {
+        let note = self.writing_note().then(|| "editor".to_string());
+        if tx.by_keys() { tx.focused().map(str::to_string).or(note) } else { note.or_else(|| tx.focused().map(str::to_string)) }
+    }
+
+    /// The note is open in the writer.
+    fn writing_note(&self) -> bool {
+        self.screen == Screen::Vault && self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a))
+    }
+
+    /// Closes the top layer and gives focus back to where it was before it opened.
+    pub fn close_layer(&mut self, tx: &mut Tx) {
+        if let Some(open) = self.layers.pop() {
+            self.give_back(open.back, tx);
+        }
+    }
+
+    /// Closes every open layer.
+    pub fn close_layers(&mut self, tx: &mut Tx) {
+        if !self.layers.is_empty() {
+            let back = self.layers.swap_remove(0).back;
+            self.layers.clear();
+            self.give_back(back, tx);
+        }
+    }
+
+    /// Esc, or a press outside the top layer.
+    pub fn dismiss(&mut self, tx: &mut Tx) {
+        self.close_layer(tx);
+    }
+
+    /// Focus goes back where it was, unless this change already put it somewhere (a picked
+    /// item that renames a note focuses the name). A layer that opens in the same change
+    /// takes it over (`open_layer`).
+    fn give_back(&mut self, back: Option<String>, tx: &mut Tx) {
+        if let Some(key) = &back {
+            tx.return_focus(key.clone(), tx.focus_visible());
+        }
+        self.handed = Some(back);
+    }
+
+    /// Before each frame: a layer whose page changed under it closes, and with it everything
+    /// over it. A layer opened in the same change keeps its hand-over only until then.
+    pub(crate) fn drop_stale_layers(&mut self, tx: &mut Tx) -> bool {
+        self.handed = None;
+        if self.layers.is_empty() {
+            return false;
+        }
+        let now = self.context();
+        let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now);
+        let Some(i) = self.layers.iter().position(stale) else { return false };
+        let back = self.layers[i].back.clone();
+        self.layers.truncate(i);
+        if i == 0 {
+            self.give_back(back, tx);
+            self.handed = None;
+        }
+        true
+    }
+}
+
+/// The layer an action's key opens and closes again: pressed while that layer is open, it
+/// closes it, rather than closing it and acting.
+pub fn toggles(_id: &str) -> Option<Kind> {
+    None
+}
