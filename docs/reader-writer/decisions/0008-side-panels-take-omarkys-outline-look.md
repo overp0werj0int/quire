@@ -52,3 +52,10 @@ user can pick for the editor. The panels' own type is unchanged.
 Update, 2026-11-17: "Open", above the open notes, is a caption like the others, faint bold
 capitals in place of the text colour's bold title case. The same caption style, in Instrument
 Sans, labels the sections of Settings, the shortcut list, the help sheet and the welcome screen.
+
+Update, 2026-11-17: with faint lifted to 4.5:1, the rows and the faint text had come within one
+level (5.43:1 against 4.53:1 in Paper). Now dim, the rows, has at least 1.4 times faint's
+contrast on every fill, and the text, the current row's colour, 1.15 times more than that; where
+a theme's own text leaves no room for both steps (Catppuccin Latte, Rosé Pine Dawn), the panels'
+text moves toward black or white. The panels' ghost reaches 3:1, and the title bar's path takes
+it for "/" and faint for ".md", which were 1.96:1 in Paper.

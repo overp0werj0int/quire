@@ -388,9 +388,11 @@ pub(super) fn crumb(v: V) -> El {
     let active = s.active.clone().unwrap_or_default();
     let dir = md::dir(&active).to_string();
     let style = literal(12.0);
+    // The separator and the extension read on every theme: "/" at 3:1, ".md" at 4.5:1.
+    let quiet = Roles::panel(p);
     let mut r = row().key("crumb").h(24.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
-        r = r.child(label(dir, style, p.mute)).child(label("/", style, p.mark));
+        r = r.child(label(dir, style, p.mute)).child(label("/", style, quiet.ghost));
     }
     let r = match &s.renaming {
         None => r.child(
@@ -408,7 +410,7 @@ pub(super) fn crumb(v: V) -> El {
                 .cursor(rune::Cursor::Text)
                 .on_press_tx(|s: &mut App, tx| s.start_rename(tx))
                 .child(label(md::base(&active), style, p.ink2))
-                .child(label(".md", style, p.mark)),
+                .child(label(".md", style, quiet.faint)),
         ),
         Some(edit) => {
             let w = (edit.text.chars().count() as f32 + 1.0).max(8.0) * 12.0 * 0.6 + 10.0;
@@ -436,7 +438,7 @@ pub(super) fn crumb(v: V) -> El {
                                 .on_window_focus(|_s: &mut App, _f, _tx| {}),
                         ),
                     )
-                    .child(label(".md", style, p.mark).ml(5.0)),
+                    .child(label(".md", style, quiet.faint).ml(5.0)),
             )
         }
     };

@@ -17,6 +17,14 @@ use crate::theme::{Pal, contrast};
 
 /// The least contrast of the side panels' faintest text against the panel.
 pub const PANEL_FAINT: f32 = 4.5;
+/// How much more contrast the panels' rows (dim) have than their faintest text, on every fill:
+/// 1.4, and a little over so 8-bit colour keeps it.
+pub const PANEL_STEP: f32 = 1.43;
+/// How much more contrast the panels' text (the current row, headings) has than their rows.
+pub const PANEL_TEXT: f32 = 1.15;
+/// The least contrast of the panels' ghost, the title bar's path separator: 3:1, and a little
+/// over so 8-bit colour keeps it.
+pub const PANEL_GHOST: f32 = 3.05;
 
 fn enc(c: Color) -> [f32; 3] {
     [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b)]
@@ -144,21 +152,28 @@ impl Roles {
 
     /// The side panels' roles. Their text is small, so dim and faint move toward the text
     /// until they read on every fill a panel sits on: the window, the sidebar and the outline's
-    /// wash. Faint reaches 4.5:1 (WCAG AA), and dim, the rows, a step more.
+    /// wash. Faint reaches 4.5:1 (WCAG AA), and dim, the rows, has 1.4 times faint's contrast on
+    /// each fill (`PANEL_STEP`), so rows and hints read as two levels. Where the theme's text leaves no room
+    /// for that step and one more above it (Catppuccin Latte, Rosé Pine Dawn), the text first
+    /// moves toward black or white. Ghost reaches 3:1, for the title bar's path separator.
     pub fn panel(p: &Pal) -> Roles {
         let mut r = Roles::new(p);
         let fills = [p.bg, p.side, r.on_page(r.wash)];
-        let lift = |c: Color, min: f32| {
+        let lift = |c: Color, toward: Color, min: &dyn Fn(Color) -> f32| {
             let mut out = c;
             let mut t = 0.0;
-            while fills.iter().any(|f| contrast(out, *f) < min) && t < 1.0 {
+            while fills.iter().any(|f| contrast(out, *f) < min(*f)) && t < 1.0 {
                 t += 0.02;
-                out = mix(c, r.text, t);
+                out = mix(c, toward, t);
             }
             out
         };
-        r.faint = lift(r.faint, PANEL_FAINT);
-        r.dim = lift(r.dim, PANEL_FAINT * 1.2);
+        r.faint = lift(r.faint, r.text, &|_| PANEL_FAINT);
+        r.ghost = lift(r.ghost, r.text, &|_| PANEL_GHOST);
+        let faint = r.faint;
+        let extreme = if p.dark { Color::WHITE } else { Color::BLACK };
+        r.text = lift(r.text, extreme, &|f| contrast(faint, f) * PANEL_STEP * PANEL_TEXT);
+        r.dim = lift(r.dim, r.text, &|f| contrast(faint, f) * PANEL_STEP);
         r
     }
 
@@ -316,8 +331,9 @@ mod tests {
     }
 
     /// The side panels' small text reads in every theme: faint at 4.5:1 or more against
-    /// the window, the sidebar and the outline's wash, dim above it and the text above both, so
-    /// the open tab of Files, Search and Tags still reads as the strongest.
+    /// the window, the sidebar and the outline's wash, dim (the rows) 1.4 times faint's contrast,
+    /// and the text above both, so the open tab of Files, Search and Tags and the current row
+    /// still read as the strongest. Ghost, the title bar's "/", reaches 3:1.
     #[test]
     fn panel_text_reads_on_every_theme() {
         let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
@@ -329,7 +345,10 @@ mod tests {
             for fill in [p.bg, p.side, r.on_page(r.wash)] {
                 let (text, dim, faint) = (contrast(r.text, fill), contrast(r.dim, fill), contrast(r.faint, fill));
                 assert!(faint >= PANEL_FAINT, "{id}: faint {faint:.2} on {}", hx(fill));
-                assert!(text > faint && dim >= faint, "{id}: text {text:.2}, dim {dim:.2}, faint {faint:.2}");
+                assert!(dim >= faint * PANEL_STEP, "{id}: rows {dim:.2} not a step above faint {faint:.2} on {}", hx(fill));
+                assert!(text >= dim * PANEL_TEXT * 0.99, "{id}: text {text:.2} not above rows {dim:.2} on {}", hx(fill));
+                let ghost = contrast(r.ghost, fill);
+                assert!(ghost >= PANEL_GHOST && ghost < faint, "{id}: ghost {ghost:.2}, faint {faint:.2} on {}", hx(fill));
             }
         }
     }
