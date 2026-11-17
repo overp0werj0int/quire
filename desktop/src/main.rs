@@ -1859,6 +1859,28 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// RAD: the formatting toolbar and the find bar, on one row, take one corner and one edge
+    /// (`widgets::bar_edge`): the toolbar's backdrop, shown while the note scrolls under it,
+    /// has the find bar's radius.
+    #[test]
+    fn the_toolbar_and_the_find_bar_look_alike() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-bar-edge-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, tx| s.toggle_find(tx));
+        rt.update(|s, tx| s.scroll_by(400.0, tx));
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let back = info(&rt, "toolbar-back").expect("the toolbar's backdrop");
+        let find = info(&rt, "find-bar").expect("the find bar");
+        assert!(back.opacity > 0.9, "the backdrop shows while the note is under the toolbar: {}", back.opacity);
+        assert_eq!(back.radius, crate::ui::widgets::BAR_RADIUS, "the toolbar's corner");
+        assert_eq!(find.radius, crate::ui::widgets::BAR_RADIUS, "the find bar's corner");
+        assert!((back.rect[3] - find.rect[3]).abs() < 0.5, "one height: {:?} and {:?}", back.rect, find.rect);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// C4: the formatting toolbar's first icon starts on the text column's left edge, at every
     /// window size and both line widths.
     #[test]

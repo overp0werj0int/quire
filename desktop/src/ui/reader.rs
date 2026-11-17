@@ -55,7 +55,7 @@ pub fn find_bar(v: V) -> El {
         .on_edit(|s: &mut App| &mut s.reader.find.q)
         .on_input_change(|s: &mut App, tx| s.find_changed(tx))
         .on_input_key(on_find_key);
-    popup(&c)
+    super::widgets::bar_edge(popup(&c), &c)
         .key("find-bar")
         .pin(None, Some(super::editor::find_top(v)), Some(FIND_RIGHT), None)
         .size(FIND_W, FIND_H)

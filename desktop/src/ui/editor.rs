@@ -317,13 +317,13 @@ fn toolbar(v: V) -> El {
     let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).on_press_tx(move |s: &mut App, tx| s.format(f, tx));
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
-    // No border. At rest the toolbar has no background, as the text around it. The background
-    // and its shadow come in while the note scrolls under the toolbar.
+    // At rest the toolbar has no background and no border, as the text around it. The
+    // background, its shadow and the find bar's corner and hairline come in while the note
+    // scrolls under the toolbar, so the two bars on one row look alike (RAD).
     let shadow = if p.dark { 0.5 } else { 0.12 };
-    let back = el()
+    let back = super::widgets::bar_edge(el(), &Roles::new(p))
         .key("toolbar-back")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .radius(10.0)
         .fill(p.bg.alpha(0.88))
         .backdrop_blur(12.0)
         .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })

@@ -110,6 +110,16 @@ pub fn faded(name: &str, bg: Color, page: El) -> El {
     rune::col().key(format!("{name}-page")).w_full().child(top).child(page).child(bottom)
 }
 
+/// The corner of a bar floating over the note: the formatting toolbar and the find bar, which
+/// share a row. omarky's find bar has it (RD-53, WR-122).
+pub const BAR_RADIUS: f32 = 6.0;
+
+/// A floating bar's corner and edge, one for the formatting toolbar and the find bar: the
+/// radius and a 1 point hairline.
+pub fn bar_edge(e: El, c: &Roles) -> El {
+    e.radius(BAR_RADIUS).border(1.0, c.hairline)
+}
+
 pub fn floating(e: El, c: &Roles) -> El {
     let [a, b] = theme::menu_shadows();
     e.fill(c.bg).border(1.0, c.hairline).box_shadow(a).box_shadow(b)
