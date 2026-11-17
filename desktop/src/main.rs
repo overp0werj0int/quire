@@ -282,6 +282,55 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// EL: a long name stays in its room and ends in an ellipsis. In the title bar it ends
+    /// before the bar's buttons; in the quick switcher a long folder never squeezes the name;
+    /// the search panel's hint wraps inside the sidebar.
+    #[test]
+    fn long_names_stay_in_their_room() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-longnames-{}", std::process::id()));
+        let long = "A moderately long but perfectly normal note title about planning the next product release";
+        let folder = "Quarterly planning notes for the product and design teams across every region";
+        let mut rt = vault(&dir, &[(&format!("{long}.md"), "# A\n"), (&format!("{folder}/{long} two.md"), "# B\n")], crate::watch::EVERY);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+        };
+        let rect = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect).unwrap_or_else(|| panic!("{key} shows"));
+        let texts = |rt: &Runtime<crate::app::App>, under: &str| -> Vec<(String, [f32; 4])> {
+            rt.elements().into_iter().filter(|e| e.path.contains(&format!("/{under}/")) && !e.exiting).filter_map(|e| e.text.map(|t| (t, e.rect))).collect()
+        };
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        let buttons = rect(&rt, "right-zone")[0];
+        for (t, r) in texts(&rt, "crumb") {
+            assert!(r[0] + r[2] <= buttons + 0.5, "the title bar's '{t}' ends at {} past the buttons at {buttons}", r[0] + r[2]);
+        }
+        rt.update(|s, tx| s.open_search(tx));
+        settle(&mut rt);
+        let side = rect(&rt, "sidebar-over");
+        // The hint is 11 pt in the panel family, 0.6 em a character, inside 12 pt each side,
+        // 10 pt above and 4 below: its lines hold every character, and it ends in the sidebar.
+        let line = crate::ui::styles::panel_line(11.0);
+        for (t, r) in texts(&rt, "search-top") {
+            assert!(r[0] + r[2] <= side[0] + side[2] + 0.5, "the search hint '{t}' ends at {} past the sidebar at {}", r[0] + r[2], side[0] + side[2]);
+            let (lines, per_line) = (((r[3] - 14.0) / line).round(), ((r[2] - 24.0) / (0.6 * 11.0)).floor());
+            assert!(lines * per_line >= t.chars().count() as f32, "the search hint '{t}' runs past its {lines} line(s) of {per_line} characters");
+        }
+        rt.update(|s, _| s.drawer = None);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
+        settle(&mut rt);
+        let row = (0..4).map(|i| format!("pal-{i}")).find(|k| texts(&rt, k).iter().any(|(t, _)| t == folder)).expect("the switcher lists the note in the folder");
+        let parts = texts(&rt, &row);
+        let name = parts.iter().find(|(t, _)| t.starts_with(long)).unwrap().1;
+        let sub = parts.iter().find(|(t, _)| t == folder).unwrap().1;
+        assert!(name[2] >= 1.4 * sub[2], "the name keeps most of the row: {} wide, its folder {}", name[2], sub[2]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar's small buttons and the panel tabs take a pointer over at least 24 by 24
     /// points, and the rows they sit in keep their height.
     #[test]

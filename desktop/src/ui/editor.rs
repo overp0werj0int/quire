@@ -401,14 +401,17 @@ pub(super) fn crumb(v: V) -> El {
     let style = literal(12.0);
     // The separator and the extension read on every theme: "/" at 3:1, ".md" at 4.5:1.
     let quiet = Roles::panel(p);
-    let mut r = row().key("crumb").h(24.0).min_w(0.0).gap(6.0).center_y();
+    // A long folder or name is cut to the bar's room: the folder keeps its end, the name its start.
+    let mut r = row().key("crumb").h(24.0).shrink().min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
-        r = r.child(label(dir, style, p.mute)).child(label("/", style, quiet.ghost));
+        r = r.child(text(dir).font(style).color(p.mute).truncate_head().shrink().min_w(0.0)).child(label("/", style, quiet.ghost));
     }
     let r = match &s.renaming {
         None => r.child(
             row()
                 .key("crumb-file")
+                .shrink()
+                .min_w(0.0)
                 .px(5.0)
                 .py(2.0)
                 .mx(-5.0)
@@ -420,7 +423,7 @@ pub(super) fn crumb(v: V) -> El {
                 .help("Rename note")
                 .cursor(rune::Cursor::Text)
                 .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
-                .child(label(md::base(&active), style, p.ink2))
+                .child(text(md::base(&active).to_string()).font(style).color(p.ink2).truncate().shrink().min_w(0.0))
                 .child(label(".md", style, quiet.faint)),
         ),
         Some(edit) => {

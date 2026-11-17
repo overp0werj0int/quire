@@ -660,7 +660,7 @@ fn search_panel(v: V) -> El {
     let mut out = col()
         .key("search-panel")
         .w_full()
-        .child(col().key("search-top").px(panel::INSET).child(box_).child(text(summary).font(nav(panel::BODY_SMALL, false)).color(c.faint).pt(10.0).pl(panel::TEXT_X - panel::INSET).pb(4.0)));
+        .child(col().key("search-top").px(panel::INSET).child(box_).child(text(summary).font(nav(panel::BODY_SMALL, false)).color(c.faint).wrap().w_full().pt(10.0).pl(panel::TEXT_X - panel::INSET).pr(panel::TEXT_X - panel::INSET).pb(4.0)));
     let ql = q.len();
     for (ri, r) in results.iter().enumerate() {
         let lines: Vec<&str> = s.files().get(&r.path).map(|t| t.split('\n').collect()).unwrap_or_default();

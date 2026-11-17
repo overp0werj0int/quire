@@ -1,7 +1,7 @@
 //! The quick switcher and command palette.
 
 use crate::roles::Roles;
-use rune::{Color, El, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text_input};
+use rune::{Color, El, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text, text_input};
 
 use super::V;
 use super::widgets::label;
@@ -13,6 +13,8 @@ use crate::theme;
 const HEAD_H: f32 = 53.0;
 const FOOT_H: f32 = 35.0;
 const LAYER_BOTTOM: f32 = 20.0;
+/// The widest a row's folder or key runs: about two fifths of the row, so the name keeps the rest.
+const SUB_W: f32 = 220.0;
 
 pub fn palette(v: V) -> El {
     let p = v.p;
@@ -83,7 +85,9 @@ pub fn palette(v: V) -> El {
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
                 .child(rich(t, spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0))
-                .child(label(it.sub.clone(), keys(11.5), p.mute)),
+                // The note's folder, or the command's key: at most `SUB_W`, so a long folder
+                // never squeezes the name. A folder keeps its end, the folder nearest the note.
+                .child(text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W)),
         );
     }
     if d.items.is_empty() {
