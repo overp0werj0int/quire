@@ -7,8 +7,8 @@ use std::path::PathBuf;
 pub enum Start {
     /// A folder, with the path inside it of a note to open.
     Folder(PathBuf, Option<String>),
-    /// A note in no known folder, opened on its own (`vault::Scope::Lone`).
-    Lone(PathBuf),
+    /// A note in no known folder, opened in Note mode (`vault::Scope::Note`).
+    Note(PathBuf),
 }
 
 /// The folder or note named on the command line; `known` are the folders in the list.
@@ -27,7 +27,7 @@ fn target(arg: PathBuf, known: &[PathBuf]) -> Option<Start> {
     if arg.is_dir() {
         return Some(Start::Folder(arg, None));
     }
-    if !arg.extension().is_some_and(|e| e.eq_ignore_ascii_case("md")) {
+    if !arg.extension().is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown")) {
         return None;
     }
     let home = known.iter().filter_map(|k| Some((k, arg.strip_prefix(k.canonicalize().ok()?).ok()?))).max_by_key(|(k, _)| k.components().count());
@@ -36,7 +36,7 @@ fn target(arg: PathBuf, known: &[PathBuf]) -> Option<Start> {
             let rel = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
             Start::Folder(root.clone(), Some(rel))
         }
-        None => Start::Lone(arg),
+        None => Start::Note(arg),
     })
 }
 
@@ -84,7 +84,7 @@ mod tests {
         let canon = |p: std::path::PathBuf| p.canonicalize().unwrap();
         let list = [known.clone()];
         assert_eq!(target(canon(known.join("Drafts/a.md")), &list), Some(Start::Folder(known.clone(), Some("Drafts/a.md".into()))), "a note in a known folder opens that folder, not its subfolder");
-        assert_eq!(target(canon(loose.join("b.md")), &list), Some(Start::Lone(canon(loose.join("b.md")))), "a note in no known folder opens alone");
+        assert_eq!(target(canon(loose.join("b.md")), &list), Some(Start::Note(canon(loose.join("b.md")))), "a note in no known folder opens alone");
         assert_eq!(target(canon(loose.join("c.txt")), &list), None, "another file opens nothing");
         assert_eq!(target(canon(loose.clone()), &list), Some(Start::Folder(canon(loose), None)), "a folder opens as itself");
         let _ = std::fs::remove_dir_all(&dir);

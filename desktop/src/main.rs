@@ -1208,29 +1208,36 @@ mod edit_menu_tests {
 }
 
 #[cfg(test)]
-mod lone_tests {
+mod note_mode_tests {
+    use crate::app::Mode;
     use crate::bench::DT;
     use rune::{Env, Runtime};
+    use std::path::PathBuf;
 
     fn shown(rt: &Runtime<crate::app::App>, key: &str) -> bool {
         rt.elements().iter().any(|e| e.key.as_deref() == Some(key))
     }
 
-    /// A note opened on its own from a folder outside the list (decision 0011): only that note
-    /// is read, its edits save to it, and the list, the folder that opens next, every session
-    /// and sync stay as they were. Adding its folder opens the folder on the same note.
+    /// Note mode (decision 0011): a note from outside the list opens as a file, in zen and in
+    /// preview, as a vault of its own. Leaving zen shows the page with the sidebar collapsed;
+    /// the sidebar holds only the Open list. Ctrl+O and links open more notes, each from its
+    /// own folder, so two notes of one name stay apart. Folder mode's list, the folder that
+    /// opens next, its sidebar, its mode and sync stay as they were.
     #[test]
-    fn a_note_outside_the_list_opens_on_its_own() {
+    fn notes_open_as_files_in_note_mode() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("quire-lone-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("quire-note-mode-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let (notes, loose) = (dir.join("notes"), dir.join("loose"));
-        std::fs::create_dir_all(&notes).unwrap();
-        std::fs::create_dir_all(loose.join("sub")).unwrap();
-        std::fs::write(notes.join("x.md"), "# x").unwrap();
-        for f in ["a.md", "b.md", "sub/c.md"] {
-            std::fs::write(loose.join(f), format!("# {f}")).unwrap();
+        let (notes, loose, other) = (dir.join("notes"), dir.join("loose"), dir.join("other"));
+        for d in [&notes, &loose.join("sub"), &other] {
+            std::fs::create_dir_all(d).unwrap();
         }
+        std::fs::write(notes.join("x.md"), "# x").unwrap();
+        std::fs::write(loose.join("a.md"), "# loose a\n\nSee [b](b.md).\n").unwrap();
+        std::fs::write(loose.join("b.md"), "# loose b").unwrap();
+        std::fs::write(loose.join("sub/c.md"), "# c").unwrap();
+        std::fs::write(other.join("a.md"), "# other a").unwrap();
+        let (loose, other) = (loose.canonicalize().unwrap(), other.canonicalize().unwrap());
         // SAFETY: the ENV lock keeps other tests that read these variables out.
         unsafe {
             std::env::set_var("HOME", &dir);
@@ -1243,59 +1250,112 @@ mod lone_tests {
         let (n, file) = (notes.clone(), loose.join("a.md"));
         rt.update(move |s, tx| {
             s.open_vault(n, tx);
+            s.persist.left_open = true;
+            s.mode = Mode::Source;
             s.persist.settings.sync.provider = "s3".into();
             s.persist.settings.sync.connected = true;
-            s.open_lone(&file).unwrap();
+            assert!(s.start_note(&file));
         });
         for _ in 0..10 {
             rt.frame(DT);
         }
         let listed = |s: &crate::app::App| s.persist.vaults.iter().map(|v| v.path.clone()).collect::<Vec<_>>();
-        let (notes2, loose1) = (notes.clone(), loose.clone());
+        let (notes2, loose1, a) = (notes.clone(), loose.clone(), loose.join("a.md"));
         rt.update_if(move |s, _| {
+            assert!(s.note_mode() && !s.folder_open());
             assert_eq!(s.files().keys().collect::<Vec<_>>(), ["a.md"], "only the note is read");
-            assert_eq!((s.tabs.clone(), s.active.as_deref()), (vec!["a.md".to_string()], Some("a.md")));
-            assert!(listed(s).contains(&notes2) && !listed(s).contains(&loose1), "the folder stays out of the list");
+            assert_eq!(s.notes, [a.clone()]);
+            assert!(s.focus && s.mode == Mode::Preview, "it starts in zen, in preview");
+            assert!(listed(s).contains(&notes2) && !listed(s).contains(&loose1), "its folder stays out of the list");
             assert_eq!(s.persist.last.as_ref(), Some(&notes2), "the folder that opens next is unchanged");
-            assert!(!s.sync_ready() && s.sync_label().is_none(), "a note on its own isn't synced");
+            assert!(!s.sync_ready() && s.sync_label().is_none(), "Note mode isn't synced");
             false
         });
-        assert!(shown(&rt, "lone") && shown(&rt, "add-folder"), "the sidebar offers to add the folder");
-        assert!(!shown(&rt, "panel-tabs") && !shown(&rt, "foot-new"), "no files, search, tags or New note");
 
-        // Edits save to the file; nothing is added to, or deleted from, its folder.
+        // Leaving zen shows the page, the sidebar collapsed; opened, it holds only Open.
+        rt.update(|s, tx| s.toggle_focus(tx));
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        assert!(!shown(&rt, "sidebar"), "the sidebar is collapsed");
+        rt.update(|s, _| s.toggle_left());
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let row = format!("note:{}", loose.join("a.md").display());
+        assert!(shown(&rt, "open-notes") && shown(&rt, &row), "the Open list holds the note");
+        for key in ["vault-head", "panel-tabs", "side-scroll", "foot-new"] {
+            assert!(!shown(&rt, key), "no {key} in Note mode");
+        }
+
+        // Edits save to the file; nothing is added to, renamed in, or deleted from its folder.
         rt.update(|s, tx| {
-            s.set_text("a.md", "edited".into());
+            s.set_text("a.md", "edited, see [b](b.md)".into());
             s.new_note(None, tx);
             s.start_new_folder("", tx);
             s.delete_note();
             s.start_rename(tx);
             assert!(s.renaming.is_none(), "no rename");
             assert!(s.notice.is_some(), "says why");
-            s.flush_all();
         });
-        assert_eq!(std::fs::read_to_string(loose.join("a.md")).unwrap(), "edited");
+
+        // Ctrl+O asks the system for a file; a note of the same name from another folder
+        // opens beside the first, in preview, from its own folder.
+        rt.update(|s, tx| {
+            s.mode = Mode::Source;
+            s.quick_open(tx);
+            assert!(s.palette.is_none(), "no quick switcher");
+        });
+        assert!(rt.file_dialog().is_some(), "the file picker is up");
+        rt.resolve_file_dialog(Some(other.join("a.md"))).unwrap();
+        rt.frame(DT);
+        let (a1, a2) = (loose.join("a.md"), other.join("a.md"));
+        rt.update_if(move |s, _| {
+            assert_eq!(s.notes, [a1.clone(), a2.clone()]);
+            assert_eq!(s.note_path().as_ref(), Some(&a2));
+            assert_eq!(s.files().get("a.md").map(String::as_str), Some("# other a"), "its own text");
+            assert_eq!(s.mode, Mode::Preview, "a newly opened note shows in preview");
+            false
+        });
+        assert_eq!(std::fs::read_to_string(loose.join("a.md")).unwrap(), "edited, see [b](b.md)", "the first note saved on the switch");
+
+        // Back to the first, and a link from it opens its neighbour as one more note.
+        let a1 = loose.join("a.md");
+        rt.update(move |s, tx| {
+            s.open_note(&a1);
+            assert_eq!(s.files().get("a.md").map(String::as_str), Some("edited, see [b](b.md)"));
+            s.follow("b.md", tx);
+        });
+        let (b, a2) = (loose.join("b.md"), other.join("a.md"));
+        rt.update_if(move |s, _| {
+            assert_eq!(s.note_path().as_ref(), Some(&b));
+            assert_eq!(s.notes.len(), 3);
+            // Closing the note shown shows its neighbour; closing them all leaves none.
+            s.close_note(&b);
+            assert_eq!(s.note_path().as_ref(), Some(&a2));
+            for n in s.notes.clone() {
+                s.close_note(&n);
+            }
+            assert!(s.notes.is_empty() && s.active.is_none());
+            s.flush_all();
+            false
+        });
         let mut on_disk: Vec<String> = std::fs::read_dir(&loose).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         on_disk.sort();
         assert_eq!(on_disk, ["a.md", "b.md", "sub"], "the folder keeps exactly its files");
         let saved = crate::store::load();
         assert_eq!(saved.last.as_ref(), Some(&notes), "quitting keeps the folder that opens next");
-        assert!(!saved.vaults.iter().any(|v| v.path == loose) && !saved.sessions.keys().any(|k| k.contains("loose")), "no list entry or session for it");
+        assert!(saved.left_open && saved.mode == "source", "Folder mode keeps its sidebar and mode: {} {}", saved.left_open, saved.mode);
+        assert!(!saved.vaults.iter().any(|v| v.path == loose || v.path == other), "no list entry for a note's folder");
+        assert!(!saved.sessions.keys().any(|k| k.contains("loose") || k.contains("other")), "no session for one either");
 
-        // Adding the folder opens it on the same note.
-        rt.update(|s, tx| s.add_lone_folder(tx));
-        for _ in 0..60 {
-            rt.frame(DT);
-        }
-        let loose2 = loose.clone();
-        rt.update_if(move |s, _| {
-            assert!(s.folder_open());
-            assert!(s.files().contains_key("b.md") && s.files().contains_key("sub/c.md"), "the whole folder is read");
-            assert_eq!(s.active.as_deref(), Some("a.md"), "on the same note");
-            assert!(listed(s).contains(&loose2) && s.persist.last.as_ref() == Some(&loose2), "the folder joins the list");
-            false
+        // Opening a folder leaves Note mode and brings Folder mode's sidebar and mode back.
+        let n: PathBuf = notes.clone();
+        rt.update(move |s, tx| {
+            s.open_vault(n, tx);
+            assert!(s.folder_open() && s.notes.is_empty());
+            assert!(s.persist.left_open && s.mode == Mode::Source);
         });
-        assert!(!shown(&rt, "lone") && shown(&rt, "panel-tabs") && shown(&rt, "foot-new"), "the folder's sidebar is back");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

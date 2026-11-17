@@ -66,12 +66,15 @@ runs it and no window opens.
 `Vault` in `desktop/src/vault.rs` holds the whole notes folder in memory, as a map from note
 path to text. The app reads the folder in one go when it opens it.
 
-A vault's `Scope` says what it holds. `Scope::Folder` is a notes folder from the list.
-`Scope::Lone` is one `.md` file opened from outside every known folder (decision 0011 in
-`docs/reader-writer/decisions/`). Its root is the file's folder, but only that file is read
-and watched. The folder is not listed, remembered, synced or served over MCP, and actions that
-make, move or delete notes or folders are refused (`App::refuse_lone`). `cli::start_target`
-reads the launch argument: a folder, a note inside a known folder, or a lone note.
+The app has two modes, and a vault's `Scope` says which (decision 0011 in
+`docs/reader-writer/decisions/`). `Scope::Folder` is a notes folder from the list: Folder
+mode. `Scope::Note` is Note mode, a plain Markdown editor: each note opened as a file is a
+vault of its own, rooted at its folder and holding only that note. `App::notes` lists them by
+full path, and showing one swaps its vault in. Note mode reads, watches, lists, remembers,
+syncs and serves nothing else, and refuses to make, rename, move or delete notes or folders
+(`App::refuse_in_note_mode`). Its collapsed sidebar and preview stay out of `state.json`
+(`App::saved`). `cli::start_target` reads the launch argument: a folder, a note inside a known
+folder, or a note for Note mode.
 
 The UI thread never writes to disk. Each write is an `Op`, sent to the `Writer`, which runs
 on one background thread called `quire-writer`. The thread applies the ops in the order they
@@ -174,7 +177,7 @@ unlock, lock again, remove the password.
 ### Outside changes
 
 `desktop/src/watch.rs` runs a thread that checks file times in the folder every 1.5 s (only
-the note's own file for a lone note). This
+the shown note's file in Note mode). This
 picks up changes from other editors, sync tools and the MCP server. `apply_outside_changes`
 skips two cases:
 

@@ -110,7 +110,8 @@ pub fn handler(id: &str) -> Option<Run> {
     }
     Some(match id {
         "app.command-palette" => |s, tx| s.open_palette(PalMode::Commands, tx),
-        "app.quick-switcher" | "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
+        "app.quick-switcher" => |s, tx| s.quick_open(tx),
+        "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
         "app.search-notes" => |s, tx| s.open_search(tx),
         "app.toggle-sidebar" => |s, _| s.toggle_left(),
         "app.toggle-outline" | "reader.toggle-outline" => |s, _| s.toggle_right(),

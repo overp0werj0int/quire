@@ -1,5 +1,5 @@
-//! The left sidebar: the open notes, then the folder menu, files, search and tags; for a note
-//! opened on its own, a button to add its folder instead.
+//! The left sidebar: the open notes, then the folder menu, files, search and tags. In Note mode
+//! only the open notes.
 
 use std::collections::BTreeMap;
 
@@ -85,12 +85,12 @@ pub fn sidebar(v: V) -> El {
             .child(text(t).font(panel::font(panel::BODY, false)).color(c.dim).group_color(c.text))
             .child(text(kbd).font(panel::font(panel::CAPTION, false)).color(c.faint))
     };
-    let lone = vault.is_some_and(|v| v.scope == crate::vault::Scope::Lone);
+    let note_mode = s.note_mode();
     let foot = col()
         .key("side-foot")
         .pt(6.0)
         .pb(8.0)
-        .children((!lone).then(|| foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx))))
+        .children((!note_mode).then(|| foot_btn("foot-new", "New note", crate::keymap::label(v.s.preset(), "app.new-note"), |s, tx| s.new_note(None, tx))))
         .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, _| s.open_settings()));
 
     // The sidebar runs the window's full height, its edge a line from top to bottom.
@@ -101,11 +101,9 @@ pub fn sidebar(v: V) -> El {
         .min_h(0.0)
         .border_sides([0.0, 1.0, 0.0, 0.0], p.line)
         .border_layout()
-        .child(super::titlebar::corner(v))
-        .child(open_notes(v))
-        .child(head);
-    // A note opened on its own has no files, search or tags to show: its folder isn't read.
-    let side = if lone { side.child(lone_panel(v)).child(el().grow(1.0)) } else { side.child(tabs).child(list) };
+        .child(super::titlebar::corner(v));
+    // Note mode has no folder: no folder menu, files, search or tags.
+    let side = if note_mode { side.child(open_notes(v)).child(el().grow(1.0)) } else { side.child(open_notes(v)).child(head).child(tabs).child(list) };
     let mut side = side.child(foot);
     if s.vault_menu {
         side = side.child(vault_menu(v));
@@ -113,40 +111,10 @@ pub fn sidebar(v: V) -> El {
     side
 }
 
-/// Under the folder's name, for a note opened on its own: what that means, and a button that
-/// adds the folder to the list and opens it on the same note.
-fn lone_panel(v: V) -> El {
-    let c = Roles::new(v.p);
-    col()
-        .key("lone")
-        .w_full()
-        .pt(panel::CAPTION_Y - 4.0)
-        .gap(8.0)
-        .child(
-            text("This note is open on its own. The rest of its folder isn't read or synced.")
-                .font(panel::font(panel::BODY_SMALL, false))
-                .color(c.faint)
-                .wrap()
-                .w_full()
-                .pl(panel::TEXT_X)
-                .pr(panel::INSET + 8.0),
-        )
-        .child(
-            panel::shade("add-folder", panel::BODY, 0, 0.0, &c, false)
-                .gap(8.0)
-                .hover_group()
-                .role("button")
-                .on_press_tx(|s: &mut App, tx| s.add_lone_folder(tx))
-                .child(icon(&FOLDER_PLUS, 12.0).color(c.faint).group_color(c.text))
-                .child(text("Add this folder").font(panel::font(panel::BODY, false)).color(c.dim).group_color(c.text)),
-        )
-}
-
 /// The open notes, one row each in the order they were opened, under a heading set as the
 /// folder's name is. The current note has the tree's accent wash; a row's close button shows on
 /// hover and on the current row, and a middle click closes it too.
 const OPEN_PAD: f32 = 6.0;
-
 fn open_notes(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
@@ -158,10 +126,52 @@ fn open_notes(v: V) -> El {
         .center_y()
         .child(text("Open").font(panel::font(panel::BODY, true)).color(c.text));
     let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
+    if s.note_mode() {
+        let shown = s.note_path();
+        for file in &s.notes {
+            list = list.child(note_row(v, file, shown.as_ref() == Some(file)));
+        }
+        return list;
+    }
     for path in s.tabs.iter().filter(|t| s.files().contains_key(*t)) {
         list = list.child(open_row(v, path));
     }
     list
+}
+
+/// A row of Note mode's Open list: a note opened as a file, shown by its file name.
+fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
+    let c = Roles::new(v.p);
+    let name = file.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let (open_file, close_file) = (file.to_path_buf(), file.to_path_buf());
+    let close = row()
+        .key("x")
+        .size(18.0, 18.0)
+        .center()
+        .radius(3.0)
+        .hover(c.hover)
+        .label("Close")
+        .help("Close")
+        .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
+        .on_press(move |s: &mut App| s.close_note(&close_file))
+        .child(icon(&CLOSE, 8.0).color(c.faint));
+    panel::shade(format!("note:{}", file.display()), panel::BODY, 0, 0.0, &c, on)
+        .pr(4.0)
+        .hover_group()
+        .role("tab")
+        .checked(on)
+        .label(name.clone())
+        .help(crate::store::tilde(file))
+        .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
+        .on_press_tx(move |s: &mut App, tx| {
+            if tx.button() == PointerButton::Middle {
+                s.close_note(&open_file);
+            } else {
+                s.open_note(&open_file);
+            }
+        })
+        .child(text(name).font(panel::font(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(close)
 }
 
 fn open_row(v: V, path: &str) -> El {

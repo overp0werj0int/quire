@@ -75,7 +75,7 @@ impl App {
     /// A new note in `folder` (`None`: the folder from settings). A `name` with slashes, such as
     /// `Drafts/Idea`, makes the note in that folder, creating any folders it names.
     pub fn new_note_in(&mut self, folder: Option<&str>, name: Option<&str>, tx: &mut Tx) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         if self.vault.is_none() {
@@ -130,7 +130,7 @@ impl App {
 
     /// Starts naming a new folder inside `parent` (`""` is the root).
     pub fn start_new_folder(&mut self, parent: &str, tx: &mut Tx) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         let mut edit = TextEdit::new("");
@@ -171,7 +171,7 @@ impl App {
 
     /// Moves a note into `folder` (`""` is the root), keeping its tab, caret and history.
     pub fn move_note(&mut self, from: &str, folder: &str, tx: &mut Tx) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         if md::dir(from) == folder || !self.files().contains_key(from) {
@@ -300,7 +300,7 @@ impl App {
     /// Moves a folder, with every file in it, to `.trash` in the notes folder. Unsaved notes
     /// go to disk first, so the trash holds their last text.
     pub fn delete_folder(&mut self, folder: &str) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         self.remove_folder(folder);

@@ -155,6 +155,13 @@ pub struct App {
     pub wstate: crate::writer_app::WriterState,
     /// The edit sheet over the reader, while it is open (`crate::sheet`).
     pub sheet: Option<crate::sheet::Sheet>,
+    /// Note mode's Open list: the notes opened as files, by full path, in order. Each is a
+    /// vault of its own, rooted at its folder; the one shown is `vault`, read again from disk
+    /// each time it is shown.
+    pub notes: Vec<PathBuf>,
+    /// Folder mode's sidebar setting, kept while Note mode collapses the sidebar, so Note mode
+    /// never changes what Folder mode opens with.
+    folder_left: Option<bool>,
 }
 
 /// A locked note while it is open.
@@ -221,6 +228,8 @@ pub fn init() -> App {
         drop_over: false,
         unlocked: HashMap::new(),
         lock_dialog: None,
+        notes: Vec::new(),
+        folder_left: None,
         unlock_error: None,
         reader: Default::default(),
         wstate: Default::default(),
@@ -234,8 +243,8 @@ pub fn init() -> App {
     app.mode = if app.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
     let known: Vec<PathBuf> = app.persist.vaults.iter().map(|v| v.path.clone()).collect();
     let (start, note) = match crate::cli::start_target(&known) {
-        Some(crate::cli::Start::Lone(file)) => {
-            if app.open_lone(&file).is_err() {
+        Some(crate::cli::Start::Note(file)) => {
+            if !app.start_note(&file) {
                 app.screen = Screen::Welcome;
             }
             (None, None)
@@ -411,7 +420,18 @@ impl App {
             let s = self.session();
             self.persist.sessions.insert(key, s);
         }
-        self.persist.mode = if self.mode == Mode::Preview { "preview" } else { "source" }.into();
+        if !self.note_mode() {
+            self.persist.mode = if self.mode == Mode::Preview { "preview" } else { "source" }.into();
+        }
+    }
+
+    /// What goes to `state.json`: Folder mode's sidebar setting, not Note mode's collapsed one.
+    fn saved(&self) -> Persist {
+        let mut p = self.persist.clone();
+        if let Some(left) = self.folder_left {
+            p.left_open = left;
+        }
+        p
     }
 
     /// Runs before each frame: writes due notes and settings, and picks up writer errors.
@@ -465,7 +485,7 @@ impl App {
 
     fn watch_vault(&mut self) {
         self.watcher = self.vault.as_ref().map(|v| {
-            let only = (v.scope == Scope::Lone).then(|| v.files.keys().cloned().collect());
+            let only = (v.scope == Scope::Note).then(|| v.files.keys().cloned().collect());
             crate::watch::start(v.path.clone(), only, self.waker.clone(), self.watch_every)
         });
     }
@@ -617,7 +637,7 @@ impl App {
     pub fn flush_state(&mut self) {
         self.state_at = None;
         self.store_session();
-        self.writer.send(Op::SaveState(Box::new(self.persist.clone())));
+        self.writer.send(Op::SaveState(Box::new(self.saved())));
     }
 
     /// Saves everything now, for quitting: queued disk work finishes, then unsaved notes are
@@ -638,7 +658,7 @@ impl App {
         if let Some(v) = self.vault.as_ref().filter(|v| v.scope == Scope::Folder) {
             self.persist.last = Some(v.path.clone());
         }
-        let _ = store::save(&self.persist);
+        let _ = store::save(&self.saved());
     }
 
     fn mark_dirty(&mut self, rel: &str) {
@@ -691,23 +711,111 @@ impl App {
         Ok(())
     }
 
-    /// Opens a note on its own (`Scope::Lone`), leaving the list of folders, the folder that
-    /// opens next time and every folder's session as they were.
-    pub fn open_lone(&mut self, file: &Path) -> std::io::Result<()> {
-        let v = vault::load_one(file)?;
-        self.enter(v);
-        Ok(())
+    /// Opens `file` in Note mode, as a vault of its own rooted at its folder, and adds it to
+    /// the Open list. A note new to the list opens in preview. False, with a notice, when it
+    /// can't be read.
+    pub fn open_note(&mut self, file: &Path) -> bool {
+        let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+        if self.note_path().as_ref() == Some(&file) {
+            return true;
+        }
+        match vault::load_one(&file) {
+            Ok(v) => {
+                let new = !self.notes.contains(&file);
+                if new {
+                    self.notes.push(file);
+                }
+                // After `enter`, which keeps Folder mode's mode when Note mode starts.
+                self.enter(v);
+                if new {
+                    self.mode = Mode::Preview;
+                    self.want_editor_focus = false;
+                }
+                true
+            }
+            Err(e) => {
+                self.notice = Some(format!("Could not open {}: {e}", store::tilde(&file)));
+                false
+            }
+        }
+    }
+
+    /// Starts the app in Note mode on `file`, in zen; leaving zen shows the page with the
+    /// sidebar collapsed.
+    pub fn start_note(&mut self, file: &Path) -> bool {
+        self.focus = self.open_note(file);
+        self.focus
+    }
+
+    /// Takes `file` off Note mode's Open list. Closing the note shown shows its neighbour.
+    pub fn close_note(&mut self, file: &Path) {
+        let Some(i) = self.notes.iter().position(|n| n == file) else { return };
+        let shown = self.note_path().as_deref() == Some(file);
+        self.notes.remove(i);
+        if !shown {
+            return;
+        }
+        while let Some(next) = self.notes.get(i.min(self.notes.len().saturating_sub(1))).cloned() {
+            if self.open_note(&next) {
+                return;
+            }
+            self.notes.retain(|n| *n != next);
+        }
+        self.flush_notes();
+        self.tabs.clear();
+        self.edits.clear();
+        self.unlocked.clear();
+        self.active = None;
+        self.focus = false;
+    }
+
+    /// The full path of the note shown in Note mode.
+    pub fn note_path(&self) -> Option<PathBuf> {
+        let v = self.vault.as_ref().filter(|v| v.scope == Scope::Note)?;
+        Some(v.path.join(self.active.as_ref()?))
+    }
+
+    /// Ctrl+O: the quick switcher, or in Note mode the system's file picker.
+    pub fn quick_open(&mut self, tx: &mut Tx) {
+        if !self.note_mode() {
+            return self.open_palette(PalMode::Files, tx);
+        }
+        let directory = self.vault.as_ref().map(|v| v.path.clone());
+        let options = FileDialogOptions { title: "Open a note".into(), directory, ..Default::default() }.filter("Markdown", &["md", "markdown"]);
+        tx.open_file(options, |s: &mut App, result, _| match result {
+            Ok(Some(path)) => {
+                s.open_note(&path);
+            }
+            Ok(None) => {}
+            Err(e) => s.notice = Some(format!("Could not show the file picker: {e}")),
+        });
     }
 
     /// Makes `v` the open vault. A folder takes the session it was left with and joins the list;
-    /// a note opened on its own is its only tab.
+    /// a note in Note mode is its only tab, with the sidebar collapsed.
     fn enter(&mut self, v: Vault) {
         self.flush_notes();
         self.store_session();
+        match v.scope {
+            Scope::Folder => {
+                self.notes.clear();
+                if let Some(left) = self.folder_left.take() {
+                    self.persist.left_open = left;
+                    self.mode = if self.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
+                }
+                self.focus = false;
+            }
+            Scope::Note => {
+                if self.folder_left.is_none() {
+                    self.folder_left = Some(self.persist.left_open);
+                    self.persist.left_open = false;
+                }
+            }
+        }
         let path = v.path.clone();
         let ses = match v.scope {
             Scope::Folder => self.persist.sessions.get(&*path.to_string_lossy()).cloned().unwrap_or_default(),
-            Scope::Lone => {
+            Scope::Note => {
                 let only: Vec<String> = v.files.keys().cloned().collect();
                 Session { active: only.first().cloned(), tabs: only, ..Default::default() }
             }
@@ -727,6 +835,8 @@ impl App {
         }
         self.vault = Some(v);
         self.edits.clear();
+        // Paths name notes only within one vault: a note unlocked in the last one locks again.
+        self.unlocked.clear();
         self.rebuild_names();
         if self.waker.is_some() {
             self.watch_vault();
@@ -735,7 +845,6 @@ impl App {
         self.creating = None;
         self.query = TextEdit::new("");
         self.left_panel = Panel::Files;
-        self.focus = false;
         self.palette = None;
         self.settings_open = false;
         self.vault_menu = false;
@@ -756,23 +865,19 @@ impl App {
         self.vault.as_ref().is_some_and(|v| v.scope == Scope::Folder)
     }
 
-    /// A note opened on its own can't add notes or folders to its folder, move or delete them:
-    /// says so and returns true.
-    pub fn refuse_lone(&mut self) -> bool {
-        let lone = self.vault.as_ref().is_some_and(|v| v.scope == Scope::Lone);
-        if lone {
-            self.notice = Some("This note is open on its own. Add its folder to change the notes in it.".into());
-        }
-        lone
+    /// Note mode: notes opened as files, each in a vault of its own.
+    pub fn note_mode(&self) -> bool {
+        self.vault.as_ref().is_some_and(|v| v.scope == Scope::Note)
     }
 
-    /// Adds the folder of the note open on its own to the list and opens it there, on that note.
-    pub fn add_lone_folder(&mut self, tx: &mut Tx) {
-        let Some((dir, note)) = self.vault.as_ref().filter(|v| v.scope == Scope::Lone).map(|v| (v.path.clone(), self.active.clone())) else { return };
-        self.open_vault(dir, tx);
-        if let Some(n) = note.filter(|n| self.files().contains_key(n)) {
-            self.open_file(&n, None, tx);
+    /// Note mode has no folder to add notes or folders to, rename, move or delete them in:
+    /// says so and returns true.
+    pub fn refuse_in_note_mode(&mut self) -> bool {
+        let note = self.note_mode();
+        if note {
+            self.notice = Some("This note is open as a file. Open its folder to add, rename, move or delete notes.".into());
         }
+        note
     }
 
     pub fn open_vault(&mut self, path: PathBuf, tx: &mut Tx) {
@@ -948,6 +1053,9 @@ impl App {
     }
 
     pub fn close_tab(&mut self, p: &str) {
+        if let Some(file) = self.note_path().filter(|_| self.active.as_deref() == Some(p)) {
+            return self.close_note(&file);
+        }
         let Some(i) = self.tabs.iter().position(|x| x == p) else { return };
         self.tabs.remove(i);
         self.edits.remove(p);
@@ -986,7 +1094,7 @@ impl App {
     }
 
     pub fn delete_note(&mut self) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         let Some(p) = self.active.clone() else { return };
@@ -1059,7 +1167,7 @@ impl App {
     }
 
     pub fn start_rename(&mut self, tx: &mut Tx) {
-        if self.refuse_lone() {
+        if self.refuse_in_note_mode() {
             return;
         }
         let Some(a) = &self.active else { return };
@@ -1200,6 +1308,9 @@ impl App {
     }
 
     pub fn open_search(&mut self, tx: &mut Tx) {
+        if self.note_mode() {
+            return;
+        }
         self.persist.left_open = true;
         self.left_panel = Panel::Search;
         self.focus = false;
@@ -1211,6 +1322,9 @@ impl App {
     }
 
     pub fn search_tag(&mut self, tag: &str) {
+        if self.note_mode() {
+            return;
+        }
         self.persist.left_open = true;
         self.left_panel = Panel::Search;
         self.query = TextEdit::new(format!("#{tag}"));

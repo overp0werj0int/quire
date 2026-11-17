@@ -896,6 +896,14 @@ impl App {
                     self.go_anchor(&f, tx);
                 }
             }
+            // Note mode has no folder of notes: a link to a note file opens it as one more note.
+            Target::Note(rel, frag) if self.note_mode() && root.join(&rel).is_file() => {
+                if self.open_note(&root.join(&rel)) {
+                    if let Some(f) = frag {
+                        self.go_anchor(&f, tx);
+                    }
+                }
+            }
             Target::Note(rel, _) => self.notice = Some(format!("No note at {rel}")),
             Target::File(p) => {
                 if let Err(e) = tx.open_url(&format!("file://{}", p.display())) {

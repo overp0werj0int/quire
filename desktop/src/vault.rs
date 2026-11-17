@@ -24,10 +24,11 @@ pub struct Vault {
 pub enum Scope {
     /// A notes folder in the list: every note under the root, remembered and synced.
     Folder,
-    /// One note opened on its own from a folder outside the list (a file double-clicked in a
-    /// file manager). Only that note is read and watched; the folder is not scanned, listed,
-    /// remembered or synced, and no note is added to it, moved or deleted.
-    Lone,
+    /// Note mode: one note opened as a file from outside the folders in the list (a file
+    /// double-clicked in a file manager), rooted at its own folder. Only that note is read and
+    /// watched; the folder is not scanned, listed, remembered or synced, and no note is added
+    /// to it, renamed, moved or deleted.
+    Note,
 }
 
 fn skip(name: &str) -> bool {
@@ -77,7 +78,7 @@ pub fn load(root: &Path) -> std::io::Result<Vault> {
     Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder })
 }
 
-/// Reads one note on its own (`Scope::Lone`): the vault's root is the note's folder and its
+/// Reads one note for Note mode (`Scope::Note`): the vault's root is the note's folder and its
 /// only note is the file.
 pub fn load_one(file: &Path) -> std::io::Result<Vault> {
     let bad = || std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a note file");
@@ -94,7 +95,7 @@ pub fn load_one(file: &Path) -> std::io::Result<Vault> {
         folders: Vec::new(),
         born: [(rel.clone(), ns)].into(),
         files: [(rel, text)].into(),
-        scope: Scope::Lone,
+        scope: Scope::Note,
     })
 }
 

@@ -24,7 +24,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         cmd("New note", "app.new-note", |s, tx| s.new_note(None, tx)),
         cmd("New folder", "", |s, tx| s.start_new_folder("", tx)),
         cmd("Open today's journal entry", "", |s, tx| s.open_today(tx)),
-        cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.open_palette(PalMode::Files, tx)),
+        cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.quick_open(tx)),
     ];
     if has {
         let label = if s.mode == Mode::Source { "Show preview" } else { "Show source" };
@@ -73,6 +73,18 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     }
     v.push(cmd("Switch folder…", "", |s, tx| s.go_welcome(tx)));
     v.push(cmd("Restore sample notes", "", |s, tx| s.reset_sample(tx)));
+    if s.note_mode() {
+        // Note mode has no folder of notes to add to, search, rename or delete in.
+        const FOLDER_ONLY: [&str; 6] = ["New note", "New folder", "Open today's journal entry", "Search all notes", "Rename note", "Delete note"];
+        v.retain(|c| !FOLDER_ONLY.contains(&c.label.as_str()));
+        for c in &mut v {
+            match c.label.as_str() {
+                "Open quick switcher" => c.label = "Open a note…".into(),
+                "Close tab" => c.label = "Close note".into(),
+                _ => {}
+            }
+        }
+    }
     v
 }
 
