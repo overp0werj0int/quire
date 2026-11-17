@@ -210,10 +210,20 @@ fn doc_scroll(v: V) -> El {
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar floats on a clear band. The caret stays
         // below the toolbar while you type.
-        scroll = scroll.scroll_fade(ScrollFade::strength(TOOLBAR_TOP + TOOLBAR_H + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(TOOLBAR_TOP + TOOLBAR_H + 12.0);
+        scroll = scroll.scroll_fade(ScrollFade::strength(TOOLBAR_TOP + TOOLBAR_H + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(TOOLBAR_TOP + TOOLBAR_H + 12.0 + if s.reader.find.open { super::reader::FIND_H + FIND_GAP } else { 0.0 });
     }
     scroll.child(content)
 }
+
+/// Where the find bar's top sits in the note area. Under the formatting toolbar it takes its
+/// own row, so the two never overlap at any window width; elsewhere it floats 10 under the
+/// title bar (RD-53, WR-122).
+pub(super) fn find_top(v: V) -> f32 {
+    if shows_toolbar(v) { TOOLBAR_TOP + TOOLBAR_H + FIND_GAP } else { TOOLBAR_TOP }
+}
+
+/// From the toolbar to the find bar under it.
+const FIND_GAP: f32 = 8.0;
 
 /// The space above the floating toolbar, at rest and while it sticks.
 const TOOLBAR_TOP: f32 = 10.0;

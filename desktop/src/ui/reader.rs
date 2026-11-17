@@ -16,8 +16,11 @@ pub(super) fn popup(c: &Roles) -> El {
     el().fill(c.bg).border(1.0, c.hairline).radius(6.0).box_shadow(theme::menu_shadows()[0]).box_shadow(theme::menu_shadows()[1])
 }
 
-/// The find bar (RD-52 to RD-61): 380 by 40, 16 px from the note area's right edge and 10 px
-/// under its top.
+/// The find bar's height.
+pub const FIND_H: f32 = 40.0;
+
+/// The find bar (RD-52 to RD-61): 380 by 40, 16 px from the note area's right edge, 10 px
+/// under its top, or under the formatting toolbar when that shows (`editor::find_top`).
 pub fn find_bar(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
@@ -50,8 +53,8 @@ pub fn find_bar(v: V) -> El {
         .on_input_key(on_find_key);
     popup(&c)
         .key("find-bar")
-        .pin(None, Some(10.0), Some(16.0), None)
-        .size(380.0, 40.0)
+        .pin(None, Some(super::editor::find_top(v)), Some(16.0), None)
+        .size(380.0, FIND_H)
         .paint_order(40)
         .child(
             row()
