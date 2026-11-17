@@ -709,6 +709,23 @@ pub(crate) mod scroll_tests {
         assert!(root.join("Drafts/b.md").is_file());
         assert_eq!(look(&mut rt), (tabs.clone(), Some("Drafts/b.md".into()), true, true), "both back, b open and shown");
 
+        // The key the toast names does what its button does, even while the editor has the
+        // keyboard, and a long name never pushes the button out of a small window.
+        rt.update(|s, _| s.delete_folder("Drafts"));
+        settle(&mut rt);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            s.focus_editor(tx);
+        });
+        rt.frame(DT);
+        assert!(rt.elements().iter().any(|e| e.focused && e.key.as_deref() == Some("editor")), "the editor has the keyboard");
+        let label = crate::keymap::label(crate::keymap::Preset::Omarky, "app.undo-delete");
+        assert!(rt.elements().iter().any(|e| e.text.as_deref() == Some(label.as_str())), "the toast names {label}");
+        rt.key(rune::KeyEvent { key: rune::Key::Command('r'), mods: rune::Mods { cmd: true, ctrl: true, shift: true, ..Default::default() } });
+        settle(&mut rt);
+        assert_eq!(look(&mut rt), (tabs.clone(), Some("Drafts/b.md".into()), true, true), "the key put Drafts back");
+
         // The offer ends after a while; the note stays in the trash.
         rt.update(|s, _| s.delete_path("a.md"));
         settle(&mut rt);

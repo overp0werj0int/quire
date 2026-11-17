@@ -50,6 +50,7 @@ Notes on reading this file:
 - **KEY-21** [in] [verify: unit, script] app.zoom-in (global): omarky preset `Ctrl+=` or `Ctrl++`; quire preset `Ctrl+=` or `Ctrl++`. Steps the text size up and remembers it, in both modes (RD-82, WR-72, WR-126, PAGE-19).
 - **KEY-22** [in] [verify: unit, script] app.zoom-out (global): omarky preset `Ctrl+-`; quire preset `Ctrl+-`. Steps the text size down (RD-82, WR-72, WR-126, PAGE-19).
 - **KEY-23** [quire] [verify: -] app.escape (global): omarky preset `Esc`; quire preset `Esc`. Runs Quire's `App::escape`. It closes the palette, then Settings, the folder menu, the tree menu, new folder, rename and the create prompt, then leaves focus mode. Each context's own Esc runs first and falls through to it (RD-85, WR-77).
+- **KEY-94** [quire] [verify: -] app.undo-delete (global): omarky preset `Ctrl+Shift+R`; quire preset `Ctrl+Shift+R`. While a delete's toast offers Undo, puts the note or folder back (`folders::Deleted`). The toast names the key. Text fields keep `Ctrl+Z`, so the delete takes a chord of its own. R is for restore.
 
 ## Reader
 

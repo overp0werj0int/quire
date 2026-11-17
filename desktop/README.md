@@ -52,7 +52,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 - Moves a note into a folder when you drag it onto the folder. Drop it on the folder name or on empty space to move it to the root. Links that spell out the old folder follow the note.
 - Moves deleted notes to `.trash` inside the folder.
 - Deletes a folder from its right-click menu. A folder with notes asks first. The folder moves to `.trash` with every file in it, so you can get it back.
-- After a delete, a toast names the note or folder and offers Undo for six seconds. Undo moves it back from `.trash` and reopens its tab.
+- After a delete, a toast names the note or folder and offers Undo for six seconds, on its button or with `Ctrl+Shift+R`. Undo moves it back from `.trash` and reopens its tab. Opening another folder ends the offer, so a note only ever goes back to its own folder.
 - Picks up changes that other apps make to the folder while Quire is open.
 
 ### Look

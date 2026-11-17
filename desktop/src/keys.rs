@@ -110,6 +110,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.zoom-in" => |s, _| s.zoom(Some(true)),
         "app.zoom-out" => |s, _| s.zoom(Some(false)),
         "reader.zoom-reset" => |s, _| s.zoom(None),
+        "app.undo-delete" => |s, tx| s.undo_delete(tx),
         "app.escape" => |s, tx| {
             s.escape(tx);
         },

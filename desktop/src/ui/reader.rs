@@ -240,40 +240,50 @@ pub fn help_sheet(v: V) -> El {
         .child(card)
 }
 
-/// A toast (RD-98): a pill at the bottom centre of the note area, 28 px above its bottom edge.
+/// A toast (RD-98): a pill at the bottom centre of the note area, 28 px above its bottom edge,
+/// inside the foot's fade, so the text it covers is already faint.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
-    row()
-        .key("toast-row")
-        .pin(Some(0.0), None, Some(0.0), Some(28.0))
-        .justify_center()
-        .paint_order(65)
-        .child(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(font(BODY, false)).color(c.text)))
+    toast_row(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(font(BODY, false)).color(c.text).truncate().shrink().min_w(0.0)))
 }
 
-/// After a delete, the toast's place holds what went and an Undo button, until the button is
-/// pressed or `folders::UNDO_FOR` is up.
+/// The row that holds a toast, 16 px clear of the note area's sides, so the pill always fits
+/// and its text is cut instead.
+fn toast_row(pill: El) -> El {
+    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(28.0)).px(16.0).justify_center().paint_order(65).child(pill.shrink().min_w(0.0))
+}
+
+/// After a delete, the toast's place holds what went and an Undo button with its key, until
+/// the button or the key is pressed or `folders::UNDO_FOR` is up. A long name is cut, never the
+/// button.
 pub fn undo_toast(v: V, name: &str) -> El {
     let c = Roles::new(v.p);
+    let body = font(BODY, false);
+    let key = keymap::label(v.s.preset(), "app.undo-delete");
     let undo = row()
         .key("toast-undo")
         .h(24.0)
         .px(10.0)
+        .gap(8.0)
         .center_y()
         .radius(999.0)
         .hover(c.hover)
         .role("button")
-        .label("Undo")
+        .label(format!("Undo ({key})"))
+        .help(format!("Undo ({key})"))
         .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
-        .child(text("Undo").font(font(BODY, false)).color(c.accent));
-    let msg = text(format!("Moved {name} to the trash")).font(font(BODY, false)).color(c.text);
-    let pill = row().gap(6.0).center_y().child(msg).child(undo);
-    row()
-        .key("toast-row")
-        .pin(Some(0.0), None, Some(0.0), Some(28.0))
-        .justify_center()
-        .paint_order(65)
-        .child(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+        .child(text("Undo").font(body).color(c.accent))
+        .child(text(key).font(font(CAPTION, false)).color(c.faint));
+    let msg = row()
+        .key("toast-msg")
+        .shrink()
+        .min_w(0.0)
+        .center_y()
+        .child(text("Moved ").font(body).color(c.text))
+        .child(text(name.to_string()).font(body).color(c.text).truncate().shrink().min_w(0.0))
+        .child(text(" to the trash").font(body).color(c.text));
+    let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
+    toast_row(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
 /// The reading progress line (RD-37, RD-38): 2 px of accent along the top of the note area.
