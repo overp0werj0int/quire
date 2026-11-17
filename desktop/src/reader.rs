@@ -767,6 +767,8 @@ impl App {
 
     /// Ctrl+F or `/` (RD-52): open the bar, or select its text when it is open.
     pub fn open_find(&mut self, tx: &mut Tx) {
+        // Find and a drawer never share the page.
+        self.drawer = None;
         let f = &mut self.reader.find;
         f.open = true;
         let n = f.q.text.len();

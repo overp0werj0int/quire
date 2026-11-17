@@ -97,7 +97,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
         "app.search-notes" => |s, tx| s.open_search(tx),
         "app.toggle-sidebar" => |s, _| s.toggle_left(),
-        "app.toggle-outline" | "reader.toggle-outline" => |s, _| s.toggle_right(),
+        "app.toggle-outline" | "reader.toggle-outline" => |s, tx| s.toggle_right(tx),
         "app.toggle-mode" => |s, tx| s.toggle_mode(tx),
         "app.settings" => |s, tx| s.toggle_settings(tx),
         "app.focus-mode" => |s, tx| s.toggle_focus(tx),

@@ -79,10 +79,20 @@ pub fn body(v: V) -> El {
         // Docked, its slot closes as it leaves.
         inner = inner.child(outline::outline(v).transition(t.hold_layout()));
     } else if v.right_over() {
-        // Too narrow to dock: the same panel over the page's right edge, on the page's colour,
-        // so the page does not reflow under it.
+        // Too narrow to dock: the same panel as a drawer over the page's right edge, on the
+        // page's colour, so the page does not reflow under it. A press outside it, Esc, its
+        // button or a picked heading closes it.
         let shadow = rune::Shadow { x: -6.0, y: 0.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
-        let over = el().key("outline-over").pin(None, Some(0.0), Some(0.0), Some(0.0)).paint_order(35).fill(v.p.bg).box_shadow(shadow).child(outline::outline(v));
+        let over = el()
+            .key("outline-over")
+            .pin(None, Some(0.0), Some(0.0), Some(0.0))
+            .paint_order(35)
+            .fill(v.p.bg)
+            .box_shadow(shadow)
+            .role("dialog")
+            .label("Outline")
+            .modal_tx(true, |s: &mut App, tx| s.close_drawer(tx))
+            .child(outline::outline(v));
         inner = inner.child(over.transition(t));
     }
     sheet = sheet.child(inner);

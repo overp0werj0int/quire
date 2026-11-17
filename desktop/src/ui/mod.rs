@@ -56,7 +56,7 @@ impl V<'_> {
     }
     /// The outline over the page's right edge, in a window too narrow to dock it.
     pub fn right_over(&self) -> bool {
-        self.is_vault() && self.s.outline_over && !self.focus() && self.has_doc() && self.vw < crate::app::OUTLINE_DOCK_W
+        self.is_vault() && self.s.drawer == Some(crate::app::Drawer::Outline) && !self.focus() && self.has_doc() && self.vw < crate::app::OUTLINE_DOCK_W
     }
 }
 

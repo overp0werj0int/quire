@@ -464,9 +464,10 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// RD-40, WR-96: below 1100 pt the outline button opens the outline over the page's right
-    /// edge, the page keeps its width, and Esc or the button closes it. From 1100 pt up it
-    /// docks as before.
+    /// RD-40, WR-96: below 1100 pt the outline button opens the outline as a drawer over the
+    /// page's right edge, the page keeps its width, and Esc, the button, a press outside it or
+    /// a picked heading closes it. It never shows with the find bar. From 1100 pt up it docks
+    /// as before.
     #[test]
     fn the_outline_opens_over_a_narrow_page() {
         use crate::bench::DT;
@@ -507,6 +508,40 @@ pub(crate) mod scroll_tests {
         press(&mut rt);
         settle(&mut rt);
         assert!(rect(&rt, "outline").is_none(), "and closes it");
+        // It is a drawer: a press outside it closes it and reaches nothing under it.
+        press(&mut rt);
+        settle(&mut rt);
+        let caret = |rt: &mut Runtime<crate::app::App>| {
+            let mut at = 0;
+            rt.update_if(|s, _| {
+                at = s.cur_edit().focus;
+                false
+            });
+            at
+        };
+        let before = caret(&mut rt);
+        rt.pointer_move(200.0, 300.0);
+        rt.pointer_down(200.0, 300.0);
+        rt.pointer_up(200.0, 300.0);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_none(), "a press outside closes it");
+        assert_eq!(caret(&mut rt), before, "and does not move the caret");
+        // It never shares the page with the find bar, in either order.
+        press(&mut rt);
+        settle(&mut rt);
+        rt.update(|s, tx| s.writer_find(tx));
+        settle(&mut rt);
+        assert!(rect(&rt, "find-bar").is_some() && rect(&rt, "outline").is_none(), "find closes the drawer");
+        press(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_some() && rect(&rt, "find-bar").is_none(), "the drawer closes find");
+        // A picked heading closes it.
+        let (x, y) = rt.find("ol-1").expect("heading B");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        settle(&mut rt);
+        assert!(rect(&rt, "outline").is_none(), "a picked heading closes it");
         // Wide, the button docks it and the page makes room.
         rt.set_viewport((1400.0, 1000.0), 1.0);
         settle(&mut rt);

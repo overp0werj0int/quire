@@ -14,6 +14,14 @@ use crate::vault::{self, Op, Scope, Vault, Writer};
 /// the page (RD-40, WR-96).
 pub const OUTLINE_DOCK_W: f32 = 1100.0;
 
+/// A panel that opens over the page as a drawer in a window too narrow to show it beside the
+/// page. One at a time, never with the find bar, and for this session only, so a narrow window
+/// never opens with the page covered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Drawer {
+    Outline,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Welcome,
@@ -124,9 +132,8 @@ pub struct App {
     pub view_h: std::cell::Cell<f32>,
     /// The window width as the last view saw it.
     pub view_w: std::cell::Cell<f32>,
-    /// The outline shown over the page's right edge in a window too narrow to dock it. For
-    /// this session only, so a narrow window never opens with the page covered.
-    pub outline_over: bool,
+    /// The drawer open over the page, if any.
+    pub drawer: Option<Drawer>,
     pub mcp_copied_at: Option<Instant>,
     pub mcp_http: Option<crate::mcp::HttpServer>,
     pub mcp_http_error: Option<String>,
@@ -229,7 +236,7 @@ pub fn init() -> App {
         sys_dark: std::cell::Cell::new(false),
         view_h: std::cell::Cell::new(800.0),
         view_w: std::cell::Cell::new(1280.0),
-        outline_over: false,
+        drawer: None,
         mcp_copied_at: None,
         mcp_http: None,
         mcp_http_error: None,
@@ -1069,6 +1076,7 @@ impl App {
         if self.files().get(path).is_none() {
             return;
         }
+        self.drawer = None;
         if !self.tabs.iter().any(|t| t == path) {
             self.tabs.push(path.to_string());
         }
@@ -1324,19 +1332,46 @@ impl App {
     }
 
     /// The outline button and keys: the docked outline's setting, or in a narrow window the
-    /// outline over the page.
-    pub fn toggle_right(&mut self) {
+    /// outline's drawer.
+    pub fn toggle_right(&mut self, tx: &mut Tx) {
         if self.view_w.get() >= OUTLINE_DOCK_W {
             self.persist.right_open = !self.persist.right_open;
             self.persist_later();
         } else {
-            self.outline_over = !self.outline_over;
+            self.toggle_drawer(Drawer::Outline, tx);
         }
     }
 
-    /// Whether the outline button's outline is open, docked or over the page.
+    /// Whether the outline button's outline is open, docked or as a drawer.
     pub fn outline_open(&self) -> bool {
-        if self.view_w.get() >= OUTLINE_DOCK_W { self.persist.right_open } else { self.outline_over }
+        if self.view_w.get() >= OUTLINE_DOCK_W { self.persist.right_open } else { self.drawer == Some(Drawer::Outline) }
+    }
+
+    /// Opens drawer `d`, or closes it when it is open. A drawer and the find bar never share
+    /// the page, so opening one closes find.
+    pub fn toggle_drawer(&mut self, d: Drawer, tx: &mut Tx) {
+        if self.drawer == Some(d) {
+            self.close_drawer(tx);
+        } else {
+            self.close_find(tx);
+            self.drawer = Some(d);
+        }
+    }
+
+    /// The drawer on screen: one is open, a note shows, zen mode is off and the window is too
+    /// narrow to show the panel beside the page.
+    pub fn shown_drawer(&self) -> Option<Drawer> {
+        let narrow = match self.drawer? {
+            Drawer::Outline => self.view_w.get() < OUTLINE_DOCK_W,
+        };
+        (narrow && !self.focus && self.active.is_some()).then_some(self.drawer?)
+    }
+
+    /// Closes the open drawer, and gives the keyboard back to the note.
+    pub fn close_drawer(&mut self, tx: &mut Tx) {
+        if self.drawer.take().is_some() {
+            self.focus_editor(tx);
+        }
     }
 
     pub fn toggle_settings(&mut self, _tx: &mut Tx) {
@@ -1426,8 +1461,8 @@ impl App {
             self.cancel_rename(tx);
         } else if self.creating.is_some() {
             self.creating = None;
-        } else if self.outline_over && !self.focus && self.active.is_some() && self.view_w.get() < OUTLINE_DOCK_W {
-            self.outline_over = false;
+        } else if self.shown_drawer().is_some() {
+            self.close_drawer(tx);
         } else if self.focus {
             self.focus = false;
         } else {
@@ -1438,6 +1473,7 @@ impl App {
 
     /// Moves the caret, or the preview, to line `line`.
     pub fn jump(&mut self, line: usize, tx: &mut Tx) {
+        self.drawer = None;
         if self.mode == Mode::Source {
             self.source_jump(line, tx);
         } else {
