@@ -19,7 +19,7 @@ const PANEL_X: f32 = 16.0;
 pub fn outline(v: V) -> El {
     let p = v.p;
     let s = v.s;
-    let c = Roles::new(p);
+    let c = Roles::panel(p);
     let doc = s.active_text();
     let heads = md::headings(doc);
     let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));

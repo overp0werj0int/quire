@@ -36,3 +36,8 @@ text, in the row's left padding, so the text stays where omarky puts it (RD-47, 
 Update, 2026-11-17: the captions start 22 px from the left, on the rows' text edge, not at
 omarky's 20 px. At 20 px the Files, Search and Tags switch started 2 px left of the rows it
 labels.
+
+Update, 2026-11-17: the panels' small text must read in every theme. Their dim and faint move
+toward the text colour until faint is at least 4.5:1 against the window, the sidebar and the
+outline's wash, and dim a step more (`Roles::panel`). In Paper the inactive tabs and the
+footer's keys were 2.25:1 on the sidebar.

@@ -13,7 +13,10 @@
 use rune::Color;
 use rune::color::{srgb_decode, srgb_encode};
 
-use crate::theme::Pal;
+use crate::theme::{Pal, contrast};
+
+/// The least contrast of the side panels' faintest text against the panel.
+pub const PANEL_FAINT: f32 = 4.5;
 
 fn enc(c: Color) -> [f32; 3] {
     [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b)]
@@ -137,6 +140,26 @@ impl Roles {
             find_current: accent,
             find_current_text: bg,
         }
+    }
+
+    /// The side panels' roles. Their text is small, so dim and faint move toward the text
+    /// until they read on every fill a panel sits on: the window, the sidebar and the outline's
+    /// wash. Faint reaches 4.5:1 (WCAG AA), and dim, the rows, a step more.
+    pub fn panel(p: &Pal) -> Roles {
+        let mut r = Roles::new(p);
+        let fills = [p.bg, p.side, r.on_page(r.wash)];
+        let lift = |c: Color, min: f32| {
+            let mut out = c;
+            let mut t = 0.0;
+            while fills.iter().any(|f| contrast(out, *f) < min) && t < 1.0 {
+                t += 0.02;
+                out = mix(c, r.text, t);
+            }
+            out
+        };
+        r.faint = lift(r.faint, PANEL_FAINT);
+        r.dim = lift(r.dim, PANEL_FAINT * 1.2);
+        r
     }
 
     /// The colour and face of one highlighter style (PAGE-50).
@@ -290,6 +313,25 @@ mod tests {
         let picked = Roles::new(themed("paper", false, "#1f8a80"));
         assert_eq!(hx(picked.link), hx(themed("paper", false, "#1f8a80").acc));
         assert_ne!(hx(picked.selection), hx(Roles::new(p).selection));
+    }
+
+    /// The side panels' small text reads in every theme: faint at 4.5:1 or more against
+    /// the window, the sidebar and the outline's wash, dim above it and the text above both, so
+    /// the open tab of Files, Search and Tags still reads as the strongest.
+    #[test]
+    fn panel_text_reads_on_every_theme() {
+        let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
+        let mut pals: Vec<(&str, &Pal)> = crate::theme::THEMES.iter().map(|t| (t.id, theme_pal(t.id, t.dark))).collect();
+        pals.push(("omarchy", &omarchy));
+        assert_eq!(pals.len(), 15);
+        for (id, p) in pals {
+            let r = Roles::panel(p);
+            for fill in [p.bg, p.side, r.on_page(r.wash)] {
+                let (text, dim, faint) = (contrast(r.text, fill), contrast(r.dim, fill), contrast(r.faint, fill));
+                assert!(faint >= PANEL_FAINT, "{id}: faint {faint:.2} on {}", hx(fill));
+                assert!(text > faint && dim >= faint, "{id}: text {text:.2}, dim {dim:.2}, faint {faint:.2}");
+            }
+        }
     }
 
     /// PAGE-50, PAGE-51: the style table.

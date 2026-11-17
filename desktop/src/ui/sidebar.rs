@@ -20,7 +20,7 @@ pub fn sidebar(v: V) -> El {
     let vault = s.vault.as_ref();
     let name = vault.map_or(String::new(), |v| v.name.clone());
 
-    let c = Roles::new(p);
+    let c = Roles::panel(p);
     let head = row().key("vault-head").pt(6.0).pb(4.0).w_full().child(
         panel::shade("vault-button", panel::BODY, 0, 0.0, &c, false)
             .grow(1.0)
@@ -117,7 +117,7 @@ pub fn sidebar(v: V) -> El {
 const OPEN_PAD: f32 = 6.0;
 fn open_notes(v: V) -> El {
     let s = v.s;
-    let c = Roles::new(v.p);
+    let c = Roles::panel(v.p);
     let heading = row()
         .key("open-head")
         .h(panel::row_h(panel::BODY))
@@ -141,7 +141,7 @@ fn open_notes(v: V) -> El {
 
 /// A row of Note mode's Open list: a note opened as a file, shown by its file name.
 fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
-    let c = Roles::new(v.p);
+    let c = Roles::panel(v.p);
     let name = file.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     let (open_file, close_file) = (file.to_path_buf(), file.to_path_buf());
     let close = row()
@@ -175,7 +175,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
 }
 
 fn open_row(v: V, path: &str) -> El {
-    let c = Roles::new(v.p);
+    let c = Roles::panel(v.p);
     let on = v.s.active.as_deref() == Some(path);
     let (open_path, close_path) = (path.to_string(), path.to_string());
     let close = row()
@@ -294,7 +294,7 @@ fn files_panel(v: V) -> El {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
     }
     if vault.files.is_empty() && s.new_folder.is_none() {
-        c = c.child(text("No notes yet.").font(panel::font(panel::BODY_SMALL, false)).color(Roles::new(p).faint).py(6.0).pl(panel::TEXT_X));
+        c = c.child(text("No notes yet.").font(panel::font(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
     }
     c.children(rows)
 }
@@ -319,12 +319,12 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             .size(18.0, 18.0)
             .center()
             .radius(3.0)
-            .hover(Roles::new(v.p).hover)
+            .hover(Roles::panel(v.p).hover)
             .label("New note in this folder")
             .help("New note here")
             .group_opacity(0.0, 1.0)
             .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
-            .child(icon(&PLUS, 9.0).color(Roles::new(v.p).faint));
+            .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
         rows.push(
             tree_row(v, &row_key("dir", &f.path), name, depth, true, open, false)
                 .help(f.path.clone())
@@ -360,7 +360,7 @@ const CHEV: f32 = 12.0;
 /// open note in the text colour on a tenth of the accent.
 fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool, on: bool) -> El {
     let p = v.p;
-    let c = Roles::new(p);
+    let c = Roles::panel(p);
     let chev = el()
         .key("chev")
         .w(CHEV)
@@ -386,7 +386,7 @@ fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool,
 /// The row where a new folder gets its name.
 fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
     let p = v.p;
-    let c = Roles::new(p);
+    let c = Roles::panel(p);
     panel::shade("new-folder-row", panel::BODY, depth, CHEV, &c, false)
         .child(el().w(CHEV).h(CHEV))
         .child(
@@ -588,7 +588,7 @@ pub fn drag_ghost(v: V) -> El {
 
 fn search_panel(v: V) -> El {
     let p = v.p;
-    let c = Roles::new(p);
+    let c = Roles::panel(p);
     let s = v.s;
     let q = s.query.text.trim().to_string();
     let mut box_ = row()
@@ -702,7 +702,7 @@ fn floor_char(s: &str, mut i: usize) -> usize {
 }
 
 fn tags_panel(v: V) -> El {
-    let c = Roles::new(v.p);
+    let c = Roles::panel(v.p);
     let tags = md::tags(v.s.files());
     let mut out = col().key("tags").w_full();
     if tags.is_empty() {

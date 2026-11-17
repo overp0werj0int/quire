@@ -383,7 +383,8 @@ fn parse_colors(src: &str) -> std::collections::HashMap<String, String> {
         .collect()
 }
 
-fn contrast(a: Color, b: Color) -> f32 {
+/// The WCAG contrast ratio of two opaque colours.
+pub fn contrast(a: Color, b: Color) -> f32 {
     let (la, lb) = (a.luminance() + 0.05, b.luminance() + 0.05);
     la.max(lb) / la.min(lb)
 }
