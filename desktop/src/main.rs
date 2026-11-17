@@ -202,6 +202,33 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The sidebar's small buttons and the panel tabs take a pointer over at least 24 by 24
+    /// points, and the rows they sit in keep their height.
+    #[test]
+    fn sidebar_targets_are_large_enough() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-targets-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("a/note.md", "# A\n"), ("b.md", "# B\n")], crate::watch::EVERY);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let mut seen = std::collections::BTreeSet::new();
+        for e in &els {
+            let Some(k) = e.key.as_deref() else { continue };
+            if matches!(k, "x" | "add" | "new-folder-button" | "panel-files" | "panel-search" | "panel-tags") {
+                assert!(e.rect[2] >= 24.0 && e.rect[3] >= 24.0, "{k} is {:?}", e.rect);
+                seen.insert(k.to_string());
+            }
+            if k.starts_with("dir:") || k.starts_with("tab:") {
+                assert_eq!(e.rect[3], 28.0, "{k} keeps its height");
+            }
+        }
+        assert_eq!(seen.len(), 6, "every kind was measured: {seen:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// In a small window each settings row stacks its control under its text, so descriptions
     /// keep a readable width and no text runs past the page's margin.
     #[test]

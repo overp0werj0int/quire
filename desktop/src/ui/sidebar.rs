@@ -14,6 +14,13 @@ use crate::md;
 use crate::roles::{Roles, mix};
 use crate::theme::{self, mono, sans};
 
+/// The size of a sidebar button and of a panel tab: the smallest pointer target. The drawn
+/// icons stay small inside it.
+const TARGET: f32 = 24.0;
+
+/// A row's room after its button, so the button's icon sits 13 points from the row's end.
+const BUTTON_END: f32 = 1.0;
+
 pub fn sidebar(v: V) -> El {
     let p = v.p;
     let s = v.s;
@@ -34,13 +41,14 @@ pub fn sidebar(v: V) -> El {
     );
 
     // The panel switch is a row of section captions; the open one is in the text colour.
-    let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET).pt(panel::CAPTION_Y - 4.0).pb(panel::CAPTION_GAP - 4.0).center_y();
+    // The new folder button lines up with the rows' buttons below it.
+    let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
     for (id, lbl) in [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")] {
         let on = s.left_panel == id;
         tabs = tabs.child(
             row()
                 .key(format!("panel-{}", lbl.to_lowercase()))
-                .h(20.0)
+                .h(TARGET)
                 .center_y()
                 .hover_group()
                 .role("tab")
@@ -58,7 +66,7 @@ pub fn sidebar(v: V) -> El {
         tabs = tabs.child(el().grow(1.0)).child(
             row()
                 .key("new-folder-button")
-                .size(22.0, 22.0)
+                .size(TARGET, TARGET)
                 .center()
                 .radius(3.0)
                 .hover(c.hover)
@@ -146,7 +154,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
     let (open_file, close_file) = (file.to_path_buf(), file.to_path_buf());
     let close = row()
         .key("x")
-        .size(18.0, 18.0)
+        .size(TARGET, TARGET)
         .center()
         .radius(3.0)
         .hover(c.hover)
@@ -156,7 +164,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
         .on_press(move |s: &mut App| s.close_note(&close_file))
         .child(icon(&CLOSE, 8.0).color(c.faint));
     panel::shade(format!("note:{}", file.display()), panel::BODY, 0, 0.0, &c, on)
-        .pr(4.0)
+        .pr(BUTTON_END)
         .hover_group()
         .role("tab")
         .checked(on)
@@ -180,7 +188,7 @@ fn open_row(v: V, path: &str) -> El {
     let (open_path, close_path) = (path.to_string(), path.to_string());
     let close = row()
         .key("x")
-        .size(18.0, 18.0)
+        .size(TARGET, TARGET)
         .center()
         .radius(3.0)
         .hover(c.hover)
@@ -190,7 +198,7 @@ fn open_row(v: V, path: &str) -> El {
         .on_press(move |s: &mut App| s.close_tab(&close_path))
         .child(icon(&CLOSE, 8.0).color(c.faint));
     panel::shade(format!("tab:{path}"), panel::BODY, 0, 0.0, &c, on)
-        .pr(4.0)
+        .pr(BUTTON_END)
         .hover_group()
         .role("tab")
         .checked(on)
@@ -316,7 +324,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
         let add_path = f.path.clone();
         let add = row()
             .key("add")
-            .size(18.0, 18.0)
+            .size(TARGET, TARGET)
             .center()
             .radius(3.0)
             .hover(Roles::panel(v.p).hover)
@@ -370,7 +378,7 @@ fn tree_row(v: V, key: &str, name: &str, depth: usize, folder: bool, open: bool,
         .child(icon(&CHEVRON_RIGHT, 7.0).color(c.faint).rotate(if open { std::f32::consts::FRAC_PI_2 } else { 0.0 }).rotate_motion(rune::Spring::new(0.12, 0.0)));
     let dragged = v.s.dragging.as_ref().is_some_and(|d| d.active && key == row_key("file", &d.path));
     let target = folder && v.s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_ref().is_some_and(|t| key == row_key("dir", t)));
-    let mut r = panel::shade(key, panel::BODY, depth, CHEV, &c, on).pr(if folder { 4.0 } else { panel::RIGHT - panel::INSET }).hover_group().role("treeitem").label(name.to_string()).child(chev);
+    let mut r = panel::shade(key, panel::BODY, depth, CHEV, &c, on).pr(if folder { BUTTON_END } else { panel::RIGHT - panel::INSET }).hover_group().role("treeitem").label(name.to_string()).child(chev);
     if target {
         r = r.fill(p.soft).border(1.0, p.acc.alpha(0.45));
     }
