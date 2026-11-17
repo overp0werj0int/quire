@@ -28,6 +28,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 - Shows source with live Markdown highlighting, or a rendered preview (`Ctrl+P`).
 - Has a floating formatting toolbar at the top of the note in source mode. It stays in view, and the note scrolls under it. The buttons are bold, italic, strikethrough, heading, link, note link, lists, task, quote, code and image. `Ctrl+B`, `Ctrl+I` and `Ctrl+K` do the same as the first buttons. Turn off Settings, Editor, **Formatting toolbar** to hide it.
 - Hides everything but the text in zen mode. Use `Ctrl+.` or the zen mode button in the title bar.
+- Fits a narrow window. Below 680 points the sidebar button opens the sidebar over the page, and below 1100 points the outline button does the same for the outline. A press outside, Esc or the button closes it.
 - Locks a note with its own password: use the lock button at the end of the toolbar, or "Lock note with a password…" in the command palette. Quire encrypts the note with AES-256-GCM and a key from the password. The file on disk, search, the link index and sync see only the encrypted text. To read the note, enter the password. Each save encrypts the note again. The note locks again when you close its tab or select the lock button. "Remove password" in the command palette saves it as plain text again. If you forget the password, nobody can open the note. `../SYNC.md` describes the format.
 
 ### Images

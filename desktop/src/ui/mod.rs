@@ -48,7 +48,11 @@ impl V<'_> {
         self.is_vault() && self.s.focus && self.has_doc()
     }
     pub fn left_visible(&self) -> bool {
-        self.is_vault() && self.s.persist.left_open && !self.focus() && self.vw >= 680.0
+        self.is_vault() && self.s.persist.left_open && !self.focus() && self.vw >= crate::app::SIDEBAR_DOCK_W
+    }
+    /// The sidebar over the page's left edge, in a window too narrow to dock it.
+    pub fn left_over(&self) -> bool {
+        self.is_vault() && self.s.drawer == Some(crate::app::Drawer::Sidebar) && !self.focus() && self.vw < crate::app::SIDEBAR_DOCK_W
     }
     /// The outline docked beside the page, which makes room for it.
     pub fn right_visible(&self) -> bool {
@@ -109,7 +113,10 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             let bar = if focus { el().key("titlebar-room").h(titlebar::BAR_H) } else { titlebar::titlebar(v) };
             let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(bar).child(editor::body(v));
             let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
-            let root = root.child(frame);
+            let mut root = root.child(frame);
+            if v.left_over() {
+                root = root.child(sidebar_drawer(v));
+            }
             if focus {
                 root.child(titlebar::titlebar(v).pin(Some(0.0), Some(0.0), Some(0.0), None)).children(editor::progress(v))
             } else {
@@ -147,6 +154,24 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
     // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.
     if reduced { root.instant_changes() } else { root }
+}
+
+/// Too narrow to dock: the sidebar as a drawer over the page's left edge, on the sidebar's
+/// colour, so the page does not reflow under it. The window corner's buttons stay over its top.
+/// A press outside it, Esc, the sidebar button or an opened note closes it.
+fn sidebar_drawer(v: V) -> El {
+    let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+    let shadow = rune::Shadow { x: 6.0, y: 0.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
+    el().key("sidebar-over")
+        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+        .paint_order(35)
+        .fill(v.p.side)
+        .box_shadow(shadow)
+        .role("dialog")
+        .label("Sidebar")
+        .modal_tx(true, |s: &mut App, tx| s.close_drawer(tx))
+        .child(sidebar::sidebar(v))
+        .transition(rune::Transition::move_edge(rune::Edge::Leading).springs(slide))
 }
 
 /// The reader is on screen: a note open in preview, not locked.

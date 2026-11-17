@@ -787,6 +787,86 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Below 680 points the sidebar button opens the sidebar as a drawer over the page, with
+    /// New note and Settings at its foot. A press outside, Esc, the button or an opened note
+    /// closes it, and the docked sidebar's setting stays as it was. From 680 up the button
+    /// docks and undocks the sidebar as before.
+    #[test]
+    fn the_sidebar_opens_over_a_narrow_page() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-sidedrawer-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nText.\n"), ("other.md", "# O\n")], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let rect = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect);
+        let tap = |rt: &mut Runtime<crate::app::App>, (x, y): (f32, f32)| {
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+        };
+        let toggle = |rt: &mut Runtime<crate::app::App>| {
+            let at = rt.find("toggle-left").expect("the sidebar button");
+            tap(rt, at);
+        };
+        let docked = |rt: &mut Runtime<crate::app::App>| {
+            let mut on = false;
+            rt.update_if(|s, _| {
+                on = s.persist.left_open;
+                false
+            });
+            on
+        };
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        let setting = docked(&mut rt);
+        assert!(rect(&rt, "sidebar").is_none(), "no sidebar at first");
+        let page = rect(&rt, "doc-area").unwrap();
+        toggle(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_some(), "the button opens the drawer");
+        for key in ["foot-new", "foot-settings"] {
+            let r = rect(&rt, key).unwrap_or_else(|| panic!("{key} shows"));
+            assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[0] + r[2] <= 640.0 && r[1] + r[3] <= 480.0, "{key} inside the window: {r:?}");
+        }
+        assert_eq!(rect(&rt, "doc-area").unwrap(), page, "the page does not reflow under it");
+        assert!(rect(&rt, "toggle-left").is_some(), "its button stays over it");
+        toggle(&mut rt);
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none(), "the button closes it");
+        toggle(&mut rt);
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none(), "Esc closes it");
+        toggle(&mut rt);
+        settle(&mut rt);
+        tap(&mut rt, (500.0, 300.0));
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none(), "a press outside closes it");
+        toggle(&mut rt);
+        settle(&mut rt);
+        let at = rt.find("file:other.md").expect("the other note in the drawer");
+        tap(&mut rt, at);
+        settle(&mut rt);
+        assert!(rect(&rt, "sidebar-over").is_none(), "an opened note closes it");
+        assert_eq!(docked(&mut rt), setting, "the docked setting never changed");
+        // From 680 up, nothing changed: the button docks and undocks it.
+        rt.set_viewport((1000.0, 600.0), 1.0);
+        settle(&mut rt);
+        toggle(&mut rt);
+        settle(&mut rt);
+        assert_eq!(docked(&mut rt), !setting);
+        assert!(rect(&rt, "sidebar-over").is_none(), "no drawer");
+        assert_eq!(rect(&rt, "sidebar").is_some(), !setting);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: entering zen mode from its button, the floating pill shows where it stays while
     /// the sidebar goes and the page widens.
     #[test]
@@ -1547,7 +1627,7 @@ mod writer_chrome_tests {
         let side = info(&rt, "sidebar").expect("the sidebar shows").rect;
         assert!(side[1] == 0.0 && side[3] == rt.presented("root").unwrap().0[3], "the sidebar runs top to bottom: {side:?}");
         let open = info(&rt, "toggle-left").expect("the toggle shows").rect;
-        rt.update(|s, _| s.toggle_left());
+        rt.update(|s, tx| s.toggle_left(tx));
         for _ in 0..120 {
             rt.frame(DT);
         }
@@ -2073,7 +2153,7 @@ mod note_mode_tests {
             rt.frame(DT);
         }
         assert!(!shown(&rt, "sidebar"), "the sidebar is collapsed");
-        rt.update(|s, _| s.toggle_left());
+        rt.update(|s, tx| s.toggle_left(tx));
         for _ in 0..60 {
             rt.frame(DT);
         }

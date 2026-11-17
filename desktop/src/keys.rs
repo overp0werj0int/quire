@@ -96,7 +96,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.quick-switcher" => |s, tx| s.quick_open(tx),
         "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
         "app.search-notes" => |s, tx| s.open_search(tx),
-        "app.toggle-sidebar" => |s, _| s.toggle_left(),
+        "app.toggle-sidebar" => |s, tx| s.toggle_left(tx),
         "app.toggle-outline" | "reader.toggle-outline" => |s, tx| s.toggle_right(tx),
         "app.toggle-mode" => |s, tx| s.toggle_mode(tx),
         "app.settings" => |s, tx| s.toggle_settings(tx),

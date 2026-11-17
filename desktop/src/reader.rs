@@ -782,15 +782,20 @@ impl App {
     }
 
     pub fn close_find(&mut self, tx: &mut Tx) {
-        let f = &mut self.reader.find;
-        if f.open {
-            f.open = false;
-            f.q = TextEdit::new("");
-            f.searched.clear();
-            f.due = None;
-            f.cur = 0;
+        if self.reader.find.open {
+            self.drop_find();
             tx.blur();
         }
+    }
+
+    /// Closes the find bar and forgets its query.
+    pub(crate) fn drop_find(&mut self) {
+        let f = &mut self.reader.find;
+        f.open = false;
+        f.q = TextEdit::new("");
+        f.searched.clear();
+        f.due = None;
+        f.cur = 0;
     }
 
     pub fn find_query(&self) -> Option<&str> {

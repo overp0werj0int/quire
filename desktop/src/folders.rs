@@ -157,7 +157,7 @@ impl App {
         if !parent.is_empty() {
             self.expanded.insert(parent.to_string());
         }
-        self.persist.left_open = true;
+        self.show_left();
         self.left_panel = crate::app::Panel::Files;
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
         self.tree_menu = None;

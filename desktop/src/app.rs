@@ -13,6 +13,9 @@ use crate::vault::{self, Op, Scope, Vault, Writer};
 /// The window width from which the outline docks beside the page; below it, it opens over
 /// the page (RD-40, WR-96).
 pub const OUTLINE_DOCK_W: f32 = 1100.0;
+/// The window width from which the sidebar docks beside the page; below it, its button opens it
+/// over the page.
+pub const SIDEBAR_DOCK_W: f32 = 680.0;
 
 /// A panel that opens over the page as a drawer in a window too narrow to show it beside the
 /// page. One at a time, never with the find bar, and for this session only, so a narrow window
@@ -20,6 +23,7 @@ pub const OUTLINE_DOCK_W: f32 = 1100.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Drawer {
     Outline,
+    Sidebar,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1333,9 +1337,30 @@ impl App {
         self.focus_editor(tx);
     }
 
-    pub fn toggle_left(&mut self) {
-        self.persist.left_open = !self.persist.left_open;
-        self.persist_later();
+    /// The sidebar button and keys: the docked sidebar's setting, or in a narrow window the
+    /// sidebar's drawer.
+    pub fn toggle_left(&mut self, tx: &mut Tx) {
+        if self.view_w.get() >= SIDEBAR_DOCK_W {
+            self.persist.left_open = !self.persist.left_open;
+            self.persist_later();
+        } else {
+            self.toggle_drawer(Drawer::Sidebar, tx);
+        }
+    }
+
+    /// Whether the sidebar button's sidebar is open, docked or as a drawer.
+    pub fn sidebar_open(&self) -> bool {
+        if self.view_w.get() >= SIDEBAR_DOCK_W { self.persist.left_open } else { self.drawer == Some(Drawer::Sidebar) }
+    }
+
+    /// Shows the sidebar for search, a tag or a new folder: docked, or as the drawer.
+    pub(crate) fn show_left(&mut self) {
+        if self.view_w.get() >= SIDEBAR_DOCK_W {
+            self.persist.left_open = true;
+        } else {
+            self.drop_find();
+            self.drawer = Some(Drawer::Sidebar);
+        }
     }
 
     /// The outline button and keys: the docked outline's setting, or in a narrow window the
@@ -1365,13 +1390,15 @@ impl App {
         }
     }
 
-    /// The drawer on screen: one is open, a note shows, zen mode is off and the window is too
-    /// narrow to show the panel beside the page.
+    /// The drawer on screen: one is open, zen mode is off and the window is too narrow to show
+    /// the panel beside the page. The outline's also needs a note.
     pub fn shown_drawer(&self) -> Option<Drawer> {
-        let narrow = match self.drawer? {
-            Drawer::Outline => self.view_w.get() < OUTLINE_DOCK_W,
+        let d = self.drawer?;
+        let shown = match d {
+            Drawer::Outline => self.view_w.get() < OUTLINE_DOCK_W && self.active.is_some(),
+            Drawer::Sidebar => self.view_w.get() < SIDEBAR_DOCK_W,
         };
-        (narrow && !self.focus && self.active.is_some()).then_some(self.drawer?)
+        (shown && !self.focus && self.screen == Screen::Vault).then_some(d)
     }
 
     /// Closes the open drawer, and gives the keyboard back to the note.
@@ -1417,7 +1444,7 @@ impl App {
         if self.note_mode() {
             return;
         }
-        self.persist.left_open = true;
+        self.show_left();
         self.left_panel = Panel::Search;
         self.focus = false;
         self.palette = None;
@@ -1431,7 +1458,7 @@ impl App {
         if self.note_mode() {
             return;
         }
-        self.persist.left_open = true;
+        self.show_left();
         self.left_panel = Panel::Search;
         self.query = TextEdit::new(format!("#{tag}"));
         let n = self.query.text.len();

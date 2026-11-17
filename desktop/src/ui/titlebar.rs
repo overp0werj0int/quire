@@ -46,7 +46,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .child(dots(p))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press(|s: &mut App| s.toggle_left()))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, 15.0, &tip(v.s.preset(), "Sidebar", "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.

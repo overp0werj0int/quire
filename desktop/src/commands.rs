@@ -35,8 +35,8 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         let label = if s.focus { "Leave zen mode" } else { "Enter zen mode" };
         v.push(cmd(label, "app.focus-mode", |s, tx| s.toggle_focus(tx)));
     }
-    let left = if s.persist.left_open { "Hide sidebar" } else { "Show sidebar" };
-    v.push(cmd(left, "app.toggle-sidebar", |s, _| s.toggle_left()));
+    let left = if s.sidebar_open() { "Hide sidebar" } else { "Show sidebar" };
+    v.push(cmd(left, "app.toggle-sidebar", |s, tx| s.toggle_left(tx)));
     let right = if s.outline_open() { "Hide outline" } else { "Show outline" };
     v.push(cmd(right, "app.toggle-outline", |s, tx| s.toggle_right(tx)));
     if dark {
