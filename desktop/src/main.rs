@@ -4003,6 +4003,61 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
+    /// and the outline scroll the row's ring, 3 points past the row, inside the list, and the
+    /// first row leaves room for it under the list's top edge.
+    #[test]
+    fn a_focused_rows_ring_stays_inside_its_list() {
+        // The ring's reach past the row, as `ui::focus_ring` draws it.
+        const RING: f32 = 3.0;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-ring-{}", std::process::id()));
+        // Forty more notes, so the tree and the results scroll; the folder opens again to read
+        // them, as `garden` makes the folder new.
+        let mut rt = garden(&dir, Mode::Preview);
+        let root = dir.join("notes");
+        for i in 0..40 {
+            std::fs::write(root.join(format!("n{i:02}.md")), format!("# N{i}\n\nA row. #many\n")).unwrap();
+        }
+        rt.update(move |s, tx| {
+            s.open_vault(root, tx);
+            s.open_file("note.md", None, tx);
+            s.mode = Mode::Preview;
+            s.persist.left_open = true;
+            s.persist.right_open = true;
+            s.expanded.insert("Box".into());
+            tx.blur();
+        });
+        settle(&mut rt);
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let mut fails = Vec::new();
+        let mut look = |rt: &mut Runtime<App>, k: Key, list: &str, case: &str| {
+            key(rt, k, Mods::default());
+            glide(rt);
+            let Some(at) = focused(rt) else { return fails.push(format!("{case}: nothing focused")) };
+            let (Some(r), Some(v)) = (rect(rt, &at), rect(rt, list)) else { return fails.push(format!("{case}: no rect for {at} or {list}")) };
+            let (top, bottom) = (r[1] - RING, r[1] + r[3] + RING);
+            if top < v[1] - 0.5 || bottom > v[1] + v[3] + 0.5 {
+                fails.push(format!("{case}: {at} ring y {top} to {bottom}, list shows y {} to {}", v[1], v[1] + v[3]));
+            }
+        };
+        key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
+        look(&mut rt, Key::End, "side-scroll", "the tree's last row");
+        look(&mut rt, Key::Home, "side-scroll", "the tree's first row");
+        rt.update(|s, tx| s.search_tag("many", tx));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
+        assert!(focused(&rt).is_some_and(|k| k.starts_with("res:")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
+        look(&mut rt, Key::End, "side-scroll", "the last result");
+        look(&mut rt, Key::Home, "side-scroll", "the first result");
+        key(&mut rt, Key::Escape, Mods::default());
+        key(&mut rt, Key::Function(6), Mods::default());
+        look(&mut rt, Key::End, "outline-scroll", "the outline's last row");
+        look(&mut rt, Key::Home, "outline-scroll", "the outline's first row");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "rings cut by a list's edge:\n{}", fails.join("\n"));
+    }
+
     /// A window on a small folder, in preview with the outline docked: the note and a folder
     /// `Box` with two notes, and a tag in each.
     fn garden(dir: &std::path::Path, mode: Mode) -> Runtime<App> {

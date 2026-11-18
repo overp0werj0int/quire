@@ -54,7 +54,7 @@ pub fn sidebar(v: V) -> El {
     // soft pill that reaches past its text, which stays on the rows' text edge. The others take
     // the rows' colour, brighter under the pointer. The new folder button lines up with the
     // rows' buttons below it.
-    let mut tabs = row().key("panel-tabs").role("tablist").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
+    let mut tabs = row().key("panel-tabs").role("tablist").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
     // Each tab is a Tab stop; Left and Right move between them, and Enter or Space opens one
     // (FOCUS). A click opens it and leaves the keyboard where it was, except that SEARCH puts it
     // in the field.
@@ -124,7 +124,16 @@ pub fn sidebar(v: V) -> El {
         Panel::Search => search_panel(v),
         Panel::Tags => tags_panel(v),
     };
-    let list = col().key("side-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).child(col().key("side-list").w_full().pb(12.0).child(body));
+    // A focused row's ring reaches RING_ROOM past the row: a row that takes focus scrolls in far
+    // enough to show it, and the list leaves that room above its first row (RING).
+    let list = col()
+        .key("side-scroll")
+        .grow(1.0)
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_margin(panel::RING_ROOM)
+        .child(col().key("side-list").w_full().pt(panel::RING_ROOM).pb(12.0).child(body));
 
     let foot_btn = |key: &str, t: &str, kbd: String, run: fn(&mut App, &mut rune::Tx)| {
         super::focus::stop(panel::shade(key, panel::BODY, 0, 0.0, &c, false))
