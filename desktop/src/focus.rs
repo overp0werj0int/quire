@@ -10,7 +10,8 @@
 //!   it, as a layer's own key closes the layer. Every other plain key is dropped: none reaches
 //!   the reader or the writer behind it. A shortcut with Ctrl, Alt or the logo key acts as it
 //!   would with the keyboard on the note (`chord`), except that a text field keeps the
-//!   writer's chords at the caret from the note (`field`).
+//!   writer's chords at the caret from the note (`field`). The editor's own chords, which its
+//!   text field handles, go on to the editor (`edit_chord`).
 //! - Esc gives the keyboard back to the note (`App::keys_to_note`).
 //! - When the element that holds focus goes away, for any reason (its pane hides, zen mode,
 //!   its row is gone, a rename ends, find closes, its tab closes), the keyboard goes to the
@@ -103,6 +104,14 @@ pub fn chord(ev: &KeyEvent) -> bool {
     m.cmd || m.ctrl || m.alt || m.logo
 }
 
+/// The editor's own chords: undo, redo, select all and the clipboard's. Its text field acts on
+/// them, so they reach the writer only while the editor has focus (`App::edit_chord_to_note`).
+pub fn edit_chord(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    let Key::Command(c) = ev.key else { return false };
+    (m.cmd || m.ctrl) && !m.alt && !m.logo && matches!((c.to_ascii_lowercase(), m.shift), ('a' | 'c' | 'x' | 'v' | 'y', false) | ('z', _))
+}
+
 /// The actions that show and hide a pane.
 fn toggles(pane: Pane, id: &str) -> bool {
     match pane {
@@ -118,7 +127,7 @@ impl App {
     pub(crate) fn stop_key(&mut self, pane: Pane, ev: &KeyEvent, tx: &mut Tx) -> Option<bool> {
         let m = ev.mods;
         if chord(ev) {
-            return None;
+            return self.edit_chord_to_note(ev, tx).then_some(true);
         }
         Some(match ev.key {
             Key::Escape if !m.shift => {
@@ -132,6 +141,19 @@ impl App {
                 true
             }
         })
+    }
+
+    /// The editor's own chord (`edit_chord`) from a stop that is not a text field, in the
+    /// writer: the light layers close, the editor takes the keyboard and the chord acts there,
+    /// as Ctrl+B does from a row. A text field keeps the chord for itself.
+    pub(crate) fn edit_chord_to_note(&mut self, ev: &KeyEvent, tx: &mut Tx) -> bool {
+        if !self.writing_note() || !edit_chord(ev) || tx.focused().is_some_and(field) {
+            return false;
+        }
+        self.close_layers(tx);
+        self.focus_editor(tx);
+        tx.send_key(ev.clone());
+        true
     }
 
     /// Tab from the formatting toolbar, or Shift+Tab from the docked outline's first list, into

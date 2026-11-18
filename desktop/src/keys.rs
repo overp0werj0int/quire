@@ -122,6 +122,9 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // The keys of what is under the light layers: under a row's menu in the sidebar's
         // drawer, the page's, so Ctrl+F closes both and opens find.
         let under = s.open_layers().rev().skip(1).map(Layer::kind).find(|k| !k.light());
+        if under.is_none() && s.edit_chord_to_note(ev, tx) {
+            return true;
+        }
         let (own, window) = under.map_or((page_stack(s), &[][..]), layer_stack);
         let field = tx.focused().is_some_and(crate::focus::field);
         let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some() && !(field && crate::focus::at_caret(a))) else { return false };

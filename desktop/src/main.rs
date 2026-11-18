@@ -4393,6 +4393,72 @@ mod layer_matrix_tests {
                 }
             }
         }
+        // The editor's own chords (undo, redo, select all, the clipboard's) live in its text
+        // field, outside the keymap. From a stop that is not a text field they act as from the
+        // note: in the writer docked and from the 640 drawer, where the editor then has the
+        // keyboard, and in preview. A text field keeps them for itself (CTRLZ).
+        let edits = [('z', false), ('z', true), ('y', false), ('a', false), ('x', false), ('c', false), ('v', false)];
+        for (mode, width) in [(Mode::Source, 1280.0), (Mode::Source, 640.0), (Mode::Preview, 1280.0)] {
+            for (c, shift) in edits {
+                let on = |stop: bool| {
+                    let mut rt = garden(&dir, mode);
+                    rt.set_viewport((width, 800.0), 1.0);
+                    settle(&mut rt);
+                    if mode == Mode::Source {
+                        rt.update(|s, tx| {
+                            s.cur_edit().set_selection(0, 0);
+                            s.focus_editor(tx);
+                        });
+                        settle(&mut rt);
+                        for t in ["Q", "Q"] {
+                            text_key(&mut rt, t);
+                        }
+                    }
+                    if stop && width < 1000.0 {
+                        key(&mut rt, Key::Command('b'), ctrl(true));
+                    } else if stop {
+                        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+                        settle(&mut rt);
+                    }
+                    let from = focused(&rt).unwrap_or_default();
+                    key(&mut rt, Key::Command(c), ctrl(shift));
+                    if mode == Mode::Source {
+                        text_key(&mut rt, "W");
+                    }
+                    (from, focused(&rt), state(&mut rt))
+                };
+                let ((_, _, note), (from, after, from_stop)) = (on(false), on(true));
+                if crate::focus::stop(&from).is_none() {
+                    fails.push(format!("{mode:?} at {width}: the case did not put the keyboard on a stop ({from})"));
+                }
+                if note != from_stop {
+                    fails.push(format!("{mode:?} at {width}: Ctrl+{}{c} from {from} acts differently than from the note:\n  note {note}\n  stop {from_stop}", if shift { "Shift+" } else { "" }));
+                }
+                if mode == Mode::Source && after.as_deref() != Some("editor") {
+                    fails.push(format!("at {width}: after Ctrl+{c} from {from} the keyboard is on {after:?}, not the editor"));
+                }
+            }
+        }
+        let read = |rt: &mut Runtime<App>| {
+            let mut got = (String::new(), String::new());
+            rt.update_if(|s, _| {
+                got = (s.query.text.clone(), s.active_text().to_string());
+                false
+            });
+            got
+        };
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| s.open_search(tx));
+        settle(&mut rt);
+        text_key(&mut rt, "box");
+        let (_, before) = read(&mut rt);
+        key(&mut rt, Key::Command('a'), ctrl(false));
+        text_key(&mut rt, "W");
+        let (query, text) = read(&mut rt);
+        if focused(&rt).as_deref() != Some("search") || query != "W" || text != before {
+            fails.push(format!("Ctrl+A in the search field: focus {:?}, query {query:?}, note changed {}", focused(&rt), text != before));
+        }
+
         // A note deleted from its focused row by keys (Shift+F10, Down to Delete note, Enter):
         // the row is gone, so the note has the keyboard (DEL). In the writer the note deleted is
         // the open one, and the next one shows its text at once, though it never had an

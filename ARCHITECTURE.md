@@ -137,7 +137,10 @@ or the outline. A test checks that every focusable element in the panes is in it
   gives the keyboard back to the note, the key that hides the stop's pane hides it, and F6
   acts. Every other plain key is dropped, so none reaches the reader or the writer. A
   shortcut with Ctrl, Alt or the logo key (`focus::chord`) acts as it would with the
-  keyboard on the note: Ctrl+F opens find, Ctrl+B bolds in the writer.
+  keyboard on the note: Ctrl+F opens find, Ctrl+B bolds in the writer. The editor's own
+  chords (undo, redo, select all, the clipboard's) live in its text field, so in the writer
+  `App::edit_chord_to_note` closes the light layers, gives the editor the keyboard and sends
+  the chord on to it (`Tx::send_key`).
 - A text field on the page (`focus::FIELDS`: the search field, find's, the note's name, a
   new folder's) keeps its own editing keys. The writer's actions at the caret
   (`focus::at_caret`: a format, a heading, indent, a list's Enter, following a link) do
