@@ -261,6 +261,18 @@ pub(super) fn top_band(v: V) -> f32 {
     if find_row(v) { find_top(v) + super::reader::FIND_H + FIND_FADE_OUT } else { TOOLBAR_TOP + TOOLBAR_H + 12.0 }
 }
 
+/// How far down the view a find match is covered from above: the toolbar's band, else the
+/// find bar's foot while find is open. A toast's band lifts a match only into the room under it.
+pub(super) fn match_roof(v: V) -> f32 {
+    if shows_toolbar(v) {
+        top_band(v)
+    } else if v.s.reader.find.open {
+        find_top(v) + super::reader::FIND_H
+    } else {
+        0.0
+    }
+}
+
 /// Where the find bar's top sits in the note area: 10 under the title bar, which is the
 /// formatting toolbar's top when it fits beside it, else on its own row under the toolbar
 /// (RD-53, WR-122).

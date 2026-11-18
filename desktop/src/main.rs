@@ -4810,6 +4810,67 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BLOCKLIFT: in the reader too a toast goes by the current match's own highlight, not its
+    /// block. A match on a paragraph's first line, clear of the band while the paragraph's
+    /// later lines run under it, stays put; a match under the band comes just above it, by the
+    /// least scroll; a match out of view stays out (RD-104).
+    #[test]
+    fn a_toast_moves_the_reader_only_for_a_match_under_its_band() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-blocklift-{}", std::process::id()));
+        let words = "and the paragraph runs on over more lines ".repeat(8);
+        let text: String = (0..80).map(|i| format!("Match {i} stays fast, {words}\n\n")).collect();
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| {
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("Match 40 stays");
+            s.find_changed(tx);
+        });
+        glide(&mut rt);
+        glide(&mut rt);
+        let view = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("doc-scroll")).expect("the view").rect;
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = 0.0;
+            rt.update(|s, _| at = s.reader.scroll.get()[0]);
+            at
+        };
+        // Puts the match's middle at window y `to`, shows a toast, and gives how far the view
+        // moved, where the band starts and where the match's middle ends.
+        let mut toast_with_match_at = |to: f32| {
+            rt.update(|s, _| s.reader.toast = None);
+            glide(&mut rt);
+            // Rows that mount as the view moves measure, so the move is made until it holds.
+            for _ in 0..3 {
+                let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+                rt.update(|s, tx| {
+                    let at = s.reader.scroll.get()[0];
+                    tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + y - to);
+                });
+                glide(&mut rt);
+            }
+            let before = offset(&mut rt);
+            rt.update(|s, tx| s.toast("Copied the whole note", tx));
+            glide(&mut rt);
+            let band = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toast-band") && !e.exiting).expect("the band").rect;
+            (offset(&mut rt) - before, band[1], rt.find(crate::reader::FIND_CUR).map(|m| m.1))
+        };
+        let (moved, band, _) = toast_with_match_at(view[1] + view[3] / 2.0);
+        assert!(moved.abs() < 0.5, "a match in the middle stays put: moved {moved}");
+        // The match's line, 22 pt tall, ends 20 pt above the band; its paragraph runs under it.
+        let (moved, ..) = toast_with_match_at(band - 31.0);
+        assert!(moved.abs() < 0.5, "a match clear of the band stays put, whatever its paragraph does: moved {moved}");
+        let (moved, ..) = toast_with_match_at(view[1] + view[3] + 900.0);
+        assert!(moved.abs() < 0.5, "a match out of view below stays out: moved {moved}");
+        let (moved, ..) = toast_with_match_at(view[1] - 900.0);
+        assert!(moved.abs() < 0.5, "a match out of view above stays out: moved {moved}");
+        let (moved, band, y) = toast_with_match_at(band + 20.0);
+        let y = y.expect("the match is drawn");
+        assert!(moved > 0.5 && (y + 11.0 - band).abs() < 1.5, "a match under the band comes just above it: moved {moved}, match at {y}, band from {band}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// ENDROOM: while a band shows, the page's end room is at least the band's height, so the
     /// last find match comes above a band taller than the reader's room after its last line.
     /// When the band goes, a view inside the extra room rides down with it, and a view above it

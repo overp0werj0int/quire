@@ -765,11 +765,12 @@ impl App {
 
     /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
     /// what the user is on comes above it at once, by the least scroll: the caret's line in the
-    /// writer (`caret`, as last drawn), else the current find match (`find_at` in the writer,
-    /// where the page lays it out before scrolling). Nothing scrolls when the band shrinks, when
-    /// typewriter scrolling holds the caret, or when what the user is on is out of view or clear
-    /// of the band.
-    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, tx: &mut Tx) {
+    /// writer (`caret`, as last drawn), else the current find match's own highlight (`find_at`,
+    /// where the page laid it out, before scrolling). A match that cannot fit between the view's
+    /// top band (`roof` down from the view's top) and this one is centred instead. Nothing
+    /// scrolls when the band shrinks, when typewriter scrolling holds the caret, or when what the
+    /// user is on is out of view or clear of the band.
+    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, roof: f32, tx: &mut Tx) {
         let grew = h > self.reader.band + 0.5;
         self.reader.band = h;
         self.reader.foot = y + h;
@@ -781,41 +782,23 @@ impl App {
         let [offset, _, vh, _] = self.reader.scroll.get();
         let view = y + h - vh;
         // A line from window y `top`, `height` tall, in the view and under the band, comes up.
-        let lift = |top: f32, height: f32, tx: &mut Tx| {
-            if top < y + h && top + height > view && top + height > y {
+        let under = |top: f32, height: f32| top < y + h && top + height > view && top + height > y;
+        if let Some([_, top, _, height]) = caret {
+            if !self.settings().typewriter_scroll && under(top, height) {
                 tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
             }
-        };
-        if let Some([_, top, _, height]) = caret {
-            if !self.settings().typewriter_scroll {
-                lift(top, height, tx);
-            }
             return;
         }
-        if self.find_query().is_none() {
+        // Find's field has the keyboard, so the editor has no caret to go by.
+        let Some([_, top, _, height]) = find_at.filter(|_| self.find_query().is_some()) else { return };
+        let top = top - offset;
+        if !under(top, height) {
             return;
         }
-        if self.writing() {
-            // Find's field has the keyboard, so the editor has no caret to go by.
-            if let Some([_, top, _, height]) = find_at {
-                lift(top - offset, height, tx);
-            }
-            return;
-        }
-        let m = self.find_matches();
-        let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
-        let map = self.reader.map.borrow();
-        let Some(at) = map.block_top(i).filter(|_| map.covers(self.doc().blocks.len())) else { return };
-        // The match's block, from the view's top; the band from there too.
-        let (y0, y1, band) = (at - offset, at - offset + map.height(i), y - view);
-        if y1 <= band || y0 >= vh || y1 <= 0.0 {
-            return;
-        }
-        // A block too tall to sit between 20% of the view and the band centres its match, as
-        // find does (RD-60).
-        if y0 - (y1 - band) >= 0.2 * vh {
-            tx.scroll_to(SCROLL, 0.0, offset + y1 - band);
+        if y - (view + roof) >= height {
+            tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
         } else {
+            // As find does (RD-60, WR-118).
             tx.scroll_center(FIND_CUR);
         }
     }
