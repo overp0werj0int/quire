@@ -4174,14 +4174,22 @@ mod layer_matrix_tests {
         if focused(&rt).as_deref() != Some("panel-search") {
             fails.push(format!("Right on FILES moves to {:?}", focused(&rt)));
         }
-        key(&mut rt, Key::Enter, Mods::default());
-        for _ in 0..3 {
-            if focused(&rt).as_deref() != Some("search") {
-                key(&mut rt, Key::Tab, Mods::default());
+        // Enter or Space on a panel tab opens the panel and puts the keyboard in it (SRCH): the
+        // search field, the tree's current row, the first tag.
+        for (tab, k, want) in [("panel-files", Key::Text(" ".into()), "file:note.md"), ("panel-tags", Key::Enter, "tag-row:"), ("panel-files", Key::Enter, "file:note.md"), ("panel-search", Key::Text(" ".into()), "search")] {
+            let k2 = tab.to_string();
+            rt.update(move |_, tx| tx.focus(k2, true));
+            settle(&mut rt);
+            key(&mut rt, k.clone(), Mods::default());
+            if !focused(&rt).is_some_and(|f| f.starts_with(want)) {
+                fails.push(format!("{k:?} on {tab}: focus on {:?}, not {want}", focused(&rt)));
             }
         }
+        rt.update(|_, tx| tx.focus("panel-search", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Enter, Mods::default());
         if focused(&rt).as_deref() != Some("search") {
-            fails.push(format!("Enter on SEARCH, then Tab: focus on {:?}", focused(&rt)));
+            fails.push(format!("Enter on SEARCH: focus on {:?}", focused(&rt)));
         }
         for c in ["k", "e", "p", "t"] {
             text_key(&mut rt, c);

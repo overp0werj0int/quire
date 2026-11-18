@@ -155,9 +155,9 @@ impl App {
         (left, right)
     }
 
-    /// Where F6 puts the keyboard in the sidebar: the current row of the open panel's list,
-    /// else its first, else the panel's tab.
-    fn sidebar_stop(&self) -> String {
+    /// Where F6, or Enter on a panel tab, puts the keyboard in the sidebar: the current row of
+    /// the open panel's list, else its first, else the panel's tab.
+    pub(crate) fn sidebar_stop(&self) -> String {
         if self.note_mode() {
             let shown = self.note_path().or_else(|| self.notes.first().cloned());
             return shown.map_or_else(|| "open-notes".into(), |f| format!("note:{}", f.display()));

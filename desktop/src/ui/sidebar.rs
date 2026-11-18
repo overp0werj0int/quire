@@ -56,8 +56,9 @@ pub fn sidebar(v: V) -> El {
     // rows' buttons below it.
     let mut tabs = row().key("panel-tabs").role("tablist").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
     // Each tab is a Tab stop; Left and Right move between them, and Enter or Space opens one
-    // (FOCUS). A click opens it and leaves the keyboard where it was, except that SEARCH puts it
-    // in the field.
+    // and puts the keyboard in it: the search field, else the list's current row (FOCUS). A
+    // click opens it and leaves the keyboard where it was, except that SEARCH puts it in the
+    // field.
     const PANELS: [(Panel, &str); 3] = [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")];
     let tab_key = |i: usize| format!("panel-{}", PANELS[i].1.to_lowercase());
     for (i, (id, lbl)) in PANELS.into_iter().enumerate() {
@@ -65,8 +66,10 @@ pub fn sidebar(v: V) -> El {
         let (left, right) = (tab_key((i + 2) % 3), tab_key((i + 1) % 3));
         let pick = move |s: &mut App, tx: &mut rune::Tx| {
             s.left_panel = id;
-            if id == Panel::Search && !tx.by_keys() {
-                tx.focus("search", false);
+            if id == Panel::Search {
+                tx.focus("search", tx.by_keys());
+            } else if tx.by_keys() {
+                tx.focus(s.sidebar_stop(), true);
             }
         };
         tabs = tabs.child(
