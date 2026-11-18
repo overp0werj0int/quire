@@ -302,7 +302,7 @@ pub fn sync(v: V) -> El {
         "encrypt",
         "Encrypt before upload",
         Some("Notes are encrypted on this computer, so the provider only stores ciphertext."),
-        switch(p, "enc-switch", enc, "Encrypt before upload", |s, _| {
+        switch(v, "enc-switch", enc, "Encrypt before upload", |s, _| {
             let e = s.settings().sync.encrypt;
             s.settings_mut().sync.encrypt = !e;
             s.sync_changed();

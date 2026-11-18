@@ -433,7 +433,7 @@ fn editor(v: V) -> El {
         ("typewriter", "Typewriter scrolling", "Keeps the line you are typing at the middle of the window.", |s| s.typewriter_scroll, |s| s.typewriter_scroll = !s.typewriter_scroll),
     ];
     for (key, t, d, get, flip) in toggles {
-        c = c.child(row_(v, key, t, Some(d), switch(p, &format!("{key}-switch"), get(set), t, move |s, _| flip(s.settings_mut()))));
+        c = c.child(row_(v, key, t, Some(d), switch(v, &format!("{key}-switch"), get(set), t, move |s, _| flip(s.settings_mut()))));
     }
     c
 }
@@ -483,7 +483,7 @@ fn files(v: V) -> El {
             "links",
             "Update links when renaming",
             Some("Rewrites [[links]] in other notes so they still point to the renamed file."),
-            switch(p, "links-switch", upd, "Update links when renaming", |s, _| {
+            switch(v, "links-switch", upd, "Update links when renaming", |s, _| {
                 let u = s.settings().update_links;
                 s.settings_mut().update_links = !u;
             }),

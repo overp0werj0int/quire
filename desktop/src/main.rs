@@ -4007,6 +4007,36 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The pointer anywhere in a Settings switch's 28 pt target, not only over its 20 pt track,
+    /// gives the track its hover fill, on and off, and leaving the target takes it back.
+    #[test]
+    fn a_switch_shows_its_whole_target_on_hover() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-switch-hover-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        key(&mut rt, Key::Command(','), ctrl(false));
+        press_key(&mut rt, "nav-Editor", false);
+        glide(&mut rt);
+        let el = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("no {k}"));
+        let sw = el(&rt, "toolbar-switch");
+        let track = |rt: &Runtime<App>| rt.elements().into_iter().find(|e| e.path == format!("{}/track", sw.path)).expect("the switch's track");
+        assert_eq!((sw.rect[3], track(&rt).rect[3]), (28.0, 20.0), "a 20 pt track in a 28 pt target");
+        let (x, top) = (sw.rect[0] + sw.rect[2] / 2.0, sw.rect[1]);
+        for state in ["on", "off"] {
+            rt.pointer_move(x - 200.0, top - 100.0);
+            glide(&mut rt);
+            let rest = track(&rt).fill;
+            rt.pointer_move(x, top + 1.5);
+            settle(&mut rt);
+            assert_ne!(track(&rt).fill, rest, "{state}: the pointer 1.5 pt inside the target's top edge lights the track");
+            rt.pointer_move(x - 200.0, top - 100.0);
+            glide(&mut rt);
+            assert_eq!(track(&rt).fill, rest, "{state}: leaving the target takes the hover fill back");
+            press_key(&mut rt, "toolbar-switch", false);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// While a toast shows, the line being typed stays above the toast's band, fade included:
     /// typing on the last line the view shows scrolls the few points it needs, the current find
     /// match clears it too, and the top of the view does not change (RD-104).

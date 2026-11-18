@@ -3,6 +3,7 @@
 use rune::{Color, El, Icon, Key, KeyEvent, Mods, Shadow, TextStyle, Tx, el, icon, row, text};
 
 use crate::app::App;
+use super::V;
 use super::styles::{fixed_advance, literal, sans};
 use crate::roles::Roles;
 use crate::theme::{self, Pal};
@@ -282,19 +283,41 @@ pub fn name_tip(path: &str) -> String {
     }
 }
 
-/// A switch drawn 36 by 20 that takes a press over 36 by 28.
-pub fn switch(p: &Pal, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    // The drawn track is 36 × 20. The control around it is 28 high, so it takes a press 4 pt
-    // above and below the track.
+/// A switch drawn 36 by 20 that takes a press over 36 by 28. The pointer anywhere in that
+/// target gives the track its hover fill, which lands at once and fades over 100 ms as a
+/// hover does; Tab rings the track, as every ring sits around what is drawn.
+pub fn switch(v: V, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
+    let p = v.p;
+    let hovered = v.s.hover_switch.as_deref() == Some(key);
+    let fill = match (on, hovered) {
+        (true, false) => p.button,
+        (true, true) => p.button_hover,
+        (false, false) => p.mark,
+        (false, true) => p.mark.mix(p.ink, SWITCH_HOVER),
+    };
+    let (rw, rg, rc) = super::focus_ring(p);
     let track = el()
         .key("track")
         .size(36.0, 20.0)
         .radius(10.0)
-        .fill(if on { p.button } else { p.mark })
+        .fill(fill)
+        .focus_ring(rw, rg, rc)
         .child(el().key("knob").size(16.0, 16.0).radius(8.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { 18.0 } else { 2.0 }, 2.0));
-    let e = row().key(key).size(36.0, 28.0).radius(14.0).center_y().role("switch").checked(on).label(label_text);
+    let own = key.to_string();
+    let e = row().key(key).size(36.0, 28.0).center_y().role("switch").checked(on).label(label_text).on_hover_change(move |s: &mut App, inside, tx| {
+        if inside {
+            s.hover_switch = Some(own.clone());
+            tx.instant();
+        } else if s.hover_switch.as_deref() == Some(own.as_str()) {
+            s.hover_switch = None;
+            tx.color_motion(rune::Spring::new(0.1, 0.0));
+        }
+    });
     e.control(run).child(track)
 }
+
+/// How far an off switch's track moves toward the ink under the pointer.
+const SWITCH_HOVER: f32 = 0.2;
 
 /// A bordered button such as "Switch folder…" or "Restore".
 pub fn outline_button(p: &Pal, key: &str, text_: &str, h: f32, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {

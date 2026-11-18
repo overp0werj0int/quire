@@ -37,7 +37,7 @@ pub fn mcp(v: V) -> El {
         "mcp-on",
         "MCP server",
         Some(&crate::md::pretty("Lets AI apps that speak the Model Context Protocol, such as Claude Desktop or Cursor, work with the notes in this folder.")),
-        switch(p, "mcp-switch", m.enabled, "MCP server", |s, _| {
+        switch(v, "mcp-switch", m.enabled, "MCP server", |s, _| {
             let e = s.settings().mcp.enabled;
             s.settings_mut().mcp.enabled = !e;
         }),
@@ -188,7 +188,7 @@ pub fn mcp(v: V) -> El {
             "confirm",
             "Ask before changes",
             Some("Quire shows the change and waits for you to approve it."),
-            switch(p, "confirm-switch", m.confirm, "Ask before changes", |s, _| {
+            switch(v, "confirm-switch", m.confirm, "Ask before changes", |s, _| {
                 let e = s.settings().mcp.confirm;
                 s.settings_mut().mcp.confirm = !e;
             }),

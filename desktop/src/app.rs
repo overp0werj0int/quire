@@ -165,6 +165,8 @@ pub struct App {
     pub images: crate::images::Images,
     /// Files are dragged over the note.
     pub drop_over: bool,
+    /// The Settings switch whose target the pointer is in, by key (`widgets::switch`).
+    pub hover_switch: Option<String>,
     /// Locked notes open for reading and editing, by path. The plain text lives only here and
     /// in the note's editor. The folder copy in `vault.files` stays sealed.
     pub unlocked: HashMap<String, Unlocked>,
@@ -256,6 +258,7 @@ pub fn init() -> App {
         sync: Default::default(),
         images: Default::default(),
         drop_over: false,
+        hover_switch: None,
         unlocked: HashMap::new(),
         notes: Vec::new(),
         parked: HashMap::new(),
