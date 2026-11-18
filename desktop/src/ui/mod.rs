@@ -148,6 +148,10 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
         root = root.child(notice(v, n));
     }
     root = root.children(layer::layers(v));
+    if s.layer_swap {
+        // The palette giving way to Settings: the two cards never show together.
+        root = root.child_exit(rune::Transition::none());
+    }
     // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
     // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.
     if reduced { root.instant_changes() } else { root }

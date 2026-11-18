@@ -72,7 +72,9 @@ the block menu. `App.layers` holds the open ones, bottom first. Each `layer::Ope
 `Layer` (which overlay, with its own state), the element focus goes back to, and what the page
 showed when it opened.
 
-- `App::open_layer` opens one and closes whatever was open. A menu is the one exception: it
+- `App::open_layer` opens one and closes whatever was open. The one it replaces, there or
+  earlier in the same change, leaves at once instead of fading under the new one
+  (`App::layer_swap`), and a drag in the tree ends. A menu is the one exception: it
   opens over the layer it was opened in, such as a row's menu over the sidebar drawer or the
   editor's menu over the edit sheet, and it replaces only another menu. Find is not a layer,
   but `open_layer` closes it too, keeping its query. Focus then goes back to the note, not to
@@ -82,10 +84,11 @@ showed when it opened.
   the layer opened, whichever way it closes.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
-  window wide enough to dock the drawer. Every layer closes when the window leaves the folder.
+  window wide enough to dock the drawer. A menu also closes when the window's size changes.
+  Every layer closes when the window leaves the folder.
 - `keys::on_key` gives the keyboard to the open layer. Over a light layer, Esc closes it. A
-  window shortcut closes it and then acts as if it had not been open. A key with no modifier
-  stays in the layer. Over the palette, Settings or the lock dialog, the layer's own keys act
+  window shortcut closes it and then acts as if it had not been open, so over a menu inside
+  a drawer it closes both and acts. A key with no modifier stays in the layer. Over the palette, Settings or the lock dialog, the layer's own keys act
   first. A window shortcut closes the layer and acts. Help and the edit sheet swallow every
   key they do not bind (RD-80, SHEET-014). The toast's Undo key (KEY-94) acts whatever is open.
 - `ui::layer` draws each open layer on its plane. It makes the card modal, so the keyboard, Tab,

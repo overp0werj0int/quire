@@ -94,6 +94,9 @@ pub struct Open {
     back: Option<String>,
     /// What the page showed as it opened.
     over: Context,
+    /// The window's size as it opened: a menu closes when it changes, since the page under
+    /// it reflows.
+    size: (f32, f32),
 }
 
 /// What the page shows: the screen, the folder, the note and how it shows. A light layer
@@ -122,13 +125,17 @@ impl App {
         }
     }
 
+    fn window_size(&self) -> (f32, f32) {
+        (self.view_w.get(), self.view_h.get())
+    }
+
     /// The top layer, if one is open.
     pub fn layer(&self) -> Option<&Layer> {
         self.layers.last().map(|o| &o.layer)
     }
 
     /// Every open layer, bottom first.
-    pub fn open_layers(&self) -> impl Iterator<Item = &Layer> {
+    pub fn open_layers(&self) -> impl DoubleEndedIterator<Item = &Layer> {
         self.layers.iter().map(|o| &o.layer)
     }
 
@@ -182,11 +189,6 @@ impl App {
         })
     }
 
-    /// The layer under the top one.
-    pub fn layer_under(&self) -> Option<&Layer> {
-        self.layers.iter().rev().nth(1).map(|o| &o.layer)
-    }
-
     /// Why the lock dialog refused the last password, while it is open.
     pub fn lock_error(&self) -> Option<&str> {
         self.open_layers().find_map(|l| match l {
@@ -217,6 +219,11 @@ impl App {
             Layer::Menu(_) => self.layers.pop_if(|o| matches!(o.layer, Layer::Menu(_))).into_iter().collect(),
             _ => std::mem::take(&mut self.layers),
         };
+        // One that gives way to this one, now or earlier in this change, leaves at once rather
+        // than fading out under it.
+        self.layer_swap = !replaced.is_empty() || self.handed.is_some();
+        // A drag in the tree under it ends: its ghost would outlive the press.
+        self.dragging = None;
         let back = match (&layer, replaced.into_iter().next()) {
             (Layer::Menu(Menu { of: MenuOf::Edit(field), .. }), _) => Some(field.to_string()),
             (_, Some(first)) => first.back,
@@ -224,7 +231,7 @@ impl App {
             (_, None) => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
         };
         self.handed = None;
-        self.layers.push(Open { layer, back, over: self.context() });
+        self.layers.push(Open { layer, back, over: self.context(), size: self.window_size() });
     }
 
     /// Opens a menu of `of` at `at`.
@@ -236,7 +243,7 @@ impl App {
     /// found it.
     pub fn show_layer(&mut self, layer: Layer) {
         self.layers.clear();
-        self.layers.push(Open { layer, back: None, over: self.context() });
+        self.layers.push(Open { layer, back: None, over: self.context(), size: self.window_size() });
     }
 
     /// Where focus is as a layer opens: what had it, and in the writer, the note. A press on a
@@ -289,15 +296,19 @@ impl App {
     }
 
     /// Before each frame: a layer whose page changed under it closes, and with it everything
-    /// over it. A layer opened in the same change keeps its hand-over only until then.
+    /// over it; a menu closes when the window's size changes too. A layer opened in the same
+    /// change keeps its hand-over only until then.
     pub(crate) fn drop_stale_layers(&mut self, tx: &mut Tx) -> bool {
         self.handed = None;
+        self.layer_swap = false;
         if self.layers.is_empty() {
             return false;
         }
         let now = self.context();
+        let size = self.window_size();
         let gone = |o: &Open| match o.layer {
             Layer::Drawer(d) => !self.drawer_fits(d),
+            Layer::Menu(_) => o.size != size,
             _ => false,
         };
         let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now) || gone(o);

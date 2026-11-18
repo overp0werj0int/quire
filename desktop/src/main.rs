@@ -3604,4 +3604,70 @@ mod layer_matrix_tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The cases one layer over another, or a layer and something passing, used to miss: a
+    /// shortcut over a menu inside a drawer, a resize under a menu, a layer opened during a
+    /// drag, and one layer replacing another.
+    #[test]
+    fn nested_and_passing_cases_follow_the_layer_rule() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-layer-nested-{}", std::process::id()));
+        let state = |rt: &mut Runtime<App>| {
+            let mut out = (0, false);
+            rt.update_if(|s, _| {
+                out = (s.open_layers().count(), s.reader.find.open);
+                false
+            });
+            out
+        };
+        let mut fails: Vec<&str> = Vec::new();
+
+        let mut rt = window(&dir, false, (640.0, 480.0));
+        press_key(&mut rt, "toggle-left", false);
+        press_key(&mut rt, "file:note.md", true);
+        assert_eq!(state(&mut rt).0, 2, "a row's menu over the sidebar's drawer");
+        key(&mut rt, Key::Command('f'), ctrl(false));
+        if state(&mut rt) != (0, true) {
+            fails.push("Ctrl+F over a menu in a drawer closes both and opens find");
+        }
+
+        let mut rt = window(&dir, true, (960.0, 600.0));
+        let block = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
+        press(&mut rt, (block[0] + 20.0, block[1] + block[3] / 2.0), true);
+        assert_eq!(state(&mut rt).0, 1, "the block menu is open");
+        rt.set_viewport((560.0, 600.0), 1.0);
+        settle(&mut rt);
+        if state(&mut rt).0 != 0 {
+            fails.push("a resize closes a menu");
+        }
+
+        let mut rt = window(&dir, false, (960.0, 600.0));
+        let (x, y) = rt.find("file:note.md").expect("the note's row");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        for i in 1..=6 {
+            rt.pointer_move(x + 8.0 * i as f32, y + 6.0 * i as f32);
+            rt.frame(DT);
+        }
+        assert!(rt.find("drag-ghost").is_some(), "the note is being dragged");
+        key(&mut rt, Key::Command(','), ctrl(false));
+        key(&mut rt, Key::Escape, Mods::default());
+        rt.pointer_up(x + 48.0, y + 36.0);
+        settle(&mut rt);
+        if rt.find("drag-ghost").is_some() {
+            fails.push("opening Settings ends a drag: no ghost after it closes");
+        }
+
+        let mut rt = window(&dir, false, (960.0, 600.0));
+        key(&mut rt, Key::Command('k'), ctrl(true));
+        assert!(rt.find("palette-frame").is_some(), "the palette is open");
+        rt.key(KeyEvent { key: Key::Command(','), mods: ctrl(false) });
+        rt.frame(DT);
+        let both = rt.presented("palette-frame").is_some_and(|(_, o)| o > 0.0) && rt.presented("settings-frame").is_some();
+        if both {
+            fails.push("the palette leaves at once as Settings replaces it");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
 }

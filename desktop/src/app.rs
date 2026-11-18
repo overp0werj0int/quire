@@ -111,6 +111,8 @@ pub struct App {
     /// Where focus goes back to, from a layer that closed in this change, for a layer that
     /// opens in its place (`crate::layer`).
     pub(crate) handed: Option<Option<String>>,
+    /// A layer replaced another in this change: the one leaving goes at once (`ui::view`).
+    pub(crate) layer_swap: bool,
     pub set_sec: Sec,
     pub focus: bool,
     pub renaming: Option<TextEdit>,
@@ -216,6 +218,7 @@ pub fn init() -> App {
         query: TextEdit::new(""),
         layers: Vec::new(),
         handed: None,
+        layer_swap: false,
         set_sec: Sec::Appearance,
         focus: false,
         renaming: None,

@@ -92,7 +92,9 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if !(ev.mods.cmd || ev.mods.ctrl || ev.mods.alt) {
             return false;
         }
-        let under = s.layer_under().map(Layer::kind);
+        // The keys of what is under the light layers: under a row's menu in the sidebar's
+        // drawer, the page's, so Ctrl+F closes both and opens find.
+        let under = s.open_layers().rev().skip(1).map(Layer::kind).find(|k| !k.light());
         let (own, window) = under.map_or((page_stack(s), &[][..]), layer_stack);
         let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some()) else { return false };
         if crate::layer::toggles(a.id) == Some(kind) {
