@@ -291,12 +291,14 @@ impl App {
     }
 
     /// Deletes a folder from the menu: an empty folder goes at once, and a folder with notes
-    /// asks first.
+    /// asks first, with the keyboard on Cancel, its ring showing, so Enter never deletes by
+    /// surprise.
     pub fn ask_delete_folder(&mut self, folder: &str, at: (f32, f32), tx: &mut Tx) {
         if self.notes_in(folder).is_empty() {
             self.delete_folder(folder);
         } else {
             self.open_menu(crate::layer::MenuOf::DeleteFolder(folder.to_string()), at, tx);
+            tx.focus("tm-cancel", true);
         }
     }
 

@@ -3552,4 +3552,56 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }
+
+    /// The delete-folder confirmation answers the keyboard as a dialog does: focus starts on
+    /// Cancel with its ring, Tab moves between the two buttons, Enter or Space presses the
+    /// focused one, Esc cancels.
+    #[test]
+    fn the_delete_folder_confirmation_works_from_the_keyboard() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-layer-confirm-{}", std::process::id()));
+        let focused = |rt: &Runtime<App>| rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
+        let state = |rt: &mut Runtime<App>| {
+            let mut out = (0, 0);
+            rt.update_if(|s, _| {
+                out = (s.open_layers().count(), s.notes_in("Journal").len());
+                false
+            });
+            out
+        };
+        let tab = |rt: &mut Runtime<App>| key(rt, Key::Tab, Mods::default());
+        let cases: [(&str, fn(&mut Runtime<App>), bool); 4] = [
+            ("Esc", |rt| key(rt, Key::Escape, Mods::default()), false),
+            ("Enter on Cancel", |rt| key(rt, Key::Enter, Mods::default()), false),
+            ("Tab, Space on Delete", |rt| {
+                key(rt, Key::Tab, Mods::default());
+                key(rt, Key::Text(" ".into()), Mods::default());
+            }, true),
+            ("Tab, Enter on Delete", |rt| {
+                key(rt, Key::Tab, Mods::default());
+                key(rt, Key::Enter, Mods::default());
+            }, true),
+        ];
+        for (i, (name, answer, deletes)) in cases.into_iter().enumerate() {
+            let mut rt = window(&dir, false, (960.0, 600.0));
+            let root = dir.join("notes");
+            std::fs::create_dir_all(root.join("Journal")).unwrap();
+            std::fs::write(root.join("Journal/day.md"), "A day.\n").unwrap();
+            rt.update(move |s, tx| s.open_vault(root, tx));
+            settle(&mut rt);
+            press_key(&mut rt, "dir:Journal", true);
+            press_key(&mut rt, "tm-2", false);
+            assert_eq!(state(&mut rt), (1, 1), "{name}: the confirmation is open");
+            if i == 0 {
+                assert_eq!(focused(&rt), Some(("tm-cancel".into(), true)), "focus starts on Cancel, with its ring");
+                tab(&mut rt);
+                assert_eq!(focused(&rt).map(|f| f.0), Some("tm-delete".into()), "Tab moves to Delete");
+                tab(&mut rt);
+                assert_eq!(focused(&rt).map(|f| f.0), Some("tm-cancel".into()), "and back to Cancel");
+            }
+            answer(&mut rt);
+            assert_eq!(state(&mut rt), (0, if deletes { 0 } else { 1 }), "{name}: closed, and the folder {}", if deletes { "deleted" } else { "kept" });
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

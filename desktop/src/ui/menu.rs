@@ -15,7 +15,7 @@ use super::V;
 use super::layer::Card;
 use super::panel;
 use super::styles::{keys, literal, nav};
-use super::widgets::{floating, label};
+use super::widgets::{Control, floating, label};
 use crate::app::App;
 use crate::folders::MenuOn;
 use crate::keymap;
@@ -168,7 +168,8 @@ fn block(v: V, line: usize) -> Vec<Item> {
     items
 }
 
-/// The tree menu's second step for a folder with notes: what moves to the trash, and two buttons.
+/// The tree menu's second step for a folder with notes: what moves to the trash, and two
+/// buttons. Tab moves between them, Enter or Space presses the focused one, Esc cancels.
 fn confirm_delete_folder(v: V, folder: &str, at: (f32, f32)) -> El {
     let p = v.p;
     let n = v.s.notes_in(folder).len();
@@ -196,8 +197,8 @@ fn confirm_delete_folder(v: V, folder: &str, at: (f32, f32)) -> El {
             row()
                 .gap(4.0)
                 .child(el().grow(1.0))
-                .child(button("tm-cancel", "Cancel", p.ink2).on_press_tx(|s: &mut App, tx| s.close_layer(tx)))
-                .child(button("tm-delete", "Delete", p.err).on_press_tx(move |s: &mut App, tx| {
+                .child(button("tm-cancel", "Cancel", p.ink2).control(|s: &mut App, tx| s.close_layer(tx)))
+                .child(button("tm-delete", "Delete", p.err).control(move |s: &mut App, tx| {
                     s.close_layer(tx);
                     s.delete_folder(&f);
                 })),

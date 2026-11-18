@@ -94,7 +94,9 @@ showed when it opened.
   take focus.
 - The menus (`ui::menu`) are Rune `menu` focus groups. Up and Down move and wrap, a letter
   jumps to its item, and Enter or Space picks one. A menu opened from the keyboard marks its
-  first item.
+  first item. The tree menu's question before it deletes a folder with notes is a menu layer
+  too, with two buttons: focus starts on Cancel with its ring, Tab moves between them, Enter
+  or Space presses one, and Esc cancels.
 
 ### The notes folder in memory and on disk
 
