@@ -119,6 +119,7 @@ Use `./dev` while you work. It checks and tests an edit in seconds, and it leave
 ./dev app              # the app itself: plain `cargo build`, target/debug/quire. Once, at the end.
 ```
 
+- To see what the app does with a click or a key, without opening a window, run `tests/probe.py` (`tests/probe.py --help`). It replays input headless and prints focus, an element's place, the page's scroll position or the saved notes, once or sampled over time.
 - Check first. Run `./dev check` after each edit, `./dev test` with a filter for what you changed, and the full suite and `./dev app` only for the last pass.
 - `./dev` compiles this crate unoptimized with the Cranelift backend on a nightly toolchain, in its own profile (`fast`) and its own folder (`target/fast`). Dependencies stay on LLVM. Install the toolchain once:
 

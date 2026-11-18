@@ -9,6 +9,21 @@ apps differ.
 - [`desktop/README.md`](desktop/README.md) and [`android/README.md`](android/README.md) have
   the build, test and run commands.
 - Desktop: work with `cd desktop && ./dev check` after each edit, and `./dev test <filter>` for what you changed. Run the full `./dev test` and `./dev app` only for the last pass. Do not use `cargo build` or `cargo test` between edits: they take minutes where `./dev check` takes seconds. See "Develop" in `desktop/README.md`.
+- Desktop: to see what the app does, use `desktop/tests/probe.py`. It replays clicks and keys
+  in a headless Quire and prints where focus is, where an element sits, how far the page has
+  scrolled, or what was saved. Use it before a change, to see the behaviour you are about to
+  change, and after, to see the new one, before you write or trust a test. From `desktop/`:
+
+  ```sh
+  tests/probe.py "tap:editor@0.1 key:End+cmd@0.4 type:hello@0.8 key:f+cmd@1.6" --print focus,rect:find-bar
+  tests/probe.py "tap:editor@0.1 key:End+cmd@0.5 key:s+cmd@1.0" --series 1.0:1.6:0.05
+  ```
+
+  The first prints one reading. The second samples the same replay over time and prints how
+  far the page moved between samples, which is how to see a jump, a glide or a bounce.
+  `--print keys` lists the element keys you can name. `--fast` uses the `./dev build` binary.
+  `tests/probe.py --help` has the rest. Run one probe at a time: each is a whole copy of the
+  app. It needs a built binary and nothing else, and never touches your own notes or settings.
 - Android tests: `cd android && ./gradlew testDebugUnitTest`.
 - [`docs/reader-writer/`](docs/reader-writer/README.md) is the plan for bringing omarky's
   reader and writer to the desktop app. Its `behavior/` files say what the preview and the
