@@ -4081,6 +4081,37 @@ mod layer_matrix_tests {
         rt
     }
 
+    /// The key event Rune sends for a chord with Ctrl or Alt.
+    fn chord_event(c: &crate::keymap::Chord) -> KeyEvent {
+        use crate::keymap::K;
+        let key = match c.key {
+            K::Char(ch) if c.ctrl => Key::Command(ch),
+            K::Char(ch) => Key::Text(ch.to_string()),
+            K::Enter => Key::Enter,
+            K::Up => Key::Up,
+            K::Down => Key::Down,
+            K::F(n) => Key::Function(n),
+            other => panic!("no key event for {other:?}"),
+        };
+        KeyEvent { key, mods: Mods { cmd: c.ctrl, ctrl: c.ctrl && !cfg!(target_os = "macos"), shift: c.shift, alt: c.alt, ..Mods::default() } }
+    }
+
+    /// What a key can change in the app, as one string to compare.
+    fn state(rt: &mut Runtime<App>) -> String {
+        let mut out = String::new();
+        rt.update_if(|s, _| {
+            let layers: Vec<_> = s.open_layers().map(crate::layer::Layer::kind).collect();
+            let toast = s.reader.toast.as_ref().map(|t| t.0.clone());
+            // The MCP token is new in every window.
+            let mut persist = s.persist.clone();
+            persist.settings.mcp.token.clear();
+            let text: String = s.active_text().chars().take(80).collect();
+            out = format!("{:?}", (s.mode, &s.active, &s.tabs, layers, s.reader.find.open, &s.reader.find.q.text, toast, text, s.focus, s.reader.wide, persist));
+            false
+        });
+        out
+    }
+
     fn text_key(rt: &mut Runtime<App>, t: &str) {
         let shift = t.chars().all(|c| c.is_ascii_uppercase());
         key(rt, Key::Text(t.into()), Mods { shift, ..Mods::default() });
@@ -4189,6 +4220,68 @@ mod layer_matrix_tests {
         }
         if bar.len() != 3 || !bar[1].starts_with("fmt-") || bar[1] == bar[0] || bar[2].starts_with("fmt-") {
             fails.push(format!("the toolbar is not one Tab stop with Right inside: {bar:?}"));
+        }
+
+        // Every shortcut with Ctrl or Alt acts from a stop as it does with the keyboard on the
+        // note (CHORD), in both modes. Quit and Insert an image are left out: they reach the
+        // platform, not the app's state.
+        for (mode, stops) in [(Mode::Preview, ["file:Box|a.md", "vault-button", "ol-0"]), (Mode::Source, ["file:Box|a.md", "vault-button", "fmt-bold"])] {
+            let mut rt = garden(&dir, mode);
+            let mut now = None;
+            rt.update_if(|s, _| {
+                now = Some((s.preset(), crate::keys::page_stack(s)));
+                false
+            });
+            let (preset, ctxs) = now.expect("read");
+            let mut chords = Vec::new();
+            for a in crate::keymap::TABLE.iter().filter(|a| a.ctx.iter().any(|c| ctxs.contains(c)) && crate::keys::handler(a.id).is_some()) {
+                if matches!(a.status, crate::keymap::Status::Deferred | crate::keymap::Status::Dropped) || matches!(a.id, "app.quit" | "app.insert-image") {
+                    continue;
+                }
+                for c in a.chords(preset).iter().filter_map(|s| crate::keymap::parse(s)).filter(|seq| seq.len() == 1).map(|seq| seq[0]) {
+                    if (c.ctrl || c.alt) && !chords.iter().any(|(_, d)| *d == c) {
+                        chords.push((a.id, c));
+                    }
+                }
+            }
+            for (i, (id, c)) in chords.into_iter().enumerate() {
+                let ev = chord_event(&c);
+                let on = |stop: Option<&'static str>| {
+                    let mut rt = garden(&dir, mode);
+                    if mode == Mode::Source {
+                        rt.update(|s, tx| {
+                            s.cur_edit().set_selection(0, 0);
+                            s.focus_editor(tx);
+                        });
+                        settle(&mut rt);
+                    }
+                    if let Some(k) = stop {
+                        rt.update(move |_, tx| tx.focus(k, true));
+                        settle(&mut rt);
+                    }
+                    rt.key(ev.clone());
+                    settle(&mut rt);
+                    state(&mut rt)
+                };
+                let stop = stops[i % stops.len()];
+                let (note, from_stop) = (on(None), on(Some(stop)));
+                if note != from_stop {
+                    fails.push(format!("{mode:?}: {id} ({c:?}) from {stop} acts differently than from the note:\n  note {note}\n  stop {from_stop}"));
+                }
+            }
+        }
+        // In the drawer too: a tree row focused in it, Ctrl+F closes the drawer and opens find.
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        rt.update(|s, tx| s.toggle_left(tx));
+        settle(&mut rt);
+        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Command('f'), ctrl(false));
+        let after = seen(&mut rt);
+        if !after.find || after.layers != 0 {
+            fails.push(format!("Ctrl+F from a row in the drawer: find {}, layers {}", after.find, after.layers));
         }
 
         // The stops, as a key and the ways each goes away. Every way leaves the page's

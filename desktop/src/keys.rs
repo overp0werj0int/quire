@@ -35,14 +35,14 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
     if let Some(kind) = s.layer().map(Layer::kind) {
         return layer_key(s, kind, ev, tx);
     }
-    // A focused stop owns the keyboard: past its own keys, Esc and F6, only the window's
-    // shortcuts act (`focus`).
+    // A focused stop owns the keyboard's plain keys: past its own, Esc and F6 act. A chord acts
+    // as it would on the note (`focus`).
     if let Some(pane) = stop
         && let Some(done) = s.stop_key(pane, ev, tx)
     {
         return done;
     }
-    let stack: &[Ctx] = if stop.is_some() { &[Ctx::Global] } else { page_stack(s) };
+    let stack: &[Ctx] = if stop.is_some() && !crate::focus::chord(ev) { &[Ctx::Global] } else { page_stack(s) };
     // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
     // control's (a sidebar row's, say).
     if vault && s.mode == crate::app::Mode::Preview && crate::focus::on_note(tx) && menu_key(ev) {
@@ -114,7 +114,7 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
             s.dismiss(tx);
             return true;
         }
-        if !(ev.mods.cmd || ev.mods.ctrl || ev.mods.alt) {
+        if !crate::focus::chord(ev) {
             return false;
         }
         // The keys of what is under the light layers: under a row's menu in the sidebar's

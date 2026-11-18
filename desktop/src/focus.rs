@@ -5,10 +5,11 @@
 //! Stops live in three panes, left to right: the sidebar, the note (its toolbar) and the
 //! outline. Every stop keeps the same rules:
 //!
-//! - A focused stop owns the keyboard. Its own keys act (Space, Enter, the arrows, a letter
-//!   that jumps to a row), then Esc and F6, then the window's shortcuts. The key that shows
-//!   or hides the stop's pane hides it, as a layer's own key closes the layer. Every other
-//!   key is dropped: none reaches the reader or the writer behind it.
+//! - A focused stop owns the plain keys. Its own keys act (Space, Enter, the arrows, a letter
+//!   that jumps to a row), then Esc and F6. The key that shows or hides the stop's pane hides
+//!   it, as a layer's own key closes the layer. Every other plain key is dropped: none reaches
+//!   the reader or the writer behind it. A shortcut with Ctrl, Alt or the logo key acts as it
+//!   would with the keyboard on the note (`chord`).
 //! - Esc gives the keyboard back to the note (`App::keys_to_note`).
 //! - When the element that holds focus goes away, for any reason (its pane hides, zen mode,
 //!   its row is gone, a rename ends), the keyboard goes to the note. Every stop and every
@@ -75,6 +76,13 @@ pub fn on_note(tx: &Tx) -> bool {
     matches!(tx.focused(), None | Some(NOTE))
 }
 
+/// A shortcut with Ctrl, Alt or the logo key. It reaches past a focused stop and acts as it
+/// would with the keyboard on the note; plain keys stay the stop's.
+pub fn chord(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    m.cmd || m.ctrl || m.alt || m.logo
+}
+
 /// The actions that show and hide a pane.
 fn toggles(pane: Pane, id: &str) -> bool {
     match pane {
@@ -89,7 +97,7 @@ impl App {
     /// the stop's rule decides it, None when the window's shortcuts take it on.
     pub(crate) fn stop_key(&mut self, pane: Pane, ev: &KeyEvent, tx: &mut Tx) -> Option<bool> {
         let m = ev.mods;
-        if m.cmd || m.ctrl || m.alt || m.logo {
+        if chord(ev) {
             return None;
         }
         Some(match ev.key {

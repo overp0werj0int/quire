@@ -118,11 +118,12 @@ on a stop: a side list's row, a sidebar or toolbar button, a panel tab, the sear
 `focus::STOPS` lists every stop by its key and its pane: the sidebar, the note (the toolbar)
 or the outline. A test checks that every focusable element in the panes is in it.
 
-- A focused stop owns the keyboard. Rune gives the stop its own keys first (Space, Enter,
+- A focused stop owns the plain keys. Rune gives the stop its own keys first (Space, Enter,
   the arrows, a list's letters). `keys::on_key` then gives the rest to `App::stop_key`: Esc
   gives the keyboard back to the note, the key that hides the stop's pane hides it, and F6
-  and the window's shortcuts act. Every other key is dropped, so none reaches the reader or
-  the writer.
+  acts. Every other plain key is dropped, so none reaches the reader or the writer. A
+  shortcut with Ctrl, Alt or the logo key (`focus::chord`) acts as it would with the
+  keyboard on the note: Ctrl+F opens find, Ctrl+B bolds in the writer.
 - When the element that holds focus goes away, for any reason, the keyboard goes to the
   note. Every stop and pane carries `focus_return(focus::NOTE)`. NOTE keys the editor's box
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
