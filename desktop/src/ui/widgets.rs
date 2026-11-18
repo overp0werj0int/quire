@@ -243,11 +243,18 @@ pub fn settings_seg_literal(v: super::V, key: &str, segs: Vec<Seg>) -> El {
     segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, literal(12.0), v.p.side, 8.0)
 }
 
-/// A 36 by 20 switch.
+/// A switch drawn 36 by 20 that takes a press over 36 by 28.
 pub fn switch(p: &Pal, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    let e = el().key(key).size(36.0, 20.0).radius(10.0).fill(if on { p.button } else { p.mark }).role("switch").checked(on).label(label_text);
-    e.control(run)
-        .child(el().key("knob").size(16.0, 16.0).radius(8.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { 18.0 } else { 2.0 }, 2.0))
+    // The drawn track is 36 × 20. The control around it is 28 high, so it takes a press 4 pt
+    // above and below the track.
+    let track = el()
+        .key("track")
+        .size(36.0, 20.0)
+        .radius(10.0)
+        .fill(if on { p.button } else { p.mark })
+        .child(el().key("knob").size(16.0, 16.0).radius(8.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { 18.0 } else { 2.0 }, 2.0));
+    let e = row().key(key).size(36.0, 28.0).radius(14.0).center_y().role("switch").checked(on).label(label_text);
+    e.control(run).child(track)
 }
 
 /// A bordered button such as "Switch folder…" or "Restore".
