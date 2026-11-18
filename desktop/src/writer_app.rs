@@ -314,16 +314,16 @@ impl App {
         self.open_find(tx);
         self.reader.find.searched = self.reader.find.q.text.clone();
         if self.find_query().is_some() {
-            self.source_found(tx);
+            self.source_found();
         }
     }
 
     /// The query changed: the first match at or after the editor's selection (WR-117).
-    pub fn source_found(&mut self, tx: &mut Tx) {
+    pub fn source_found(&mut self) {
         let m = self.source_matches();
         let from = self.cur_edit_opt().map_or(0, |e| e.anchor.min(e.focus));
         self.reader.find.cur = m.iter().position(|r| r.start >= from).unwrap_or(0);
-        self.select_match(&m, tx);
+        self.select_match(&m, false);
     }
 
     /// Ctrl+G, F3 and Shift+F3, or Enter in the bar (WR-119, WR-120).
@@ -339,18 +339,18 @@ impl App {
         let n = m.len();
         let cur = self.reader.find.cur.min(n - 1);
         self.reader.find.cur = if forward { (cur + 1) % n } else { (cur + n - 1) % n };
-        self.select_match(&m, tx);
+        self.select_match(&m, true);
     }
 
-    /// Selects the current match in the editor and glides it into view (WR-118), above the
-    /// toast's band while one shows (RD-104).
-    fn select_match(&mut self, m: &[Range<usize>], tx: &mut Tx) {
+    /// Selects the current match in the editor and brings it into view (WR-118), above the
+    /// toast's band while one shows (RD-104): a step glides, a search as you type jumps.
+    fn select_match(&mut self, m: &[Range<usize>], glide: bool) {
         let Some(r) = m.get(self.reader.find.cur).cloned() else { return };
         if let Some(e) = self.cur_edit_opt() {
             e.set_selection(r.start, r.end);
             e.break_history_group();
         }
-        self.center_or_place(tx);
+        self.reveal_match(glide);
     }
 
     // ---------- Scrolling ----------

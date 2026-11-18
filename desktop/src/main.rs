@@ -1619,7 +1619,7 @@ pub(crate) mod scroll_tests {
                 tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
             });
             rt.frame(DT);
-            rt.update(|s, tx| s.center_match(tx));
+            rt.update(|s, tx| s.center_match(true, tx));
             for _ in 0..60 {
                 rt.frame(DT);
             }
@@ -5004,6 +5004,87 @@ mod layer_matrix_tests {
                 assert!(step <= 5.0, "{scale}x, wheel {wheel}: no frame moves the page more than a glide would: {step} pt");
                 assert!(late < 0.01, "{scale}x, wheel {wheel}: the page moves {late} pt after resting");
             }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// FINDTYPE, SAMELINE: a find reveal makes one move, to one place, in both modes. With a
+    /// toast's band up, a letter typed that keeps the match and a step to the next hit on its
+    /// line move nothing; a search or a step to another line moves the page one way only, and
+    /// lands the match between the find bar and the band. After the band goes, a step along the
+    /// line still moves nothing.
+    #[test]
+    fn find_moves_the_page_once_to_one_place() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findtype-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let text: String = (0..80)
+            .map(|i| match i {
+                30 => "word word word word.\n\n".to_string(),
+                50 => "word again.\n\n".to_string(),
+                _ => format!("Line {i} of the note.\n\n"),
+            })
+            .collect();
+        // Runs `f` with a toast up (when `toast`), then the frames after it: the page's offset
+        // before and at each frame.
+        let track = |rt: &mut Runtime<App>, toast: bool, f: &dyn Fn(&mut App, &mut rune::Tx)| {
+            let mut at = vec![];
+            rt.update(|s, tx| {
+                at.push(s.reader.scroll.get()[0]);
+                if toast {
+                    s.toast("Saved", tx);
+                }
+                f(s, tx);
+            });
+            for _ in 0..40 {
+                rt.frame(DT);
+                rt.update_if(|s, _| {
+                    at.push(s.reader.scroll.get()[0]);
+                    false
+                });
+            }
+            at
+        };
+        let travel = |at: &[f32]| at.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>();
+        for mode in [Mode::Source, Mode::Preview] {
+            let (mut rt, _) = crate::bench::open(&dir, &text, mode);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            rt.update(|s, tx| s.toast("Saved", tx));
+            glide(&mut rt);
+            let search = |q: &'static str| move |s: &mut App, tx: &mut rune::Tx| {
+                s.reader.find.q = rune::TextEdit::new(q);
+                s.find_changed(tx);
+            };
+            rt.update(|s, tx| s.open_find(tx));
+            let lands = |rt: &Runtime<App>, what: &str| {
+                let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+                let (bar, band) = (rect(rt, "find-bar").expect("the find bar"), rect(rt, "toast-band").expect("the band"));
+                assert!(y > bar[1] + bar[3] && y < band[1], "{mode:?}, {what}: the match lands between the find bar and the band: {y}, {bar:?}, {band:?}");
+            };
+            let at = track(&mut rt, true, &search("wo"));
+            let net = (at[at.len() - 1] - at[0]).abs();
+            assert!(net > 100.0 && travel(&at) <= net + 0.5, "{mode:?}: the search moves the page one way: {net} net, {} travelled", travel(&at));
+            lands(&rt, "the search");
+            let at = track(&mut rt, true, &search("wor"));
+            assert!(travel(&at) < 0.5, "{mode:?}: a letter that keeps the match moves nothing: {at:?}");
+            for i in 0..3 {
+                let at = track(&mut rt, true, &|s, tx| s.find_step(true, tx));
+                assert!(travel(&at) < 0.5, "{mode:?}, step {i}: a step along the line moves nothing: {at:?}");
+            }
+            let at = track(&mut rt, true, &|s, tx| s.find_step(true, tx));
+            let net = (at[at.len() - 1] - at[0]).abs();
+            assert!(net > 100.0 && travel(&at) <= net + 0.5, "{mode:?}: a step to another line moves the page one way: {net} net, {} travelled", travel(&at));
+            lands(&rt, "the step down");
+            let at = track(&mut rt, true, &|s, tx| s.find_step(false, tx));
+            let net = (at[at.len() - 1] - at[0]).abs();
+            assert!(net > 100.0 && travel(&at) <= net + 0.5, "{mode:?}: a step back moves the page one way: {net} net, {} travelled", travel(&at));
+            lands(&rt, "the step back");
+            rt.update(|s, _| s.reader.toast = None);
+            glide(&mut rt);
+            assert!(rect(&rt, "toast-band").is_none(), "{mode:?}: the band has gone");
+            let at = track(&mut rt, false, &|s, tx| s.find_step(false, tx));
+            assert!(travel(&at) < 0.5, "{mode:?}: after the band goes, a step along the line moves nothing: {at:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

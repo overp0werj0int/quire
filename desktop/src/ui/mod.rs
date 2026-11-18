@@ -46,9 +46,9 @@ pub struct V<'a> {
     /// The current find match's highlight where the page lays it out, unscrolled, in either
     /// mode, read only while a toast shows with find open (`App::band_laid_out`).
     pub find_at: Option<[f32; 4]>,
-    /// The current match waiting to be placed above the band, as its `place` number and where
-    /// the page laid it out, unscrolled (`App::place_match`).
-    pub place_at: Option<(u32, [f32; 4])>,
+    /// The current match waiting to be brought into view, as its `place` number, where the
+    /// page laid it out, unscrolled, and where the view is (`App::place_match`).
+    pub place_at: Option<(u32, [f32; 4], [f32; 4])>,
 }
 
 impl V<'_> {
@@ -125,7 +125,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     map_page(s);
     let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
     let find_at = (s.foot_shows() && s.find_query().is_some()).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
-    let place_at = s.reader.find.place.and_then(|p| cx.layout(&crate::reader::place_key(p.n)).map(|r| (p.n, r)));
+    let place_at = s.reader.find.place.and_then(|p| Some((p.n, cx.layout(&crate::reader::place_key(p.n))?, cx.layout(crate::reader::SCROLL)?)));
     let v = V { s, p, dark, vw, vh, trailing, caret, find_at, place_at };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);

@@ -307,14 +307,15 @@ pub(super) fn band_h(v: V) -> Option<f32> {
     Some(TOAST_LIFT + stack + BAND_CLEAR + BAND_FADE)
 }
 
-/// Reports where the match find places above the band was laid out (`App::place_match`): an
-/// empty point at the window's root, keyed by where the match lies, so a new one reports
-/// each time the match moves, and the band going meanwhile does not stop it.
+/// Reports where the match find brings into view was laid out, with the bands it goes
+/// between (`App::place_match`): an empty point at the window's root, keyed by where the match
+/// lies, so a new one reports each time the match moves, and the band going meanwhile does not
+/// stop it.
 pub fn find_placed(v: V) -> Option<El> {
-    let (n, r) = v.place_at?;
-    let top = super::editor::top_band(v);
+    let (n, r, view) = v.place_at?;
+    let (roof, band) = (super::editor::match_roof(v), band_h(v).unwrap_or(0.0));
     let key = format!("find-placed-{n}-{}", (r[1] * 2.0).round() as i64);
-    Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.place_match(n, r, top, tx)))
+    Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.place_match(n, r, view, roof, band, tx)))
 }
 
 /// While a pill shows at the note area's foot, the page fades out under it, in both modes, so
