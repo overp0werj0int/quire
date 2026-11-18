@@ -394,7 +394,7 @@ pub fn undo_toast(v: V, name: &str) -> El {
 }
 
 /// The notice's text width and its pill's height in its room: on one line the toast's 30 px,
-/// else wrapped at the widest the room allows.
+/// else wrapped at the widest the room allows, and as wide as its longest line (HUG).
 fn notice_fit(v: V, msg: &str) -> (f32, f32) {
     let body = styles::popup();
     let room = foot_room(v) - 24.0 - 20.0 - width("Dismiss", body);
@@ -402,8 +402,13 @@ fn notice_fit(v: V, msg: &str) -> (f32, f32) {
     if whole <= room {
         return (whole, PILL_H);
     }
-    let w = room.max(0.0);
-    (w, rune::text::measure(msg, &[], body, Some(w)).1 + 14.0)
+    // The least whole-point width that breaks the lines as the room does: the longest line's,
+    // or a few points more where a line needs its trailing space to fit. Whole points, as Rune
+    // lays a text box out on the pixel grid.
+    let room = room.max(0.0);
+    let at_room = rune::text::measure(msg, &[], body, Some(room));
+    let w = (0..8).map(|d| at_room.0.ceil() + d as f32).find(|&w| w <= room && rune::text::measure(msg, &[], body, Some(w)) == at_room).unwrap_or(room);
+    (w, at_room.1 + 14.0)
 }
 
 /// The notice: what went wrong, in the toast's place, or just above the toast while one shows.

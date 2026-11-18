@@ -4513,6 +4513,48 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// HUG: a message that wraps is as wide as its longest line needs, plus its padding and
+    /// Dismiss, centred in its room, on two, three or four lines; one on one line is unchanged.
+    #[test]
+    fn a_wrapped_message_hugs_its_longest_line() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-hug-{}", std::process::id()));
+        let style = crate::ui::styles::popup();
+        let line = rune::text::measure("A", &[], style, None).1;
+        let messages = [
+            ("A folder named Docs is already there.", 1.0),
+            ("A folder named Quarterly planning notes for the product team is already there.", 2.0),
+            ("A folder named Quarterly planning notes for the product and design teams across every region of the world, kept since the first release, is there.", 3.0),
+            ("A folder named Quarterly planning notes for the product and design teams across every region of the world, kept since the very first release of the app and never once tidied since then, is already there.", 4.0),
+        ];
+        for mode in [Mode::Source, Mode::Preview] {
+            let mut rt = garden(&dir, mode);
+            rt.set_viewport((520.0, 600.0), 1.0);
+            glide(&mut rt);
+            for (msg, lines) in messages {
+                rt.update(|s, _| s.notice = Some(msg.into()));
+                glide(&mut rt);
+                let get = |k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect).unwrap_or_else(|| panic!("{k} shows"));
+                let (n, x, area) = (get("notice"), get("notice-x"), get("doc-area"));
+                let t = rt.elements().into_iter().find(|e| e.text.as_deref() == Some(msg)).expect("the message").rect;
+                assert_eq!((t[3] / line).round(), lines, "{mode:?}: '{msg}' takes {lines} line(s): {t:?}");
+                // The room the message wraps in: the note area's, less 16 pt at each side, the
+                // pill's padding, the gap and Dismiss.
+                let room = area[2] - 32.0 - 24.0 - x[2];
+                if lines > 1.0 {
+                    assert!(t[2] <= room - 0.5, "{mode:?}: '{msg}' is {} wide in a room of {room}: it takes its longest line's width", t[2]);
+                }
+                assert!((n[2] - (14.0 + t[2] + 6.0 + x[2] + 4.0)).abs() < 0.5, "{mode:?}: the pill {n:?} is its text, its padding and Dismiss");
+                let mid = area[0] + area[2] / 2.0;
+                assert!((n[0] + n[2] / 2.0 - mid).abs() < 0.5, "{mode:?}: the pill {n:?} centres in {area:?}");
+                if lines == 1.0 {
+                    assert_eq!(n[3], 30.0, "{mode:?}: one line keeps the toast's height");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// GROW: a pill that appears, or one that stacks on it, brings what the user is on above
     /// the band at once, with no key, by the least scroll: the caret's line in the writer, the
     /// current find match in either mode. A band that shrinks scrolls nothing back, and a caret
