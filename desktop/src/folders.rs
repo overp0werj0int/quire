@@ -296,6 +296,7 @@ impl App {
     pub fn ask_delete_folder(&mut self, folder: &str, at: (f32, f32), tx: &mut Tx) {
         if self.notes_in(folder).is_empty() {
             self.delete_folder(folder);
+            self.row_deleted(tx);
         } else {
             self.open_menu(crate::layer::MenuOf::DeleteFolder(folder.to_string()), at, tx);
             tx.focus("tm-cancel", true);

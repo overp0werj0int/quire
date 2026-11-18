@@ -117,7 +117,10 @@ fn tree(on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
             if !md::dir(&n).is_empty() {
                 items.push(item("Move to folder root", Box::new(move |s, tx| s.move_note(&n3, "", tx))));
             }
-            items.push(item("Delete note", Box::new(move |s, _| s.delete_path(&n))));
+            items.push(item("Delete note", Box::new(move |s, tx| {
+                s.delete_path(&n);
+                s.row_deleted(tx);
+            })));
             items
         }
         MenuOn::Root => vec![
@@ -199,6 +202,7 @@ fn confirm_delete_folder(v: V, folder: &str, at: (f32, f32)) -> El {
                 .child(button("tm-delete", "Delete", p.err).control(move |s: &mut App, tx| {
                     s.close_layer(tx);
                     s.delete_folder(&f);
+                    s.row_deleted(tx);
                 })),
         )
 }

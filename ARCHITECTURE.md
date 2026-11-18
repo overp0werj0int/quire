@@ -98,7 +98,9 @@ showed when it opened.
 - `App::pick` runs a menu's item: the menu closes, then the item runs. An item that opens a
   field gives it the keyboard. Rename and New note open the note's name in the title bar,
   behind the sidebar's drawer, so the drawer closes too and the name has focus, selected. A
-  new folder's name shows in the tree, inside the drawer, so the drawer stays.
+  new folder's name shows in the tree, inside the drawer, so the drawer stays. A delete
+  from a row's menu (`App::row_deleted`) closes the drawer the row was in and gives the note
+  the keys, since the row cannot take focus back.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
   window wide enough to dock the drawer. A menu also closes when the window's size changes.
@@ -152,6 +154,7 @@ or the outline. A test checks that every focusable element in the panes is in it
   as F6 does (`App::tab_into_note`), with the caret where it was: Rune's Tab would scroll
   the whole editor into view.
 - A layer that closes gives focus back with the ring showing when it goes back to a stop.
+  A drawer opened by keys puts the keyboard on its first stop with the ring showing.
 - A focused row's ring reaches 5 points past the row: a 3 point gap and a 2 point stroke
   (`panel::RING_ROOM`). The side lists scroll a row that takes focus in far enough to show
   the whole ring (`scroll_margin`), and leave that room at both ends of the list (RING).

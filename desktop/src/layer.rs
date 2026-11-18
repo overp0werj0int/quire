@@ -251,6 +251,13 @@ impl App {
             (_, None) => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
         };
         self.handed = None;
+        // Opened by keys, a drawer's first stop takes the keyboard with its ring, so the next
+        // key visibly acts on it. Rune's modal would focus it without one.
+        if let Layer::Drawer(d) = &layer
+            && tx.by_keys()
+        {
+            tx.focus(if *d == Drawer::Sidebar { "sidebar-over" } else { "outline-over" }, true);
+        }
         self.layers.push(Open { layer, back, over: self.context(), size: self.window_size() });
     }
 
@@ -324,6 +331,13 @@ impl App {
         } else {
             None
         }
+    }
+
+    /// A row's menu deleted what the row showed. The row cannot take focus back, so the drawer
+    /// it was in closes and the note gets the keys, as when the open note is deleted.
+    pub fn row_deleted(&mut self, tx: &mut Tx) {
+        self.close_drawer();
+        self.keys_to_note(tx);
     }
 
     /// Closes a drawer that is open, with no hand-back: the caller gives the keyboard on.

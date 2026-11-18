@@ -4714,6 +4714,42 @@ mod layer_matrix_tests {
             }
         }
 
+        // A note that is not the open one, deleted by keys from its row in the drawer: the
+        // drawer closes and the note has the keys, as for the open note.
+        let mut rt = garden(&dir, Mode::Source);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        rt.update(|s, tx| s.toggle_left(tx));
+        settle(&mut rt);
+        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        for k in [Key::Down, Key::Down, Key::Down, Key::Enter] {
+            key(&mut rt, k, Mods::default());
+        }
+        let before = seen(&mut rt);
+        for c in ["Q", "Q"] {
+            text_key(&mut rt, c);
+        }
+        let after = seen(&mut rt);
+        if rt.find("file:Box|a.md").is_some() || before.layers != 0 || !after.text.contains("QQ") {
+            fails.push(format!("another note deleted from its row in the drawer: layers {}, focus {:?}, typing reached the note: {}", before.layers, focused(&rt), after.text.contains("QQ")));
+        }
+
+        // A drawer opened by its key shows the ring on the stop that has the keyboard.
+        for (name, k, shift) in [("the sidebar's drawer", 'b', true), ("the outline's drawer", '\\', false)] {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.set_viewport((640.0, 480.0), 1.0);
+            settle(&mut rt);
+            rt.update(|s, tx| s.focus_editor(tx));
+            settle(&mut rt);
+            key(&mut rt, Key::Command(k), ctrl(shift));
+            let ring = rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
+            if seen(&mut rt).layers != 1 || !ring.as_ref().is_some_and(|(k, shown)| *shown && stop(k).is_some()) {
+                fails.push(format!("{name} opened by its key: focus {ring:?}"));
+            }
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }
