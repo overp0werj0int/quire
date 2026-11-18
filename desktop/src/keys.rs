@@ -43,6 +43,7 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         return done;
     }
     let stack: &[Ctx] = if stop.is_some() && !crate::focus::chord(ev) { &[Ctx::Global] } else { page_stack(s) };
+    let field = tx.focused().is_some_and(crate::focus::field);
     // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
     // control's (a sidebar row's, say).
     if vault && s.mode == crate::app::Mode::Preview && crate::focus::on_note(tx) && menu_key(ev) {
@@ -66,8 +67,9 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             }
         }
         for a in keymap::lookup(preset, *ctx, ev) {
-            // Away from the notes, only Esc and Quit act.
-            if !vault && !matches!(a.id, "app.escape" | "app.quit") {
+            // Away from the notes, only Esc and Quit act; from a text field, nothing at the
+            // note's caret does.
+            if (!vault && !matches!(a.id, "app.escape" | "app.quit")) || (field && crate::focus::at_caret(a)) {
                 continue;
             }
             if a.id == "app.escape" {
@@ -121,7 +123,8 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // drawer, the page's, so Ctrl+F closes both and opens find.
         let under = s.open_layers().rev().skip(1).map(Layer::kind).find(|k| !k.light());
         let (own, window) = under.map_or((page_stack(s), &[][..]), layer_stack);
-        let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some()) else { return false };
+        let field = tx.focused().is_some_and(crate::focus::field);
+        let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some() && !(field && crate::focus::at_caret(a))) else { return false };
         if crate::layer::toggles(a.id) == Some(kind) {
             handler(a.id).expect("found above")(s, tx);
             return true;

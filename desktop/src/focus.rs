@@ -9,7 +9,8 @@
 //!   that jumps to a row), then Esc and F6. The key that shows or hides the stop's pane hides
 //!   it, as a layer's own key closes the layer. Every other plain key is dropped: none reaches
 //!   the reader or the writer behind it. A shortcut with Ctrl, Alt or the logo key acts as it
-//!   would with the keyboard on the note (`chord`).
+//!   would with the keyboard on the note (`chord`), except that a text field keeps the
+//!   writer's chords at the caret from the note (`field`).
 //! - Esc gives the keyboard back to the note (`App::keys_to_note`).
 //! - When the element that holds focus goes away, for any reason (its pane hides, zen mode,
 //!   its row is gone, a rename ends, find closes, its tab closes), the keyboard goes to the
@@ -60,6 +61,23 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("ol-", Pane::Outline),
     ("bl-", Pane::Outline),
 ];
+
+/// The text fields on the page, outside the note: the search field, find's, the note's name
+/// and a new folder's. While one has focus its own keys edit it, and the writer's chords at
+/// the caret (`at_caret`) do nothing; the window's shortcuts still act. The palette's,
+/// Settings' and the lock dialog's fields sit in layers, which take only the window's keys.
+pub const FIELDS: &[&str] = &["search", "find-input", "rename", "new-folder"];
+
+/// Whether the element keyed `key` is one of the page's text fields.
+pub fn field(key: &str) -> bool {
+    FIELDS.contains(&key)
+}
+
+/// An action that works on the note's text at its caret: the edits the writer shares with the
+/// edit sheet (a format, a heading, indent, a list's Enter) and following the link there.
+pub fn at_caret(a: &crate::keymap::Action) -> bool {
+    a.ctx.contains(&crate::keymap::Ctx::Sheet) || a.id == "writer.follow-link"
+}
 
 /// The pane of the stop keyed `key`, or None when `key` is not a stop (the editor, a link in
 /// the reader, a layer's control).

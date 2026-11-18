@@ -4669,6 +4669,51 @@ mod layer_matrix_tests {
             }
         }
 
+        // A text field keeps the writer's edits at the caret from the note (FLD): Ctrl+B, Ctrl+K,
+        // Ctrl+E, Ctrl+I and Ctrl+1 in it leave the note as it was and the field focused, docked
+        // and in the drawer. A window shortcut still acts from it. Every text field on the page
+        // but the editor is one of `focus::FIELDS`.
+        let search = |rt: &mut Runtime<App>| {
+            rt.update(|s, tx| s.open_search(tx));
+            settle(rt);
+        };
+        let fields: [(&str, &str, (f32, f32), fn(&mut Runtime<App>)); 4] = [
+            ("the search field", "search", (1280.0, 800.0), search),
+            ("the search field in the drawer", "search", (640.0, 480.0), search),
+            ("find's field", "find-input", (1280.0, 800.0), |rt| key(rt, Key::Command('f'), ctrl(false))),
+            ("the note's name", "rename", (1280.0, 800.0), |rt| {
+                rt.update(|s, tx| s.start_rename(tx));
+                settle(rt);
+            }),
+        ];
+        for (name, field, size, open) in fields {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.set_viewport(size, 1.0);
+            settle(&mut rt);
+            rt.update(|s, tx| s.focus_editor(tx));
+            settle(&mut rt);
+            open(&mut rt);
+            let role = rt.elements().into_iter().find(|e| e.key.as_deref() == Some(field)).map(|e| e.role);
+            for e in rt.elements().into_iter().filter(|e| e.focusable && Some(e.role) == role) {
+                let k = e.key.unwrap_or_default();
+                if k != "editor" && !crate::focus::field(&k) {
+                    fails.push(format!("{k} ({}) is a text field but not one of focus::FIELDS", e.path));
+                }
+            }
+            let before = seen(&mut rt);
+            for c in ['b', 'k', 'e', 'i', '1'] {
+                key(&mut rt, Key::Command(c), ctrl(false));
+                let after = seen(&mut rt);
+                if after.text != before.text || focused(&rt).as_deref() != Some(field) {
+                    fails.push(format!("Ctrl+{} in {name}: the note changed {}, focus on {:?}", c.to_ascii_uppercase(), after.text != before.text, focused(&rt)));
+                }
+            }
+            key(&mut rt, Key::Command(','), ctrl(false));
+            if !seen(&mut rt).settings {
+                fails.push(format!("Ctrl+, in {name} does not open Settings"));
+            }
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }

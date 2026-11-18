@@ -134,6 +134,10 @@ or the outline. A test checks that every focusable element in the panes is in it
   acts. Every other plain key is dropped, so none reaches the reader or the writer. A
   shortcut with Ctrl, Alt or the logo key (`focus::chord`) acts as it would with the
   keyboard on the note: Ctrl+F opens find, Ctrl+B bolds in the writer.
+- A text field on the page (`focus::FIELDS`: the search field, find's, the note's name, a
+  new folder's) keeps its own editing keys. The writer's actions at the caret
+  (`focus::at_caret`: a format, a heading, indent, a list's Enter, following a link) do
+  nothing from it, so Ctrl+B there never writes into the note. The window's shortcuts act.
 - When the element that holds focus goes away, for any reason, the keyboard goes to the
   note. Every stop and pane carries `focus_return(focus::NOTE)`. NOTE keys the editor's box
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
