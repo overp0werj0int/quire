@@ -3319,21 +3319,27 @@ mod layer_matrix_tests {
 
     const NOTE: &str = "# Head\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";
 
-    /// A fresh window with the overlay open, and what it showed then.
-    fn opened(dir: &std::path::Path, o: &Overlay) -> (Runtime<App>, Seen) {
+    /// A fresh window on the note, in preview or with the caret at the top of the writer.
+    fn window(dir: &std::path::Path, preview: bool, size: (f32, f32)) -> Runtime<App> {
         let text = format!("{NOTE}{}", "More text to scroll by.\n\n".repeat(80));
-        let mode = if o.preview { Mode::Preview } else { Mode::Source };
+        let mode = if preview { Mode::Preview } else { Mode::Source };
         let (mut rt, _) = crate::bench::open(dir, &text, mode);
         rt.on_key = Some(crate::keys::on_key);
-        rt.set_viewport(o.size, 1.0);
+        rt.set_viewport(size, 1.0);
         settle(&mut rt);
-        if !o.preview {
+        if !preview {
             rt.update(|s, tx| {
                 s.cur_edit().set_selection(0, 0);
                 s.focus_editor(tx);
             });
             settle(&mut rt);
         }
+        rt
+    }
+
+    /// A fresh window with the overlay open, and what it showed then.
+    fn opened(dir: &std::path::Path, o: &Overlay) -> (Runtime<App>, Seen) {
+        let mut rt = window(dir, o.preview, o.size);
         (o.open)(&mut rt);
         let before = seen(&mut rt);
         assert_eq!(before.layers, 1, "{}: opened", o.name);
@@ -3460,16 +3466,7 @@ mod layer_matrix_tests {
         let mut fails = Vec::new();
         for (way, enter) in &ways {
             for (name, k, scrolls) in &keys {
-                let text = format!("{NOTE}{}", "More text to scroll by.\n\n".repeat(80));
-                let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
-                rt.on_key = Some(crate::keys::on_key);
-                rt.set_viewport((960.0, 600.0), 1.0);
-                settle(&mut rt);
-                rt.update(|s, tx| {
-                    s.cur_edit().set_selection(0, 0);
-                    s.focus_editor(tx);
-                });
-                settle(&mut rt);
+                let mut rt = window(&dir, false, (960.0, 600.0));
                 enter(&mut rt);
                 let before = seen(&mut rt);
                 let case = format!("{way}, then {name}");
@@ -3486,6 +3483,70 @@ mod layer_matrix_tests {
                 } else if *scrolls && after.page_y > before.page_y - 5.0 {
                     fails.push(format!("{case}: the page did not scroll"));
                 }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
+
+    /// Find and the layers: opening any layer closes find and keeps its query, and as the
+    /// layer closes the keyboard goes back to the note, with the caret at the match and
+    /// nothing selected in the writer.
+    #[test]
+    fn a_layer_closes_find_and_gives_the_note_back() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-layer-find-{}", std::process::id()));
+        let mut fails = Vec::new();
+        // Help opens on a plain key, which find's field takes.
+        for o in overlays().into_iter().filter(|o| o.name != "help") {
+            let mut rt = window(&dir, o.preview, o.size);
+            key(&mut rt, Key::Command('f'), ctrl(false));
+            for c in ["p", "a", "r", "a"] {
+                key(&mut rt, Key::Text(c.into()), Mods::default());
+            }
+            let start = seen(&mut rt);
+            let mut fail = |why: &str| fails.push(format!("{}: {why}", o.name));
+            if !start.find {
+                fail("find did not open");
+                continue;
+            }
+            (o.open)(&mut rt);
+            let over = seen(&mut rt);
+            if over.layers != 1 || over.find {
+                fail("find stayed open beside the layer");
+            }
+            key(&mut rt, Key::Escape, Mods::default());
+            let back = seen(&mut rt);
+            if back.layers != 0 || back.find {
+                fail("Esc left a layer or find open");
+                continue;
+            }
+            if o.preview {
+                key(&mut rt, Key::Text(" ".into()), Mods::default());
+                if seen(&mut rt).page_y > back.page_y - 5.0 {
+                    fail("Space did not reach the reader");
+                }
+            } else {
+                for c in ["Z", "Z"] {
+                    key(&mut rt, Key::Text(c.into()), Mods::default());
+                }
+                let typed = seen(&mut rt).text;
+                if typed.replace("ZZ", "") != start.text {
+                    fail("typing replaced text");
+                } else if !typed.contains("ZZ") {
+                    fail("typing went nowhere");
+                } else if o.name != "editor menu" && !typed.contains("ZZpara") {
+                    fail(&format!("typing did not land at the match ({:?})", typed.lines().nth(2).unwrap_or("")));
+                }
+            }
+            key(&mut rt, Key::Command('f'), ctrl(false));
+            let mut q = String::new();
+            rt.update_if(|s, _| {
+                q = s.reader.find.q.text.clone();
+                false
+            });
+            if q != "para" {
+                fail(&format!("Ctrl+F brought back {q:?}, not the query"));
             }
         }
         let _ = std::fs::remove_dir_all(&dir);

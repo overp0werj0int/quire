@@ -1343,7 +1343,6 @@ impl App {
         if self.view_w.get() >= SIDEBAR_DOCK_W {
             self.persist.left_open = true;
         } else if self.drawer() != Some(Drawer::Sidebar) {
-            self.drop_find();
             self.open_layer(Layer::Drawer(Drawer::Sidebar), tx);
         }
     }
@@ -1364,13 +1363,11 @@ impl App {
         if self.view_w.get() >= OUTLINE_DOCK_W { self.persist.right_open } else { self.drawer() == Some(Drawer::Outline) }
     }
 
-    /// Opens drawer `d`, or closes it when it is open. A drawer and the find bar never share
-    /// the page, so opening one closes find.
+    /// Opens drawer `d`, or closes it when it is open.
     pub fn toggle_drawer(&mut self, d: Drawer, tx: &mut Tx) {
         if self.drawer() == Some(d) {
             self.close_layers(tx);
         } else {
-            self.close_find(tx);
             self.open_layer(Layer::Drawer(d), tx);
         }
     }

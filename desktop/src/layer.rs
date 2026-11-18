@@ -205,8 +205,14 @@ impl App {
     /// Opens `layer` over the page, closing whatever was open. It takes over where focus goes
     /// back to from the layer it replaces, so a palette that gives way to Settings still hands
     /// the keyboard back to the note. A menu opens over the layer it was opened in, replacing
-    /// only a menu, and a field's menu gives focus back to its field.
+    /// only a menu, and a field's menu gives focus back to its field. Find closes too, keeping
+    /// its query, and the layer gives the keyboard back to the note, not to find's field.
     pub fn open_layer(&mut self, layer: Layer, tx: &mut Tx) {
+        let found = self.hide_find();
+        if found && !self.writing_note() {
+            // Find's field had the keyboard; the reader's page takes it back as the layer closes.
+            tx.blur();
+        }
         let replaced = match &layer {
             Layer::Menu(_) => self.layers.pop_if(|o| matches!(o.layer, Layer::Menu(_))).into_iter().collect(),
             _ => std::mem::take(&mut self.layers),
@@ -214,6 +220,7 @@ impl App {
         let back = match (&layer, replaced.into_iter().next()) {
             (Layer::Menu(Menu { of: MenuOf::Edit(field), .. }), _) => Some(field.to_string()),
             (_, Some(first)) => first.back,
+            (_, None) if found => self.writing_note().then(|| "editor".to_string()),
             (_, None) => self.handed.take().unwrap_or_else(|| self.focus_now(tx)),
         };
         self.handed = None;

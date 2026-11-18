@@ -74,7 +74,9 @@ showed when it opened.
 
 - `App::open_layer` opens one and closes whatever was open. A menu is the one exception: it
   opens over the layer it was opened in, such as a row's menu over the sidebar drawer or the
-  editor's menu over the edit sheet, and it replaces only another menu.
+  editor's menu over the edit sheet, and it replaces only another menu. Find is not a layer,
+  but `open_layer` closes it too, keeping its query. Focus then goes back to the note, not to
+  find's field: the editor with the caret at the match, or nothing in preview.
 - `App::close_layer`, `App::close_layers` and `App::dismiss` close layers. `dismiss` runs on
   Esc and on a press outside, with either mouse button. Focus goes back where it was before
   the layer opened, whichever way it closes.

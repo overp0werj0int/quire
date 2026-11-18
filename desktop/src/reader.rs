@@ -835,6 +835,27 @@ impl App {
         }
     }
 
+    /// A layer opens over find: the bar closes and keeps its query for Ctrl+F. In the writer a
+    /// selected match gives way to a caret at its start, so typing after the layer closes does
+    /// not replace it. Whether find was open.
+    pub(crate) fn hide_find(&mut self) -> bool {
+        if !self.reader.find.open {
+            return false;
+        }
+        if self.mode == crate::app::Mode::Source {
+            let cur = self.source_matches().get(self.reader.find.cur).cloned();
+            if let (Some(r), Some(e)) = (cur, self.cur_edit_opt())
+                && (e.anchor.min(e.focus), e.anchor.max(e.focus)) == (r.start, r.end)
+            {
+                e.set_selection(r.start, r.start);
+            }
+        }
+        let f = &mut self.reader.find;
+        f.open = false;
+        f.due = None;
+        true
+    }
+
     /// Closes the find bar and forgets its query.
     pub(crate) fn drop_find(&mut self) {
         let f = &mut self.reader.find;
