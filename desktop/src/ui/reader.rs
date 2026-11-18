@@ -437,6 +437,11 @@ pub fn progress(v: V) -> El {
     el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).paint_order(30).live_rect(&v.s.reader.bar)
 }
 
+/// The width the "reloaded" mark takes, its 8 px of margin included.
+pub fn reloaded_w() -> f32 {
+    8.0 + 6.0 + 5.0 + width("reloaded", sans(11.0, 400.0))
+}
+
 /// The "reloaded" mark after the note's name (RD-33): a 6 px accent dot and caption text.
 pub fn reloaded(v: V) -> El {
     let c = Roles::new(v.p);

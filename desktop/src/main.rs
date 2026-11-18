@@ -332,6 +332,52 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// ELGAP: a name or folder cut to the title bar's room ends where its ink does, so ".md"
+    /// and "/" sit as close after it as after one shown whole, at every width; the cut name
+    /// keeps its whole text for the tooltip and the screen reader.
+    #[test]
+    fn a_cut_name_ends_right_before_its_extension() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-elgap-{}", std::process::id()));
+        let name = "A very long name for a note that keeps going and going on and on past every edge";
+        let folder = "Quarterly planning notes for the product and design teams across every region";
+        let mut rt = vault(&dir, &[(&format!("{folder}/{name}.md"), "# A\n"), (&format!("{folder}/Short.md"), "# B\n")], crate::watch::EVERY);
+        let style = crate::ui::styles::literal(12.0);
+        let bar = |rt: &Runtime<crate::app::App>| -> Vec<rune::ElementInfo> {
+            rt.elements().into_iter().filter(|e| e.path.contains("/crumb/") && !e.exiting && e.text.is_some()).collect()
+        };
+        for note in [name, "Short"] {
+            rt.update(|s, tx| s.open_file(&format!("{folder}/{note}.md"), None, tx));
+            for w in [1280.0, 640.0, 520.0] {
+                rt.set_viewport((w, 600.0), 1.0);
+                for _ in 0..30 {
+                    rt.frame(DT);
+                }
+                let els = bar(&rt);
+                let after = |sep: &str| els.iter().position(|e| e.text.as_deref() == Some(sep)).map(|i| (&els[i - 1], &els[i])).unwrap_or_else(|| panic!("{note} at {w}: no {sep}"));
+                for sep in ["/", ".md"] {
+                    let (cut, next) = after(sep);
+                    let t = cut.text.clone().unwrap_or_default();
+                    let ink = rune::text::measure(&t, &[], style, None).0;
+                    assert!((cut.rect[2] - ink).abs() <= 1.0, "{note} at {w}: '{t}' before '{sep}' is {} wide for {ink} of text", cut.rect[2]);
+                    assert!(next.rect[0] - (cut.rect[0] + cut.rect[2]) < if sep == "/" { 6.5 } else { 0.5 }, "{note} at {w}: '{sep}' sits right after '{t}'");
+                }
+                let (shown, _) = after(".md");
+                if shown.text.as_deref() != Some(note) {
+                    assert!(shown.text.as_deref().is_some_and(|t| t.ends_with('…')), "{note} at {w}: a cut name ends in an ellipsis: {:?}", shown.text);
+                    assert_eq!(shown.label.as_deref(), Some(note), "{note} at {w}: a cut name keeps its whole text");
+                    assert!(shown.help.is_some(), "{note} at {w}: a cut name has its tooltip");
+                }
+                if w == 520.0 {
+                    assert_ne!(after("/").0.text.as_deref(), Some(folder), "{note}: the case cuts the folder");
+                    assert!(note == "Short" || shown.text.as_deref() != Some(note), "the case cuts the long name");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// EL: a long name stays in its room and ends in an ellipsis. In the title bar it ends
     /// before the bar's buttons; in the quick switcher a long folder never squeezes the name;
     /// the search panel's hint wraps inside the sidebar.

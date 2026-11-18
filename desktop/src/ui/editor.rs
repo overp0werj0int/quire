@@ -434,13 +434,30 @@ pub(super) fn crumb(v: V) -> El {
     let quiet = Roles::panel(p);
     // A long folder or name is cut to the bar's room: the folder keeps its end, the name its start.
     // The name has its room first: the folder takes what the name leaves, up to its own width,
-    // and keeps at least "…".
+    // and keeps at least "…". Once the title has a width, the cuts are made here (`crumb_fit`).
+    let name = md::base(&active).to_string();
+    let reloaded = s.reader.reloaded.is_some() && s.mode == Mode::Preview;
+    let fit = s.renaming.is_none().then(|| rune::memo::layout_size("title")).flatten().map(|[w, _]| {
+        let pad = if v.left_visible() { 20.0 } else { 6.0 } + 8.0;
+        let mark = if reloaded { 6.0 + super::reader::reloaded_w() } else { 0.0 };
+        crumb_fit(&dir, &name, w - pad - mark, style)
+    });
     let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
-        let whole = rune::text::measure(&dir, &[], style, None).0;
-        let least = rune::text::measure("…", &[], style, None).0.min(whole);
-        r = r.child(text(dir).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)).child(label("/", style, quiet.faint));
+        let folder = match &fit {
+            Some((folder, _)) => text(folder.clone()).font(style).color(p.mute).truncate_head().shrink().min_w(0.0),
+            None => {
+                let whole = rune::text::measure(&dir, &[], style, None).0;
+                let least = rune::text::measure("…", &[], style, None).0.min(whole);
+                text(dir.clone()).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)
+            }
+        };
+        r = r.child(folder).child(label("/", style, quiet.faint));
     }
+    let cut = fit.as_ref().is_some_and(|(_, shown)| *shown != name);
+    let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);
+    let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
+    name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
     let r = match &s.renaming {
         None => r.child(
             row()
@@ -458,7 +475,7 @@ pub(super) fn crumb(v: V) -> El {
                 .help("Rename note")
                 .cursor(rune::Cursor::Text)
                 .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
-                .child(text(md::base(&active).to_string()).font(style).color(p.ink2).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(&active)))
+                .child(name_el)
                 .child(label(".md", style, quiet.faint)),
         ),
         Some(edit) => {
@@ -499,7 +516,38 @@ pub(super) fn crumb(v: V) -> El {
         }
     };
     // After an outside change (RD-33).
-    if s.reader.reloaded.is_some() && s.mode == Mode::Preview { r.child(super::reader::reloaded(v)) } else { r }
+    if reloaded { r.child(super::reader::reloaded(v)) } else { r }
+}
+
+/// The folder and the name the crumb shows in `room`, the title's width inside its padding,
+/// cut here rather than by Rune, so each one's box ends where its ink does and "/" and ".md"
+/// sit as close after a cut one as after one shown whole (ELGAP). The name keeps its start and
+/// has its room first; the folder keeps its end and takes what the name leaves, at least "…".
+fn crumb_fit(dir: &str, name: &str, room: f32, style: TextStyle) -> (String, String) {
+    let width = |t: &str| rune::text::measure(t, &[], style, None).0;
+    let gap = 6.0;
+    let md = width(".md");
+    let slash = if dir.is_empty() { 0.0 } else { gap + width("/") + gap };
+    let least = if dir.is_empty() { 0.0 } else { width("…").min(width(dir)) };
+    // Rune rounds a text's box up to whole device pixels: a cut keeps a point to spare.
+    let fits = |t: &str, w: f32| width(t) <= w - 1.0;
+    let name_room = room - md - slash - least;
+    let shown = if width(name) <= name_room { name.to_string() } else { cut_end(name, name_room, &fits) };
+    let folder_room = room - md - slash - width(&shown);
+    let folder = if dir.is_empty() || width(dir) <= folder_room { dir.to_string() } else { cut_head(dir, folder_room, &fits) };
+    (folder, shown)
+}
+
+/// The longest start of `t` that fits `w` with "…" after it, or "…" alone.
+fn cut_end(t: &str, w: f32, fits: &dyn Fn(&str, f32) -> bool) -> String {
+    let chars: Vec<char> = t.chars().collect();
+    (1..chars.len()).rev().map(|n| format!("{}…", chars[..n].iter().collect::<String>().trim_end())).find(|c| fits(c, w)).unwrap_or_else(|| "…".into())
+}
+
+/// The longest end of `t` that fits `w` with "…" before it, or "…" alone.
+fn cut_head(t: &str, w: f32, fits: &dyn Fn(&str, f32) -> bool) -> String {
+    let chars: Vec<char> = t.chars().collect();
+    (1..chars.len()).map(|n| format!("…{}", chars[n..].iter().collect::<String>().trim_start())).find(|c| fits(c, w)).unwrap_or_else(|| "…".into())
 }
 
 /// The source font at size `E`. Each line is 155 percent of the iA fonts' natural 1.3 em
