@@ -4353,7 +4353,8 @@ mod layer_matrix_tests {
 
     /// The panel tabs are one Tab stop, as the toolbar is (TABSTOP): Tab lands on the open tab,
     /// whichever it is, and Tab or Shift+Tab leaves the control. A focused tab's ring follows
-    /// its pill and stays inside the track (TABRING).
+    /// its pill and stays inside the track (TABRING), and a closed tab's stands off the open
+    /// pill beside it (RINGOV, RINGGAP).
     #[test]
     fn the_panel_tabs_are_one_tab_stop() {
         use crate::app::Panel;
@@ -4395,12 +4396,13 @@ mod layer_matrix_tests {
             let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
             assert!(outer.iter().zip(mark).all(|(a, b)| (a - b).abs() < 0.01), "{panel:?}: the ring {outer:?} is the open tab's pill {mark:?}");
             assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: the ring {outer:?} stays clear of the track's edge {seg:?}");
-            // On a tab beside the open one, the ring touches nothing of the open tab's pill.
+            // On a tab beside the open one, at least 1 pt of the track parts the ring from the
+            // open tab's pill (RINGGAP).
             key(&mut rt, Key::Right, Mods::default());
             let side = focused(&rt).expect("a tab beside");
             let r = ring(&rt, &side);
             let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
-            assert!(side != open && (outer[0] + outer[2] <= mark[0] + 0.01 || outer[0] >= mark[0] + mark[2] - 0.01), "{panel:?}: {side}'s ring {outer:?} stays off the open pill {mark:?}");
+            assert!(side != open && (outer[0] + outer[2] <= mark[0] - 1.0 + 0.01 || outer[0] >= mark[0] + mark[2] + 1.0 - 0.01), "{panel:?}: {side}'s ring {outer:?} stands 1 pt off the open pill {mark:?}");
             assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: {side}'s ring {outer:?} stays clear of the track's edge {seg:?}");
         }
         // Home and End go to the first and the last tab, and Up and Down do nothing: none of

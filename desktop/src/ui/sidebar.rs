@@ -29,6 +29,8 @@ const TAB_PAD: f32 = 7.0;
 const SEG_IN: f32 = 2.0;
 /// The corner radius of the open tab's pill and of the track it sits on.
 const TAB_R: f32 = 5.0;
+/// How far a closed tab's focus ring stands in from where its pill would be, at each side.
+const RING_OFF: f32 = 1.0;
 
 /// A row's room after its button, so the button's icon sits 13 points from the row's end.
 const BUTTON_END: f32 = 1.0;
@@ -114,8 +116,13 @@ pub fn sidebar(v: V) -> El {
                 .children(on.then(|| pill().key("tab-mark").fill(c.text.alpha(0.08)).transition(super::swap())))
                 // The ring follows the pill, the open one's or where it would be, drawn inside
                 // the pill's own rectangle: the pills touch, so a ring outside one would cover
-                // its neighbour (RINGOV), and it stays SEG_IN clear of the track's edge.
-                .child(el().key("tab-ring").pin(Some(rw - TAB_PAD), Some(SEG_IN + rw), Some(rw - TAB_PAD), Some(SEG_IN + rw)).radius(TAB_R - rw).focus_ring(rw, 0.0, rc))
+                // its neighbour (RINGOV), and it stays SEG_IN clear of the track's edge. On a
+                // closed tab it stands RING_OFF in at each side, so a strip of the track parts
+                // it from the open pill beside it (RINGGAP).
+                .child({
+                    let side = rw - TAB_PAD + if on { 0.0 } else { RING_OFF };
+                    el().key("tab-ring").pin(Some(side), Some(SEG_IN + rw), Some(side), Some(SEG_IN + rw)).radius(TAB_R - rw).focus_ring(rw, 0.0, rc)
+                })
                 .child(text(lbl.to_uppercase()).font(super::styles::tab(panel::CAPTION)).color(if on { c.text } else { c.dim }).group_color(c.text)),
         );
     }
