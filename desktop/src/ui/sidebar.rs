@@ -468,10 +468,10 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                     .caret(p.ink, p.sel)
                     .label("New folder name")
                     .on_edit(|s: &mut App| &mut s.new_folder.get_or_insert_with(|| crate::folders::NewFolder { parent: String::new(), edit: rune::TextEdit::new("") }).edit)
-                    .on_submit(|s: &mut App, _| s.commit_new_folder())
-                    .on_input_key(|s: &mut App, ev: &rune::KeyEvent, _| {
+                    .on_submit(|s: &mut App, tx| s.end_new_folder(true, tx))
+                    .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx| {
                         if ev.key == rune::Key::Escape {
-                            s.new_folder = None;
+                            s.end_new_folder(false, tx);
                             return true;
                         }
                         false
@@ -538,14 +538,14 @@ fn search_panel(v: V) -> El {
                 .placeholder("Search notes", theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
                 .on_edit(|s: &mut App| &mut s.query)
-                // Down moves into the results, and Esc gives the note the keys, which the
-                // field would otherwise drop (FOCUS).
+                // Down moves into the results. Esc gives the note the keys, which the field
+                // would otherwise drop; in the drawer Esc is the drawer's, as from a row (FOCUS).
                 .on_input_key(move |s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
                     if ev.mods != rune::Mods::default() {
                         return false;
                     }
                     match (&ev.key, &first) {
-                        (rune::Key::Escape, _) => s.keys_to_note(tx),
+                        (rune::Key::Escape, _) if s.layer().is_none() => s.keys_to_note(tx),
                         (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
                         _ => return false,
                     }

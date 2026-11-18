@@ -4750,6 +4750,80 @@ mod layer_matrix_tests {
             }
         }
 
+        // Esc in the drawer's search field is the drawer's: it closes, and what had the
+        // keyboard before it opened has it again, with or without a query typed (SESC).
+        for mode in [Mode::Source, Mode::Preview] {
+            for query in ["more", ""] {
+                let mut rt = garden(&dir, mode);
+                rt.set_viewport((640.0, 480.0), 1.0);
+                settle(&mut rt);
+                rt.update(|s, tx| s.keys_to_note(tx));
+                settle(&mut rt);
+                let home = focused(&rt);
+                rt.update(|s, tx| s.open_search(tx));
+                settle(&mut rt);
+                for c in query.chars() {
+                    text_key(&mut rt, &c.to_string());
+                }
+                let open = seen(&mut rt).layers;
+                key(&mut rt, Key::Escape, Mods::default());
+                let before = seen(&mut rt);
+                for c in ["Q", "Q"] {
+                    text_key(&mut rt, c);
+                }
+                let typed = seen(&mut rt).text.matches("QQ").count() == before.text.matches("QQ").count() + 1;
+                if open != 1 || before.layers != 0 || focused(&rt) != home || (mode == Mode::Source && !typed) {
+                    fails.push(format!("Esc in the drawer's search field ({mode:?}, query {query:?}): layers {open} then {}, focus {:?} (was {home:?}), typing reached the note: {typed}", before.layers, focused(&rt)));
+                }
+            }
+        }
+
+        // The drawer's New note button opens the note's name behind the drawer: the drawer
+        // closes and the typed name goes into the field, not into the new note.
+        let mut rt = garden(&dir, Mode::Source);
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(&mut rt);
+        rt.update(|s, tx| s.toggle_left(tx));
+        settle(&mut rt);
+        rt.update(|_, tx| tx.focus("foot-new", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Enter, Mods::default());
+        for c in ["Q", "Q"] {
+            text_key(&mut rt, c);
+        }
+        let mut name = None;
+        rt.update_if(|s, _| {
+            name = s.renaming.as_ref().map(|e| e.text.clone());
+            false
+        });
+        let after = seen(&mut rt);
+        if after.layers != 0 || focused(&rt).as_deref() != Some("rename") || name.as_deref() != Some("QQ") || after.text.contains("QQ") {
+            fails.push(format!("the drawer's New note button: layers {}, focus {:?}, name {name:?}, note {:?}", after.layers, focused(&rt), after.text));
+        }
+
+        // A new folder named in the drawer: the drawer stays, and a row of the tree has the
+        // keyboard with its ring, the new folder's after Enter.
+        for (how, last, want) in [("Enter", Key::Enter, Some("dir:Zed")), ("Esc", Key::Escape, None)] {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.set_viewport((640.0, 480.0), 1.0);
+            settle(&mut rt);
+            rt.update(|s, tx| s.toggle_left(tx));
+            settle(&mut rt);
+            rt.update(|s, tx| s.start_new_folder("", tx));
+            settle(&mut rt);
+            let field = focused(&rt);
+            for c in ["Z", "e", "d"] {
+                text_key(&mut rt, c);
+            }
+            key(&mut rt, last, Mods::default());
+            let ring = rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
+            let right = ring.as_ref().is_some_and(|(k, shown)| *shown && want.map_or(k.starts_with("file:") || k == "tree", |w| k == w));
+            if field.as_deref() != Some("new-folder") || seen(&mut rt).layers != 1 || rt.find("new-folder").is_some() || !right {
+                fails.push(format!("{how} in a new folder's name in the drawer: field {field:?}, layers {}, focus {ring:?}", seen(&mut rt).layers));
+            }
+            let _ = std::fs::remove_dir_all(dir.join("notes/Zed"));
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }

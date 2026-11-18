@@ -1240,6 +1240,7 @@ impl App {
         e.set_selection(0, n);
         e.focused = true;
         self.renaming = Some(e);
+        self.field_opened(crate::layer::Field::NoteName);
         tx.focus("rename", false);
     }
 

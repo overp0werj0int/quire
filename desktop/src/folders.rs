@@ -150,31 +150,45 @@ impl App {
         self.show_left(tx);
         self.left_panel = crate::app::Panel::Files;
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
+        self.field_opened(crate::layer::Field::FolderName);
         tx.focus("new-folder", false);
     }
 
-    pub fn commit_new_folder(&mut self) {
-        let Some(nf) = self.new_folder.take() else { return };
+    /// The new folder's name field closes: Enter makes the folder (`keep`), Esc drops it. In
+    /// the sidebar's drawer the note cannot take the keyboard, so the tree does, with its
+    /// ring: the new folder's row, or the tree's current row when no folder was made.
+    pub fn end_new_folder(&mut self, keep: bool, tx: &mut Tx) {
+        let made = if keep { self.commit_new_folder() } else { None };
+        self.new_folder = None;
+        if self.drawer() == Some(crate::app::Drawer::Sidebar) {
+            tx.focus(made.map_or_else(|| self.sidebar_stop(), |path| row_key("dir", &path)), true);
+        }
+    }
+
+    /// Makes the folder the name field asks for, and returns its path when it was made.
+    fn commit_new_folder(&mut self) -> Option<String> {
+        let nf = self.new_folder.take()?;
         let name = md::clean_name(&nf.edit.text);
         if name.is_empty() || name.starts_with('.') {
-            return;
+            return None;
         }
         let path = md::join(&nf.parent, &name);
-        let Some(v) = &mut self.vault else { return };
+        let v = self.vault.as_mut()?;
         if v.folders.contains(&path) {
             self.notice = Some(format!("A folder named {name} is already there."));
-            return;
+            return None;
         }
         v.folders.push(path.clone());
         v.folders.sort();
         let root = v.path.clone();
         self.writer.send(Op::Mkdir { root, rel: path.clone() });
-        self.expanded.insert(path);
+        self.expanded.insert(path.clone());
         if !nf.parent.is_empty() {
             self.expanded.insert(nf.parent);
         }
         self.persist_later();
         self.sync_after_save();
+        Some(path)
     }
 
     /// Moves a note into `folder` (`""` is the root), keeping its tab, caret and history.

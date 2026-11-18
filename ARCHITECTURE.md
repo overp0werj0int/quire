@@ -95,12 +95,14 @@ showed when it opened.
   the layer opened, whichever way it closes. When that element is gone, such as the row of a
   note the menu deleted, the note has the keyboard: every layer's card carries
   `focus_return(focus::NOTE)`, as a stop does.
-- `App::pick` runs a menu's item: the menu closes, then the item runs. An item that opens a
-  field gives it the keyboard. Rename and New note open the note's name in the title bar,
-  behind the sidebar's drawer, so the drawer closes too and the name has focus, selected. A
-  new folder's name shows in the tree, inside the drawer, so the drawer stays. A delete
-  from a row's menu (`App::row_deleted`) closes the drawer the row was in and gives the note
-  the keys, since the row cannot take focus back.
+- `App::pick` runs a menu's item: the menu closes, then the item runs.
+- `App::field_opened` runs when a name field opens, from a menu's item, a button or a key.
+  Rename and New note open the note's name in the title bar, behind the sidebar's drawer, so
+  the drawer closes and the name has focus, selected. A new folder's name shows in the tree,
+  inside the drawer, so the drawer stays; when that field closes (`App::end_new_folder`), a
+  row of the tree takes the keyboard with its ring, the new folder's after Enter.
+- A delete from a row's menu (`App::row_deleted`) closes the drawer the row was in and gives
+  the note the keys, since the row cannot take focus back.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
   window wide enough to dock the drawer. A menu also closes when the window's size changes.
@@ -145,8 +147,10 @@ or the outline. A test checks that every focusable element in the panes is in it
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
   key to `keys::on_key`. Without it Rune hands the lost focus to the next control in the old
   tree. In the reader that was a paragraph with links, focused with no link in it, which ate
-  Space and Enter. Closing find, Esc in the search field and closing the shown tab call
-  `App::keys_to_note` themselves, so the writer has the keys after each.
+  Space and Enter. Closing find, Esc in the docked search field and closing the shown
+  tab call `App::keys_to_note` themselves, so the writer has the keys after each. In the
+  drawer, Esc in the search field is the drawer's, as from a row: the drawer closes and
+  hands focus back.
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
   sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the
