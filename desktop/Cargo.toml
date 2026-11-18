@@ -18,7 +18,7 @@ path = "src/main.rs"
 # elements live to the pointer (the drawers' title bar).
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -33,7 +33,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -45,12 +45,12 @@ embed-resource = "3"
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
 # Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "fb4f7e84f334fbedc491cef91dbdfc1b4f8ea2ae" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
 
 [profile.dev]
 opt-level = 1
