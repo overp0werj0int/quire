@@ -4753,7 +4753,7 @@ mod layer_matrix_tests {
 
     /// ENDROOM: while a band shows, the page's end room is at least the band's height, so the
     /// last find match comes above a band taller than the reader's room after its last line.
-    /// When the band goes, a view inside the extra room glides out of it, and a view above it
+    /// When the band goes, a view inside the extra room rides down with it, and a view above it
     /// does not move (RD-104).
     #[test]
     fn the_last_match_sits_above_a_tall_band_and_its_room_goes_without_a_jump() {
@@ -4788,7 +4788,7 @@ mod layer_matrix_tests {
         // `find` gives the middle of the match's line, 22 pt tall in the reader.
         assert!(y + 11.0 <= band[1] + 0.5, "the last match comes above the band: match to {}, band from {}", y + 11.0, band[1]);
 
-        // The band goes with the view in its extra room: the view glides out, and never jumps.
+        // The band goes with the view in its extra room: the view rides down, and never jumps.
         let [at, grown, ..] = scroll(&mut rt);
         rt.update(|s, _| {
             s.reader.toast = None;
@@ -4826,6 +4826,67 @@ mod layer_matrix_tests {
             moved = moved.max((now - before).abs());
         }
         assert!(moved < 0.5, "a view above the extra room stays put as the band comes and goes: moved {moved}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ROOMREL: the band's extra end room goes a little each frame, however the band goes:
+    /// the toast and then the notice 0.1 s later, with or without the wheel still turning down
+    /// at the page's end, at 1x and 2x. No frame moves the page more than a glide would, and once
+    /// it rests it does not move again (RD-104).
+    #[test]
+    fn the_extra_end_room_goes_without_a_late_step() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-roomrel-{}", std::process::id()));
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = [0.0; 4];
+            rt.update(|s, _| at = s.reader.scroll.get());
+            at
+        };
+        let text: String = (0..60).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let long = format!("A folder named {}is already there.", "A long folder name ".repeat(10));
+        for scale in [1.0, 2.0] {
+            for wheel in [false, true] {
+                let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Preview);
+                rt.on_key = Some(crate::keys::on_key);
+                rt.set_viewport((520.0, 480.0), scale);
+                rt.update(|s, tx| {
+                    s.notice = Some(long.clone());
+                    s.open_find(tx);
+                    s.reader.find.q = rune::TextEdit::new("Line 59 of");
+                    s.find_changed(tx);
+                });
+                glide(&mut rt);
+                glide(&mut rt);
+                rt.update(|s, tx| s.toast("Copied the whole note", tx));
+                glide(&mut rt);
+                let [start, grown, ..] = offset(&mut rt);
+                assert!((start - grown).abs() < 0.5, "{scale}x: the case puts the view at the end of the page: {start} of {grown}");
+                let (mut last, mut step, mut still, mut late) = (start, 0f32, 0, 0f32);
+                for i in 0..90 {
+                    match i {
+                        0 => rt.update(|s, _| s.reader.toast = None),
+                        6 => rt.update(|s, _| s.notice = None),
+                        _ => {}
+                    }
+                    if wheel && i < 40 {
+                        rt.wheel(260.0, 200.0, -40.0);
+                    }
+                    rt.frame(DT);
+                    let [now, ..] = offset(&mut rt);
+                    let d = (now - last).abs();
+                    step = step.max(d);
+                    if still >= 15 {
+                        late = late.max(d);
+                    }
+                    still = if d > 0.01 || i < 7 { 0 } else { still + 1 };
+                    last = now;
+                }
+                let [at, max, ..] = offset(&mut rt);
+                assert!(max < grown - 30.0 && (at - max).abs() < 0.5, "{scale}x, wheel {wheel}: the room goes and the view ends at the page's end: {at} of {max}, was {grown}");
+                assert!(step <= 5.0, "{scale}x, wheel {wheel}: no frame moves the page more than a glide would: {step} pt");
+                assert!(late < 0.01, "{scale}x, wheel {wheel}: the page moves {late} pt after resting");
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

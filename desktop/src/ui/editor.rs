@@ -141,7 +141,7 @@ fn doc_scroll(v: V) -> El {
         let page = if writer { source_column(v) } else { preview::column(v) };
         // Above the text: the toolbar's room, or with typewriter scrolling half the view
         // (WR-86, WR-87). Below it: half the view in the writer (WR-86), the reader's room
-        // (PAGE-29), and at least the toast band's height, held while the view leaves it (RD-104).
+        // (PAGE-29), and at least the toast band's height, given back a little each frame (RD-104).
         let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { crate::page::TOP_ROOM };
         let pad_b = if reader || writer {
             let band = super::reader::band_h(v).unwrap_or(0.0).max(s.reader.room);

@@ -22,6 +22,10 @@ const KEY_GLIDE: f64 = 0.11;
 const SEQ: f64 = 0.9;
 /// A toast shows this long (RD-98).
 pub const TOAST: f64 = 1.6;
+/// The page's extra end room closes in on this time constant, in seconds (RD-104)...
+const ROOM_EASE: f32 = 0.08;
+/// ...and never faster than this, in points a second.
+const ROOM_SPEED: f32 = 240.0;
 /// How long a code block's chip says Copied (BLK-51).
 pub const COPIED: f64 = 1.4;
 /// The "reloaded" mark: fade in, hold, fade out (RD-33).
@@ -52,11 +56,11 @@ pub struct Reader {
     pub thumb_shown: Live<f32>,
     /// How tall the toast band last laid out, 0 while no pill shows (RD-104).
     pub(crate) band: f32,
-    /// The room after the page's last line that the band has asked for (RD-104). It stays
-    /// after the band shrinks or goes until the view has left it (`App::release_room`).
+    /// The room after the page's last line that the band has asked for (RD-104). When the
+    /// band shrinks or goes, it follows down frame by frame (`App::release_room`).
     pub(crate) room: f32,
-    /// When the view began to glide out of that room.
-    leaving: Option<f64>,
+    /// The clock at the last frame's `App::release_room`.
+    room_at: f64,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -83,7 +87,7 @@ impl Default for Reader {
             thumb_shown: Live::new(0.0),
             band: 0.0,
             room: 0.0,
-            leaving: None,
+            room_at: 0.0,
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -733,33 +737,25 @@ impl App {
     }
 
     /// Runs before each frame: the page's end room follows the band down when it shrinks or
-    /// goes (RD-104). A view inside the room that goes glides out of it with the band's fade
-    /// first, so it never snaps. True when the room changed.
+    /// goes (RD-104), a little each frame, so a view at the page's end rides down with it and
+    /// never steps. It closes in as a glide lands, but never faster than `ROOM_SPEED`. A view
+    /// above the room it gives up does not move. True when the room changed.
     pub(crate) fn release_room(&mut self, tx: &mut Tx) -> bool {
         if !self.foot_shows() {
             self.reader.band = 0.0;
         }
-        let want = self.reader.band;
-        if self.reader.room <= want + 0.5 {
-            self.reader.leaving = None;
-            return false;
-        }
-        // The room is the page's, after a note's text (`editor::doc_scroll`).
-        let page = self.active.as_deref().is_some_and(|a| !self.note_locked(a));
-        let [offset, max, _, _] = self.reader.scroll.get();
-        let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
-        let to = max - (self.reader.room.max(base) - want.max(base));
         let now = self.now.get();
-        // A view held in the room, by a wheel still turning, gives it up after a second.
-        if page && offset > to + 0.5 && self.reader.leaving.is_none_or(|since| now - since < 1.0) {
-            if self.reader.leaving.is_none() {
-                self.reader.leaving = Some(now);
-                tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.14, 0.0));
-            }
-            return false;
+        let dt = (now - std::mem::replace(&mut self.reader.room_at, now)).clamp(0.0, 0.05) as f32;
+        // Only room past the page's own end room (PAGE-29, WR-86) shows.
+        let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
+        let (room, want) = (self.reader.room.max(base), self.reader.band.max(base));
+        if room <= want + 0.25 || crate::motion::reduced() {
+            self.reader.room = self.reader.band;
+            return room > want;
         }
-        self.reader.room = want;
-        self.reader.leaving = None;
+        let step = ((room - want) * (1.0 - (-dt / ROOM_EASE).exp())).min(ROOM_SPEED * dt);
+        self.reader.room = room - step;
+        tx.wake_after(std::time::Duration::ZERO);
         true
     }
 
