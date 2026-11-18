@@ -792,6 +792,11 @@ impl App {
         tx.wake_after(std::time::Duration::from_secs_f64(TOAST + 0.05));
     }
 
+    /// A toast shows: a message, or a delete's Undo.
+    pub(crate) fn toast_shows(&self) -> bool {
+        self.deleted.is_some() || self.reader.toast.is_some()
+    }
+
     /// Clears a toast or mark whose time is up. True when something went.
     pub(crate) fn expire_reader(&mut self, t: f64) -> bool {
         let mut changed = false;

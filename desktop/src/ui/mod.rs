@@ -41,6 +41,9 @@ pub struct V<'a> {
     pub vh: f32,
     /// Space the platform's own window buttons take at the trailing edge (Windows).
     pub trailing: f32,
+    /// The writer's caret line in window points, as last drawn, read only while a toast shows
+    /// (`editor::doc_scroll`): reading it runs the view again at each caret move.
+    pub caret: Option<[f32; 4]>,
 }
 
 impl V<'_> {
@@ -115,7 +118,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     s.view_h.set(vh);
     s.view_w.set(vw);
     map_page(s);
-    let v = V { s, p, dark, vw, vh, trailing };
+    let caret = (s.writing() && s.toast_shows()).then(|| cx.caret("editor")).flatten();
+    let v = V { s, p, dark, vw, vh, trailing, caret };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);

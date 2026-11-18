@@ -237,9 +237,11 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
         margin = below + clear;
     }
-    if s.writing() && (s.deleted.is_some() || s.reader.toast.is_some()) {
-        // While a toast shows, the line being typed stays above its band (`reader::toast_band`).
-        margin = margin.max(super::reader::TOAST_CLEAR);
+    // While a toast shows, the line being typed stays above its band, fade included
+    // (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room applies
+    // only while the caret is in the view's lower half, where the top edge is not in play.
+    if s.writing() && s.toast_shows() && v.caret.is_some_and(|c| c[1] + c[3] / 2.0 > v.vh / 2.0) {
+        margin = margin.max(super::reader::TOAST_BAND);
     }
     if margin > 0.0 {
         scroll = scroll.scroll_margin(margin);

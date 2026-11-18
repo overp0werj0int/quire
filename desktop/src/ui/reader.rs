@@ -259,21 +259,25 @@ fn toast_row(pill: El) -> El {
 
 /// How far the toast band's solid part reaches up from the note area's bottom edge: the
 /// tallest pill (32 px) and 16 px clear above it.
-pub const TOAST_CLEAR: f32 = TOAST_LIFT + 32.0 + 16.0;
+const TOAST_CLEAR: f32 = TOAST_LIFT + 32.0 + 16.0;
+
+/// The fade above the band's solid part.
+const TOAST_FADE: f32 = 32.0;
+
+/// How far the whole band, fade included, reaches up from the note area's bottom edge.
+pub const TOAST_BAND: f32 = TOAST_CLEAR + TOAST_FADE;
 
 /// While a toast shows, the page fades out under it, in both modes, so no line of the note
 /// reads behind or beside the pill: the page's colour from the note area's bottom edge to
 /// 16 px above the tallest pill (32 px), then a 32 px fade above that. Presses go through it to
 /// the page, and it fades in and out over 140 ms.
 pub fn toast_band(v: V) -> El {
-    const SOLID: f32 = TOAST_CLEAR;
-    const FADE: f32 = 32.0;
     let bg = Roles::new(v.p).bg;
-    let stops = [(0.0, bg.alpha(0.0)), (FADE / (SOLID + FADE), bg), (1.0, bg)];
+    let stops = [(0.0, bg.alpha(0.0)), (TOAST_FADE / TOAST_BAND, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
     el().key("toast-band")
         .pin(Some(0.0), None, Some(0.0), Some(0.0))
-        .h(SOLID + FADE)
+        .h(TOAST_BAND)
         .linear_gradient(std::f32::consts::PI, stops)
         .inert()
         .transition(rune::Transition::opacity().springs(fade))

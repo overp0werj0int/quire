@@ -3964,8 +3964,9 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// While a toast shows, the line being typed stays above the toast's band: typing on the
-    /// last line the view shows scrolls the few points it needs (RD-104).
+    /// While a toast shows, the line being typed stays above the toast's band, fade included:
+    /// typing on the last line the view shows scrolls the few points it needs, the current find
+    /// match clears it too, and the top of the view does not change (RD-104).
     #[test]
     fn the_line_being_typed_stays_above_a_toast() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -3997,9 +3998,50 @@ mod layer_matrix_tests {
             key(&mut rt, Key::Text(c.into()), Mods::default());
         }
         glide(&mut rt);
+        // The band is solid from 16 px above the pill and fades over the 32 px above that.
+        let fade_top = pill[1] - 16.0 - 32.0;
         let caret = rect(&rt, "caret-at").expect("the caret");
-        assert!(caret[1] + caret[3] <= pill[1] - 16.0, "the caret's line clears the band: caret {caret:?}, toast {pill:?}");
-        assert!(caret[1] + caret[3] > pill[1] - 16.0 - 40.0, "only the few points it needs: caret {caret:?}, toast {pill:?}");
+        assert!(caret[1] + caret[3] <= fade_top, "the caret's line clears the band's fade: caret {caret:?}, toast {pill:?}");
+        assert!(caret[1] + caret[3] > fade_top - 40.0, "only the few points it needs: caret {caret:?}, toast {pill:?}");
+        // The current find match clears it too.
+        key(&mut rt, Key::Command('f'), ctrl(false));
+        for c in ["Z", "Z", "Z"] {
+            key(&mut rt, Key::Text(c.into()), Mods::default());
+        }
+        rt.update(|s, tx| s.toast("Saved", tx));
+        key(&mut rt, Key::Enter, Mods::default());
+        glide(&mut rt);
+        assert!(rect(&rt, "toast").is_some(), "the toast still shows");
+        let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+        assert!(y + 12.0 <= fade_top, "the current match clears the band: match at y {y}, fade from {fade_top}");
+
+        // Nothing changes at the top of the view while a toast shows: typing on a line under
+        // the formatting toolbar's band scrolls it to the same place as without one (TBAND2).
+        let top = |toast: bool| -> (f32, f32) {
+            let (mut rt, _) = crate::bench::open(&dir, &"A line of the note.\n\n".repeat(200), Mode::Source);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            rt.update(|s, tx| {
+                s.cur_edit().set_selection(40 * 21, 40 * 21);
+                s.focus_editor(tx);
+            });
+            glide(&mut rt);
+            if toast {
+                rt.update(|s, tx| s.toast("Saved", tx));
+                settle(&mut rt);
+            }
+            let view = rect(&rt, "doc-scroll").expect("the writer's view");
+            let caret_top = |rt: &Runtime<App>| rect(rt, "caret-at").map_or(f32::NAN, |r| r[1]);
+            rt.wheel(640.0, 400.0, view[1] + 30.0 - caret_top(&rt));
+            glide(&mut rt);
+            let before = caret_top(&rt);
+            key(&mut rt, Key::Text("Z".into()), Mods::default());
+            glide(&mut rt);
+            (before, caret_top(&rt))
+        };
+        let (plain, with_toast) = (top(false), top(true));
+        assert!(plain.1 > plain.0 + 5.0, "the case puts the caret's line under the toolbar's band: {plain:?}");
+        assert!((with_toast.0 - plain.0).abs() < 0.5 && (with_toast.1 - plain.1).abs() < 0.5, "the top edge with a toast {with_toast:?}, without {plain:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

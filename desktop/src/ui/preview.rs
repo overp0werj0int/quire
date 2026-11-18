@@ -292,7 +292,7 @@ pub fn preview(v: V) -> El {
             estimate,
             move |_: &App, i| Cow::Owned(doc.blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
             move |s: &App, i| {
-                let v = V { s, p, dark, vw, vh, trailing };
+                let v = V { s, p, dark, vw, vh, trailing, caret: None };
                 let doc = rows.clone();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
