@@ -313,7 +313,7 @@ pub(super) fn band_h(v: V) -> Option<f32> {
 /// the user is on comes above it (`App::band_laid_out`).
 pub fn toast_band(v: V) -> Option<El> {
     let h = band_h(v)?;
-    let caret = v.caret;
+    let (caret, find_at) = (v.caret, v.find_at);
     let bg = Roles::new(v.p).bg;
     let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
@@ -324,7 +324,7 @@ pub fn toast_band(v: V) -> Option<El> {
             .linear_gradient(std::f32::consts::PI, stops)
             .inert()
             .transition(rune::Transition::opacity().springs(fade))
-            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, tx)),
+            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, tx)),
     )
 }
 

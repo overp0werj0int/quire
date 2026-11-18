@@ -43,6 +43,9 @@ pub struct V<'a> {
     /// The writer's caret line in window points, as last drawn, read only while a toast shows
     /// (`editor::doc_scroll`): reading it runs the view again at each caret move.
     pub caret: Option<[f32; 4]>,
+    /// The writer's current find match where the page lays it out, unscrolled, read only while
+    /// a toast shows with find open (`App::band_laid_out`).
+    pub find_at: Option<[f32; 4]>,
 }
 
 impl V<'_> {
@@ -118,7 +121,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     s.view_w.set(vw);
     map_page(s);
     let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
-    let v = V { s, p, dark, vw, vh, trailing, caret };
+    let find_at = (s.writing() && s.foot_shows() && s.find_query().is_some()).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
+    let v = V { s, p, dark, vw, vh, trailing, caret, find_at };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);

@@ -4685,6 +4685,62 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// FINDREV: with find open in the writer, find's field has the keyboard, so a toast goes by
+    /// where the page lays out the current match. The view moves only for a match in view and
+    /// under the band, by the least scroll; a match clear of the band or out of view stays put.
+    #[test]
+    fn a_toast_moves_the_writer_only_for_a_match_under_its_band() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findrev-{}", std::process::id()));
+        let text: String = (0..200).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| {
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("Line 120 of");
+            s.find_changed(tx);
+        });
+        glide(&mut rt);
+        glide(&mut rt);
+        let view = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("doc-scroll")).expect("the writer's view").rect;
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = 0.0;
+            rt.update(|s, _| at = s.reader.scroll.get()[0]);
+            at
+        };
+        // Puts the match's middle at window y `to`, shows a toast, and gives how far the view
+        // moved and where the band starts.
+        let mut toast_with_match_at = |to: f32| {
+            rt.update(|s, _| s.reader.toast = None);
+            glide(&mut rt);
+            let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+            rt.update(|s, tx| {
+                let at = s.reader.scroll.get()[0];
+                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + y - to);
+            });
+            glide(&mut rt);
+            let before = offset(&mut rt);
+            rt.update(|s, tx| s.toast("Saved", tx));
+            glide(&mut rt);
+            let band = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toast-band") && !e.exiting).expect("the band").rect;
+            (offset(&mut rt) - before, band[1], rt.find(crate::reader::FIND_CUR).map(|m| m.1))
+        };
+        let (moved, ..) = toast_with_match_at(view[1] + 60.0);
+        assert!(moved.abs() < 0.5, "a match high in the view stays put: moved {moved}");
+        let (moved, ..) = toast_with_match_at(view[1] + view[3] / 2.0);
+        assert!(moved.abs() < 0.5, "a match in the middle stays put: moved {moved}");
+        let (moved, ..) = toast_with_match_at(view[1] + view[3] + 900.0);
+        assert!(moved.abs() < 0.5, "a match out of view below stays out: moved {moved}");
+        let (moved, ..) = toast_with_match_at(view[1] - 900.0);
+        assert!(moved.abs() < 0.5, "a match out of view above stays out: moved {moved}");
+        let (moved, band, y) = toast_with_match_at(view[1] + view[3] - 30.0);
+        let y = y.expect("the match is drawn");
+        // `find` gives the middle of the match's line, 31 pt tall in the writer at its default size.
+        assert!(moved > 0.5 && y < band && y + 20.0 > band, "a match under the band comes just above it: moved {moved}, match at {y}, band from {band}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
     /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
     /// inside the list, and each end of the list leaves room for it.

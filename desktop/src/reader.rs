@@ -671,9 +671,11 @@ impl App {
 
     /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
     /// what the user is on comes above it at once, by the least scroll: the caret's line in the
-    /// writer (`caret`, as last drawn), else the current find match. Nothing scrolls when the
-    /// band shrinks, when typewriter scrolling holds the caret, or when the caret is not in view.
-    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, tx: &mut Tx) {
+    /// writer (`caret`, as last drawn), else the current find match (`find_at` in the writer,
+    /// where the page lays it out before scrolling). Nothing scrolls when the band shrinks, when
+    /// typewriter scrolling holds the caret, or when what the user is on is out of view or clear
+    /// of the band.
+    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, tx: &mut Tx) {
         let grew = h > self.reader.band + 0.5;
         self.reader.band = h;
         tx.live_only();
@@ -682,9 +684,15 @@ impl App {
         }
         let [offset, _, vh, _] = self.reader.scroll.get();
         let view = y + h - vh;
-        if let Some([_, top, _, height]) = caret {
-            if !self.settings().typewriter_scroll && top < y + h && top + height > view && top + height > y {
+        // A line from window y `top`, `height` tall, in the view and under the band, comes up.
+        let lift = |top: f32, height: f32, tx: &mut Tx| {
+            if top < y + h && top + height > view && top + height > y {
                 tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
+            }
+        };
+        if let Some([_, top, _, height]) = caret {
+            if !self.settings().typewriter_scroll {
+                lift(top, height, tx);
             }
             return;
         }
@@ -692,9 +700,11 @@ impl App {
             return;
         }
         if self.writing() {
-            // The writer's find leaves the keyboard in find's field, so the match is only drawn,
-            // and the view keeps the band's room at its edges while one shows (`doc_scroll`).
-            return tx.scroll_into_view(FIND_CUR);
+            // Find's field has the keyboard, so the editor has no caret to go by.
+            if let Some([_, top, _, height]) = find_at {
+                lift(top - offset, height, tx);
+            }
+            return;
         }
         let m = self.find_matches();
         let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };

@@ -241,13 +241,9 @@ fn doc_scroll(v: V) -> El {
     // While a toast or the notice shows, the line being typed stays above its band, fade
     // included (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room
     // applies only while the caret is in the view's lower half, where the top edge is not in
-    // play, or while find's field has the keyboard and the current match is what shows.
-    let low = match v.caret {
-        Some(c) => c[1] + c[3] / 2.0 > v.vh / 2.0,
-        None => s.find_query().is_some(),
-    };
+    // play.
     if s.writing()
-        && low
+        && v.caret.is_some_and(|c| c[1] + c[3] / 2.0 > v.vh / 2.0)
         && let Some(band) = super::reader::band_h(v)
     {
         margin = margin.max(band);
