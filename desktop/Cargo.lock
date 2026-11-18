@@ -38,7 +38,7 @@ dependencies = [
 [[package]]
 name = "accesskit_macos"
 version = "0.27.2"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -69,7 +69,7 @@ dependencies = [
 [[package]]
 name = "accesskit_windows"
 version = "0.35.2"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -171,6 +171,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "ar_archive_writer"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "523e5e187fff36fcb8d1d19ccf0ca4ca43ec3d158316057f66dc6f72716bc5ec"
+dependencies = [
+ "object",
 ]
 
 [[package]]
@@ -2267,6 +2276,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2385,7 +2403,7 @@ checksum = "9c4482d912d7671a7cd2089794f90ef3bb5f5f8c738230fb0fcd50fa020f0ed3"
 [[package]]
 name = "parley_engine"
 version = "0.12.0"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "fontique",
  "harfrust",
@@ -2676,7 +2694,7 @@ dependencies = [
 [[package]]
 name = "procwatch"
 version = "0.1.0"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "libc",
 ]
@@ -2686,6 +2704,16 @@ name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
+
+[[package]]
+name = "psm"
+version = "0.1.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dcd034599e63b970727f70d79e02d62390a4a84f7c6b827c27c46d5ac3fa622"
+dependencies = [
+ "ar_archive_writer",
+ "cc",
+]
 
 [[package]]
 name = "pulldown-cmark"
@@ -2956,13 +2984,14 @@ dependencies = [
 [[package]]
 name = "rune"
 version = "0.0.1"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "accesskit",
  "accesskit_macos",
  "accesskit_unix",
  "accesskit_windows",
  "arboard",
+ "ash",
  "blake3",
  "block2 0.5.1",
  "block2 0.6.2",
@@ -3010,7 +3039,7 @@ dependencies = [
  "spellbook",
  "swash",
  "taffy",
- "tiny-skia-path 0.11.4 (git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c)",
+ "tiny-skia-path 0.11.4 (git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b)",
  "tokio",
  "unicode-segmentation",
  "wasm-bindgen",
@@ -3037,7 +3066,7 @@ dependencies = [
 [[package]]
 name = "rune-highlights"
 version = "0.0.1"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "unicode-ident",
  "wasmparser",
@@ -3046,12 +3075,12 @@ dependencies = [
 [[package]]
 name = "rune-motion"
 version = "0.1.0"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 
 [[package]]
 name = "rune-staging"
 version = "0.0.1"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "wgpu",
 ]
@@ -3059,8 +3088,9 @@ dependencies = [
 [[package]]
 name = "rune-taffy"
 version = "0.0.1"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
+ "stacker",
  "taffy",
 ]
 
@@ -3450,6 +3480,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "stacker"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "707f49d46706bacf8a2b00d51dace3f9de527c13eec3778f570c411f89e69967"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "psm",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3640,7 +3683,7 @@ dependencies = [
 [[package]]
 name = "tiny-skia-path"
 version = "0.11.4"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "arrayref",
  "bytemuck",
@@ -4264,7 +4307,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/overp0werj0int/rune?rev=4d22afd21fca2d79d5f7154d19a853d72748aa1c#4d22afd21fca2d79d5f7154d19a853d72748aa1c"
+source = "git+https://github.com/overp0werj0int/rune?rev=a67b9a2d5a7a529cc0f3720aab3693d6beefd98b#a67b9a2d5a7a529cc0f3720aab3693d6beefd98b"
 dependencies = [
  "android_system_properties",
  "arrayvec",

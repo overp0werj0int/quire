@@ -10,15 +10,19 @@ name = "quire"
 path = "src/main.rs"
 
 [dependencies]
-# Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 1dba3423 plus
-# eleven commits: what the per-line editor, its right-click menu and its hanging marks need
-# (decision 0009), the edge scroll for a text field's drag selection, the Chrome-style touchpad
-# fling (docs/reader-writer decision 0012), highlights painted on their own paragraph, with their
-# letters under the mark on an indented line (find in source), and a modal that keeps chosen
-# elements live to the pointer (the drawers' title bar).
+# Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 4a2e4379
+# (merged 2026-11-18) plus what Quire needs and upstream does not have: paragraph styles for the
+# per-line editor's hanging marks (decision 0009), a field's caret moved before its right-click
+# menu opens, the keyboard menu opened below the caret with its first item marked, the edge
+# scroll for a text field's drag selection, the Chrome-style touchpad fling (docs/reader-writer
+# decision 0012), a modal that keeps chosen elements live to the pointer (the drawers' title
+# bar), and a right-click outside a modal closing it. Four earlier fork commits went at that
+# merge because upstream now does their work: highlights on their own paragraph, a keyed
+# highlight found in a by-paragraph field, letters coloured under a mark on an indented line,
+# and the by-paragraph span lookup and blank-line fix.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -33,7 +37,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -45,12 +49,12 @@ embed-resource = "3"
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b" }
 # Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "4d22afd21fca2d79d5f7154d19a853d72748aa1c" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "a67b9a2d5a7a529cc0f3720aab3693d6beefd98b" }
 
 [profile.dev]
 opt-level = 1
