@@ -149,15 +149,37 @@ fn actions(v: V, mut r: El) -> El {
     r
 }
 
+/// The width of zen mode's pill: its buttons for the current mode (`actions`), the rule
+/// between them, their gaps and its padding.
+fn pill_width(v: V) -> f32 {
+    let buttons = if !v.has_doc() { 0.0 } else if v.s.mode == Mode::Preview { 6.0 } else { 5.0 };
+    let rule = if v.has_doc() { 5.0 } else { 0.0 };
+    buttons * (BUTTON + 6.0) + rule + 8.0
+}
+
 /// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
 /// nothing covers it; the window dots and a button to leave show under the pointer.
 fn focus_bar(v: V) -> El {
     let p = v.p;
     let wc = v.s.word_count().words;
-    let words = format!("{} {} · esc to leave zen mode", super::editor::group(wc), if wc == 1 { "word" } else { "words" });
+    let count = format!("{} {}", super::editor::group(wc), if wc == 1 { "word" } else { "words" });
+    // The hint stays clear of the pill and the dots, which show under the pointer. It is
+    // centred on the window when that leaves the pill its room, else centred in the room left
+    // of the pill. A window too narrow even for that shows only the word count.
+    let right = pill_width(v) + 10.0 + v.trailing + 12.0;
+    let left = 14.0 + 52.0 + 8.0;
+    let full = format!("{count} · esc to leave zen mode");
+    let w = rune::text::measure(&full, &[], sans(12.0, 400.0), None).0;
+    let (words, left) = if w <= v.vw - 2.0 * right {
+        (full, right)
+    } else {
+        (if w <= v.vw - left - right { full } else { count }, left)
+    };
     let hint = row()
         .key("focus-hint")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+        .pl(left)
+        .pr(right)
         .justify_center()
         .center_y()
         .inert()
