@@ -96,8 +96,8 @@ pub fn outline(v: V) -> El {
                 .hover_group()
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
-                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(bp.as_str()))
-                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(bp.as_str())),
+                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
+                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp))),
         );
     }
     if back.is_empty() {

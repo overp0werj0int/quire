@@ -418,7 +418,7 @@ pub(super) fn crumb(v: V) -> El {
                 .help("Rename note")
                 .cursor(rune::Cursor::Text)
                 .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
-                .child(text(md::base(&active).to_string()).font(style).color(p.ink2).truncate().shrink().min_w(0.0))
+                .child(text(md::base(&active).to_string()).font(style).color(p.ink2).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(&active)))
                 .child(label(".md", style, quiet.faint)),
         ),
         Some(edit) => {

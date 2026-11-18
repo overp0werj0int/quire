@@ -554,8 +554,8 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// C7: a name that shows in full has no tooltip; a name cut short offers its whole path, in
-    /// the tree and in the Open list.
+    /// C7: a name that shows in full has no tooltip; a name cut short offers it whole, without
+    /// its extension, in the tree and in the Open list.
     #[test]
     fn a_name_tooltip_shows_only_when_the_name_is_cut() {
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -575,7 +575,7 @@ pub(crate) mod scroll_tests {
             assert!(tips(&rt, row).is_empty(), "{row} shows its whole name, so no tooltip");
         }
         for row in [format!("file:{long}"), format!("tab:{long}")] {
-            assert_eq!(tips(&rt, &row), [long], "{row} is cut, so it offers the whole name");
+            assert_eq!(tips(&rt, &row), [long.trim_end_matches(".md")], "{row} is cut, so it offers the whole name");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -7,7 +7,7 @@ use rune::{El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, 
 
 use super::V;
 use super::panel;
-use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, Control, FOLDER_PLUS, PLUS, SEARCH, floating, label};
+use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, Control, FOLDER_PLUS, PLUS, SEARCH, floating, label, name_tip};
 use crate::folders::{MenuOn, row_key};
 use crate::layer::MenuOf;
 use crate::app::{App, Panel, Sel};
@@ -201,7 +201,7 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
                 s.open_note(&open_file);
             }
         })
-        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(crate::store::tilde(file)))
+        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(&crate::store::tilde(file))))
         .child(close)
 }
 
@@ -234,7 +234,7 @@ fn open_row(v: V, path: &str) -> El {
                 s.open_file(&open_path, None, tx);
             }
         })
-        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(path))
+        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(path)))
         .child(close)
 }
 
@@ -371,8 +371,8 @@ fn tree_row(v: V, key: &str, name: &str, whole: &str, depth: usize, folder: bool
     if folder {
         r = r.expanded(open);
     }
-    // A name that shows in full needs no tooltip; one cut short offers its whole path (C7).
-    r.child(text(name).font(nav(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(whole))
+    // A name that shows in full needs no tooltip; one cut short offers it whole, with its folder (C7).
+    r.child(text(name).font(nav(panel::BODY, folder)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(whole)))
 }
 
 /// The row where a new folder gets its name.

@@ -243,6 +243,41 @@ pub fn settings_seg_literal(v: super::V, key: &str, segs: Vec<Seg>) -> El {
     segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, literal(12.0), v.p.side, 8.0)
 }
 
+/// The widest line of a cut name's tooltip, inside the tooltip's 300 pt.
+const TIP_W: f32 = 280.0;
+
+/// The tooltip of a cut note or folder name (C7), in two lines at most. A name that fits one
+/// line has its folder on the next, cut at its start; a longer name takes both lines, cut with
+/// "…" at its end.
+pub fn name_tip(path: &str) -> String {
+    let style = super::styles::tooltip();
+    let size = |t: &str| rune::text::measure(t, &[], style, Some(TIP_W));
+    let line = size("A").1;
+    let cut = |t: &str, head: bool, fits: &dyn Fn(&str) -> bool| -> String {
+        if fits(t) {
+            return t.to_string();
+        }
+        let chars: Vec<char> = t.chars().collect();
+        let make = |n: usize| -> String {
+            let part: String = if head { chars[chars.len() - n..].iter().collect() } else { chars[..n].iter().collect() };
+            if head { format!("…{part}") } else { format!("{}…", part.trim_end()) }
+        };
+        let (mut lo, mut hi) = (0, chars.len());
+        while lo < hi {
+            let mid = (lo + hi).div_ceil(2);
+            if fits(&make(mid)) { lo = mid } else { hi = mid - 1 }
+        }
+        make(lo)
+    };
+    let one = |t: &str| size(t).1 <= line + 0.5;
+    let two = |t: &str| size(t).1 <= 2.0 * line + 0.5;
+    let name = crate::md::base(path);
+    match crate::md::dir(path) {
+        dir if !dir.is_empty() && one(name) => format!("{name}\n{}", cut(&format!("in {dir}"), true, &one)),
+        _ => cut(name, false, &two),
+    }
+}
+
 /// A switch drawn 36 by 20 that takes a press over 36 by 28.
 pub fn switch(p: &Pal, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     // The drawn track is 36 × 20. The control around it is 28 high, so it takes a press 4 pt
@@ -323,6 +358,7 @@ pub fn dots(p: &Pal) -> El {
 #[cfg(test)]
 mod tests {
     use crate::roles::Roles;
+    use super::{TIP_W, name_tip};
     use crate::theme::{THEMES, contrast, theme_pal};
 
     /// D4: the menu's shadow appears only in `floating`, so no menu or popup can take the
@@ -356,5 +392,23 @@ mod tests {
             let old = c.bg.mix(ring.alpha(1.0), ring.a);
             assert!(contrast(edge, c.bg) > contrast(old, c.bg), "{}: the edge shows less than the shadow's ring", t.id);
         }
+    }
+
+    /// C7: a cut name's tooltip is the name, not the file path, in two lines at most: a short
+    /// name has its folder under it, cut at its start; a long name takes both lines and ends "…".
+    #[test]
+    fn a_cut_names_tooltip_is_two_lines_at_most() {
+        let deep = "Projects/Archive/2025/Quarterly reviews and retrospectives for the platform team/Q3";
+        let tip = name_tip(&format!("{deep}/Plan.md"));
+        let (name, folder) = tip.split_once('\n').expect("the folder on its own line");
+        assert_eq!(name, "Plan");
+        assert!(folder.starts_with('…') && folder.ends_with("/Q3"), "{folder}");
+        let long = "A moderately long but perfectly normal note title about planning the next product release, again and again";
+        let tip = name_tip(&format!("Drafts/{long}.md"));
+        assert!(!tip.contains('\n') && !tip.contains("Drafts") && tip.ends_with('…'), "{tip}");
+        let style = super::super::styles::tooltip();
+        let line = rune::text::measure("A", &[], style, None).1;
+        assert!(rune::text::measure(&tip, &[], style, Some(TIP_W)).1 <= 2.0 * line + 0.5, "{tip}");
+        assert_eq!(name_tip("Plan.md"), "Plan");
     }
 }
