@@ -151,7 +151,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if s.dragging.as_ref().is_some_and(|d| d.active) {
         root = root.child(sidebar::drag_ghost(v));
     }
-    if let Some(n) = &s.notice {
+    // In the folder's window the notice sits in the note area, with the toast (`editor::body`).
+    if let Some(n) = s.notice.as_deref().filter(|_| !v.is_vault()) {
         root = root.child(notice(v, n));
     }
     root = root.children(layer::layers(v));
@@ -215,23 +216,23 @@ fn map_page(s: &App) {
     map.set_rows(s.doc_hash(), keys, crate::page::gaps(b, &doc.blocks), crate::page::row_estimate(b));
 }
 
-fn notice(v: V, msg: &str) -> El {
+/// The notice: what went wrong, at the note area's foot where a toast shows (`reader::foot_row`).
+pub(super) fn notice(v: V, msg: &str) -> El {
     let p = v.p;
-    widgets::floating(row(), &Roles::new(p))
+    let card = widgets::floating(row(), &Roles::new(p))
         .key("notice")
-        .pin(None, None, Some(16.0), Some(40.0))
         .w(360.0)
         .items_start()
         .gap(12.0)
         .padding(12.0)
         .radius(9.0)
-        .raise()
         .child(widgets::label(msg, styles::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
         .child(
             widgets::label("dismiss", styles::sans(11.5, 400.0), p.mute)
                 .key("notice-x")
                 .on_press(|s: &mut App| s.notice = None),
-        )
+        );
+    reader::foot_row(v, "notice-row", reader::notice_lift(v), card)
 }
 
 #[cfg(test)]

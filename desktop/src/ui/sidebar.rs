@@ -17,6 +17,9 @@ use crate::roles::{Roles, mix};
 use super::styles::{keys, nav};
 use crate::theme;
 
+/// The sidebar's width, docked or in its drawer.
+pub(super) const W: f32 = 248.0;
+
 /// The size of a sidebar button and of a panel tab: the smallest pointer target. The drawn
 /// icons stay small inside it.
 const TARGET: f32 = 24.0;
@@ -161,7 +164,7 @@ pub fn sidebar(v: V) -> El {
     // The sidebar runs the window's full height, its edge a line from top to bottom.
     let side = super::focus::pane(col(), crate::focus::Pane::Sidebar)
         .key("sidebar")
-        .w(248.0)
+        .w(W)
         .h_full()
         .min_h(0.0)
         .border_sides([0.0, 1.0, 0.0, 0.0], p.line)
@@ -654,7 +657,7 @@ fn snip_label(line: &str) -> String {
 /// A search snippet's room: at most this many characters ahead of the match, and the characters
 /// a line of the panel holds, its family being monospaced at 0.6 em.
 const SNIP_BEFORE: usize = 16;
-const SNIP_COLS: usize = ((248.0 - panel::TEXT_X - panel::RIGHT) / (panel::BODY_SMALL * 0.6)) as usize - 1;
+const SNIP_COLS: usize = ((W - panel::TEXT_X - panel::RIGHT) / (panel::BODY_SMALL * 0.6)) as usize - 1;
 
 fn tags_panel(v: V) -> El {
     let c = Roles::panel(v.p);

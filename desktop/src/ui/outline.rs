@@ -12,7 +12,7 @@ use crate::md;
 use crate::roles::Roles;
 
 /// The panel's width, and the side padding of its counts and footer.
-const PANEL_W: f32 = 236.0;
+pub(super) const PANEL_W: f32 = 236.0;
 const PANEL_X: f32 = 16.0;
 
 pub fn outline(v: V) -> El {

@@ -3964,6 +3964,37 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A toast and the notice centre in the part of the note area no drawer covers, at least
+    /// 12 px clear of the drawer's edge and of the window's, on either side, while the toast's
+    /// band keeps the note area's full width (RD-98, RD-104).
+    #[test]
+    fn foot_pills_stay_clear_of_a_drawer() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-foot-pills-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        for (drawer, toggle) in [("sidebar-over", "toggle-left"), ("outline-over", "toggle-right")] {
+            let mut rt = garden(&dir, Mode::Preview);
+            rt.set_viewport((640.0, 800.0), 1.0);
+            settle(&mut rt);
+            rt.update(|s, tx| {
+                s.toast("Copied the whole note", tx);
+                s.notice = Some("A folder named Docs is already there.".into());
+            });
+            press_key(&mut rt, toggle, false);
+            glide(&mut rt);
+            let d = rect(&rt, drawer).unwrap_or_else(|| panic!("the {drawer} is open"));
+            let (from, to) = if drawer == "sidebar-over" { (d[0] + d[2], 640.0) } else { (0.0, d[0]) };
+            for k in ["toast", "notice"] {
+                let r = rect(&rt, k).unwrap_or_else(|| panic!("{drawer}: the {k} shows"));
+                assert!(r[0] >= from + 12.0 && r[0] + r[2] <= to - 12.0, "{drawer}: the {k} {r:?} sits in x {from} to {to}, 12 px clear");
+                assert!((r[0] + r[2] / 2.0 - (from + to) / 2.0).abs() < 1.0, "{drawer}: the {k} {r:?} centres in x {from} to {to}");
+            }
+            let band = rect(&rt, "toast-band").expect("the toast's band");
+            assert!(band[0] <= 0.5 && band[0] + band[2] >= 639.5, "{drawer}: the band keeps the full width: {band:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// While a toast shows, the line being typed stays above the toast's band, fade included:
     /// typing on the last line the view shows scrolls the few points it needs, the current find
     /// match clears it too, and the top of the view does not change (RD-104).

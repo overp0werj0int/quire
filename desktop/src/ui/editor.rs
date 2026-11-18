@@ -82,6 +82,9 @@ pub fn body(v: V) -> El {
     if let Some(toast) = toast {
         area = area.child(super::reader::toast_band(v)).child(toast);
     }
+    if let Some(n) = &v.s.notice {
+        area = area.child(super::notice(v, n));
+    }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     // The outline slides in from the right and out to it over 160 ms (WR-99).
     let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));

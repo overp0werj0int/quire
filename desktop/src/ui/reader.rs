@@ -244,22 +244,33 @@ pub(super) fn help_sheet(v: V) -> Card {
 /// A toast's place: this far above the note area's bottom edge (RD-98).
 const TOAST_LIFT: f32 = 28.0;
 
+/// The tallest pill at the note area's foot.
+const PILL_H: f32 = 32.0;
+
 /// A toast (RD-98): a pill at the bottom centre of the note area, `TOAST_LIFT` above its bottom
 /// edge, over `toast_band`.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
-    toast_row(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(sans(13.0, 400.0)).color(c.text).truncate().shrink().min_w(0.0)))
+    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(sans(13.0, 400.0)).color(c.text).truncate().shrink().min_w(0.0)))
 }
 
-/// The row that holds a toast, 16 px clear of the note area's sides, so the pill always fits
-/// and its text is cut instead.
-fn toast_row(pill: El) -> El {
-    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(TOAST_LIFT)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
+/// Where the notice sits: in the toast's place, or just above the toast while one shows.
+pub(super) fn notice_lift(v: V) -> f32 {
+    if v.is_vault() && v.s.toast_shows() { TOAST_LIFT + PILL_H + 8.0 } else { TOAST_LIFT }
+}
+
+/// The row that holds a pill at the note area's foot, `lift` above it: a toast, a toast with
+/// Undo, or the notice. The pill centres in the part of the note area no drawer covers, 16 px
+/// clear of the drawer's edge and of the window's, and is cut when that room is too small.
+pub(super) fn foot_row(v: V, key: &'static str, lift: f32, pill: El) -> El {
+    let left = if v.left_over() { super::sidebar::W } else { 0.0 };
+    let right = if v.right_over() { super::outline::PANEL_W } else { 0.0 };
+    row().key(key).pin(Some(left), None, Some(right), Some(lift)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
 }
 
 /// How far the toast band's solid part reaches up from the note area's bottom edge: the
-/// tallest pill (32 px) and 16 px clear above it.
-const TOAST_CLEAR: f32 = TOAST_LIFT + 32.0 + 16.0;
+/// tallest pill and 16 px clear above it.
+const TOAST_CLEAR: f32 = TOAST_LIFT + PILL_H + 16.0;
 
 /// The fade above the band's solid part.
 const TOAST_FADE: f32 = 32.0;
@@ -312,7 +323,7 @@ pub fn undo_toast(v: V, name: &str) -> El {
         .child(text(name.to_string()).font(body).color(c.text).truncate().shrink().min_w(0.0))
         .child(text(" to the trash").font(body).color(c.text));
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
-    toast_row(popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
 /// The progress line (RD-37, RD-38, WR-178): 2 px of accent along the top of the note area,
