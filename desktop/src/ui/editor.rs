@@ -225,13 +225,24 @@ fn doc_scroll(v: V) -> El {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).
         scroll = scroll.scroll_anchor();
     }
+    // The room the caret keeps from the view's edges while you type. Rune keeps the same room
+    // at both edges.
+    let mut margin: f32 = 0.0;
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
         // float on a clear band. The caret stays below them while you type.
         let below = if find_row(v) { find_top(v) + super::reader::FIND_H } else { TOOLBAR_TOP + TOOLBAR_H };
         // The caret, and a match find shows, stay below the band's fade.
         let clear = if find_row(v) { FIND_FADE_OUT } else { 12.0 };
-        scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0))).scroll_margin(below + clear);
+        scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
+        margin = below + clear;
+    }
+    if s.writing() && (s.deleted.is_some() || s.reader.toast.is_some()) {
+        // While a toast shows, the line being typed stays above its band (`reader::toast_band`).
+        margin = margin.max(super::reader::TOAST_CLEAR);
+    }
+    if margin > 0.0 {
+        scroll = scroll.scroll_margin(margin);
     }
     scroll.child(content)
 }

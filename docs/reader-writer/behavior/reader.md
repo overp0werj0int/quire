@@ -171,7 +171,7 @@ reading them:
 
 - **RD-102** [adapted: 0001] [verify: script] A click on a `[[wiki]]` link in the page opens the note it names in a tab, using Quire's name index. A name with no note creates that note, as Quire does today. omarky has no wiki links (`quire: desktop/src/app.rs`, `open_link`).
 - **RD-103** [adapted: 0001] [verify: script] Each tab keeps its own reading position in preview. Switching back to a tab shows the page where it was left. Find closes on a tab switch. omarky has one file per window, so the window kept the position.
-- **RD-104** [quire] [verify: -] While a toast shows, in either mode, the page fades out under it. A band of the page's colour runs from the note area's bottom edge to 16 px above the pill, and fades out over 32 px above that. No line of the note reads behind or beside the pill. The toast keeps its place (RD-98). The band lets presses through to the page, and fades in and out over 140 ms. omarky's toast sat over the text (`components/Toast.qml:18-40`).
+- **RD-104** [quire] [verify: -] While a toast shows, in either mode, the page fades out under it. A band of the page's colour runs from the note area's bottom edge to 16 px above the pill, and fades out over 32 px above that. No line of the note reads behind or beside the pill. The toast keeps its place (RD-98). The band lets presses through to the page, and fades in and out over 140 ms. In the writer the line being typed stays above the band: typing on a line under it scrolls the view the few points it needs, as the toolbar's band keeps the caret below it. omarky's toast sat over the text (`components/Toast.qml:18-40`).
 
 ## Open questions
 

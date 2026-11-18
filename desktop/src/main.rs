@@ -3964,6 +3964,45 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// While a toast shows, the line being typed stays above the toast's band: typing on the
+    /// last line the view shows scrolls the few points it needs (RD-104).
+    #[test]
+    fn the_line_being_typed_stays_above_a_toast() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toast-caret-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let (mut rt, _) = crate::bench::open(&dir, &"A line of the note.\n\n".repeat(200), Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        key(&mut rt, Key::End, ctrl(false));
+        glide(&mut rt);
+        rt.update(|s, tx| s.toast("Saved", tx));
+        settle(&mut rt);
+        let pill = rect(&rt, "toast").expect("the toast shows");
+        // The wheel puts the caret's line on the last line the view shows, under the band.
+        let bottom = |rt: &Runtime<App>| rect(rt, "caret-at").map_or(f32::NAN, |r| r[1] + r[3]);
+        let want = pill[1] - 16.0 + 10.0;
+        let dy = want - bottom(&rt);
+        rt.wheel(640.0, 400.0, dy);
+        glide(&mut rt);
+        if (bottom(&rt) - want).abs() > (dy.abs() - 1.0).max(1.0) {
+            rt.wheel(640.0, 400.0, -2.0 * dy);
+            glide(&mut rt);
+        }
+        let before = bottom(&rt);
+        assert!(before > pill[1] - 16.0 && before < pill[1], "the case puts the caret's line under the band: caret to {before}, toast {pill:?}");
+        for c in ["Z", "Z", "Z"] {
+            key(&mut rt, Key::Text(c.into()), Mods::default());
+        }
+        glide(&mut rt);
+        let caret = rect(&rt, "caret-at").expect("the caret");
+        assert!(caret[1] + caret[3] <= pill[1] - 16.0, "the caret's line clears the band: caret {caret:?}, toast {pill:?}");
+        assert!(caret[1] + caret[3] > pill[1] - 16.0 - 40.0, "only the few points it needs: caret {caret:?}, toast {pill:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A window on a small folder, in preview with the outline docked: the note and a folder
     /// `Box` with two notes, and a tag in each.
     fn garden(dir: &std::path::Path, mode: Mode) -> Runtime<App> {
