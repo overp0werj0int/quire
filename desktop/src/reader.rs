@@ -52,6 +52,11 @@ pub struct Reader {
     pub thumb_shown: Live<f32>,
     /// How tall the toast band last laid out, 0 while no pill shows (RD-104).
     pub(crate) band: f32,
+    /// The room after the page's last line that the band has asked for (RD-104). It stays
+    /// after the band shrinks or goes until the view has left it (`App::release_room`).
+    pub(crate) room: f32,
+    /// When the view began to glide out of that room.
+    leaving: Option<f64>,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -77,6 +82,8 @@ impl Default for Reader {
             thumb: Live::new([0.0; 4]),
             thumb_shown: Live::new(0.0),
             band: 0.0,
+            room: 0.0,
+            leaving: None,
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -678,6 +685,7 @@ impl App {
     pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, tx: &mut Tx) {
         let grew = h > self.reader.band + 0.5;
         self.reader.band = h;
+        self.reader.room = self.reader.room.max(h);
         tx.live_only();
         if !grew {
             return;
@@ -722,6 +730,37 @@ impl App {
         } else {
             tx.scroll_center(FIND_CUR);
         }
+    }
+
+    /// Runs before each frame: the page's end room follows the band down when it shrinks or
+    /// goes (RD-104). A view inside the room that goes glides out of it with the band's fade
+    /// first, so it never snaps. True when the room changed.
+    pub(crate) fn release_room(&mut self, tx: &mut Tx) -> bool {
+        if !self.foot_shows() {
+            self.reader.band = 0.0;
+        }
+        let want = self.reader.band;
+        if self.reader.room <= want + 0.5 {
+            self.reader.leaving = None;
+            return false;
+        }
+        // The room is the page's, after a note's text (`editor::doc_scroll`).
+        let page = self.active.as_deref().is_some_and(|a| !self.note_locked(a));
+        let [offset, max, _, _] = self.reader.scroll.get();
+        let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
+        let to = max - (self.reader.room.max(base) - want.max(base));
+        let now = self.now.get();
+        // A view held in the room, by a wheel still turning, gives it up after a second.
+        if page && offset > to + 0.5 && self.reader.leaving.is_none_or(|since| now - since < 1.0) {
+            if self.reader.leaving.is_none() {
+                self.reader.leaving = Some(now);
+                tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.14, 0.0));
+            }
+            return false;
+        }
+        self.reader.room = want;
+        self.reader.leaving = None;
+        true
     }
 
     /// The writer's text field laid out at window rect `[x, y, w, h]`: the progress line takes

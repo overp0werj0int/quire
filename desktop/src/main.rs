@@ -4741,6 +4741,84 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// ENDROOM: while a band shows, the page's end room is at least the band's height, so the
+    /// last find match comes above a band taller than the reader's room after its last line.
+    /// When the band goes, a view inside the extra room glides out of it, and a view above it
+    /// does not move (RD-104).
+    #[test]
+    fn the_last_match_sits_above_a_tall_band_and_its_room_goes_without_a_jump() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-endroom-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let scroll = |rt: &mut Runtime<App>| {
+            let mut at = [0.0; 4];
+            rt.update(|s, _| at = s.reader.scroll.get());
+            at
+        };
+        let text: String = (0..60).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let long = "A folder named A folder with a name long enough to wrap the message onto a second line is already there.";
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((520.0, 480.0), 1.0);
+        rt.update(|s, tx| {
+            s.notice = Some(long.into());
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("Line 59 of");
+            s.find_changed(tx);
+        });
+        glide(&mut rt);
+        glide(&mut rt);
+        let [at, max, ..] = scroll(&mut rt);
+        assert!(max > 0.0 && (at - max).abs() < 0.5, "the case puts the reader at the end of its scroll: {at} of {max}");
+        rt.update(|s, tx| s.toast("Copied the whole note", tx));
+        glide(&mut rt);
+        let band = rect(&rt, "toast-band").expect("the band");
+        assert!(band[3] > crate::page::bottom_room(480.0) + 8.0, "the case needs a band taller than the page's end room: {band:?}");
+        let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the last match is drawn");
+        // `find` gives the middle of the match's line, 22 pt tall in the reader.
+        assert!(y + 11.0 <= band[1] + 0.5, "the last match comes above the band: match to {}, band from {}", y + 11.0, band[1]);
+
+        // The band goes with the view in its extra room: the view glides out, and never jumps.
+        let [at, grown, ..] = scroll(&mut rt);
+        rt.update(|s, _| {
+            s.reader.toast = None;
+            s.notice = None;
+        });
+        let (mut last, mut step) = (at, 0f32);
+        for _ in 0..60 {
+            rt.frame(DT);
+            let [now, ..] = scroll(&mut rt);
+            step = step.max((now - last).abs());
+            last = now;
+        }
+        let [at, max, ..] = scroll(&mut rt);
+        assert!(max < grown - 8.0 && (at - max).abs() < 0.5, "the room goes and the view ends at the end of the page: {at} of {max}, was {grown}");
+        assert!(step < 6.0, "the view glides out of the room rather than jumping: {step} pt in one frame");
+
+        // Above the extra room, the band coming and going moves nothing.
+        rt.update(|_, tx| tx.scroll_to_instant(crate::reader::SCROLL, 0.0, max - 200.0));
+        glide(&mut rt);
+        let [before, ..] = scroll(&mut rt);
+        rt.update(|s, tx| {
+            s.notice = Some(long.into());
+            s.toast("Copied the whole note", tx);
+        });
+        glide(&mut rt);
+        let [shown, ..] = scroll(&mut rt);
+        rt.update(|s, _| {
+            s.reader.toast = None;
+            s.notice = None;
+        });
+        let mut moved = (shown - before).abs();
+        for _ in 0..60 {
+            rt.frame(DT);
+            let [now, ..] = scroll(&mut rt);
+            moved = moved.max((now - before).abs());
+        }
+        assert!(moved < 0.5, "a view above the extra room stays put as the band comes and goes: moved {moved}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
     /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
     /// inside the list, and each end of the list leaves room for it.

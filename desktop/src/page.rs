@@ -67,6 +67,12 @@ pub fn bottom_room(view_h: f32) -> f32 {
     120f32.max(view_h * 0.3)
 }
 
+/// The room after the last line: the reader's (PAGE-29) or half the view in the writer (WR-86),
+/// and at least `band`, the toast band's height, so the last line can sit above it (RD-104).
+pub fn end_room(writer: bool, view_h: f32, band: f32) -> f32 {
+    if writer { view_h * 0.5 } else { bottom_room(view_h) }.max(band)
+}
+
 /// What the rhythm needs to know of a block (PAGE-58).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Rk {
