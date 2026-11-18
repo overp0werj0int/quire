@@ -39,6 +39,8 @@ pub fn sidebar(v: V) -> El {
             .gap(6.0)
             .role("button")
             .label(name.clone())
+            // A click opens the menu and leaves the keyboard where it was; only Tab puts it here.
+            .keeps_text_selection()
             .control(|s: &mut App, tx| s.open_menu(MenuOf::Folder, (0.0, 0.0), tx))
             .child(text(name).font(nav(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),

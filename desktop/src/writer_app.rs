@@ -388,6 +388,9 @@ impl App {
             let block = doc.blocks.iter().rposition(|b| b.lines.start <= line).unwrap_or(0);
             self.wstate.back = Some((self.reader.scroll.get()[0], block));
             self.mode = Mode::Preview;
+            // The editor leaves with the keyboard: it goes to the reader's keys, not to the
+            // control Rune would hand it on to (the folder's name, which Space opens).
+            tx.blur();
             if block == 0 {
                 // The first block leaves the preview at its top, where progress reads 0 (RD-38).
                 tx.scroll_to_instant(crate::reader::SCROLL, 0.0, 0.0);

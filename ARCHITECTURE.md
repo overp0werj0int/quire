@@ -47,7 +47,9 @@ architecture.
 - A button or a key does not change the UI directly. It runs a closure such as
   `.on_press(|s: &mut App| ...)`, which changes `App`. The next frame draws the result.
 - `keys::on_key` in `desktop/src/keys.rs` handles window shortcuts. It only gets keys that
-  the focused control does not use.
+  the focused control does not use. In preview nothing has focus until the user tabs to a
+  control, so the reader's single keys (Space, `j`) reach it. The switch to preview drops
+  focus as the editor leaves, and a click on the folder's name does not take it.
 
 ```mermaid
 flowchart LR

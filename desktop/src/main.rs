@@ -3413,4 +3413,82 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }
+    /// The reader's single keys reach the reader however preview was entered and whatever
+    /// layer just closed over it: no control outside the page took the keyboard on the way.
+    #[test]
+    fn the_readers_keys_reach_the_reader() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-reader-keys-{}", std::process::id()));
+        type Way = (&'static str, fn(&mut Runtime<App>));
+        let ways: [Way; 9] = [
+            ("Ctrl+P", |rt| key(rt, Key::Command('p'), ctrl(false))),
+            ("the mode button", |rt| press_key(rt, "mode", false)),
+            ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
+            ("Ctrl+P, the palette, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                key(rt, Key::Command('k'), ctrl(true));
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, Settings, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                key(rt, Key::Command(','), ctrl(false));
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, help, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                key(rt, Key::Text("?".into()), Mods { shift: true, ..Mods::default() });
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, a block menu, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                let block = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
+                press(rt, (block[0] + 20.0, block[1] + block[3] / 2.0), true);
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, the folder menu by a click, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                press_key(rt, "vault-button", false);
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, the folder menu by a click, a press outside", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                press_key(rt, "vault-button", false);
+                press(rt, (700.0, 300.0), false);
+            }),
+        ];
+        let keys: [(&str, Key, bool); 4] = [("Space", Key::Text(" ".into()), true), ("j", Key::Text("j".into()), true), ("Enter", Key::Enter, false), ("n", Key::Text("n".into()), false)];
+        let mut fails = Vec::new();
+        for (way, enter) in &ways {
+            for (name, k, scrolls) in &keys {
+                let text = format!("{NOTE}{}", "More text to scroll by.\n\n".repeat(80));
+                let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+                rt.on_key = Some(crate::keys::on_key);
+                rt.set_viewport((960.0, 600.0), 1.0);
+                settle(&mut rt);
+                rt.update(|s, tx| {
+                    s.cur_edit().set_selection(0, 0);
+                    s.focus_editor(tx);
+                });
+                settle(&mut rt);
+                enter(&mut rt);
+                let before = seen(&mut rt);
+                let case = format!("{way}, then {name}");
+                if before.mode != Mode::Preview || before.layers != 0 {
+                    fails.push(format!("{case}: not in preview with nothing open"));
+                    continue;
+                }
+                key(&mut rt, k.clone(), Mods::default());
+                let after = seen(&mut rt);
+                if after.layers != 0 {
+                    fails.push(format!("{case}: opened a layer"));
+                } else if after.mode != Mode::Preview {
+                    fails.push(format!("{case}: left preview"));
+                } else if *scrolls && after.page_y > before.page_y - 5.0 {
+                    fails.push(format!("{case}: the page did not scroll"));
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
 }
