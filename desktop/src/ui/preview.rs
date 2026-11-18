@@ -280,6 +280,9 @@ pub fn preview(v: V) -> El {
     let gaps = Rc::new(page::gaps(look.b, &doc.blocks));
     let estimate = page::row_estimate(look.b);
     let (p, dark, vw, vh, trailing) = (v.p, v.dark, v.vw, v.vh, v.trailing);
+    // The rows read the blocks this view parsed: `App::doc` hashes the whole note to find its
+    // cache, and the list asks every row's key when it is made.
+    let rows = doc.clone();
     col()
         .key("preview")
         .w_full()
@@ -287,10 +290,10 @@ pub fn preview(v: V) -> El {
         .virtual_rows(
             doc.blocks.len(),
             estimate,
-            |s: &App, i| Cow::Owned(s.doc().blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
+            move |_: &App, i| Cow::Owned(doc.blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
             move |s: &App, i| {
                 let v = V { s, p, dark, vw, vh, trailing };
-                let doc = s.doc();
+                let doc = rows.clone();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
                 let key = crate::reader::block_key(bl);
