@@ -1455,6 +1455,13 @@ impl App {
         tx.focus("pal-input", false);
     }
 
+    /// Esc with the keyboard on a stop or in a field of the page: a showing notice goes first,
+    /// as it does from the note, and the stop or field keeps the keyboard. An open layer takes
+    /// Esc before the notice, so inside one this does nothing.
+    pub(crate) fn esc_takes_notice(&mut self) -> bool {
+        self.layer().is_none() && self.notice.take().is_some()
+    }
+
     /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
     /// the notice goes, then new folder, rename and the create prompt close, then zen mode ends.
     /// The keyboard stays where it was.

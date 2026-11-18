@@ -4077,7 +4077,7 @@ mod layer_matrix_tests {
     }
 
     /// The notice is a pill in the toast's family (NOTCOV, PILL): on one line the toast's 30 pt
-    /// with round ends, as wide as its text and "dismiss" need; a long one wraps in the room
+    /// with round ends, as wide as its text and "Dismiss" need; a long one wraps in the room
     /// with 15 pt corners. The toast band sits behind it, alone or stacked over a toast, and
     /// the line being typed stays above the band.
     #[test]
@@ -4210,6 +4210,44 @@ mod layer_matrix_tests {
             settle(&mut rt);
             assert!(up(&mut rt) && rt.find("pal-input").is_none(), "{mode:?}: the palette takes Esc before the notice");
         }
+        // One rule wherever the keyboard is on the page: the first Esc takes the notice and the
+        // stop or field keeps the keyboard; the next Esc does what Esc does there.
+        let places: [(&str, fn(&mut Runtime<App>)); 5] = [
+            ("the search field", |rt| rt.update(|s, tx| s.open_search(tx))),
+            ("the note's name", |rt| rt.update(|s, tx| s.start_rename(tx))),
+            ("a new folder's name", |rt| rt.update(|s, tx| s.start_new_folder("", tx))),
+            ("a tree row", |rt| rt.update(|_, tx| tx.focus("file:note.md", true))),
+            ("a panel tab", |rt| rt.update(|_, tx| tx.focus("panel-files", true))),
+        ];
+        for (place, go) in places {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.update(|s, tx| s.focus_editor(tx));
+            settle(&mut rt);
+            go(&mut rt);
+            settle(&mut rt);
+            let at = focused(&rt);
+            assert!(at.is_some() && at.as_deref() != Some("editor"), "{place}: has the keyboard: {at:?}");
+            notice(&mut rt);
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            assert!(!up(&mut rt), "{place}: the first Esc dismisses the notice");
+            assert_eq!(focused(&rt), at, "{place}: and keeps the keyboard");
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            assert_eq!(focused(&rt).as_deref(), Some("editor"), "{place}: the next Esc gives the note the keys");
+        }
+        // A click on Dismiss leaves the keyboard in the note.
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        notice(&mut rt);
+        let r = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("notice-x")).expect("Dismiss").rect;
+        rt.pointer_move(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        rt.pointer_down(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        rt.pointer_up(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        settle(&mut rt);
+        assert!(!up(&mut rt), "a click on Dismiss dismisses the notice");
+        assert_eq!(focused(&rt).as_deref(), Some("editor"), "and leaves the keyboard in the note");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4288,6 +4326,22 @@ mod layer_matrix_tests {
             let (seg, ring) = (rect(&rt, "panel-seg").expect("the track"), rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-ring") && e.path.contains(open)).expect("the tab's ring").rect);
             assert_eq!(Some(ring), rect(&rt, "tab-mark"), "{panel:?}: the ring follows the open tab's pill");
             assert!(ring[1] - 2.0 >= seg[1] && ring[1] + ring[3] + 2.0 <= seg[1] + seg[3] && ring[0] - 2.0 >= seg[0] && ring[0] + ring[2] + 2.0 <= seg[0] + seg[2], "{panel:?}: the ring {ring:?} stays in the track {seg:?}");
+        }
+        // Home and End go to the first and the last tab, and Up and Down do nothing: none of
+        // them opens a panel or takes the keyboard out of the tabs.
+        for (k, name, from, to) in [(Key::Home, "Home", "panel-search", "panel-files"), (Key::End, "End", "panel-files", "panel-tags"), (Key::Up, "Up", "panel-files", "panel-files"), (Key::Down, "Down", "panel-files", "panel-files"), (Key::Down, "Down", "panel-search", "panel-search")] {
+            let mut rt = garden(&dir, Mode::Preview);
+            rt.update(move |_, tx| tx.focus(from, true));
+            settle(&mut rt);
+            key(&mut rt, k, Mods::default());
+            settle(&mut rt);
+            let mut panel = Panel::Tags;
+            rt.update_if(|s, _| {
+                panel = s.left_panel;
+                false
+            });
+            assert_eq!(focused(&rt).as_deref(), Some(to), "{name} from {from}");
+            assert_eq!(panel, Panel::Files, "{name} from {from} opens no panel");
         }
         // A layer that closes gives focus back to the tab it came from, open or not.
         let mut rt = garden(&dir, Mode::Preview);

@@ -325,10 +325,11 @@ pub fn toast_band(v: V) -> Option<El> {
     )
 }
 
-/// A pill's button: Undo on the toast, dismiss on the notice. 24 px tall, so it takes a press
+/// A pill's button: Undo on the toast, Dismiss on the notice. 24 px tall, so it takes a press
 /// over the pill's height less 3 px at each edge.
 fn pill_button(c: &Roles, key: &str) -> El {
-    row().key(key).h(24.0).px(10.0).gap(8.0).center_y().radius(999.0).hover(c.hover).role("button")
+    // A press leaves the keyboard where it was: the pill is not part of what is being done.
+    row().key(key).h(24.0).px(10.0).gap(8.0).center_y().radius(999.0).hover(c.hover).role("button").keeps_text_selection()
 }
 
 /// What the toast with Undo shows of its sentence in `room`. When the room is short it gives
@@ -393,7 +394,7 @@ pub fn undo_toast(v: V, name: &str) -> El {
 /// else wrapped at the widest the room allows.
 fn notice_fit(v: V, msg: &str) -> (f32, f32) {
     let body = styles::popup();
-    let room = foot_room(v) - 24.0 - 20.0 - width("dismiss", body);
+    let room = foot_room(v) - 24.0 - 20.0 - width("Dismiss", body);
     let whole = width(msg, body);
     if whole <= room {
         return (whole, PILL_H);
@@ -403,14 +404,14 @@ fn notice_fit(v: V, msg: &str) -> (f32, f32) {
 }
 
 /// The notice: what went wrong, in the toast's place, or just above the toast while one shows.
-/// It is a pill in the toast's family: on one line the toast's shape, with "dismiss" where
+/// It is a pill in the toast's family: on one line the toast's shape, with "Dismiss" where
 /// Undo sits; wrapped, the same padding and type with corners of half the one-line height.
 /// Esc dismisses it too (RD-85, WR-77).
 pub(super) fn notice(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
     let body = styles::popup();
     let (w, h) = notice_fit(v, msg);
-    let dismiss = pill_button(&c, "notice-x").label("Dismiss").on_press(|s: &mut App| s.notice = None).child(text("dismiss").font(body).color(v.p.mute));
+    let dismiss = pill_button(&c, "notice-x").label("Dismiss").on_press(|s: &mut App| s.notice = None).child(text("Dismiss").font(body).color(v.p.mute));
     // The text's first line centres on the button's 24 px.
     let words = row().py(4.0).child(text(msg.to_string()).font(body).color(v.p.err).wrap().w(w));
     let pill = super::widgets::floating(row(), &c)

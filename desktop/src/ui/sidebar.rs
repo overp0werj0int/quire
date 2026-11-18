@@ -63,9 +63,11 @@ pub fn sidebar(v: V) -> El {
     // pointer. The new folder button, outside the track, lines up with the rows' buttons below.
     let tabs = row().key("panel-tabs").pl(panel::TEXT_X - TAB_PAD - SEG_IN).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
     // The tabs are one Tab stop, as the formatting toolbar is: Tab lands on the open tab, Left
-    // and Right move between them without opening one, and Enter or Space opens one and puts
-    // the keyboard in it: the search field, else the list's current row (FOCUS). A click opens
-    // it and leaves the keyboard where it was, except that SEARCH puts it in the field.
+    // and Right move between them without opening one, Home and End go to the first and the
+    // last, and Enter or Space opens one and puts the keyboard in it: the search field, else
+    // the list's current row (FOCUS). Up and Down do nothing in a row of tabs; Rune's focus
+    // group would open the tab they move to. A click opens it and leaves the keyboard where it
+    // was, except that SEARCH puts it in the field.
     let mut seg = row().key("panel-seg").role("tablist").focus_group().gap(2.0 * TAB_PAD).px(TAB_PAD + SEG_IN).radius(TAB_R).fill(c.text.alpha(0.04)).center_y();
     const PANELS: [(Panel, &str); 3] = [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")];
     let tab_key = |i: usize| format!("panel-{}", PANELS[i].1.to_lowercase());
@@ -101,6 +103,9 @@ pub fn sidebar(v: V) -> El {
                     match ev.key {
                         rune::Key::Left => tx.focus(left.clone(), true),
                         rune::Key::Right => tx.focus(right.clone(), true),
+                        rune::Key::Home => tx.focus(tab_key(0), true),
+                        rune::Key::End => tx.focus(tab_key(PANELS.len() - 1), true),
+                        rune::Key::Up | rune::Key::Down => {}
                         rune::Key::Enter => pick(s, tx),
                         _ => return false,
                     }
@@ -482,7 +487,9 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                     .on_submit(|s: &mut App, tx| s.end_new_folder(true, tx))
                     .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx| {
                         if ev.key == rune::Key::Escape {
-                            s.end_new_folder(false, tx);
+                            if !s.esc_takes_notice() {
+                                s.end_new_folder(false, tx);
+                            }
                             return true;
                         }
                         false
@@ -556,7 +563,11 @@ fn search_panel(v: V) -> El {
                         return false;
                     }
                     match (&ev.key, &first) {
-                        (rune::Key::Escape, _) if s.layer().is_none() => s.keys_to_note(tx),
+                        (rune::Key::Escape, _) if s.layer().is_none() => {
+                            if !s.esc_takes_notice() {
+                                s.keys_to_note(tx);
+                            }
+                        }
                         (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
                         _ => return false,
                     }

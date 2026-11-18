@@ -27,7 +27,9 @@ pub(super) fn list(el: El, role: &'static str) -> El {
         if ev.key != Key::Escape || ev.mods != Mods::default() || s.layer().is_some() {
             return false;
         }
-        s.keys_to_note(tx);
+        if !s.esc_takes_notice() {
+            s.keys_to_note(tx);
+        }
         true
     })
 }

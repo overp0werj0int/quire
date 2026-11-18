@@ -131,7 +131,9 @@ impl App {
         }
         Some(match ev.key {
             Key::Escape if !m.shift => {
-                self.keys_to_note(tx);
+                if !self.esc_takes_notice() {
+                    self.keys_to_note(tx);
+                }
                 true
             }
             // F6 is a window shortcut; Shift+F10 and the Menu key open the stop's menu in Rune.

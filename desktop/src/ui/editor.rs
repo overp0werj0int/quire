@@ -480,7 +480,9 @@ pub(super) fn crumb(v: V) -> El {
                                 .on_submit(|s: &mut App, tx| s.commit_rename(tx))
                                 .on_input_key(|s: &mut App, ev: &KeyEvent, tx: &mut Tx| {
                                     if ev.key == Key::Escape {
-                                        s.cancel_rename(tx);
+                                        if !s.esc_takes_notice() {
+                                            s.cancel_rename(tx);
+                                        }
                                         return true;
                                     }
                                     false
