@@ -264,6 +264,18 @@ pub(crate) mod scroll_tests {
         let marks: Vec<String> = els.iter().filter(|e| e.key.as_deref() == Some("tab-mark") && !e.exiting).map(|e| e.path.clone()).collect();
         assert_eq!(marks.len(), 1, "one tab is marked");
         assert!(marks[0].starts_with(&path("panel-files")), "the open one");
+        // The three tabs are one segmented control: a faint track behind all three, the open
+        // tab's pill inside it with the same radius, the New folder button outside it.
+        let rect = |key: &str| els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("{key}"));
+        let track = rect("panel-seg");
+        let within = |a: [f32; 4], b: [f32; 4]| a[0] >= b[0] && a[1] >= b[1] && a[0] + a[2] <= b[0] + b[2] && a[1] + a[3] <= b[1] + b[3];
+        assert!(track.fill.a > 0.0, "the track has a fill");
+        for tab in ["panel-files", "panel-search", "panel-tags", "tab-mark"] {
+            assert!(within(rect(tab).rect, track.rect), "{tab} {:?} sits on the track {:?}", rect(tab).rect, track.rect);
+        }
+        assert_eq!(rect("tab-mark").radius, track.radius, "the pill and the track share a radius");
+        let folder = rect("new-folder-button").rect;
+        assert!(folder[0] >= track.rect[0] + track.rect[2], "the New folder button {folder:?} is outside the track {:?}", track.rect);
         rt.update(|s, _| s.close_tab("note.md"));
         for _ in 0..20 {
             rt.frame(DT);

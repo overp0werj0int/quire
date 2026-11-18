@@ -78,6 +78,12 @@ pub fn sans(size: f32, weight: f32) -> TextStyle {
     TextStyle::new(size, weight).family(SANS).lh(normal_lh(SANS, size))
 }
 
+/// A popup's message (RD-98): the toast, its Undo and the notice. Menus are navigation and
+/// take `nav`; a tooltip names a key and takes `tooltip`; a key name inside a popup takes `keys`.
+pub fn popup() -> TextStyle {
+    sans(13.0, 400.0)
+}
+
 /// Every caption's size, in both families: omarky's caption size.
 pub const CAPTION: f32 = 10.0;
 
@@ -120,7 +126,7 @@ mod tests {
     fn chrome_styles_use_two_families() {
         let two = [panel_family(), SANS];
         assert_ne!(two[0], two[1]);
-        for (name, s) in [("nav", nav(12.0, false)), ("nav bold", nav(12.0, true)), ("keys", keys(11.0)), ("literal", literal(12.0)), ("sans", sans(13.0, 400.0)), ("tooltip", tooltip())] {
+        for (name, s) in [("nav", nav(12.0, false)), ("nav bold", nav(12.0, true)), ("keys", keys(11.0)), ("literal", literal(12.0)), ("sans", sans(13.0, 400.0)), ("popup", popup()), ("tooltip", tooltip())] {
             assert!(two.contains(&s.family), "{name} is in {:?}, outside the chrome's two families", s.family);
         }
         assert_eq!(keys(11.0).family, nav(11.0, false).family, "key names take the panel family");

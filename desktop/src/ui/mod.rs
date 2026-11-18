@@ -226,9 +226,9 @@ pub(super) fn notice(v: V, msg: &str) -> El {
         .gap(12.0)
         .padding(12.0)
         .radius(9.0)
-        .child(widgets::label(msg, styles::sans(12.5, 400.0).lh(18.0), p.err).wrap().grow(1.0).shrink())
+        .child(widgets::label(msg, styles::popup(), p.err).wrap().grow(1.0).shrink())
         .child(
-            widgets::label("dismiss", styles::sans(11.5, 400.0), p.mute)
+            widgets::label("dismiss", styles::popup(), p.mute)
                 .key("notice-x")
                 .on_press(|s: &mut App| s.notice = None),
         );

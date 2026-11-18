@@ -25,6 +25,10 @@ pub(super) const W: f32 = 248.0;
 const TARGET: f32 = 24.0;
 /// How far the open panel tab's pill reaches past its text on each side.
 const TAB_PAD: f32 = 7.0;
+/// How far the tabs' track reaches past the open tab's pill, on every side.
+const SEG_IN: f32 = 2.0;
+/// The corner radius of the open tab's pill and of the track it sits on.
+const TAB_R: f32 = 5.0;
 
 /// A row's room after its button, so the button's icon sits 13 points from the row's end.
 const BUTTON_END: f32 = 1.0;
@@ -52,12 +56,13 @@ pub fn sidebar(v: V) -> El {
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
 
-    // The panel switch is a row of tabs. They are set apart from the section labels (OPEN) by
-    // shape: a medium weight with no letter-spacing, and the open one in the text colour on a
-    // soft pill that reaches past its text, which stays on the rows' text edge. The others take
-    // the rows' colour, brighter under the pointer. The new folder button lines up with the
-    // rows' buttons below it.
-    let mut tabs = row().key("panel-tabs").role("tablist").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
+    // The panel switch is one segmented control: a faint track behind the three tabs, and the
+    // open one in the text colour on a soft pill on it. They are set apart from the section
+    // labels (OPEN) by that shape and by a medium weight with no letter-spacing. Each tab's
+    // text stays on the rows' text edge; the others take the rows' colour, brighter under the
+    // pointer. The new folder button, outside the track, lines up with the rows' buttons below.
+    let tabs = row().key("panel-tabs").pl(panel::TEXT_X - TAB_PAD - SEG_IN).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
+    let mut seg = row().key("panel-seg").role("tablist").gap(2.0 * TAB_PAD).px(TAB_PAD + SEG_IN).radius(TAB_R).fill(c.text.alpha(0.04)).center_y();
     // Each tab is a Tab stop; Left and Right move between them, and Enter or Space opens one
     // and puts the keyboard in it: the search field, else the list's current row (FOCUS). A
     // click opens it and leaves the keyboard where it was, except that SEARCH puts it in the
@@ -75,7 +80,7 @@ pub fn sidebar(v: V) -> El {
                 tx.focus(s.sidebar_stop(), true);
             }
         };
-        tabs = tabs.child(
+        seg = seg.child(
             super::focus::stop(row())
                 .key(tab_key(i))
                 .h(TARGET)
@@ -101,11 +106,12 @@ pub fn sidebar(v: V) -> El {
                     true
                 })
                 .children(on.then(|| {
-                    el().key("tab-mark").pin(Some(-TAB_PAD), Some(2.0), Some(-TAB_PAD), Some(2.0)).radius(5.0).fill(c.text.alpha(0.08)).transition(super::swap())
+                    el().key("tab-mark").pin(Some(-TAB_PAD), Some(SEG_IN), Some(-TAB_PAD), Some(SEG_IN)).radius(TAB_R).fill(c.text.alpha(0.08)).transition(super::swap())
                 }))
                 .child(text(lbl.to_uppercase()).font(super::styles::tab(panel::CAPTION)).color(if on { c.text } else { c.dim }).group_color(c.text)),
         );
     }
+    let mut tabs = tabs.child(seg);
 
     if s.left_panel == Panel::Files {
         tabs = tabs.child(el().grow(1.0)).child(

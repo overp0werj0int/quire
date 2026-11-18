@@ -7,7 +7,7 @@ use super::V;
 use super::layer::Card;
 use super::chip::Chip;
 use super::panel::{BODY, CAPTION};
-use super::styles::{caption, keys, sans};
+use super::styles::{self, caption, keys, sans};
 use super::widgets::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
@@ -251,7 +251,7 @@ const PILL_H: f32 = 32.0;
 /// edge, over `toast_band`.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
-    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(sans(13.0, 400.0)).color(c.text).truncate().shrink().min_w(0.0)))
+    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(styles::popup()).color(c.text).truncate().shrink().min_w(0.0)))
 }
 
 /// Where the notice sits: in the toast's place, or just above the toast while one shows.
@@ -299,7 +299,7 @@ pub fn toast_band(v: V) -> El {
 /// button.
 pub fn undo_toast(v: V, name: &str) -> El {
     let c = Roles::new(v.p);
-    let body = sans(13.0, 400.0);
+    let body = styles::popup();
     let key = keymap::label(v.s.preset(), "app.undo-delete");
     let undo = row()
         .key("toast-undo")
