@@ -59,24 +59,19 @@ pub fn outline(v: V) -> El {
         // A heading cut short offers its whole text; one shown in full has no tooltip (C7).
         let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_.clone());
         let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on).label(text_);
-        // The current row's dot sits in the row's left padding, so the text keeps its place.
-        let pad = panel::TEXT_X - panel::INSET + depth as f32 * panel::INDENT;
-        let top = ((panel::row_h(size) - panel::DOT) / 2.0).round();
-        let mut dot = el().key("dot").absolute(pad - panel::DOT_GAP - panel::DOT, top).size(panel::DOT, panel::DOT).radius(panel::DOT / 2.0).fill(panel::dot_fill(&c, on));
+        // The current row is marked by its shade and its ink, nothing else (RD-47).
         if live {
             let mark = crate::reader::Mark {
-                on: [panel::shade_fill(&c, true), panel::ink(&c, depth, true), panel::dot_fill(&c, true)],
-                off: [panel::shade_fill(&c, false), panel::ink(&c, depth, false), panel::dot_fill(&c, false)],
+                on: [panel::shade_fill(&c, true), panel::ink(&c, depth, true)],
+                off: [panel::shade_fill(&c, false), panel::ink(&c, depth, false)],
                 fill: Live::new(panel::shade_fill(&c, on)),
                 ink: Live::new(panel::ink(&c, depth, on)),
-                dot: Live::new(panel::dot_fill(&c, on)),
             };
             shade = shade.live_fill(&mark.fill);
             name = name.live_text_color(&mark.ink);
-            dot = dot.live_fill(&mark.dot);
             map.marks.push(mark);
         }
-        contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(dot).child(name));
+        contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(name));
     }
     list = list.child(contents);
     if shown.is_empty() {

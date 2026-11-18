@@ -185,10 +185,9 @@ const PENDING: f64 = 0.6;
 pub struct Mark {
     pub fill: Live<Color>,
     pub ink: Live<Color>,
-    pub dot: Live<Color>,
-    /// Fill, ink and dot when the row is current, and when it is not.
-    pub on: [Color; 3],
-    pub off: [Color; 3],
+    /// Fill and ink when the row is current, and when it is not.
+    pub on: [Color; 2],
+    pub off: [Color; 2],
 }
 
 impl PageMap {
@@ -357,10 +356,9 @@ impl PageMap {
             return;
         }
         for (n, m) in self.marks.iter().enumerate() {
-            let [fill, ink, dot] = if Some(n) == row { m.on } else { m.off };
+            let [fill, ink] = if Some(n) == row { m.on } else { m.off };
             m.fill.set(fill);
             m.ink.set(ink);
-            m.dot.set(dot);
         }
         self.marked = row;
     }
