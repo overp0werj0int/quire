@@ -139,7 +139,8 @@ or the outline. A test checks that every focusable element in the panes is in it
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
   key to `keys::on_key`. Without it Rune hands the lost focus to the next control in the old
   tree. In the reader that was a paragraph with links, focused with no link in it, which ate
-  Space and Enter.
+  Space and Enter. Closing find, Esc in the search field and closing the shown tab call
+  `App::keys_to_note` themselves, so the writer has the keys after each.
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
   sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the

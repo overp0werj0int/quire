@@ -281,7 +281,6 @@ impl App {
     pub fn writer_escape(&mut self, tx: &mut Tx) -> bool {
         if self.reader.find.open {
             self.close_find(tx);
-            self.focus_editor(tx);
             return true;
         }
         if self.escape(tx) {

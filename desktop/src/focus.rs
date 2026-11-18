@@ -12,9 +12,10 @@
 //!   would with the keyboard on the note (`chord`).
 //! - Esc gives the keyboard back to the note (`App::keys_to_note`).
 //! - When the element that holds focus goes away, for any reason (its pane hides, zen mode,
-//!   its row is gone, a rename ends), the keyboard goes to the note. Every stop and every
-//!   pane carries `focus_return(NOTE)` (`ui::focus`), and NOTE keys the editor's box in the
-//!   writer and the reader's keyboard anchor elsewhere.
+//!   its row is gone, a rename ends, find closes, its tab closes), the keyboard goes to the
+//!   note. Every stop and every pane carries `focus_return(NOTE)` (`ui::focus`), and NOTE
+//!   keys the editor's box in the writer and the reader's keyboard anchor elsewhere. Find,
+//!   the search field's Esc and a closed tab call `App::keys_to_note` themselves.
 //! - F6 and Shift+F6 move between the panes that show: the sidebar's current list, the note,
 //!   the outline's current heading. Tab moves inside a pane and on to the next. Into the
 //!   writer, Tab and F6 alike leave the caret where it was, in view (`tab_into_note`).

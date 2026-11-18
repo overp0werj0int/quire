@@ -856,10 +856,11 @@ impl App {
         if self.reader.find.open { self.close_find(tx) } else { self.open_find(tx) }
     }
 
+    /// Closes find and clears its query. Its field goes away, so the note gets the keys.
     pub fn close_find(&mut self, tx: &mut Tx) {
         if self.reader.find.open {
             self.drop_find();
-            tx.blur();
+            self.keys_to_note(tx);
         }
     }
 

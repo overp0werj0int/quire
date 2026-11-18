@@ -538,10 +538,17 @@ fn search_panel(v: V) -> El {
                 .placeholder("Search notes", theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
                 .on_edit(|s: &mut App| &mut s.query)
-                // Down moves into the results (FOCUS).
-                .on_input_key(move |_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
-                    let Some(k) = first.as_ref().filter(|_| ev.key == rune::Key::Down && ev.mods == rune::Mods::default()) else { return false };
-                    tx.focus(k.clone(), true);
+                // Down moves into the results, and Esc gives the note the keys, which the
+                // field would otherwise drop (FOCUS).
+                .on_input_key(move |s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
+                    if ev.mods != rune::Mods::default() {
+                        return false;
+                    }
+                    match (&ev.key, &first) {
+                        (rune::Key::Escape, _) => s.keys_to_note(tx),
+                        (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
+                        _ => return false,
+                    }
                     true
                 }),
         );

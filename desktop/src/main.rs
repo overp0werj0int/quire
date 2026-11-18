@@ -4627,6 +4627,48 @@ mod layer_matrix_tests {
             }
         }
 
+        // In the writer, what holds the keyboard going away gives the note the keys (FESC): Esc
+        // in the find bar, Esc in the search field, and Ctrl+W on one of several tabs.
+        let ways: [(&str, fn(&mut Runtime<App>)); 3] = [
+            ("Esc in the find bar", |rt| {
+                key(rt, Key::Command('f'), ctrl(false));
+                for c in ["m", "o", "r", "e"] {
+                    text_key(rt, c);
+                }
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Esc in the search field", |rt| {
+                rt.update(|s, tx| s.open_search(tx));
+                settle(rt);
+                for c in ["m", "o", "r", "e"] {
+                    text_key(rt, c);
+                }
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+W on one of several tabs", |rt| {
+                rt.update(|s, tx| {
+                    s.open_file("Box/b.md", None, tx);
+                    s.open_file("note.md", None, tx);
+                });
+                settle(rt);
+                key(rt, Key::Command('w'), ctrl(false));
+            }),
+        ];
+        for (how, away) in ways {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.update(|s, tx| s.focus_editor(tx));
+            settle(&mut rt);
+            away(&mut rt);
+            let before = seen(&mut rt);
+            for c in ["Q", "Q"] {
+                text_key(&mut rt, c);
+            }
+            let after = seen(&mut rt);
+            if after.text.matches("QQ").count() != before.text.matches("QQ").count() + 1 {
+                fails.push(format!("{how}: the next typing goes nowhere (focus {:?}, editor focused {})", focused(&rt), before.editor_focused));
+            }
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }

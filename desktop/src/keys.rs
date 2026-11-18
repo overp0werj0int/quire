@@ -181,9 +181,11 @@ type Run = fn(&mut App, &mut Tx);
 pub fn handler(id: &str) -> Option<Run> {
     use crate::app::PalMode;
     use crate::format::Fmt;
-    fn close_tab(s: &mut App, _: &mut Tx) {
+    // The closed note's editor goes away with it: the note shown now gets the keys.
+    fn close_tab(s: &mut App, tx: &mut Tx) {
         if let Some(a) = s.active.clone() {
             s.close_tab(&a);
+            s.keys_to_note(tx);
         }
     }
     Some(match id {
