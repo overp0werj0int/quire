@@ -38,9 +38,8 @@ pub(crate) fn open(dir: &std::path::Path, text: &str, mode: Mode) -> (Runtime<Ap
         s.open_vault(root, tx);
         s.open_file("note.md", None, tx);
         s.mode = mode;
-        if mode == Mode::Source {
-            s.focus_editor(tx);
-        }
+        // The keyboard goes with the mode, as `toggle_mode` sends it.
+        s.keys_to_note(tx);
     });
     rt.frame(DT);
     let opened = ms(t);

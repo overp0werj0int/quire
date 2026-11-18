@@ -3,7 +3,7 @@
 
 use rune::{El, Live, ScrollSpec, col, el, row, text};
 
-use super::{V, panel, styles};
+use super::{V, lists, panel, styles};
 use super::editor::{group, link_at_caret};
 use super::widgets::label;
 use crate::app::{App, Mode};
@@ -48,6 +48,7 @@ pub fn outline(v: V) -> El {
     };
     let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
     let mut list = col().key("outline-list").w_full().pb(12.0).child(styles::caption("Contents", true, v.p).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
+    let mut contents = lists::list(col().key("outline-heads").w_full(), "list");
     for (n, &i) in shown.iter().enumerate() {
         let h = &heads[i];
         let on = cur == Some(n);
@@ -75,8 +76,9 @@ pub fn outline(v: V) -> El {
             dot = dot.live_fill(&mark.dot);
             map.marks.push(mark);
         }
-        list = list.child(shade.role("button").on_press_tx(move |s: &mut App, tx| s.jump(line, tx)).child(dot).child(name));
+        contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(dot).child(name));
     }
+    list = list.child(contents);
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
@@ -88,18 +90,17 @@ pub fn outline(v: V) -> El {
     let name_style = styles::nav(panel::BODY, false);
     let small = styles::nav(panel::CAPTION, false);
     let shift = super::baseline_shift(name_style, small);
+    let mut links = lists::list(col().key("outline-links").w_full(), "list");
     for (i, (bp, _)) in back.iter().enumerate() {
         let path = bp.clone();
-        list = list.child(
-            panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false)
-                .gap(8.0)
-                .hover_group()
-                .role("button")
-                .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
+        let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button");
+        links = links.child(
+            lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx))
                 .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
                 .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp))),
         );
     }
+    list = list.child(links);
     if back.is_empty() {
         list = list.child(text("No notes link here yet.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }

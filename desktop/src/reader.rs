@@ -1004,6 +1004,8 @@ impl App {
                 if let Some(f) = frag {
                     self.go_anchor(&f, tx);
                 }
+                // The link that had the keyboard is gone with its note: the next note takes it.
+                self.keys_to_note(tx);
             }
             // Note mode has no folder of notes: a link to a note file opens it as one more note.
             Target::Note(rel, frag) if self.note_mode() && root.join(&rel).is_file() => {
@@ -1011,6 +1013,7 @@ impl App {
                     if let Some(f) = frag {
                         self.go_anchor(&f, tx);
                     }
+                    self.keys_to_note(tx);
                 }
             }
             Target::Note(rel, _) => self.notice = Some(format!("No note at {rel}")),

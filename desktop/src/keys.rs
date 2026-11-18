@@ -35,9 +35,9 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     } else {
         &[Ctx::Writer, Ctx::Global]
     };
-    // The Menu key or Shift+F10, which no focused control took: the page's block menu, as Rune
-    // opens a focused control's.
-    if vault && s.mode == crate::app::Mode::Preview && menu_key(ev) {
+    // The Menu key or Shift+F10 with nothing focused: the page's block menu, as Rune opens a
+    // focused control's (a sidebar row's, say).
+    if vault && s.mode == crate::app::Mode::Preview && tx.focused().is_none() && menu_key(ev) {
         s.block_menu_here(tx);
         return true;
     }

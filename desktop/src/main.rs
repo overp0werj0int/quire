@@ -3276,6 +3276,9 @@ mod layer_matrix_tests {
         /// A menu or a drawer: a window shortcut closes it and acts, and a change of mode
         /// closes it.
         light: bool,
+        /// The row that has the keyboard again after Esc, for a menu the keyboard opened on
+        /// it; `None` gives it back to the note.
+        back: Option<&'static str>,
         open: fn(&mut Runtime<App>),
     }
 
@@ -3318,35 +3321,51 @@ mod layer_matrix_tests {
         let wide = (960.0, 600.0);
         let narrow = (640.0, 480.0);
         vec![
-            Overlay { name: "palette", preview: false, size: wide, light: false, open: |rt| key(rt, Key::Command('k'), ctrl(true)) },
-            Overlay { name: "settings", preview: false, size: wide, light: false, open: |rt| key(rt, Key::Command(','), ctrl(false)) },
-            Overlay { name: "lock dialog", preview: false, size: wide, light: false, open: |rt| press_key(rt, "fmt-lock", false) },
-            Overlay { name: "help", preview: true, size: wide, light: false, open: |rt| key(rt, Key::Text("?".into()), Mods { shift: true, ..Mods::default() }) },
-            Overlay { name: "outline drawer", preview: false, size: narrow, light: true, open: |rt| press_key(rt, "toggle-right", false) },
-            Overlay { name: "sidebar drawer", preview: false, size: narrow, light: true, open: |rt| press_key(rt, "toggle-left", false) },
+            Overlay { name: "palette", preview: false, size: wide, light: false, back: None, open: |rt| key(rt, Key::Command('k'), ctrl(true)) },
+            Overlay { name: "settings", preview: false, size: wide, light: false, back: None, open: |rt| key(rt, Key::Command(','), ctrl(false)) },
+            Overlay { name: "lock dialog", preview: false, size: wide, light: false, back: None, open: |rt| press_key(rt, "fmt-lock", false) },
+            Overlay { name: "help", preview: true, size: wide, light: false, back: None, open: |rt| key(rt, Key::Text("?".into()), Mods { shift: true, ..Mods::default() }) },
+            Overlay { name: "outline drawer", preview: false, size: narrow, light: true, back: None, open: |rt| press_key(rt, "toggle-right", false) },
+            Overlay { name: "sidebar drawer", preview: false, size: narrow, light: true, back: None, open: |rt| press_key(rt, "toggle-left", false) },
             Overlay {
                 name: "preview menu",
                 preview: true,
                 size: wide,
                 light: true,
+                back: None,
                 open: |rt| {
                     let block = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
                     press(rt, (block[0] + 20.0, block[1] + block[3] / 2.0), true);
                 },
             },
-            Overlay { name: "row menu", preview: false, size: wide, light: true, open: |rt| press_key(rt, "file:note.md", true) },
+            Overlay { name: "row menu", preview: false, size: wide, light: true, back: None, open: |rt| press_key(rt, "file:note.md", true) },
             Overlay {
                 name: "editor menu",
                 preview: false,
                 size: wide,
                 light: true,
+                back: None,
                 open: |rt| {
                     let ([x, y, _, _], _) = rt.presented("editor").expect("the editor");
                     press(rt, (x + 40.0, y + 40.0), true);
                 },
             },
-            Overlay { name: "folder menu", preview: false, size: wide, light: true, open: |rt| press_key(rt, "vault-button", false) },
+            Overlay { name: "row menu by keys", preview: false, size: wide, light: true, back: Some("file:note.md"), open: |rt| row_menu_by_keys(rt) },
+            Overlay { name: "row menu by keys in preview", preview: true, size: wide, light: true, back: Some("file:note.md"), open: |rt| row_menu_by_keys(rt) },
+            Overlay { name: "folder menu", preview: false, size: wide, light: true, back: None, open: |rt| press_key(rt, "vault-button", false) },
         ]
+    }
+
+    /// The note's row in the tree takes the keyboard, as the arrows put it there, and
+    /// Shift+F10 opens its menu.
+    fn row_menu_by_keys(rt: &mut Runtime<App>) {
+        rt.update(|_, tx| tx.focus("file:note.md", true));
+        settle(rt);
+        key(rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+    }
+
+    fn focused(rt: &Runtime<App>) -> Option<String> {
+        rt.elements().into_iter().find(|e| e.focused).and_then(|e| e.key)
     }
 
     /// What a case looks at after its input.
@@ -3444,6 +3463,10 @@ mod layer_matrix_tests {
                     "Esc" => {
                         if after.layers != 0 {
                             fail("still open");
+                        } else if let Some(row) = o.back {
+                            if focused(&rt).as_deref() != Some(row) {
+                                fail("the row does not have the keyboard back");
+                            }
                         } else if !o.preview && !after.editor_focused {
                             fail("the editor does not have the keyboard back");
                         }
@@ -3766,6 +3789,151 @@ mod layer_matrix_tests {
         settle(&mut rt);
         key(&mut rt, Key::ContextMenu, Mods::default());
         assert_eq!(menu(&mut rt), Some(4), "the Menu key opens the menu of the block under the pointer");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every list in the side panels works from the keyboard by one rule (TREE): Tab enters
+    /// it at its current row, the arrows move, Enter acts, Shift+F10 opens a row's menu and
+    /// Esc gives the keyboard back to the note. A click on a row leaves the keyboard where it
+    /// was.
+    #[test]
+    fn the_sidebar_lists_work_from_the_keyboard() {
+        use crate::app::Panel;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-lists-{}", std::process::id()));
+        let garden = |mode: Mode| {
+            let (mut rt, _) = crate::bench::open(&dir, &format!("{NOTE}\n## Second\n\n{}### Third\n\nEnd. #kept\n", "More text to scroll by.\n\n".repeat(80)), mode);
+            let root = dir.join("notes");
+            std::fs::create_dir_all(root.join("Box")).unwrap();
+            std::fs::write(root.join("Box/a.md"), "# A\n\nSee [[note]]. #kept\n").unwrap();
+            std::fs::write(root.join("Box/b.md"), "# B\n").unwrap();
+            std::fs::write(root.join("c.md"), "# C\n\nparagraph #kept\n").unwrap();
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            rt.update(move |s, tx| {
+                s.open_vault(root, tx);
+                s.open_file("note.md", None, tx);
+                s.mode = mode;
+                s.persist.right_open = true;
+                s.focus_editor(tx);
+            });
+            settle(&mut rt);
+            rt
+        };
+        let down = |rt: &mut Runtime<App>, k: Key| key(rt, k, Mods::default());
+        // Tab from where focus is until a row of the list `of` has it.
+        let tab_to = |rt: &mut Runtime<App>, of: fn(&str) -> bool| {
+            for _ in 0..12 {
+                down(rt, Key::Tab);
+                if let Some(k) = focused(rt).filter(|k| of(k)) {
+                    return k;
+                }
+            }
+            panic!("Tab never reached the list: focus on {:?}", focused(rt));
+        };
+        let state = |rt: &mut Runtime<App>| {
+            let mut out = None;
+            rt.update_if(|s, _| {
+                out = Some((s.active.clone().unwrap_or_default(), s.mode, s.expanded.contains("Box"), s.left_panel, s.query.text.clone(), s.open_layers().count()));
+                false
+            });
+            out.unwrap()
+        };
+        let ring = |rt: &Runtime<App>| rt.elements().into_iter().find(|e| e.focused).is_some_and(|e| e.focus_visible);
+
+        // The tree, in preview: Tab lands on the open note's row with the focus ring.
+        let mut rt = garden(Mode::Preview);
+        assert_eq!(tab_to(&mut rt, |k| k.starts_with("file:") || k.starts_with("dir:")), "file:note.md", "Tab enters the tree at the open note");
+        assert!(ring(&rt), "the focused row shows the focus ring");
+        down(&mut rt, Key::Home);
+        assert_eq!(focused(&rt).as_deref(), Some("dir:Box"), "Home goes to the first row");
+        down(&mut rt, Key::Right);
+        assert!(state(&mut rt).2, "Right opens a closed folder");
+        down(&mut rt, Key::Right);
+        assert_eq!(focused(&rt).as_deref(), Some("file:Box|a.md"), "Right moves into an open folder");
+        down(&mut rt, Key::Down);
+        assert_eq!(focused(&rt).as_deref(), Some("file:Box|b.md"), "Down moves to the next row");
+        down(&mut rt, Key::Left);
+        assert_eq!(focused(&rt).as_deref(), Some("dir:Box"), "Left moves to the row's folder");
+        down(&mut rt, Key::Left);
+        assert!(!state(&mut rt).2, "Left closes an open folder");
+        down(&mut rt, Key::End);
+        assert_eq!(focused(&rt).as_deref(), Some("file:note.md"), "End goes to the last row");
+        down(&mut rt, Key::Up);
+        assert_eq!(focused(&rt).as_deref(), Some("file:c.md"), "Up moves to the row before");
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        let row = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("file:c.md")).expect("the row").rect;
+        let ([mx, my, _, _], _) = rt.presented("tree-menu").expect("Shift+F10 opens the row's menu");
+        assert!((mx - row[0]).abs() < 1.0 && my >= row[1] + row[3] && my < row[1] + row[3] + 6.0, "the menu opens under the row: {mx},{my} for {row:?}");
+        assert_eq!(focused(&rt).as_deref(), Some("tm-0"), "its first item is marked");
+        down(&mut rt, Key::Escape);
+        assert_eq!(focused(&rt).as_deref(), Some("file:c.md"), "Esc closes the menu and the row has the keyboard again");
+        down(&mut rt, Key::Enter);
+        let (active, mode, ..) = state(&mut rt);
+        assert_eq!((active.as_str(), mode), ("c.md", Mode::Preview), "Enter opens the note");
+        assert_eq!(focused(&rt), None, "and the reader has the keyboard");
+
+        // The Open list: Tab lands on the open note, Down and Enter open the next.
+        assert_eq!(tab_to(&mut rt, |k| k.starts_with("tab:")), "tab:c.md", "Tab enters the Open list at the open note");
+        down(&mut rt, Key::Up);
+        down(&mut rt, Key::Enter);
+        assert_eq!(state(&mut rt).0, "note.md", "Up and Enter open the other note");
+        assert_eq!(focused(&rt), None, "and the reader has the keyboard");
+
+        // Esc from a row gives the keyboard back to the reader.
+        tab_to(&mut rt, |k| k.starts_with("tab:"));
+        down(&mut rt, Key::Escape);
+        assert_eq!(focused(&rt), None, "Esc gives the keyboard back to the reader");
+
+        // The outline's headings and backlinks.
+        let heads = tab_to(&mut rt, |k| k.starts_with("ol-"));
+        down(&mut rt, Key::End);
+        assert_ne!(focused(&rt), Some(heads), "End moves through the headings");
+        let top = seen(&mut rt).page_y;
+        down(&mut rt, Key::Enter);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert_eq!(focused(&rt), None, "Enter jumps to the heading and gives the reader the keyboard");
+        assert!(seen(&mut rt).page_y < top - 100.0, "the page moved to the heading");
+        tab_to(&mut rt, |k| k.starts_with("bl-"));
+        down(&mut rt, Key::Enter);
+        assert_eq!(state(&mut rt).0, "Box/a.md", "Enter on a backlink opens its note");
+
+        // The tags: Enter shows the tag's notes, and the keyboard follows to them.
+        rt.update(|s, _| s.left_panel = Panel::Tags);
+        settle(&mut rt);
+        assert_eq!(tab_to(&mut rt, |k| k.starts_with("tag-")), "tag-kept");
+        down(&mut rt, Key::Enter);
+        let (.., panel, query, _) = state(&mut rt);
+        assert_eq!((panel, query.as_str()), (Panel::Search, "#kept"), "Enter on a tag searches for it");
+        assert_eq!(focused(&rt).as_deref(), Some("res-head"), "the keyboard goes to the results");
+
+        // The search results: Down reaches a match, and Enter opens the note at it.
+        down(&mut rt, Key::Down);
+        assert_eq!(focused(&rt).as_deref(), Some("hit-0"), "Down moves to a match");
+        down(&mut rt, Key::Enter);
+        let (_, mode, ..) = state(&mut rt);
+        assert_eq!(mode, Mode::Source, "a match opens in the writer");
+        assert!(seen(&mut rt).editor_focused, "with the keyboard in the editor");
+
+        // A list with no menu leaves Shift+F10 alone: no block menu opens under it.
+        rt.update(|s, _| s.mode = Mode::Preview);
+        settle(&mut rt);
+        tab_to(&mut rt, |k| k.starts_with("tab:"));
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        assert_eq!(state(&mut rt).5, 0, "Shift+F10 on an Open row opens nothing");
+
+        // A click on a row leaves the keyboard where it was: with the editor in the writer,
+        // with nothing in the reader.
+        for mode in [Mode::Source, Mode::Preview] {
+            let mut rt = garden(mode);
+            press_key(&mut rt, "file:c.md", false);
+            press_key(&mut rt, "dir:Box", false);
+            press_key(&mut rt, "tab:note.md", false);
+            let want = (mode == Mode::Source).then(|| "editor".to_string());
+            assert_eq!(focused(&rt), want, "{mode:?}: a click on a row keeps the keyboard with the note");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

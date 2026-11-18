@@ -3,6 +3,7 @@
 pub(crate) mod editor;
 mod chip;
 mod layer;
+mod lists;
 mod lock;
 mod menu;
 mod outline;

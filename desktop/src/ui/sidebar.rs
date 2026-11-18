@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use rune::{El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, text_input};
 
 use super::V;
+use super::lists::{self, Branch};
 use super::panel;
 use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, Control, FOLDER_PLUS, PLUS, SEARCH, floating, label, name_tip};
 use crate::folders::{MenuOn, row_key};
@@ -143,7 +144,7 @@ fn open_notes(v: V) -> Option<El> {
         .pl(panel::TEXT_X - panel::INSET)
         .center_y()
         .child(super::styles::caption("Open", true, v.p));
-    let mut list = col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD).role("tablist").child(heading);
+    let mut list = lists::list(col().key("open-notes").w_full().pt(OPEN_PAD).pb(OPEN_PAD), "list").child(heading);
     if s.note_mode() {
         let shown = s.note_path();
         for file in &s.notes {
@@ -192,22 +193,22 @@ fn note_row(v: V, file: &std::path::Path, on: bool) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press(move |s: &mut App| s.close_note(&close_file))
         .child(icon(&CLOSE, 8.0).color(c.faint));
-    panel::shade(format!("note:{}", file.display()), panel::BODY, 0, 0.0, &c, on)
+    let shade = panel::shade(format!("note:{}", file.display()), panel::BODY, 0, 0.0, &c, on)
         .pr(BUTTON_END)
         .hover_group()
-        .role("tab")
+        .role("listitem")
         .checked(on)
         .label(name.clone())
-        .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
-        .on_press_tx(move |s: &mut App, tx| {
-            if tx.button() == PointerButton::Middle {
-                s.close_note(&open_file);
-            } else {
-                s.open_note(&open_file);
-            }
-        })
-        .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(&crate::store::tilde(file))))
-        .child(close)
+        .pointer_buttons([PointerButton::Primary, PointerButton::Middle]);
+    lists::opener(shade, v.p, on, move |s: &mut App, tx| {
+        if tx.button() == PointerButton::Middle {
+            s.close_note(&open_file);
+        } else {
+            s.open_note(&open_file);
+        }
+    })
+    .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(&crate::store::tilde(file))))
+    .child(close)
 }
 
 fn open_row(v: V, path: &str) -> El {
@@ -225,22 +226,22 @@ fn open_row(v: V, path: &str) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press(move |s: &mut App| s.close_tab(&close_path))
         .child(icon(&CLOSE, 8.0).color(c.faint));
-    panel::shade(format!("tab:{path}"), panel::BODY, 0, 0.0, &c, on)
+    let shade = panel::shade(format!("tab:{path}"), panel::BODY, 0, 0.0, &c, on)
         .pr(BUTTON_END)
         .hover_group()
-        .role("tab")
+        .role("listitem")
         .checked(on)
         .label(md::base(path).to_string())
-        .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
-        .on_press_tx(move |s: &mut App, tx| {
-            if tx.button() == PointerButton::Middle {
-                s.close_tab(&open_path);
-            } else if s.active.as_deref() != Some(open_path.as_str()) {
-                s.open_file(&open_path, None, tx);
-            }
-        })
-        .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(path)))
-        .child(close)
+        .pointer_buttons([PointerButton::Primary, PointerButton::Middle]);
+    lists::opener(shade, v.p, on, move |s: &mut App, tx| {
+        if tx.button() == PointerButton::Middle {
+            s.close_tab(&open_path);
+        } else if s.active.as_deref() != Some(open_path.as_str()) {
+            s.open_file(&open_path, None, tx);
+        }
+    })
+    .child(text(md::base(path)).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(path)))
+    .child(close)
 }
 
 struct Node {
@@ -283,10 +284,7 @@ fn files_panel(v: V) -> El {
     let mut rows = Vec::new();
     walk(v, &root, 0, &mut rows);
     let root_target = s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some(""));
-    let mut c = col()
-        .key("tree")
-        .w_full()
-        .role("tree")
+    let mut c = lists::list(col().key("tree").w_full(), "tree")
         .on_secondary_press(|s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Root), (at.x, at.y), tx));
     if root_target {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
@@ -297,6 +295,28 @@ fn files_panel(v: V) -> El {
     c.children(rows)
 }
 
+/// A folder's folders, in the tree's order.
+fn folder_names(n: &Node) -> Vec<&String> {
+    let mut names: Vec<&String> = n.folders.keys().collect();
+    names.sort_by(|a, b| natural(a, b));
+    names
+}
+
+/// A folder's notes, in the tree's order.
+fn file_names(n: &Node) -> Vec<&String> {
+    let mut files: Vec<&String> = n.files.iter().collect();
+    files.sort_by(|a, b| natural(md::base(a), md::base(b)));
+    files
+}
+
+/// The key of a folder's first row inside it, where Right moves to.
+fn first_row(n: &Node) -> Option<String> {
+    match folder_names(n).first() {
+        Some(name) => Some(row_key("dir", &n.folders[*name].path)),
+        None => file_names(n).first().map(|f| row_key("file", f)),
+    }
+}
+
 fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
     let s = v.s;
     if let Some(nf) = &s.new_folder {
@@ -304,9 +324,8 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             rows.push(new_folder_row(v, depth, &nf.edit));
         }
     }
-    let mut names: Vec<&String> = n.folders.keys().collect();
-    names.sort_by(|a, b| natural(a, b));
-    for name in names {
+    let parent = (!n.path.is_empty()).then(|| row_key("dir", &n.path));
+    for name in folder_names(n) {
         let f = &n.folders[name];
         let open = s.expanded.contains(&f.path);
         let path = f.path.clone();
@@ -323,9 +342,10 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             .group_opacity(0.0, 1.0)
             .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
             .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
+        let branch = Branch::Folder { path: f.path.clone(), open, first: first_row(f) };
+        let r = lists::item(tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false), v.p, false, move |s: &mut App, _| s.toggle_folder(&path));
         rows.push(
-            tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false)
-                .on_press(move |s: &mut App| s.toggle_folder(&path))
+            lists::tree_arrows(r, branch, parent.clone())
                 .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx))
                 .child(add),
         );
@@ -333,16 +353,14 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             walk(v, f, depth + 1, rows);
         }
     }
-    let mut files: Vec<&String> = n.files.iter().collect();
-    files.sort_by(|a, b| natural(md::base(a), md::base(b)));
-    for f in files {
+    for f in file_names(n) {
         let on = s.active.as_deref() == Some(f.as_str());
         let path = f.clone();
         let drag_path = f.clone();
         let menu_path = f.clone();
+        let r = lists::opener(tree_row(v, &row_key("file", f), md::base(f), f, depth, false, false, on), v.p, on, move |s: &mut App, tx| s.open_file(&path, None, tx));
         rows.push(
-            tree_row(v, &row_key("file", f), md::base(f), f, depth, false, false, on)
-                .on_press_tx(move |s: &mut App, tx| s.open_file(&path, None, tx))
+            lists::tree_arrows(r, Branch::Note, parent.clone())
                 .on_drag(move |s: &mut App, d: &mut rune::Drag, tx| s.drag_note(&drag_path, d, tx))
                 .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Note(menu_path.clone())), (at.x, at.y), tx)),
         );
@@ -500,11 +518,12 @@ fn search_panel(v: V) -> El {
     } else {
         format!("{total} {} in {} {}", if total == 1 { "match" } else { "matches" }, results.len(), if results.len() == 1 { "note" } else { "notes" })
     };
-    let mut out = col()
+    let out = col()
         .key("search-panel")
         .w_full()
         .child(col().key("search-top").px(panel::INSET).child(box_).child(text(summary).font(nav(panel::BODY_SMALL, false)).color(c.faint).wrap().w_full().pt(10.0).pl(panel::TEXT_X - panel::INSET).pr(panel::TEXT_X - panel::INSET).pb(4.0)));
     let ql = q.len();
+    let mut found = lists::list(col().key("search-results").w_full(), "list");
     for (ri, r) in results.iter().enumerate() {
         let lines: Vec<&str> = s.files().get(&r.path).map(|t| t.split('\n').collect()).unwrap_or_default();
         let first = r.hits.first().map(|h| Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true });
@@ -512,11 +531,9 @@ fn search_panel(v: V) -> El {
         let name_style = nav(panel::BODY, true);
         let small = nav(panel::CAPTION, false);
         let shift = super::baseline_shift(name_style, small);
+        let head = panel::shade("res-head", panel::BODY, 0, 0.0, &c, false).gap(8.0).role("button");
         let mut block = col().key(format!("res-{ri}")).py(4.0).child(
-            panel::shade("res-head", panel::BODY, 0, 0.0, &c, false)
-                .gap(8.0)
-                .role("button")
-                .on_press_tx(move |s: &mut App, tx| s.open_file(&path, first, tx))
+            lists::opener(head, p, false, move |s: &mut App, tx| s.open_file(&path, first, tx))
                 .child(text(md::base(&r.path)).font(name_style).color(c.dim).truncate().shrink())
                 .child(text(md::dir(&r.path)).font(small).color(c.faint).truncate_head().grow(1.0).shrink().min_w(last_part(md::dir(&r.path), small)).mt(shift))
                 .child(text(if r.hits.is_empty() { String::new() } else { r.hits.len().to_string() }).font(small).color(c.faint).mt(shift)),
@@ -541,18 +558,18 @@ fn search_panel(v: V) -> El {
             };
             let path = r.path.clone();
             let sel = Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true };
+            let hit = el().key(format!("hit-{hi}")).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button");
             block = block.child(
-                el().key(format!("hit-{hi}")).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button").on_press_tx(move |s: &mut App, tx| s.open_file(&path, Some(sel), tx)).child(
-                    rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).max_lines(2).w_full(),
-                ),
+                lists::opener(hit, p, false, move |s: &mut App, tx| s.open_file(&path, Some(sel), tx))
+                    .child(rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).max_lines(2).w_full()),
             );
         }
         if r.hits.len() > 4 {
             block = block.child(text(format!("+ {} more", r.hits.len() - 4)).font(nav(panel::CAPTION, false)).color(c.faint).py(2.0).pl(panel::TEXT_X));
         }
-        out = out.child(block);
+        found = found.child(block);
     }
-    out
+    out.child(found)
 }
 
 /// A search snippet's room: at most this many characters ahead of the match, and the characters
@@ -563,19 +580,23 @@ const SNIP_COLS: usize = ((248.0 - panel::TEXT_X - panel::RIGHT) / (panel::BODY_
 fn tags_panel(v: V) -> El {
     let c = Roles::panel(v.p);
     let tags = md::tags(v.s.files());
-    let mut out = col().key("tags").w_full();
+    let mut out = lists::list(col().key("tags").w_full(), "list");
     if tags.is_empty() {
         return out.child(text("No tags yet. Write #something in a note.").font(nav(panel::BODY_SMALL, false)).color(c.faint).py(6.0).pl(panel::TEXT_X).pr(panel::RIGHT).wrap());
     }
     for (tag, n) in tags {
         let t = tag.clone();
+        let shade = panel::shade(format!("tag-{tag}"), panel::BODY, 0, 0.0, &c, false).justify_between().role("button");
         out = out.child(
-            panel::shade(format!("tag-{tag}"), panel::BODY, 0, 0.0, &c, false)
-                .justify_between()
-                .role("button")
-                .on_press_tx(move |s: &mut App, tx| s.search_tag(&t, tx))
-                .child(text(format!("#{tag}")).font(nav(panel::BODY, false)).color(c.accent))
-                .child(text(n.to_string()).font(nav(panel::CAPTION, false)).color(c.faint)),
+            lists::item(shade, v.p, false, move |s: &mut App, tx| {
+                s.search_tag(&t, tx);
+                // From the keyboard, the keyboard follows the tag to its notes.
+                if tx.by_keys() {
+                    tx.focus("search-results", true);
+                }
+            })
+            .child(text(format!("#{tag}")).font(nav(panel::BODY, false)).color(c.accent))
+            .child(text(n.to_string()).font(nav(panel::CAPTION, false)).color(c.faint)),
         );
     }
     out

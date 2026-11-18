@@ -49,7 +49,13 @@ architecture.
 - `keys::on_key` in `desktop/src/keys.rs` handles window shortcuts. It only gets keys that
   the focused control does not use. In preview nothing has focus until the user tabs to a
   control, so the reader's single keys (Space, `j`) reach it. The switch to preview drops
-  focus as the editor leaves, and a click on the folder's name does not take it.
+  focus as the editor leaves, and so does a link or a picked file that opens a note there
+  (`App::keys_to_note`). A click on the folder's name or on a sidebar row does not take it.
+- The side panels' lists (`ui::lists`) are Rune focus groups, built by one helper: the file
+  tree, the Open list, the search results, the tags, and the outline's headings and
+  backlinks. Each is one Tab stop. The arrows move, Enter does what a click does, and a row
+  that shows a note then gives the keyboard to the note (`App::keys_to_note`). The tree adds
+  Left and Right for folders. Esc gives the keyboard back to the note.
 
 ```mermaid
 flowchart LR
@@ -98,7 +104,8 @@ showed when it opened.
 - The menus (`ui::menu`) are Rune `menu` focus groups. Up and Down move and wrap, a letter
   jumps to its item, and Enter or Space picks one. A menu opened from the keyboard marks its
   first item. In preview, where nothing has focus, `keys::on_key` takes the Menu key and
-  Shift+F10 itself and opens the block menu. The tree menu's question before it deletes a folder with notes is a menu layer
+  Shift+F10 itself and opens the block menu. With a control focused, Rune opens that
+  control's right-click menu below it instead: a tree row's, with the same layer rule. The tree menu's question before it deletes a folder with notes is a menu layer
   too, with two buttons: focus starts on Cancel with its ring, Tab moves between them, Enter
   or Space presses one, and Esc cancels.
 
@@ -296,7 +303,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `sample.rs` | The "Field Notes" sample folder. |
 | `sync/` | Sync. See above. |
 | `mcp.rs` | The MCP server. |
-| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets` (with `faded`, the edge fades that Settings, help and the palette's list share), `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark), `sheet` (the edit sheet's modal scrim and card, its context boxes drawn by `preview::context`) `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `styles`, the chrome's named text styles in its two families (PAGE-09): the panel family for navigation, key names, literal values and tooltips, Instrument Sans for the rest, and one caption style whose ink reads at 4.5:1 on every panel and dialog; a test keeps other families out of `ui/`. Also `octicons`, the alert, image and copy icons, and `chip`, omarky's chip button (BLK-100) used by the code block's Copy chip and the find bar. `menu` draws Quire's in-app menus, each an open layer (`crate::layer::Menu`): the folder's menu, the tree's, the editor's right-click menu (WR-135), which sends Ctrl+X, C or V to its field, and the preview's block menu (RD-68); the editor's is attached only where Rune has no native menu (`editor::with_edit_menu`). `layer` puts every open layer on its plane (see Layers). `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font, with omarky's round blinking caret (`editor::writer_caret`, also used by the edit sheet), marks hung in a gutter left of the column through a Rune `ParagraphStyle` per line (`writer::Styled::hang`, `editor::paragraph_styles`, decision 0004), the scroll thumb and progress line drawn from the scroll through live values, and fade bands at the sheet's top and foot that let presses through (`El::inert`). |
+| `ui/` | One builder file per part of the window: `editor`, `preview`, `sidebar`, `outline`, `palette`, `titlebar`, `welcome`, `lock`, `settings`, `settings_sync`, `settings_mcp`, plus `widgets` (with `faded`, the edge fades that Settings, help and the palette's list share), `reader` (the find bar, help sheets of both modes, toasts, progress line and reloaded mark), `sheet` (the edit sheet's modal scrim and card, its context boxes drawn by `preview::context`) `panel`, the side panels' shared type and spacing from omarky's outline panel (decision 0008), and `styles`, the chrome's named text styles in its two families (PAGE-09): the panel family for navigation, key names, literal values and tooltips, Instrument Sans for the rest, and one caption style whose ink reads at 4.5:1 on every panel and dialog; a test keeps other families out of `ui/`. Also `octicons`, the alert, image and copy icons, and `chip`, omarky's chip button (BLK-100) used by the code block's Copy chip and the find bar. `menu` draws Quire's in-app menus, each an open layer (`crate::layer::Menu`): the folder's menu, the tree's, the editor's right-click menu (WR-135), which sends Ctrl+X, C or V to its field, and the preview's block menu (RD-68); the editor's is attached only where Rune has no native menu (`editor::with_edit_menu`). `layer` puts every open layer on its plane (see Layers). `lists` makes the side panels' lists work from the keyboard (see State and view). `preview` draws the reader page from `blocks.rs` and `page.rs`, with lists, code, tables and the front-matter card in `preview/`. `editor` draws the writer: one styled text field in the same column rule as the page, measured in the source font, with omarky's round blinking caret (`editor::writer_caret`, also used by the edit sheet), marks hung in a gutter left of the column through a Rune `ParagraphStyle` per line (`writer::Styled::hang`, `editor::paragraph_styles`, decision 0004), the scroll thumb and progress line drawn from the scroll through live values, and fade bands at the sheet's top and foot that let presses through (`El::inert`). |
 
 ## The Android app
 

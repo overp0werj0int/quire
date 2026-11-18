@@ -259,6 +259,16 @@ impl App {
         self.screen == Screen::Vault && self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a))
     }
 
+    /// The keyboard goes back to the note: to the editor in the writer, else to nothing, so
+    /// the reader's keys reach the reader.
+    pub fn keys_to_note(&mut self, tx: &mut Tx) {
+        if self.writing_note() {
+            self.focus_editor(tx);
+        } else {
+            tx.blur();
+        }
+    }
+
     /// Closes the top layer and gives focus back to where it was before it opened.
     pub fn close_layer(&mut self, tx: &mut Tx) {
         if let Some(open) = self.layers.pop() {

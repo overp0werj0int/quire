@@ -842,9 +842,11 @@ impl App {
         }
         let directory = self.vault.as_ref().map(|v| v.path.clone());
         let options = FileDialogOptions { title: "Open a note".into(), directory, ..Default::default() }.filter("Markdown", &["md", "markdown"]);
-        tx.open_file(options, |s: &mut App, result, _| match result {
+        tx.open_file(options, |s: &mut App, result, tx| match result {
             Ok(Some(path)) => {
+                // A new note opens in preview, where the editor leaves with the keyboard.
                 s.open_note(&path);
+                s.keys_to_note(tx);
             }
             Ok(None) => {}
             Err(e) => s.notice = Some(format!("Could not show the file picker: {e}")),
