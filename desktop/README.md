@@ -28,7 +28,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 - Shows source with live Markdown highlighting, or a rendered preview (`Ctrl+P`).
 - Has a floating formatting toolbar at the top of the note in source mode. It stays in view, and the note scrolls under it. The buttons are bold, italic, strikethrough, heading, link, note link, lists, task, quote, code and image. `Ctrl+B`, `Ctrl+I` and `Ctrl+K` do the same as the first buttons. Turn off Settings, Editor, **Formatting toolbar** to hide it.
 - Hides everything but the text in zen mode. Use `Ctrl+.` or the zen mode button in the title bar.
-- Fits a narrow window. Below 680 points the sidebar button opens the sidebar over the page, and below 1100 points the outline button does the same for the outline. A press outside, Esc or the button closes it.
+- Fits a narrow window. Below 680 points the sidebar button opens the sidebar over the page, and below 1100 points the outline button does the same for the outline. A press outside, Esc or the button closes it. So does switching between source and preview, or another note. A shortcut such as `Ctrl+F` closes it and then acts.
 - Locks a note with its own password: use the lock button at the end of the toolbar, or "Lock note with a password…" in the command palette. Quire encrypts the note with AES-256-GCM and a key from the password. The file on disk, search, the link index and sync see only the encrypted text. To read the note, enter the password. Each save encrypts the note again. The note locks again when you close its tab or select the lock button. "Remove password" in the command palette saves it as plain text again. If you forget the password, nobody can open the note. `../SYNC.md` describes the format.
 
 ### Images
@@ -60,6 +60,8 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 - Sets notes in iA Writer Quattro S, with code in iA Writer Mono S, at 14 px. Settings, Editor picks the source-mode font (Quattro S, Duospace, Mono S, IBM Plex Mono, Courier Prime or Spline Sans Mono), the code font and the size, from 9 to 32 px. Settings, Appearance picks the preview's font: Quattro S, Newsreader or Instrument Sans.
 - Has 14 themes in Settings, Appearance: 6 for light mode and 8 for dark mode. You pick one for each mode, and "Match system" switches between them.
 - Works Settings from the keyboard. Tab and Shift+Tab move through the controls in reading order, with a ring in the accent on the one in focus. Space or Return presses it. The arrow keys move through a set of choices, such as the themes or a segmented control, and pick one. Esc closes Settings.
+- Works every menu from the keyboard. Up and Down move through it, a letter jumps to an item, Enter or Space picks one and Esc closes it. Tab reaches the folder's name at the top of the sidebar, and Enter opens its menu. `Shift+F10` or the Menu key opens the editor's menu below the caret.
+- Opens one thing over the page at a time: a menu, a drawer, a dialog or the palette. It holds the keyboard while it is open, and when it closes the keyboard goes back where it was.
 - Lets you pick the accent colour from 9 swatches, or type a `#rrggbb` value. An accent that is too dark to read on a dark theme gets lighter for text.
 - On Omarchy, offers the current Omarchy theme in both lists and follows theme switches while Quire runs. Without a pick, "Match system" uses the Omarchy theme.
 

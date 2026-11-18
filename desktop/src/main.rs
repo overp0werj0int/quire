@@ -3181,3 +3181,215 @@ mod note_mode_tests {
     }
 }
 
+#[cfg(test)]
+mod layer_matrix_tests {
+    //! The layer rule (`crate::layer`), run as a matrix: every overlay, opened as a user opens
+    //! it, against every input that the rule says what to do with.
+    use crate::app::{App, Mode};
+    use rune::{Key, KeyEvent, Mods, Runtime};
+
+    const DT: f64 = 1.0 / 60.0;
+
+    struct Overlay {
+        name: &'static str,
+        /// Opened over the reader, not the writer.
+        preview: bool,
+        /// The window it needs: a drawer needs one too narrow to dock it.
+        size: (f32, f32),
+        /// A menu or a drawer: a window shortcut closes it and acts, and a change of mode
+        /// closes it.
+        light: bool,
+        open: fn(&mut Runtime<App>),
+    }
+
+    fn settle(rt: &mut Runtime<App>) {
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+    }
+
+    fn key(rt: &mut Runtime<App>, key: Key, mods: Mods) {
+        rt.key(KeyEvent { key, mods });
+        settle(rt);
+    }
+
+    /// The shortcut modifier, as Rune sends it: Cmd on macOS, Ctrl (which sets `cmd` too)
+    /// elsewhere.
+    fn ctrl(shift: bool) -> Mods {
+        Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), shift, ..Mods::default() }
+    }
+
+    fn press(rt: &mut Runtime<App>, at: (f32, f32), secondary: bool) {
+        rt.pointer_move(at.0, at.1);
+        rt.frame(DT);
+        if secondary {
+            rt.secondary_down(at.0, at.1);
+            rt.secondary_up(at.0, at.1);
+        } else {
+            rt.pointer_down(at.0, at.1);
+            rt.pointer_up(at.0, at.1);
+        }
+        settle(rt);
+    }
+
+    fn press_key(rt: &mut Runtime<App>, el: &str, secondary: bool) {
+        let at = rt.find(el).unwrap_or_else(|| panic!("no {el}"));
+        press(rt, at, secondary);
+    }
+
+    fn overlays() -> Vec<Overlay> {
+        let wide = (960.0, 600.0);
+        let narrow = (640.0, 480.0);
+        vec![
+            Overlay { name: "palette", preview: false, size: wide, light: false, open: |rt| key(rt, Key::Command('k'), ctrl(true)) },
+            Overlay { name: "settings", preview: false, size: wide, light: false, open: |rt| key(rt, Key::Command(','), ctrl(false)) },
+            Overlay { name: "lock dialog", preview: false, size: wide, light: false, open: |rt| press_key(rt, "fmt-lock", false) },
+            Overlay { name: "help", preview: true, size: wide, light: false, open: |rt| key(rt, Key::Text("?".into()), Mods { shift: true, ..Mods::default() }) },
+            Overlay { name: "outline drawer", preview: false, size: narrow, light: true, open: |rt| press_key(rt, "toggle-right", false) },
+            Overlay { name: "sidebar drawer", preview: false, size: narrow, light: true, open: |rt| press_key(rt, "toggle-left", false) },
+            Overlay {
+                name: "preview menu",
+                preview: true,
+                size: wide,
+                light: true,
+                open: |rt| {
+                    let block = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
+                    press(rt, (block[0] + 20.0, block[1] + block[3] / 2.0), true);
+                },
+            },
+            Overlay { name: "row menu", preview: false, size: wide, light: true, open: |rt| press_key(rt, "file:note.md", true) },
+            Overlay {
+                name: "editor menu",
+                preview: false,
+                size: wide,
+                light: true,
+                open: |rt| {
+                    let ([x, y, _, _], _) = rt.presented("editor").expect("the editor");
+                    press(rt, (x + 40.0, y + 40.0), true);
+                },
+            },
+            Overlay { name: "folder menu", preview: false, size: wide, light: true, open: |rt| press_key(rt, "vault-button", false) },
+        ]
+    }
+
+    /// What a case looks at after its input.
+    struct Seen {
+        layers: usize,
+        text: String,
+        mode: Mode,
+        palette: bool,
+        settings: bool,
+        find: bool,
+        editor_focused: bool,
+        page_y: f32,
+    }
+
+    fn seen(rt: &mut Runtime<App>) -> Seen {
+        let mut s0 = None;
+        rt.update_if(|s, _| {
+            s0 = Some((s.open_layers().count(), s.active_text().to_string(), s.mode, s.pal().is_some(), s.layer_is(crate::layer::Kind::Settings), s.reader.find.open));
+            false
+        });
+        let (layers, text, mode, palette, settings, find) = s0.unwrap();
+        let editor_focused = rt.elements().iter().any(|e| e.focused && e.key.as_deref() == Some("editor"));
+        let page_y = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("doc-col")).map_or(f32::NAN, |e| e.rect[1]);
+        Seen { layers, text, mode, palette, settings, find, editor_focused, page_y }
+    }
+
+    const NOTE: &str = "# Head\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";
+
+    /// A fresh window with the overlay open, and what it showed then.
+    fn opened(dir: &std::path::Path, o: &Overlay) -> (Runtime<App>, Seen) {
+        let text = format!("{NOTE}{}", "More text to scroll by.\n\n".repeat(80));
+        let mode = if o.preview { Mode::Preview } else { Mode::Source };
+        let (mut rt, _) = crate::bench::open(dir, &text, mode);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport(o.size, 1.0);
+        settle(&mut rt);
+        if !o.preview {
+            rt.update(|s, tx| {
+                s.cur_edit().set_selection(0, 0);
+                s.focus_editor(tx);
+            });
+            settle(&mut rt);
+        }
+        (o.open)(&mut rt);
+        let before = seen(&mut rt);
+        assert_eq!(before.layers, 1, "{}: opened", o.name);
+        (rt, before)
+    }
+
+    #[test]
+    fn every_overlay_follows_the_layer_rule() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-layer-matrix-{}", std::process::id()));
+        type Input = (&'static str, fn(&mut Runtime<App>));
+        let inputs: [Input; 7] = [
+            ("typing", |rt| {
+                for c in ["Q", "Q", "Q"] {
+                    key(rt, Key::Text(c.into()), Mods::default());
+                }
+            }),
+            ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
+            ("Ctrl+Shift+K", |rt| key(rt, Key::Command('k'), ctrl(true))),
+            ("Ctrl+,", |rt| key(rt, Key::Command(','), ctrl(false))),
+            ("Ctrl+F", |rt| key(rt, Key::Command('f'), ctrl(false))),
+            ("Ctrl+P", |rt| key(rt, Key::Command('p'), ctrl(false))),
+            ("arrows and the wheel", |rt| {
+                for _ in 0..4 {
+                    key(rt, Key::Down, Mods::default());
+                }
+                rt.wheel(300.0, 300.0, -500.0);
+                settle(rt);
+            }),
+        ];
+        let mut fails = Vec::new();
+        for o in overlays() {
+            for (input, run) in &inputs {
+                let (mut rt, before) = opened(&dir, &o);
+                run(&mut rt);
+                let after = seen(&mut rt);
+                let case = format!("{} + {input}", o.name);
+                let mut fail = |why: &str| fails.push(format!("{case}: {why}"));
+                if after.text != before.text {
+                    fail("the note changed");
+                }
+                if after.layers > 1 || (after.layers == 1 && after.find) {
+                    fail("two layers up");
+                }
+                match *input {
+                    "Esc" => {
+                        if after.layers != 0 {
+                            fail("still open");
+                        } else if !o.preview && !after.editor_focused {
+                            fail("the editor does not have the keyboard back");
+                        }
+                    }
+                    "Ctrl+Shift+K" | "Ctrl+," | "Ctrl+F" if o.light => {
+                        let acted = match *input {
+                            "Ctrl+Shift+K" => after.palette,
+                            "Ctrl+," => after.settings,
+                            _ => after.find,
+                        };
+                        if !acted {
+                            fail("the shortcut did nothing");
+                        }
+                    }
+                    "Ctrl+P" if o.light => {
+                        if after.layers != 0 || after.mode == before.mode {
+                            fail("a mode switch should close it and switch");
+                        }
+                    }
+                    "arrows and the wheel" => {
+                        if after.layers == 1 && (after.page_y - before.page_y).abs() > 0.5 {
+                            fail("the note behind moved");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
+}

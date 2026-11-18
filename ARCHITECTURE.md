@@ -61,6 +61,37 @@ flowchart LR
 closes. If the first argument is a subcommand, such as `quire mcp`, `cli::run_subcommand`
 runs it and no window opens.
 
+### Layers
+
+Everything that opens over the page goes through one model, in `desktop/src/layer.rs`. That
+covers the palette and the quick switcher, Settings, the lock dialog, help, the edit sheet,
+the sidebar and outline drawers, and every menu: the folder's, the tree's, the editor's and
+the block menu. `App.layers` holds the open ones, bottom first. Each `layer::Open` holds a
+`Layer` (which overlay, with its own state), the element focus goes back to, and what the page
+showed when it opened.
+
+- `App::open_layer` opens one and closes whatever was open. A menu is the one exception: it
+  opens over the layer it was opened in, such as a row's menu over the sidebar drawer or the
+  editor's menu over the edit sheet, and it replaces only another menu.
+- `App::close_layer`, `App::close_layers` and `App::dismiss` close layers. `dismiss` runs on
+  Esc and on a press outside, with either mouse button. Focus goes back where it was before
+  the layer opened, whichever way it closes.
+- `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
+  drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
+  window wide enough to dock the drawer. Every layer closes when the window leaves the folder.
+- `keys::on_key` gives the keyboard to the open layer. Over a light layer, Esc closes it. A
+  window shortcut closes it and then acts as if it had not been open. A key with no modifier
+  stays in the layer. Over the palette, Settings or the lock dialog, the layer's own keys act
+  first. A window shortcut closes the layer and acts. Help and the edit sheet swallow every
+  key they do not bind (RD-80, SHEET-014). The toast's Undo key (KEY-94) acts whatever is open.
+- `ui::layer` draws each open layer on its plane. It makes the card modal, so the keyboard, Tab,
+  presses and the wheel stay in it, and it dims the page behind. The toast and the notice are
+  not layers. They paint over everything (`El::raise`), stay live to the pointer and never
+  take focus.
+- The menus (`ui::menu`) are Rune `menu` focus groups. Up and Down move and wrap, a letter
+  jumps to its item, and Enter or Space picks one. A menu opened from the keyboard marks its
+  first item.
+
 ### The notes folder in memory and on disk
 
 `Vault` in `desktop/src/vault.rs` holds the whole notes folder in memory, as a map from note
@@ -232,6 +263,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `app.rs` | `App`, `init`, `poll` and most actions. |
 | `keymap.rs` | The keymap table: every key as a context, chord and action, in the omarky and Quire presets. |
 | `keys.rs` | Routes window keys through the keymap to each action's handler. |
+| `layer.rs` | The layers over the page: what is open, where focus goes back, and when a layer closes (see Layers). |
 | `commands.rs` | The command palette and the quick switcher. |
 | `vault.rs` | `Vault`, `Op`, `Writer`: reading the folder and writing to it. |
 | `store.rs` | `Persist`, `Settings`, `state.json`. |
@@ -245,7 +277,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `writer_app.rs` | The writer on `App`: the span cache, the editing keys, paragraph focus, typewriter scrolling, the font cycle, find in the source, and the mode switch that keeps the place. `App::poll_writer` runs typewriter scrolling before each frame. Scrolls find their target through keyed transparent highlights in the field (`CARET`, `LINE_AT`). Find marks every match with a highlight in the reader's colours, and the current one is keyed `FIND_CUR`. |
 | `highlight.rs` | Code colours: the `rune-highlights` lexers, with omarky's language aliases, mapped to the theme's syntax roles and cached per block. |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
-| `folders.rs` | The folder tree, moving notes by drag, the tree menu. |
+| `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). |
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
 | `theme.rs` | Themes, fonts, text measurements. |

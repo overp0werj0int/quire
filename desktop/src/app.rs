@@ -1447,11 +1447,10 @@ impl App {
         tx.focus("pal-input", false);
     }
 
-    /// Escape closes the topmost thing, as in the design.
+    /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
+    /// new folder, rename and the create prompt close, then zen mode ends.
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
-        if self.layer().is_some() {
-            self.dismiss(tx);
-        } else if self.new_folder.is_some() {
+        if self.new_folder.is_some() {
             self.new_folder = None;
         } else if self.renaming.is_some() {
             self.cancel_rename(tx);
