@@ -4370,6 +4370,40 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// MODESC: on the note in preview, Esc with Shift, Ctrl or Alt runs the reader's Esc order
+    /// as Esc does: a showing notice goes, then find closes, then the writer shows.
+    #[test]
+    fn esc_with_a_modifier_is_esc_on_the_reader_note() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-modesc-{}", std::process::id()));
+        let state = |rt: &mut Runtime<App>| {
+            let mut seen = (false, false, Mode::Source);
+            rt.update_if(|s, _| {
+                seen = (s.notice.is_some(), s.reader.find.open, s.mode);
+                false
+            });
+            seen
+        };
+        for m in [Mods { shift: true, ..Mods::default() }, ctrl(false), Mods { alt: true, ..Mods::default() }] {
+            let mut rt = garden(&dir, Mode::Preview);
+            key(&mut rt, Key::Command('f'), ctrl(false));
+            rt.update(|s, tx| {
+                s.notice = Some("A folder named Docs is already there.".into());
+                s.keys_to_note(tx);
+            });
+            settle(&mut rt);
+            assert_eq!(focused(&rt).as_deref(), Some("note-keys"), "{m:?}: the note has the keyboard");
+            key(&mut rt, Key::Escape, m);
+            assert_eq!(state(&mut rt), (false, true, Mode::Preview), "{m:?}: Esc dismisses the notice first");
+            key(&mut rt, Key::Escape, m);
+            assert_eq!(state(&mut rt), (false, false, Mode::Preview), "{m:?}: then closes find");
+            key(&mut rt, Key::Escape, m);
+            assert_eq!(state(&mut rt).2, Mode::Source, "{m:?}: then shows the writer");
+            assert_eq!(focused(&rt).as_deref(), Some("editor"), "{m:?}: with the editor's caret");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A long name being typed in the title bar stays in the title's room: the field stops at
     /// the room less ".md", the name scrolls inside it, and the caret and ".md" stay in view, at
     /// 640 and 1280, in both modes. A short name keeps its own small field (RENFIT).

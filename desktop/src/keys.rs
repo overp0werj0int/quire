@@ -42,6 +42,15 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
     {
         return done;
     }
+    // On the note, Esc with Shift, Ctrl or Alt is Esc, as it is in the note's text field: no
+    // preset gives it a meaning of its own.
+    let plain;
+    let ev = if stop.is_none() && matches!(ev.key, rune::Key::Escape) && !ev.mods.logo {
+        plain = KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() };
+        &plain
+    } else {
+        ev
+    };
     let stack: &[Ctx] = if stop.is_some() && !crate::focus::chord(ev) { &[Ctx::Global] } else { page_stack(s) };
     let field = tx.focused().is_some_and(crate::focus::field);
     // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
