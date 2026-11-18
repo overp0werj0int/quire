@@ -4368,10 +4368,21 @@ mod layer_matrix_tests {
             assert!(!focused(&rt).unwrap_or_default().starts_with("panel-"), "{panel:?}: Shift+Tab leaves the tabs: {:?}", focused(&rt));
             key(&mut rt, Key::Tab, Mods::default());
             assert_eq!(focused(&rt).as_deref(), Some(open), "{panel:?}: Tab comes back to the open tab");
-            // The ring's pill sits on the open tab's mark, its 2 pt stroke inside the track.
-            let (seg, ring) = (rect(&rt, "panel-seg").expect("the track"), rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-ring") && e.path.contains(open)).expect("the tab's ring").rect);
-            assert_eq!(Some(ring), rect(&rt, "tab-mark"), "{panel:?}: the ring follows the open tab's pill");
-            assert!(ring[1] - 2.0 >= seg[1] && ring[1] + ring[3] + 2.0 <= seg[1] + seg[3] && ring[0] - 2.0 >= seg[0] && ring[0] + ring[2] + 2.0 <= seg[0] + seg[2], "{panel:?}: the ring {ring:?} stays in the track {seg:?}");
+            // The ring is drawn inside the open tab's pill, its 2 pt stroke ending at the pill's
+            // edge, so it stays in the track and off the pills beside it (RINGOV).
+            let seg = rect(&rt, "panel-seg").expect("the track");
+            let ring = |rt: &Runtime<App>, tab: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-ring") && e.path.contains(tab)).expect("the tab's ring").rect;
+            let (r, mark) = (ring(&rt, open), rect(&rt, "tab-mark").expect("the open tab's pill"));
+            let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
+            assert!(outer.iter().zip(mark).all(|(a, b)| (a - b).abs() < 0.01), "{panel:?}: the ring {outer:?} is the open tab's pill {mark:?}");
+            assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: the ring {outer:?} stays clear of the track's edge {seg:?}");
+            // On a tab beside the open one, the ring touches nothing of the open tab's pill.
+            key(&mut rt, Key::Right, Mods::default());
+            let side = focused(&rt).expect("a tab beside");
+            let r = ring(&rt, &side);
+            let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
+            assert!(side != open && (outer[0] + outer[2] <= mark[0] + 0.01 || outer[0] >= mark[0] + mark[2] - 0.01), "{panel:?}: {side}'s ring {outer:?} stays off the open pill {mark:?}");
+            assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: {side}'s ring {outer:?} stays clear of the track's edge {seg:?}");
         }
         // Home and End go to the first and the last tab, and Up and Down do nothing: none of
         // them opens a panel or takes the keyboard out of the tabs.

@@ -112,9 +112,10 @@ pub fn sidebar(v: V) -> El {
                     true
                 })
                 .children(on.then(|| pill().key("tab-mark").fill(c.text.alpha(0.08)).transition(super::swap())))
-                // The ring follows the pill, the open one's or where it would be, and reaches
-                // no further than the track's edge.
-                .child(pill().key("tab-ring").focus_ring(rw, SEG_IN - rw, rc))
+                // The ring follows the pill, the open one's or where it would be, drawn inside
+                // the pill's own rectangle: the pills touch, so a ring outside one would cover
+                // its neighbour (RINGOV), and it stays SEG_IN clear of the track's edge.
+                .child(el().key("tab-ring").pin(Some(rw - TAB_PAD), Some(SEG_IN + rw), Some(rw - TAB_PAD), Some(SEG_IN + rw)).radius(TAB_R - rw).focus_ring(rw, 0.0, rc))
                 .child(text(lbl.to_uppercase()).font(super::styles::tab(panel::CAPTION)).color(if on { c.text } else { c.dim }).group_color(c.text)),
         );
     }
