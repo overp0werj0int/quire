@@ -43,7 +43,9 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
     };
     let Some(card) = card else { return };
     // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
-    let el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind));
+    // As it closes, focus goes back where it was (`App::give_back`); when that is gone, such as
+    // the row a menu deleted, the note has the keyboard, as for any stop that goes away.
+    let el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind)).focus_return(crate::focus::NOTE);
     let (key, paint) = plane(kind);
     match card.plane {
         Some(plane) => out.push(plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).child(el)),

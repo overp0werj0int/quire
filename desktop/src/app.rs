@@ -1125,6 +1125,8 @@ impl App {
             if self.active.is_none() {
                 self.focus = false;
             }
+            // The note that shows now has its editor, so its text shows at once.
+            self.ensure_edit();
         }
         self.renaming = None;
         self.persist_later();

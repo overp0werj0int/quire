@@ -88,7 +88,9 @@ showed when it opened.
   find's field: the editor with the caret at the match, or nothing in preview.
 - `App::close_layer`, `App::close_layers` and `App::dismiss` close layers. `dismiss` runs on
   Esc and on a press outside, with either mouse button. Focus goes back where it was before
-  the layer opened, whichever way it closes.
+  the layer opened, whichever way it closes. When that element is gone, such as the row of a
+  note the menu deleted, the note has the keyboard: every layer's card carries
+  `focus_return(focus::NOTE)`, as a stop does.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
   window wide enough to dock the drawer. A menu also closes when the window's size changes.

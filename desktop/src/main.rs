@@ -4270,6 +4270,43 @@ mod layer_matrix_tests {
                 }
             }
         }
+        // A note deleted from its focused row by keys (Shift+F10, Down to Delete note, Enter):
+        // the row is gone, so the note has the keyboard (DEL). In the writer the note deleted is
+        // the open one, and the next one shows its text at once, though it never had an
+        // editor; in preview the note shown stays and its keys work.
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, _| s.tabs.push("Box/b.md".into()));
+        rt.update(|_, tx| tx.focus("file:note.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        for k in [Key::Down, Key::Down, Key::Enter] {
+            key(&mut rt, k, Mods::default());
+        }
+        let field = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("editor")).and_then(|e| e.text).unwrap_or_default();
+        if !field.starts_with("# B") {
+            fails.push(format!("after deleting the open note, the editor shows {field:?}, not the next note"));
+        }
+        for c in ["Q", "Q"] {
+            text_key(&mut rt, c);
+        }
+        let after = seen(&mut rt);
+        if after.layers != 0 || !after.text.contains("QQ") {
+            fails.push(format!("the open note deleted from its row: typing went to {:?} (layers {}, text {:?})", focused(&rt), after.layers, after.text));
+        }
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        for k in [Key::Down, Key::Down, Key::Down, Key::Enter] {
+            key(&mut rt, k, Mods::default());
+        }
+        let y0 = seen(&mut rt).page_y;
+        text_key(&mut rt, "j");
+        glide(&mut rt);
+        let after = seen(&mut rt);
+        if rt.elements().iter().any(|e| e.key.as_deref() == Some("file:Box|a.md")) || after.layers != 0 || after.page_y > y0 - 5.0 {
+            fails.push(format!("a note deleted from its row in preview: then j does nothing (focus {:?}, layers {}, page {y0} to {})", focused(&rt), after.layers, after.page_y));
+        }
         // In the drawer too: a tree row focused in it, Ctrl+F closes the drawer and opens find.
         let mut rt = garden(&dir, Mode::Preview);
         rt.set_viewport((640.0, 480.0), 1.0);
