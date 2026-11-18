@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# The loop for work on the desktop app. Edit, `./dev check`, repeat; test what you touched;
+# build the app once at the end.
+#
+#   ./dev check            types and borrows only, no code: 1 to 3 seconds after an edit
+#   ./dev clippy           the same, with lints
+#   ./dev test [filter]    the tests, built unoptimized with Cranelift: seconds to build
+#   ./dev build            a runnable binary at target/fast/quire, to try a change at once
+#   ./dev run -- ARGS      build that binary and run it
+#   ./dev app              the app itself: plain `cargo build`, target/debug/quire
+#
+# All but the last use a nightly toolchain, their own profile (`fast` in Cargo.toml and
+# .cargo/fast.toml) and their own folder (target/fast). So they never touch
+# target/debug/quire, the optimized debug build that an installed Quire may point at. The fast
+# binary runs the app's own code unoptimized: right for behaviour, wrong for timing. Measure
+# frame times, and make screenshots others will judge, on `./dev app` or a release build.
+#
+# Every command runs at the lowest CPU and disk priority and under a memory cap, so a compile
+# cannot take the desktop down or make it stutter. QUIRE_DEV_MEM (default 2400M) and
+# CARGO_BUILD_JOBS (default 2) change the limits.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+toolchain="${QUIRE_DEV_TOOLCHAIN:-nightly-2026-11-17}"
+cmd="${1:-check}"
+[ $# -gt 0 ] && shift
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+case "$cmd" in
+    check | clippy | test | build | run)
+        if ! rustup run "$toolchain" rustc -V >/dev/null 2>&1; then
+            echo "dev: toolchain $toolchain is not installed. Install it with:" >&2
+            echo "  rustup toolchain install $toolchain --profile minimal -c rustc-codegen-cranelift-preview -c clippy" >&2
+            exit 1
+        fi
+        run=(nice -n 19 cargo "+$toolchain" --config .cargo/fast.toml "$cmd" --profile fast "$@")
+        ;;
+    app)
+        # The pinned stable toolchain and the dev profile, as plain `cargo build`.
+        run=(nice -n 19 cargo build "$@")
+        ;;
+    *)
+        sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+        exit 2
+        ;;
+esac
+if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope --quiet true 2>/dev/null; then
+    exec systemd-run --user --scope --quiet \
+        -p MemoryMax="${QUIRE_DEV_MEM:-2400M}" -p MemorySwapMax=0 -p CPUWeight=20 -p IOWeight=20 \
+        "${run[@]}"
+fi
+exec "${run[@]}"

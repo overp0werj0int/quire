@@ -54,10 +54,24 @@ accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "4d22a
 
 [profile.dev]
 opt-level = 1
+# Enough for a backtrace with file and line. Full debug info made the link and the binary bigger.
+debug = "line-tables-only"
 
 # Dependencies build at a low level and without debug info, so a debug build fits in a few
 # gigabytes of memory. Debug builds run slower than release builds; measure in release.
 [profile.dev.package."*"]
+opt-level = 1
+debug = false
+
+# The fast loop (`./dev`, see that script): the crate being edited is unoptimized and keeps
+# only line tables, for the shortest rebuild. It has its own folder, target/fast, so it never
+# replaces target/debug/quire. `.cargo/fast.toml` adds what only a nightly toolchain accepts.
+[profile.fast]
+inherits = "dev"
+opt-level = 0
+debug = "line-tables-only"
+
+[profile.fast.package."*"]
 opt-level = 1
 debug = false
 

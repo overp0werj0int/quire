@@ -436,7 +436,7 @@ derives it again. That takes about 1 s on a phone.
 
 Desktop:
 
-- `cargo test` runs the unit tests, including the sync tests against an S3 test server.
+- `./dev test` runs the unit tests, including the sync tests against an S3 test server. `./dev check` is the step to repeat while editing. `desktop/README.md` has the loop.
 - Tests that run the UI use `rune::Runtime` without a window, as in the tests in `main.rs`.
   They set `HOME` and the XDG folders to a temporary folder, and hold the
   `scroll_tests::ENV` lock while they do. `src/throw_tests.rs` drives the reader with

@@ -8,7 +8,8 @@ apps differ.
   format and the test values.
 - [`desktop/README.md`](desktop/README.md) and [`android/README.md`](android/README.md) have
   the build, test and run commands.
-- Desktop tests: `cd desktop && cargo test`. Android tests: `cd android && ./gradlew testDebugUnitTest`.
+- Desktop: work with `cd desktop && ./dev check` after each edit, and `./dev test <filter>` for what you changed. Run the full `./dev test` and `./dev app` only for the last pass. Do not use `cargo build` or `cargo test` between edits: they take minutes where `./dev check` takes seconds. See "Develop" in `desktop/README.md`.
+- Android tests: `cd android && ./gradlew testDebugUnitTest`.
 - [`docs/reader-writer/`](docs/reader-writer/README.md) is the plan for bringing omarky's
   reader and writer to the desktop app. Its `behavior/` files say what the preview and the
   editor must do. Read the matching file before you change either, and run

@@ -1,0 +1,25 @@
+# The fast loop's nightly-only settings. `./dev` passes this file to cargo with `--config`.
+# It is not named config.toml on purpose: the pinned stable toolchain refuses these keys, and
+# plain `cargo build` must keep working for the app people run and for release builds.
+
+[unstable]
+codegen-backend = true
+
+# The crate being edited compiles with Cranelift: far less time in code generation, slower code.
+[profile.fast]
+codegen-backend = "cranelift"
+
+# Dependencies compile once. They stay on LLVM at the dev profile's level, so tests and the
+# scripted checks run at a usable speed.
+[profile.fast.package."*"]
+codegen-backend = "llvm"
+
+[build]
+# Type checking on four threads (the machine's cores), and lld to link.
+#
+# The third flag silences one warning, printed 299 times per compile: "mixing target features
+# may cause an ABI mismatch", fp-armv8 "enabled in std but disabled in this crate". Cranelift
+# does not list that feature, though on aarch64 it always passes floats in the FP registers as
+# LLVM does. The test suite, which passes f32 rectangles between this crate and Rune all day,
+# is the proof that the two agree; if it ever fails only under `./dev`, look here first.
+rustflags = ["-Zthreads=4", "-Clink-arg=-fuse-ld=lld", "-Cunsafe-allow-abi-mismatch=target-feature"]

@@ -108,8 +108,31 @@ Quire keeps a record of the last sync for each folder and bucket in `sync/` in i
 
 ## Develop
 
+Use `./dev` while you work. It checks and tests an edit in seconds, and it leaves the app build alone.
+
 ```sh
-cargo test                                               # unit tests
+./dev check            # types and borrows only: 1 to 3 seconds after an edit. Repeat this while you edit.
+./dev clippy           # the same, with lints
+./dev test wr_118      # the tests whose names match, built in seconds
+./dev test             # every test: about 10 seconds to build, 3.5 minutes to run
+./dev build            # an unoptimized binary at target/fast/quire, to try a change at once
+./dev app              # the app itself: plain `cargo build`, target/debug/quire. Once, at the end.
+```
+
+- Check first. Run `./dev check` after each edit, `./dev test` with a filter for what you changed, and the full suite and `./dev app` only for the last pass.
+- `./dev` compiles this crate unoptimized with the Cranelift backend on a nightly toolchain, in its own profile (`fast`) and its own folder (`target/fast`). Dependencies stay on LLVM. Install the toolchain once:
+
+  ```sh
+  rustup toolchain install nightly-2026-11-17 --profile minimal -c rustc-codegen-cranelift-preview -c clippy
+  ```
+
+- Plain `cargo build`, `cargo test` and release builds still use the pinned stable toolchain. They work as before and need no nightly.
+- The fast binary runs this crate's code unoptimized. On a 1,753-line note a mode switch takes 81 to 92 ms in it and 55 to 73 ms in the app build. Use it for behaviour. Measure timing on `./dev app` or a release build.
+- Every `./dev` command runs at the lowest CPU and disk priority, under a 2.4 GB memory cap, with two build jobs. `QUIRE_DEV_MEM` and `CARGO_BUILD_JOBS` change the limits.
+- After a change that touches most of the crate, measured on a 4-core laptop: `./dev check` 1.4 s, `./dev test` builds in 9 s, `./dev build` 7 s, `./dev app` 40 s.
+
+```sh
+cargo test                                               # unit tests, optimized: slower to build, 90 seconds to run
 cargo run -- --snap shot.png --size 1280x800 --scale 2   # render a frame headless
 cargo run -- --snap shot.png --scene dark                # scenes: welcome, preview, dark, focus, settings
 cargo run -- --script events.json --snap shot.png --at mark:end   # play input events, then render
