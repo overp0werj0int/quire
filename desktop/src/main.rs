@@ -4762,10 +4762,14 @@ mod layer_matrix_tests {
             glide(&mut rt);
             glide(&mut rt);
             let view = rect(&rt, "doc-scroll").expect("the view");
-            // Rows that mount as the view moves measure, so the move is made until it holds.
-            for _ in 0..3 {
+            // Rows that mount as the view moves measure, so the move is made until it holds, and
+            // not again once it does: a row at the view's edge can mount for a move of nothing.
+            for _ in 0..4 {
                 let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
                 let by = y - (view[1] + 0.7 * view[3]);
+                if by.abs() < 0.5 {
+                    break;
+                }
                 rt.update(|s, tx| {
                     let at = s.reader.scroll.get()[0];
                     tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
