@@ -62,13 +62,14 @@ pub fn sidebar(v: V) -> El {
     // text stays on the rows' text edge; the others take the rows' colour, brighter under the
     // pointer. The new folder button, outside the track, lines up with the rows' buttons below.
     let tabs = row().key("panel-tabs").pl(panel::TEXT_X - TAB_PAD - SEG_IN).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0 - panel::RING_ROOM).center_y();
-    let mut seg = row().key("panel-seg").role("tablist").gap(2.0 * TAB_PAD).px(TAB_PAD + SEG_IN).radius(TAB_R).fill(c.text.alpha(0.04)).center_y();
-    // Each tab is a Tab stop; Left and Right move between them, and Enter or Space opens one
-    // and puts the keyboard in it: the search field, else the list's current row (FOCUS). A
-    // click opens it and leaves the keyboard where it was, except that SEARCH puts it in the
-    // field.
+    // The tabs are one Tab stop, as the formatting toolbar is: Tab lands on the open tab, Left
+    // and Right move between them without opening one, and Enter or Space opens one and puts
+    // the keyboard in it: the search field, else the list's current row (FOCUS). A click opens
+    // it and leaves the keyboard where it was, except that SEARCH puts it in the field.
+    let mut seg = row().key("panel-seg").role("tablist").focus_group().gap(2.0 * TAB_PAD).px(TAB_PAD + SEG_IN).radius(TAB_R).fill(c.text.alpha(0.04)).center_y();
     const PANELS: [(Panel, &str); 3] = [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")];
     let tab_key = |i: usize| format!("panel-{}", PANELS[i].1.to_lowercase());
+    let pill = || el().pin(Some(-TAB_PAD), Some(SEG_IN), Some(-TAB_PAD), Some(SEG_IN)).radius(TAB_R);
     for (i, (id, lbl)) in PANELS.into_iter().enumerate() {
         let on = s.left_panel == id;
         let (left, right) = (tab_key((i + 2) % 3), tab_key((i + 1) % 3));
@@ -90,7 +91,7 @@ pub fn sidebar(v: V) -> El {
                 .checked(on)
                 .label(lbl)
                 .focusable(true)
-                .focus_ring(rw, rg, rc)
+                .focus_selected(on)
                 .keeps_text_selection()
                 .on_press_tx(pick)
                 .on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
@@ -105,9 +106,10 @@ pub fn sidebar(v: V) -> El {
                     }
                     true
                 })
-                .children(on.then(|| {
-                    el().key("tab-mark").pin(Some(-TAB_PAD), Some(SEG_IN), Some(-TAB_PAD), Some(SEG_IN)).radius(TAB_R).fill(c.text.alpha(0.08)).transition(super::swap())
-                }))
+                .children(on.then(|| pill().key("tab-mark").fill(c.text.alpha(0.08)).transition(super::swap())))
+                // The ring follows the pill, the open one's or where it would be, and reaches
+                // no further than the track's edge.
+                .child(pill().key("tab-ring").focus_ring(rw, SEG_IN - rw, rc))
                 .child(text(lbl.to_uppercase()).font(super::styles::tab(panel::CAPTION)).color(if on { c.text } else { c.dim }).group_color(c.text)),
         );
     }

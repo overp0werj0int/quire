@@ -4248,6 +4248,60 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The panel tabs are one Tab stop, as the toolbar is (TABSTOP): Tab lands on the open tab,
+    /// whichever it is, and Tab or Shift+Tab leaves the control. A focused tab's ring follows
+    /// its pill and stays inside the track (TABRING).
+    #[test]
+    fn the_panel_tabs_are_one_tab_stop() {
+        use crate::app::Panel;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-panel-stop-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        for (panel, open) in [(Panel::Files, "panel-files"), (Panel::Search, "panel-search"), (Panel::Tags, "panel-tags")] {
+            let mut rt = garden(&dir, Mode::Preview);
+            rt.update(move |s, _| s.left_panel = panel);
+            settle(&mut rt);
+            let mut tabs = Vec::new();
+            let mut next = None;
+            for _ in 0..12 {
+                key(&mut rt, Key::Tab, Mods::default());
+                let f = focused(&rt).unwrap_or_default();
+                if let Some(prev) = tabs.last()
+                    && next.is_none()
+                    && f != *prev
+                {
+                    next = Some(f.clone());
+                }
+                if f.starts_with("panel-") {
+                    tabs.push(f);
+                }
+            }
+            assert!(!tabs.is_empty() && tabs.iter().all(|k| k == open), "{panel:?}: Tab lands only on the open tab: {tabs:?}");
+            assert!(next.is_some_and(|k| !k.starts_with("panel-")), "{panel:?}: Tab leaves the tabs");
+            rt.update(move |_, tx| tx.focus(open, true));
+            settle(&mut rt);
+            key(&mut rt, Key::Tab, Mods { shift: true, ..Mods::default() });
+            assert!(!focused(&rt).unwrap_or_default().starts_with("panel-"), "{panel:?}: Shift+Tab leaves the tabs: {:?}", focused(&rt));
+            key(&mut rt, Key::Tab, Mods::default());
+            assert_eq!(focused(&rt).as_deref(), Some(open), "{panel:?}: Tab comes back to the open tab");
+            // The ring's pill sits on the open tab's mark, its 2 pt stroke inside the track.
+            let (seg, ring) = (rect(&rt, "panel-seg").expect("the track"), rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-ring") && e.path.contains(open)).expect("the tab's ring").rect);
+            assert_eq!(Some(ring), rect(&rt, "tab-mark"), "{panel:?}: the ring follows the open tab's pill");
+            assert!(ring[1] - 2.0 >= seg[1] && ring[1] + ring[3] + 2.0 <= seg[1] + seg[3] && ring[0] - 2.0 >= seg[0] && ring[0] + ring[2] + 2.0 <= seg[0] + seg[2], "{panel:?}: the ring {ring:?} stays in the track {seg:?}");
+        }
+        // A layer that closes gives focus back to the tab it came from, open or not.
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.update(|_, tx| tx.focus("panel-search", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Command('k'), ctrl(true));
+        settle(&mut rt);
+        assert!(rt.find("pal-input").is_some(), "the palette opened");
+        key(&mut rt, Key::Escape, Mods::default());
+        settle(&mut rt);
+        assert_eq!(focused(&rt).as_deref(), Some("panel-search"), "closing the palette gives the tab its focus back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The pointer anywhere in a Settings switch's 28 pt target, not only over its 20 pt track,
     /// gives the track its hover fill, on and off, and leaving the target takes it back.
     #[test]
@@ -4518,17 +4572,36 @@ mod layer_matrix_tests {
             key(&mut rt, Key::Tab, Mods::default());
             reached.extend(focused(&rt));
         }
-        let wants = ["tab:", "vault-button", "panel-files", "panel-search", "panel-tags", "new-folder-button", "file:", "foot-new", "foot-settings", "ol-", "bl-"];
+        let wants = ["tab:", "vault-button", "panel-files", "new-folder-button", "file:", "foot-new", "foot-settings", "ol-", "bl-"];
         for want in wants {
             if !reached.iter().any(|k| k.starts_with(want)) {
                 fails.push(format!("Tab never reaches {want}"));
             }
+        }
+        // The panel tabs are one Tab stop, the open tab (KEY-98).
+        if let Some(k) = reached.iter().find(|k| *k == "panel-search" || *k == "panel-tags") {
+            fails.push(format!("Tab reaches {k}, which is not the open tab"));
         }
         rt.update(|_, tx| tx.focus("panel-files", true));
         settle(&mut rt);
         key(&mut rt, Key::Right, Mods::default());
         if focused(&rt).as_deref() != Some("panel-search") {
             fails.push(format!("Right on FILES moves to {:?}", focused(&rt)));
+        }
+        key(&mut rt, Key::Tab, Mods::default());
+        if focused(&rt).is_some_and(|k| k.starts_with("panel-")) {
+            fails.push(format!("Tab from SEARCH stays in the tabs: {:?}", focused(&rt)));
+        }
+        rt.update(|_, tx| tx.focus("panel-files", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Left, Mods::default());
+        let mut panel = None;
+        rt.update_if(|s, _| {
+            panel = Some(s.left_panel);
+            false
+        });
+        if focused(&rt).as_deref() != Some("panel-tags") || panel != Some(crate::app::Panel::Files) {
+            fails.push(format!("Left on FILES moves to {:?} and opens {panel:?}", focused(&rt)));
         }
         // Enter or Space on a panel tab opens the panel and puts the keyboard in it (SRCH): the
         // search field, the tree's current row, the first tag.
