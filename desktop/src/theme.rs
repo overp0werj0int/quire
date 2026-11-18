@@ -618,9 +618,10 @@ mod theme_tests {
             assert!(contrast(p.mute, p.bg) >= 3.0, "{} mute {}", t.id, contrast(p.mute, p.bg));
             assert!(contrast(p.acc, p.bg) >= 3.0, "{} accent {}", t.id, contrast(p.acc, p.bg));
             // HC: every section label, in the panels and in every dialog (help, Settings, the
-            // welcome screen), reads at 4.5:1 on the window and the sidebar, the fills they sit on.
+            // welcome screen), and the help sheet's version line, reads at 4.5:1 on the window,
+            // the sidebar and the floating cards, the fills they sit on.
             let cap = crate::ui::styles::caption_ink(p);
-            for fill in [p.bg, p.side] {
+            for fill in [p.bg, p.side, crate::roles::Roles::new(p).bg] {
                 assert!(contrast(cap, fill) >= 4.5, "{}: captions {:.2}:1 on {:?}", t.id, contrast(cap, fill), fill);
             }
             // The scrim darkens the page under it by at least a fifth, with a dark neutral of the

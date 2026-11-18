@@ -200,7 +200,7 @@ pub(super) fn help_sheet(v: V) -> Card {
         text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
             .key("help-version")
             .font(sans(11.0, 400.0))
-            .color(c.ghost)
+            .color(super::styles::caption_ink(v.p))
             .pin(None, Some(22.0), Some(24.0), None),
     );
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
