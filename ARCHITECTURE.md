@@ -137,9 +137,9 @@ or the outline. A test checks that every focusable element in the panes is in it
   and on to the next, in tree order, so the note's links come between the sidebar and the
   outline.
 - A layer that closes gives focus back with the ring showing when it goes back to a stop.
-- A focused row's ring reaches 3 points past the row (`panel::RING_ROOM`). The side lists
-  scroll a row that takes focus in far enough to show the whole ring (`scroll_margin`), and
-  the sidebar's list leaves that room above its first row (RING).
+- A focused row's ring reaches 5 points past the row: a 3 point gap and a 2 point stroke
+  (`panel::RING_ROOM`). The side lists scroll a row that takes focus in far enough to show
+  the whole ring (`scroll_margin`), and leave that room at both ends of the list (RING).
 
 ### The notes folder in memory and on disk
 

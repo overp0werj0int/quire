@@ -4046,12 +4046,12 @@ mod layer_matrix_tests {
     }
 
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
-    /// and the outline scroll the row's ring, 3 points past the row, inside the list, and the
-    /// first row leaves room for it under the list's top edge.
+    /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
+    /// inside the list, and each end of the list leaves room for it.
     #[test]
     fn a_focused_rows_ring_stays_inside_its_list() {
-        // The ring's reach past the row, as `ui::focus_ring` draws it.
-        const RING: f32 = 3.0;
+        // The ring's reach past the row, as `ui::focus_ring` draws it: its gap and its stroke.
+        const RING: f32 = 5.0;
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-ring-{}", std::process::id()));
         // Forty more notes, so the tree and the results scroll; the folder opens again to read

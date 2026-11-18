@@ -15,9 +15,10 @@ pub const BODY: f32 = 12.0;
 pub const CAPTION_Y: f32 = 18.0;
 /// From a caption to the first row under it.
 pub const CAPTION_GAP: f32 = 10.0;
-/// The room a focused row's ring takes past the row's edge (`ui::focus_ring`), which a side
-/// list keeps clear at its ends (RING).
-pub const RING_ROOM: f32 = 3.0;
+/// The room a focused row's ring takes past the row's edge: its 3 point gap and 2 point stroke
+/// (`ui::focus_ring`). A side list keeps it clear at both ends, at rest and as a row scrolls in
+/// to take focus (RING).
+pub const RING_ROOM: f32 = 5.0;
 /// The row shade's inset from each side of the panel.
 pub const INSET: f32 = 10.0;
 /// A row's text starts here, plus `INDENT` a level.
