@@ -2,6 +2,12 @@
 //! under its name, the tree's, the editor's (WR-135, SHEET-032) and the page's block menu
 //! (RD-68). Each is a list of items at the point it opened at, kept inside the window. Picking an
 //! item closes the menu, which gives focus back, and then runs it.
+//!
+//! A menu works from the keyboard as a native one does (Rune's `menu` focus group): Up and
+//! Down move through its items and wrap, a letter jumps to the next item it starts, Enter or
+//! Space picks, Esc closes. Opened from the keyboard (Enter on the folder's name, the Menu key
+//! or Shift+F10 in the editor), its first item shows marked; the pointer and the
+//! keys share one highlight.
 
 use rune::{Color, El, col, el, row, text};
 
@@ -54,7 +60,7 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Ve
     let h = 10.0 + 30.0 * items.len() as f32;
     let x = at.0.min(v.vw - w - 8.0).max(8.0);
     let y = at.1.min(v.vh - h - 8.0).max(8.0);
-    let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").children(head);
+    let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").focus_group().children(head);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
         let key = it.key.map_or_else(|| format!("tm-{i}"), str::to_string);
@@ -64,7 +70,7 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Ve
         }
         if it.enabled {
             let run = it.run;
-            r = r.hover(p.hover).on_press_tx(move |s: &mut App, tx| {
+            r = r.focusable(true).focus_highlight(p.hover).on_press_tx(move |s: &mut App, tx| {
                 s.close_layer(tx);
                 run(s, tx);
             });

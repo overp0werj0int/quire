@@ -2710,6 +2710,80 @@ mod edit_menu_tests {
 
     const DT: f64 = 1.0 / 60.0;
 
+    /// The rule's menus work from the keyboard: Enter on the folder's name opens its menu with
+    /// the first item marked, Up and Down move and wrap, Esc closes it and the name has the
+    /// keyboard again. A menu the pointer opened marks nothing until a key moves in it; a letter
+    /// jumps to its item and Enter picks it.
+    #[test]
+    fn menus_work_from_the_keyboard() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-key-menu-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Head\n\nBody.\n", crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        let key = |rt: &mut Runtime<crate::app::App>, key: Key| {
+            rt.key(KeyEvent { key, mods: Mods::default() });
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+        };
+        let marked = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
+        rt.update(|_, tx| tx.focus("vault-button", true));
+        rt.frame(DT);
+        key(&mut rt, Key::Enter);
+        assert_eq!(marked(&rt), Some(("menu-switch".into(), true)), "Enter opened the folder menu, first item marked");
+        key(&mut rt, Key::Down);
+        assert_eq!(marked(&rt), Some(("menu-settings".into(), true)));
+        key(&mut rt, Key::Down);
+        assert_eq!(marked(&rt), Some(("menu-switch".into(), true)), "Down wraps");
+        key(&mut rt, Key::Escape);
+        let mut open = true;
+        rt.update_if(|s, _| {
+            open = s.layer().is_some();
+            false
+        });
+        assert!(!open, "Esc closed it");
+        assert_eq!(marked(&rt).map(|m| m.0), Some("vault-button".into()), "and the folder's name has the keyboard");
+
+        // Shift+F10 in the editor opens its menu below the caret, on Paste: with nothing
+        // selected Cut and Copy are off. Esc gives the editor the keyboard back.
+        rt.update(|s, tx| {
+            s.focus_editor(tx);
+            s.cur_edit().set_selection(0, 0);
+        });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let caret = rt.elements().into_iter().find_map(|e| e.caret).expect("the editor's caret");
+        rt.key(KeyEvent { key: Key::Function(10), mods: Mods { shift: true, ..Mods::default() } });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        assert_eq!(marked(&rt), Some(("tm-2".into(), true)), "the editor's menu opened on Paste");
+        let ([_, top, _, _], _) = rt.presented("edit-menu").expect("the editor's menu");
+        assert!((top - (caret[1] + caret[3])).abs() < 20.0, "below the caret: menu at {top}, caret {caret:?}");
+        key(&mut rt, Key::Escape);
+        assert_eq!(marked(&rt).map(|m| m.0), Some("editor".into()), "Esc gives the editor the keyboard back");
+
+        let (x, y) = rt.find("file:note.md").expect("the note's row");
+        rt.pointer_move(x, y);
+        rt.secondary_down(x, y);
+        rt.secondary_up(x, y);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().all(|e| !(e.focused && e.focus_visible && e.key.as_deref().is_some_and(|k| k.starts_with("tm-")))), "a menu the pointer opened marks no item");
+        key(&mut rt, Key::Text("d".into()));
+        assert_eq!(marked(&rt), Some(("tm-2".into(), true)), "d jumps to Delete note");
+        key(&mut rt, Key::Enter);
+        let mut seen = (true, true);
+        rt.update_if(|s, _| {
+            seen = (s.layer().is_some(), s.files().contains_key("note.md"));
+            false
+        });
+        assert_eq!(seen, (false, false), "Enter deleted the note and closed the menu");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// RD-68: a right-click on a preview block, or in the gap above it, opens Quire's menu for
     /// that block instead of copying at once, and its rows act on that block.
     #[test]
@@ -3106,3 +3180,4 @@ mod note_mode_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+

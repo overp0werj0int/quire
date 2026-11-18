@@ -7,7 +7,7 @@ use rune::{El, PointerButton, ScrollSpec, Span, col, el, icon, rich, row, text, 
 
 use super::V;
 use super::panel;
-use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, FOLDER_PLUS, PLUS, SEARCH, floating, label};
+use super::widgets::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, Control, FOLDER_PLUS, PLUS, SEARCH, floating, label};
 use crate::folders::{MenuOn, row_key};
 use crate::layer::MenuOf;
 use crate::app::{App, Panel, Sel};
@@ -37,7 +37,7 @@ pub fn sidebar(v: V) -> El {
             .gap(6.0)
             .role("button")
             .label(name.clone())
-            .on_press_tx(|s: &mut App, tx| s.open_menu(MenuOf::Folder, (0.0, 0.0), tx))
+            .control(|s: &mut App, tx| s.open_menu(MenuOf::Folder, (0.0, 0.0), tx))
             .child(text(name).font(nav(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
