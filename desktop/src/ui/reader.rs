@@ -309,9 +309,11 @@ pub(super) fn band_h(v: V) -> Option<f32> {
 /// While a pill shows at the note area's foot, the page fades out under it, in both modes, so
 /// no line of the note reads behind or beside it: the page's colour from the note area's bottom
 /// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). Presses go
-/// through it to the page, and it fades in and out over 140 ms.
+/// through it to the page, and it fades in and out over 140 ms. As it appears or grows, what
+/// the user is on comes above it (`App::band_laid_out`).
 pub fn toast_band(v: V) -> Option<El> {
     let h = band_h(v)?;
+    let caret = v.caret;
     let bg = Roles::new(v.p).bg;
     let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
@@ -321,7 +323,8 @@ pub fn toast_band(v: V) -> Option<El> {
             .h(h)
             .linear_gradient(std::f32::consts::PI, stops)
             .inert()
-            .transition(rune::Transition::opacity().springs(fade)),
+            .transition(rune::Transition::opacity().springs(fade))
+            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, tx)),
     )
 }
 

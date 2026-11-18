@@ -50,6 +50,8 @@ pub struct Reader {
     /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
     pub thumb: Live<[f32; 4]>,
     pub thumb_shown: Live<f32>,
+    /// How tall the toast band last laid out, 0 while no pill shows (RD-104).
+    pub(crate) band: f32,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -74,6 +76,7 @@ impl Default for Reader {
             bar: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
             thumb_shown: Live::new(0.0),
+            band: 0.0,
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -664,6 +667,51 @@ impl App {
         }
         tx.scroll_to_instant(SCROLL, 0.0, (top - 0.5 * vh).clamp(0.0, max.max(0.0)));
         map.wait(block_key(b), Arrive::Center, self.now.get());
+    }
+
+    /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
+    /// what the user is on comes above it at once, by the least scroll: the caret's line in the
+    /// writer (`caret`, as last drawn), else the current find match. Nothing scrolls when the
+    /// band shrinks, when typewriter scrolling holds the caret, or when the caret is not in view.
+    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, tx: &mut Tx) {
+        let grew = h > self.reader.band + 0.5;
+        self.reader.band = h;
+        tx.live_only();
+        if !grew {
+            return;
+        }
+        let [offset, _, vh, _] = self.reader.scroll.get();
+        let view = y + h - vh;
+        if let Some([_, top, _, height]) = caret {
+            if !self.settings().typewriter_scroll && top < y + h && top + height > view && top + height > y {
+                tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
+            }
+            return;
+        }
+        if self.find_query().is_none() {
+            return;
+        }
+        if self.writing() {
+            // The writer's find leaves the keyboard in find's field, so the match is only drawn,
+            // and the view keeps the band's room at its edges while one shows (`doc_scroll`).
+            return tx.scroll_into_view(FIND_CUR);
+        }
+        let m = self.find_matches();
+        let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
+        let map = self.reader.map.borrow();
+        let Some(at) = map.block_top(i).filter(|_| map.covers(self.doc().blocks.len())) else { return };
+        // The match's block, from the view's top; the band from there too.
+        let (y0, y1, band) = (at - offset, at - offset + map.height(i), y - view);
+        if y1 <= band || y0 >= vh || y1 <= 0.0 {
+            return;
+        }
+        // A block too tall to sit between 20% of the view and the band centres its match, as
+        // find does (RD-60).
+        if y0 - (y1 - band) >= 0.2 * vh {
+            tx.scroll_to(SCROLL, 0.0, offset + y1 - band);
+        } else {
+            tx.scroll_center(FIND_CUR);
+        }
     }
 
     /// The writer's text field laid out at window rect `[x, y, w, h]`: the progress line takes

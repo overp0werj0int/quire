@@ -492,6 +492,9 @@ impl App {
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
+        if !self.foot_shows() {
+            self.reader.band = 0.0;
+        }
         changed |= self.expire_sheet(t);
         changed |= self.drop_stale_layers(tx);
         changed |= self.expire_deleted(t, tx);

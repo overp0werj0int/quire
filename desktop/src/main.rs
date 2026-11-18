@@ -4467,6 +4467,101 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// GROW: a pill that appears, or one that stacks on it, brings what the user is on above
+    /// the band at once, with no key, by the least scroll: the caret's line in the writer, the
+    /// current find match in either mode. A band that shrinks scrolls nothing back, and a caret
+    /// out of view stays out (RD-104).
+    #[test]
+    fn a_pill_that_appears_brings_the_caret_above_its_band() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-grow-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = 0.0;
+            rt.update(|s, _| at = s.reader.scroll.get()[0]);
+            at
+        };
+        let text: String = (0..200).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        let line = text.find("Line 100 ").unwrap() + 3;
+        rt.update(|s, tx| {
+            s.cur_edit().set_selection(line, line);
+            s.focus_editor(tx);
+        });
+        glide(&mut rt);
+        let bottom = |rt: &Runtime<App>| rect(rt, "caret-at").map_or(f32::NAN, |r| r[1] + r[3]);
+        // The caret's line sits 30 pt above the view's foot: under where a band will come.
+        let view = rect(&rt, "doc-scroll").expect("the writer's view");
+        rt.wheel(640.0, 400.0, view[1] + view[3] - 30.0 - bottom(&rt));
+        glide(&mut rt);
+        assert!((bottom(&rt) - (view[1] + view[3] - 30.0)).abs() < 1.0, "the case puts the caret's line low: {}", bottom(&rt));
+        rt.update(|s, tx| s.toast("Saved", tx));
+        glide(&mut rt);
+        let band = rect(&rt, "toast-band").expect("the band");
+        let at = bottom(&rt);
+        assert!(at <= band[1] + 0.5 && at > band[1] - 1.5, "a toast brings the caret's line just above its band: line to {at}, band from {}", band[1]);
+        // A message stacks on the toast: the band grows, and the line comes above it again.
+        rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+        glide(&mut rt);
+        let grown = rect(&rt, "toast-band").expect("the band");
+        let at = bottom(&rt);
+        assert!(grown[1] < band[1] - 30.0, "the band grows: {band:?} to {grown:?}");
+        assert!(at <= grown[1] + 0.5 && at > grown[1] - 1.5, "a stacked message brings the line above the band: line to {at}, band from {}", grown[1]);
+        // The message goes: the band shrinks, and nothing scrolls back.
+        let before = offset(&mut rt);
+        rt.update(|s, _| s.notice = None);
+        glide(&mut rt);
+        assert!((offset(&mut rt) - before).abs() < 0.5, "a shrinking band scrolls nothing");
+        // The toast goes too; with the caret out of view, the next one scrolls nothing.
+        rt.update(|s, _| s.reader.toast = None);
+        glide(&mut rt);
+        rt.wheel(640.0, 400.0, 2000.0);
+        glide(&mut rt);
+        assert!(bottom(&rt) > view[1] + view[3] + 40.0, "the case scrolls the caret out of view: {}", bottom(&rt));
+        let before = offset(&mut rt);
+        rt.update(|s, tx| s.toast("Saved", tx));
+        glide(&mut rt);
+        assert!((offset(&mut rt) - before).abs() < 0.5, "a caret out of view stays out");
+
+        // The current find match, in both modes, in a window where find leaves it under a
+        // stacked band: 520 by 480, the match at 70% of the view.
+        for mode in [Mode::Preview, Mode::Source] {
+            let (mut rt, _) = crate::bench::open(&dir, &text, mode);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((520.0, 480.0), 1.0);
+            rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+            glide(&mut rt);
+            rt.update(|s, tx| {
+                s.open_find(tx);
+                s.reader.find.q = rune::TextEdit::new("Line 120 of");
+                s.find_changed(tx);
+            });
+            glide(&mut rt);
+            glide(&mut rt);
+            let view = rect(&rt, "doc-scroll").expect("the view");
+            let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+            let by = y - (view[1] + 0.7 * view[3]);
+            rt.update(|s, tx| {
+                let at = s.reader.scroll.get()[0];
+                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
+            });
+            glide(&mut rt);
+            let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+            assert!((y - (view[1] + 0.7 * view[3])).abs() < 1.0, "{mode:?}: the case puts the match at 70%: {y}");
+            let band = rect(&rt, "toast-band").expect("the band");
+            assert!(y + 12.0 < band[1], "{mode:?}: the match starts above the message's band: {y}, band {band:?}");
+            rt.update(|s, tx| s.toast("Copied the whole note", tx));
+            glide(&mut rt);
+            let band = rect(&rt, "toast-band").expect("the band");
+            let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+            // `find` gives the middle of the match's line, 22 pt tall in the reader.
+            assert!(y + 11.0 <= band[1] + 0.5 && y + 11.0 > band[1] - 4.0, "{mode:?}: a stacked toast brings the match just above the band: match at {y}, band {band:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
     /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
     /// inside the list, and each end of the list leaves room for it.
