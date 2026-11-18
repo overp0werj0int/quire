@@ -95,6 +95,10 @@ showed when it opened.
   the layer opened, whichever way it closes. When that element is gone, such as the row of a
   note the menu deleted, the note has the keyboard: every layer's card carries
   `focus_return(focus::NOTE)`, as a stop does.
+- `App::pick` runs a menu's item: the menu closes, then the item runs. An item that opens a
+  field gives it the keyboard. Rename and New note open the note's name in the title bar,
+  behind the sidebar's drawer, so the drawer closes too and the name has focus, selected. A
+  new folder's name shows in the tree, inside the drawer, so the drawer stays.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
   window wide enough to dock the drawer. A menu also closes when the window's size changes.

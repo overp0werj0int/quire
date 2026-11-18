@@ -4584,6 +4584,49 @@ mod layer_matrix_tests {
             }
         }
 
+        // A menu's item that opens the name field gives it the keyboard (REN): Rename and New
+        // note here, picked by keys from a row's menu, in the sidebar's drawer and docked. The
+        // drawer closes, the field has focus with its text selected, and a typed name goes
+        // into it, never into the note.
+        for size in [(640.0, 480.0), (1280.0, 800.0)] {
+            for (item, downs) in [("Rename", 1), ("New note here", 0)] {
+                let mut rt = garden(&dir, Mode::Source);
+                rt.set_viewport(size, 1.0);
+                settle(&mut rt);
+                if size.0 < 700.0 {
+                    rt.update(|s, tx| s.toggle_left(tx));
+                    settle(&mut rt);
+                }
+                rt.update(|_, tx| tx.focus("file:note.md", true));
+                settle(&mut rt);
+                key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+                for _ in 0..downs {
+                    key(&mut rt, Key::Down, Mods::default());
+                }
+                key(&mut rt, Key::Enter, Mods::default());
+                let name = |rt: &mut Runtime<App>| {
+                    let mut out = None;
+                    rt.update_if(|s, _| {
+                        out = s.renaming.as_ref().map(|e| (e.text.clone(), e.anchor.min(e.focus), e.anchor.max(e.focus)));
+                        false
+                    });
+                    out
+                };
+                let opened = name(&mut rt);
+                let before = seen(&mut rt);
+                let at = focused(&rt);
+                for c in "new name".chars() {
+                    text_key(&mut rt, &c.to_string());
+                }
+                let typed = name(&mut rt).map(|n| n.0);
+                let after = seen(&mut rt);
+                let whole = opened.as_ref().is_some_and(|(t, a, b)| *a == 0 && *b == t.len() && !t.is_empty());
+                if before.layers != 0 || at.as_deref() != Some("rename") || !whole || typed.as_deref() != Some("new name") || after.text != before.text {
+                    fails.push(format!("{item} from a row's menu at {}: layers {}, focus {at:?}, the field {opened:?}, then typed {typed:?}, the note changed: {}", size.0, before.layers, after.text != before.text));
+                }
+            }
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }

@@ -1,7 +1,8 @@
 //! Quire's in-app menus (WR-193), one layer each (`crate::layer::Menu`): the folder's menu
 //! under its name, the tree's, the editor's (WR-135, SHEET-032) and the page's block menu
 //! (RD-68). Each is a list of items at the point it opened at, kept inside the window. Picking an
-//! item closes the menu, which gives focus back, and then runs it.
+//! item closes the menu, which gives focus back, and then runs it; an item that opens a field
+//! gives it the keyboard (`App::pick`).
 //!
 //! A menu works from the keyboard as a native one does (Rune's `menu` focus group): Up and
 //! Down move through its items and wrap, a letter jumps to the next item it starts, Enter or
@@ -70,10 +71,7 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Ve
         }
         if it.enabled {
             let run = it.run;
-            r = r.focusable(true).focus_highlight(p.hover).on_press_tx(move |s: &mut App, tx| {
-                s.close_layer(tx);
-                run(s, tx);
-            });
+            r = r.focusable(true).focus_highlight(p.hover).on_press_tx(move |s: &mut App, tx| s.pick(&run, tx));
         } else {
             r = r.disabled(true);
         }

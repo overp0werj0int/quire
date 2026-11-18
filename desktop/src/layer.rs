@@ -86,6 +86,26 @@ impl Kind {
     }
 }
 
+/// A field the page opens for a name, which a menu's item can open.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Field {
+    /// The note's name, in the title bar.
+    NoteName,
+    /// A new folder's name, in the tree.
+    FolderName,
+}
+
+impl Field {
+    /// The drawer the field shows in while that drawer is open; None when it shows under
+    /// every layer.
+    fn drawer(self) -> Option<Drawer> {
+        match self {
+            Field::NoteName => None,
+            Field::FolderName => Some(Drawer::Sidebar),
+        }
+    }
+}
+
 /// An open layer.
 pub struct Open {
     pub layer: Layer,
@@ -276,6 +296,33 @@ impl App {
     pub fn close_layer(&mut self, tx: &mut Tx) {
         if let Some(open) = self.layers.pop() {
             self.give_back(open.back, tx);
+        }
+    }
+
+    /// A menu's item is picked: the menu closes, giving focus back, and the item runs. An item
+    /// that opens a field gives it the keyboard. When the field shows behind the layers still
+    /// open (a note's name in the title bar, behind the sidebar's drawer), they close too,
+    /// with no hand-back, so the field takes the keys rather than the row the menu came from.
+    pub fn pick(&mut self, run: &dyn Fn(&mut App, &mut Tx), tx: &mut Tx) {
+        self.close_layer(tx);
+        run(self, tx);
+        if let Some(field) = self.field_asking()
+            && !self.layers.is_empty()
+            && field.drawer() != self.drawer()
+        {
+            self.layers.clear();
+            self.handed = None;
+        }
+    }
+
+    /// The page's name field that asks for the keyboard, if one does.
+    fn field_asking(&self) -> Option<Field> {
+        if self.renaming.as_ref().is_some_and(|e| e.focused) {
+            Some(Field::NoteName)
+        } else if self.new_folder.as_ref().is_some_and(|f| f.edit.focused) {
+            Some(Field::FolderName)
+        } else {
+            None
         }
     }
 
