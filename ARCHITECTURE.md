@@ -47,15 +47,19 @@ architecture.
 - A button or a key does not change the UI directly. It runs a closure such as
   `.on_press(|s: &mut App| ...)`, which changes `App`. The next frame draws the result.
 - `keys::on_key` in `desktop/src/keys.rs` handles window shortcuts. It only gets keys that
-  the focused control does not use. In preview nothing has focus until the user tabs to a
-  control, so the reader's single keys (Space, `j`) reach it. The switch to preview drops
-  focus as the editor leaves, and so does a link or a picked file that opens a note there
-  (`App::keys_to_note`). A click on the folder's name or on a sidebar row does not take it.
-  A focused stop in a side pane owns the keyboard (see Focus).
+  the focused control does not use. In preview nothing has focus at first, so the reader's
+  single keys (Space, `j`) reach it. When the note takes the keyboard back
+  (`App::keys_to_note`), the reader's anchor (`ui::focus::note_anchor`) takes focus and
+  hands every key on, and Tab goes on from the note into its links. That happens as the
+  switch to preview takes the editor away, and when a link or a picked file opens a note
+  there. A click on the folder's name or on a sidebar row does not take the keyboard from
+  the note. A focused stop in a side pane owns the keyboard (see Focus).
 - The side panels' lists (`ui::lists`) are Rune focus groups, built by one helper: the file
   tree, the Open list, the search results, the tags, and the outline's headings and
   backlinks. Each is one Tab stop. The arrows move, Enter does what a click does, and a row
-  that shows a note then gives the keyboard to the note (`App::keys_to_note`). The tree adds
+  that shows a note then gives the keyboard to the note (`App::keys_to_note`), closing the
+  drawer it is in, even when that note was open already. A search match opens in the writer
+  with the caret at its start and nothing selected, as find leaves it. The tree adds
   Left and Right for folders. Esc gives the keyboard back to the note.
 
 ```mermaid
@@ -135,7 +139,9 @@ or the outline. A test checks that every focusable element in the panes is in it
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
   sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the
-  outline.
+  outline. Tab from the toolbar and Shift+Tab from the outline give the writer the keyboard
+  as F6 does (`App::tab_into_note`), with the caret where it was: Rune's Tab would scroll
+  the whole editor into view.
 - A layer that closes gives focus back with the ring showing when it goes back to a stop.
 - A focused row's ring reaches 5 points past the row: a 3 point gap and a 2 point stroke
   (`panel::RING_ROOM`). The side lists scroll a row that takes focus in far enough to show

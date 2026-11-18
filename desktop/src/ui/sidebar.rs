@@ -580,7 +580,9 @@ fn search_panel(v: V) -> El {
     let mut found = lists::list(col().key("search-results").w_full(), "list");
     for (ri, r) in results.iter().enumerate() {
         let lines: Vec<&str> = s.files().get(&r.path).map(|t| t.split('\n').collect()).unwrap_or_default();
-        let first = r.hits.first().map(|h| Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true });
+        // A match opens in the writer with the caret at its start and nothing selected, as find
+        // leaves it, so the next key types there rather than replacing it.
+        let first = r.hits.first().map(|h| Sel { start: h.pos, end: h.pos, line: Some(h.line), force_source: true });
         let path = r.path.clone();
         let name_style = nav(panel::BODY, true);
         let small = nav(panel::CAPTION, false);
@@ -621,7 +623,7 @@ fn search_panel(v: V) -> El {
                 (text_, spans)
             };
             let path = r.path.clone();
-            let sel = Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true };
+            let sel = Sel { start: h.pos, end: h.pos, line: Some(h.line), force_source: true };
             let hit = el().key(format!("hit:{}:{hi}", r.path)).label(snip_label(ln)).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button");
             block = block.child(
                 lists::opener(hit, p, false, move |s: &mut App, tx| s.open_file(&path, Some(sel), tx))

@@ -39,10 +39,12 @@ pub(super) fn item(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut T
 }
 
 /// An `item` that shows a note: after `run`, the keyboard goes to the note, so the reader's
-/// keys or the editor take the next key.
+/// keys or the editor take the next key. In a drawer, the drawer closes first, even when the
+/// row's note was open already and nothing under the drawer changed.
 pub(super) fn opener(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     item(el, p, current, move |s, tx| {
         run(s, tx);
+        s.close_drawer();
         s.keys_to_note(tx);
     })
 }

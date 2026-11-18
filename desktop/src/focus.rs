@@ -16,7 +16,8 @@
 //!   pane carries `focus_return(NOTE)` (`ui::focus`), and NOTE keys the editor's box in the
 //!   writer and the reader's keyboard anchor elsewhere.
 //! - F6 and Shift+F6 move between the panes that show: the sidebar's current list, the note,
-//!   the outline's current heading. Tab moves inside a pane and on to the next.
+//!   the outline's current heading. Tab moves inside a pane and on to the next. Into the
+//!   writer, Tab and F6 alike leave the caret where it was, in view (`tab_into_note`).
 //!
 //! Rune would hand focus that loses its element to the next control in the old tree. In the
 //! reader that is a paragraph with links, focused with no link in it: it reads as nothing
@@ -112,6 +113,25 @@ impl App {
                 true
             }
         })
+    }
+
+    /// Tab from the formatting toolbar, or Shift+Tab from the docked outline's first list, into
+    /// the writer: the editor takes the keyboard with its caret where it was, as F6 gives it.
+    /// Rune's Tab would scroll the whole editor into view, and the caret with it off screen.
+    pub(crate) fn tab_into_note(&mut self, from: Pane, ev: &KeyEvent, tx: &mut Tx) -> bool {
+        if ev.key != Key::Tab || chord(ev) || !self.writing_note() {
+            return false;
+        }
+        let shift = ev.mods.shift;
+        let into = match from {
+            Pane::Note => !shift,
+            Pane::Outline => shift && self.docked().1 && tx.focused().is_some_and(|k| k.starts_with("ol-") || !self.outline_stop().starts_with("ol-")),
+            Pane::Sidebar => false,
+        };
+        if into {
+            self.focus_editor(tx);
+        }
+        into
     }
 
     /// The key that shows or hides `pane`, pressed while the keyboard is in it: it hides the

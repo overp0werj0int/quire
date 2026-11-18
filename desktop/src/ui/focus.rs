@@ -8,8 +8,9 @@ use crate::focus::{NOTE, Pane};
 
 /// A pane (the sidebar, the outline): with the keyboard in it, the key that hides the pane
 /// hides it, ahead of a list's letters; when the pane goes away, the keyboard goes to the note.
+/// Shift+Tab back into the writer keeps the caret where it was (`App::tab_into_note`).
 pub(super) fn pane(el: El, pane: Pane) -> El {
-    el.focus_return(NOTE).on_key(move |s: &mut App, ev: &KeyEvent, tx| s.pane_toggle_key(pane, ev, tx))
+    el.focus_return(NOTE).on_key(move |s: &mut App, ev: &KeyEvent, tx| s.tab_into_note(pane, ev, tx) || s.pane_toggle_key(pane, ev, tx))
 }
 
 /// A stop: when it goes away with the keyboard on it, the keyboard goes to the note.

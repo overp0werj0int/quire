@@ -388,8 +388,10 @@ fn toolbar(v: V) -> El {
         .role("toolbar")
         .label("Formatting")
         // One Tab stop, Left and Right inside it (FOCUS). A click on a button leaves the
-        // keyboard in the note, so the format applies where the caret is.
+        // keyboard in the note, so the format applies where the caret is. Tab goes on into the
+        // note with the caret where it was.
         .focus_group()
+        .on_key(|s: &mut App, ev: &KeyEvent, tx| s.tab_into_note(crate::focus::Pane::Note, ev, tx))
         .keeps_text_selection()
         .children(band)
         .child(back)

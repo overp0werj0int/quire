@@ -255,15 +255,18 @@ impl App {
     }
 
     /// The note is open in the writer.
-    fn writing_note(&self) -> bool {
+    pub(crate) fn writing_note(&self) -> bool {
         self.screen == Screen::Vault && self.mode == Mode::Source && self.active.as_deref().is_some_and(|a| !self.note_locked(a))
     }
 
-    /// The keyboard goes back to the note: to the editor in the writer, else to nothing, so
-    /// the reader's keys reach the reader.
+    /// The keyboard goes back to the note: to the editor in the writer, else to the reader's
+    /// anchor (`focus::NOTE`), which hands the reader its keys. Tab then goes on from the note,
+    /// into its links, however the note got the keyboard.
     pub fn keys_to_note(&mut self, tx: &mut Tx) {
         if self.writing_note() {
             self.focus_editor(tx);
+        } else if self.screen == Screen::Vault {
+            tx.focus(crate::focus::NOTE, false);
         } else {
             tx.blur();
         }
@@ -274,6 +277,11 @@ impl App {
         if let Some(open) = self.layers.pop() {
             self.give_back(open.back, tx);
         }
+    }
+
+    /// Closes a drawer that is open, with no hand-back: the caller gives the keyboard on.
+    pub(crate) fn close_drawer(&mut self) {
+        self.layers.retain(|o| !matches!(o.layer, Layer::Drawer(_)));
     }
 
     /// Closes every open layer.

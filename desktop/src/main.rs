@@ -3872,19 +3872,19 @@ mod layer_matrix_tests {
         down(&mut rt, Key::Enter);
         let (active, mode, ..) = state(&mut rt);
         assert_eq!((active.as_str(), mode), ("c.md", Mode::Preview), "Enter opens the note");
-        assert_eq!(focused(&rt), None, "and the reader has the keyboard");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "and the reader has the keyboard: {:?}", focused(&rt));
 
         // The Open list: Tab lands on the open note, Down and Enter open the next.
         assert_eq!(tab_to(&mut rt, |k| k.starts_with("tab:")), "tab:c.md", "Tab enters the Open list at the open note");
         down(&mut rt, Key::Up);
         down(&mut rt, Key::Enter);
         assert_eq!(state(&mut rt).0, "note.md", "Up and Enter open the other note");
-        assert_eq!(focused(&rt), None, "and the reader has the keyboard");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "and the reader has the keyboard: {:?}", focused(&rt));
 
         // Esc from a row gives the keyboard back to the reader.
         tab_to(&mut rt, |k| k.starts_with("tab:"));
         down(&mut rt, Key::Escape);
-        assert_eq!(focused(&rt), None, "Esc gives the keyboard back to the reader");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "Esc gives the keyboard back to the reader: {:?}", focused(&rt));
 
         // The outline's headings and backlinks.
         let heads = tab_to(&mut rt, |k| k.starts_with("ol-"));
@@ -3895,7 +3895,7 @@ mod layer_matrix_tests {
         for _ in 0..30 {
             rt.frame(DT);
         }
-        assert_eq!(focused(&rt), None, "Enter jumps to the heading and gives the reader the keyboard");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "Enter jumps to the heading and gives the reader the keyboard: {:?}", focused(&rt));
         assert!(seen(&mut rt).page_y < top - 100.0, "the page moved to the heading");
         tab_to(&mut rt, |k| k.starts_with("bl-"));
         down(&mut rt, Key::Enter);
@@ -3927,14 +3927,14 @@ mod layer_matrix_tests {
         assert_eq!(state(&mut rt).5, 0, "Shift+F10 on an Open row opens nothing");
 
         // A click on a row leaves the keyboard where it was: with the editor in the writer,
-        // with nothing in the reader.
+        // with the reader in preview.
         for mode in [Mode::Source, Mode::Preview] {
             let mut rt = garden(mode);
             press_key(&mut rt, "file:c.md", false);
             press_key(&mut rt, "dir:Box", false);
             press_key(&mut rt, "tab:note.md", false);
-            let want = (mode == Mode::Source).then(|| "editor".to_string());
-            assert_eq!(focused(&rt), want, "{mode:?}: a click on a row keeps the keyboard with the note");
+            let want = if mode == Mode::Source { "editor" } else { crate::focus::NOTE };
+            assert!(focused(&rt).is_none_or(|k| k == want) && (mode == Mode::Preview || focused(&rt).is_some()), "{mode:?}: a click on a row keeps the keyboard with the note: {:?}", focused(&rt));
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4450,7 +4450,7 @@ mod layer_matrix_tests {
         let mut path = Vec::new();
         for _ in 0..4 {
             f6(&mut rt, false);
-            path.push(focused(&rt).map(|k| stop(&k).map_or(k.clone(), |p| format!("{p:?}"))).unwrap_or_else(|| "Note".into()));
+            path.push(focused(&rt).filter(|k| k != crate::focus::NOTE).map(|k| stop(&k).map_or(k.clone(), |p| format!("{p:?}"))).unwrap_or_else(|| "Note".into()));
         }
         if path != ["Outline", "Sidebar", "Note", "Outline"] {
             fails.push(format!("F6 goes {path:?}"));
@@ -4473,7 +4473,119 @@ mod layer_matrix_tests {
             fails.push(format!("F6 twice from the outline in the writer goes to {:?}, not the editor", focused(&rt)));
         }
 
+        // Into the writer by Tab from the toolbar, Shift+Tab or Shift+F6 from the outline, the
+        // caret stays where it was, in view.
+        let caret_y = |rt: &Runtime<App>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("caret-at")).map(|e| e.rect[1]);
+        let tab = |rt: &mut Runtime<App>| key(rt, Key::Tab, Mods::default());
+        let shift_tab = |rt: &mut Runtime<App>| key(rt, Key::Tab, Mods { shift: true, ..Mods::default() });
+        let shift_f6 = |rt: &mut Runtime<App>| key(rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
+        let ways: [(&str, &str, fn(&mut Runtime<App>)); 3] = [("fmt-bold", "Tab", tab), ("ol-0", "Shift+Tab", shift_tab), ("ol-0", "Shift+F6", shift_f6)];
+        for (from, how, press) in ways {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.update(|s, tx| {
+                s.cur_edit().set_selection(0, 0);
+                s.focus_editor(tx);
+            });
+            glide(&mut rt);
+            let y0 = caret_y(&rt);
+            let from2 = from.to_string();
+            rt.update(move |_, tx| tx.focus(from2, true));
+            settle(&mut rt);
+            press(&mut rt);
+            glide(&mut rt);
+            let y1 = caret_y(&rt);
+            if !seen(&mut rt).editor_focused || y0.is_none() || y1.is_none_or(|y| (y - y0.unwrap()).abs() > 0.5 || !(0.0..800.0).contains(&y)) {
+                fails.push(format!("{how} from {from} into the writer: focus {:?}, caret y {y0:?} to {y1:?}", focused(&rt)));
+            }
+        }
+
+        // Once the note has the keyboard, Tab goes on from the note, into its links, however
+        // the note got it: Esc from a stop, or the stop's pane hidden and shown again.
+        let hide_show = |rt: &mut Runtime<App>| {
+            key(rt, Key::Command('b'), ctrl(true));
+            key(rt, Key::Command('b'), ctrl(true));
+        };
+        let back: [(&str, fn(&mut Runtime<App>)); 2] = [("Esc", esc), ("the sidebar hidden and shown", hide_show)];
+        for (how, away) in back {
+            let mut rt = garden(&dir, Mode::Preview);
+            // Box/a.md has its links at the top, where the reader has them laid out.
+            rt.update(|s, tx| s.open_file("Box/a.md", None, tx));
+            settle(&mut rt);
+            rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+            settle(&mut rt);
+            away(&mut rt);
+            glide(&mut rt);
+            tab(&mut rt);
+            if !focused(&rt).is_some_and(|k| k.starts_with("wiki:") || k.starts_with("tag:")) {
+                fails.push(format!("a sidebar row, then {how}: Tab goes to {:?}, not the note's link", focused(&rt)));
+            }
+        }
+
+        // A search result or one of its matches, opened from preview, opens the writer with the
+        // caret at the match and nothing selected, as find leaves it: the next key types there.
+        for row in ["res:", "hit:"] {
+            let mut rt = garden(&dir, Mode::Preview);
+            rt.update(|s, tx| s.search_tag("kept", tx));
+            settle(&mut rt);
+            let Some(k) = rt.elements().into_iter().filter_map(|e| e.key).find(|k| k.starts_with(row)) else {
+                fails.push(format!("no {row} row for #kept"));
+                continue;
+            };
+            rt.update(move |_, tx| tx.focus(k, true));
+            settle(&mut rt);
+            key(&mut rt, Key::Enter, Mods::default());
+            glide(&mut rt);
+            let mut sel = (0, 0, 0);
+            rt.update_if(|s, _| {
+                let e = s.cur_edit();
+                sel = (e.anchor, e.focus, e.text.find("#kept").unwrap_or(usize::MAX));
+                false
+            });
+            let before = seen(&mut rt);
+            text_key(&mut rt, "Q");
+            let after = seen(&mut rt);
+            if before.mode != Mode::Source || !before.editor_focused || sel.0 != sel.1 || sel.0 != sel.2 || after.text.matches("#kept").count() != before.text.matches("#kept").count() {
+                fails.push(format!("Enter on a {row} row from preview: mode {:?}, editor focused {}, selection {sel:?} (anchor, caret, match), the next key kept the match: {}", before.mode, before.editor_focused, after.text.contains("#kept")));
+            }
+        }
+
+        // Enter on a note's row in the sidebar's drawer closes the drawer and gives the note
+        // the keyboard, whether that note was open or not.
+        for mode in [Mode::Preview, Mode::Source] {
+            for row in ["file:note.md", "file:Box|a.md"] {
+                let mut rt = garden(&dir, mode);
+                rt.set_viewport((640.0, 480.0), 1.0);
+                settle(&mut rt);
+                rt.update(|s, tx| s.toggle_left(tx));
+                settle(&mut rt);
+                let row2 = row.to_string();
+                rt.update(move |_, tx| tx.focus(row2, true));
+                settle(&mut rt);
+                key(&mut rt, Key::Enter, Mods::default());
+                glide(&mut rt);
+                let before = seen(&mut rt);
+                let at = focused(&rt);
+                if mode == Mode::Preview {
+                    text_key(&mut rt, "j");
+                } else {
+                    text_key(&mut rt, "Q");
+                }
+                glide(&mut rt);
+                let after = seen(&mut rt);
+                // Box/a.md is too short to scroll: the reader has the keyboard when nothing else does.
+                let keys = match mode {
+                    Mode::Preview if row == "file:note.md" => after.page_y < before.page_y - 5.0,
+                    Mode::Preview => at.is_none() || at.as_deref() == Some(crate::focus::NOTE),
+                    _ => after.text.matches('Q').count() > before.text.matches('Q').count(),
+                };
+                if before.layers != 0 || !keys {
+                    fails.push(format!("{mode:?}: Enter on {row} in the drawer: layers {}, focus {at:?}, the next key reached the note: {keys}", before.layers));
+                }
+            }
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }
+
 }
