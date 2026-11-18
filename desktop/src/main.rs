@@ -4294,6 +4294,17 @@ mod layer_matrix_tests {
         settle(&mut rt);
         assert!(!up(&mut rt), "a click on Dismiss dismisses the notice");
         assert_eq!(focused(&rt).as_deref(), Some("editor"), "and leaves the keyboard in the note");
+        // The same with the keyboard in the search field.
+        rt.update(|s, tx| s.open_search(tx));
+        settle(&mut rt);
+        notice(&mut rt);
+        let r = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("notice-x")).expect("Dismiss").rect;
+        rt.pointer_move(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        rt.pointer_down(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        rt.pointer_up(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        settle(&mut rt);
+        assert!(!up(&mut rt), "a click on Dismiss dismisses the notice from the search field");
+        assert_eq!(focused(&rt).as_deref(), Some("search"), "and leaves the keyboard in the search field");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4386,19 +4397,32 @@ mod layer_matrix_tests {
         }
         // Home and End go to the first and the last tab, and Up and Down do nothing: none of
         // them opens a panel or takes the keyboard out of the tabs.
-        for (k, name, from, to) in [(Key::Home, "Home", "panel-search", "panel-files"), (Key::End, "End", "panel-files", "panel-tags"), (Key::Up, "Up", "panel-files", "panel-files"), (Key::Down, "Down", "panel-files", "panel-files"), (Key::Down, "Down", "panel-search", "panel-search")] {
+        // Each case names the open panel too, one the key does not move to, so a key that
+        // opened the tab it lands on would show.
+        let cases = [
+            (Key::Home, "Home", Panel::Search, "panel-tags", "panel-files"),
+            (Key::End, "End", Panel::Files, "panel-files", "panel-tags"),
+            (Key::End, "End", Panel::Search, "panel-files", "panel-tags"),
+            (Key::Up, "Up", Panel::Files, "panel-files", "panel-files"),
+            (Key::Down, "Down", Panel::Files, "panel-files", "panel-files"),
+            (Key::Down, "Down", Panel::Tags, "panel-search", "panel-search"),
+            (Key::Up, "Up", Panel::Search, "panel-tags", "panel-tags"),
+        ];
+        for (k, name, open, from, to) in cases {
             let mut rt = garden(&dir, Mode::Preview);
+            rt.update(move |s, _| s.left_panel = open);
+            settle(&mut rt);
             rt.update(move |_, tx| tx.focus(from, true));
             settle(&mut rt);
             key(&mut rt, k, Mods::default());
             settle(&mut rt);
-            let mut panel = Panel::Tags;
+            let mut panel = None;
             rt.update_if(|s, _| {
-                panel = s.left_panel;
+                panel = Some(s.left_panel);
                 false
             });
-            assert_eq!(focused(&rt).as_deref(), Some(to), "{name} from {from}");
-            assert_eq!(panel, Panel::Files, "{name} from {from} opens no panel");
+            assert_eq!(focused(&rt).as_deref(), Some(to), "{name} from {from} with {open:?} open");
+            assert_eq!(panel, Some(open), "{name} from {from} opens no panel");
         }
         // A layer that closes gives focus back to the tab it came from, open or not.
         let mut rt = garden(&dir, Mode::Preview);
