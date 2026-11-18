@@ -4941,14 +4941,15 @@ mod layer_matrix_tests {
         }
 
         // A new folder named in the drawer: the drawer stays, and a row of the tree has the
-        // keyboard with its ring, the new folder's after Enter.
-        for (how, last, want) in [("Enter", Key::Enter, Some("dir:Zed")), ("Esc", Key::Escape, None)] {
+        // keyboard with its ring: the new folder's after Enter; after Esc the folder whose
+        // New folder here opened the field, else the tree's current row.
+        for (how, parent, last, want) in [("Enter", "", Key::Enter, Some("dir:Zed")), ("Esc", "", Key::Escape, None), ("Enter here", "Box", Key::Enter, Some("dir:Box|Zed")), ("Esc here", "Box", Key::Escape, Some("dir:Box"))] {
             let mut rt = garden(&dir, Mode::Source);
             rt.set_viewport((640.0, 480.0), 1.0);
             settle(&mut rt);
             rt.update(|s, tx| s.toggle_left(tx));
             settle(&mut rt);
-            rt.update(|s, tx| s.start_new_folder("", tx));
+            rt.update(move |s, tx| s.start_new_folder(parent, tx));
             settle(&mut rt);
             let field = focused(&rt);
             for c in ["Z", "e", "d"] {
@@ -4961,6 +4962,7 @@ mod layer_matrix_tests {
                 fails.push(format!("{how} in a new folder's name in the drawer: field {field:?}, layers {}, focus {ring:?}", seen(&mut rt).layers));
             }
             let _ = std::fs::remove_dir_all(dir.join("notes/Zed"));
+            let _ = std::fs::remove_dir_all(dir.join("notes/Box/Zed"));
         }
 
         let _ = std::fs::remove_dir_all(&dir);

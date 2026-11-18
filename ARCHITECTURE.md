@@ -100,7 +100,8 @@ showed when it opened.
   Rename and New note open the note's name in the title bar, behind the sidebar's drawer, so
   the drawer closes and the name has focus, selected. A new folder's name shows in the tree,
   inside the drawer, so the drawer stays; when that field closes (`App::end_new_folder`), a
-  row of the tree takes the keyboard with its ring, the new folder's after Enter.
+  row of the tree takes the keyboard with its ring: the new folder's after Enter, else the
+  folder a New folder here came from, else the tree's current row.
 - A delete from a row's menu (`App::row_deleted`) closes the drawer the row was in and gives
   the note the keys, since the row cannot take focus back.
 - `App::drop_stale_layers` runs in `poll` before each frame. A light layer (a menu or a

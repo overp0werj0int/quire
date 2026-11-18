@@ -156,12 +156,19 @@ impl App {
 
     /// The new folder's name field closes: Enter makes the folder (`keep`), Esc drops it. In
     /// the sidebar's drawer the note cannot take the keyboard, so the tree does, with its
-    /// ring: the new folder's row, or the tree's current row when no folder was made.
+    /// ring: the new folder's row; when no folder was made, the row the field was opened from,
+    /// the folder of a New folder here, else the tree's current row.
     pub fn end_new_folder(&mut self, keep: bool, tx: &mut Tx) {
+        let parent = self.new_folder.as_ref().map(|nf| nf.parent.clone()).unwrap_or_default();
         let made = if keep { self.commit_new_folder() } else { None };
         self.new_folder = None;
         if self.drawer() == Some(crate::app::Drawer::Sidebar) {
-            tx.focus(made.map_or_else(|| self.sidebar_stop(), |path| row_key("dir", &path)), true);
+            let row = match made {
+                Some(path) => row_key("dir", &path),
+                None if !parent.is_empty() => row_key("dir", &parent),
+                None => self.sidebar_stop(),
+            };
+            tx.focus(row, true);
         }
     }
 
