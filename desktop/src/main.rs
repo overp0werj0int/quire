@@ -4316,6 +4316,62 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Esc with Shift, Ctrl or Alt in the search field, find's field and the note does what Esc
+    /// does there: it dismisses a showing notice, then gives the keyboard to the note (SHESC).
+    /// The field gives up the keyboard on any Esc, so a modifier must not leave it nowhere.
+    #[test]
+    fn esc_with_a_modifier_is_esc_in_a_field() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-mod-esc-{}", std::process::id()));
+        let notice = |rt: &mut Runtime<App>| {
+            rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+            settle(rt);
+        };
+        let state = |rt: &mut Runtime<App>| {
+            let mut seen = (false, false, Mode::Source);
+            rt.update_if(|s, _| {
+                seen = (s.notice.is_some(), s.reader.find.open, s.mode);
+                false
+            });
+            seen
+        };
+        let shift = Mods { shift: true, ..Mods::default() };
+        let alt = Mods { alt: true, ..Mods::default() };
+        for mode in [Mode::Source, Mode::Preview] {
+            let note = if mode == Mode::Source { "editor" } else { "note-keys" };
+            for m in [shift, ctrl(false), alt] {
+                let mut rt = garden(&dir, mode);
+                if mode == Mode::Source {
+                    rt.update(|s, tx| s.focus_editor(tx));
+                    settle(&mut rt);
+                }
+                rt.update(|s, tx| s.open_search(tx));
+                settle(&mut rt);
+                notice(&mut rt);
+                key(&mut rt, Key::Escape, m);
+                assert!(!state(&mut rt).0, "{mode:?} {m:?}: Esc in the search field dismisses the notice");
+                assert_eq!(focused(&rt).as_deref(), Some("search"), "{mode:?} {m:?}: and the search field keeps the keyboard");
+                key(&mut rt, Key::Escape, m);
+                assert_eq!(focused(&rt).as_deref(), Some(note), "{mode:?} {m:?}: the next Esc gives the note the keyboard");
+                key(&mut rt, Key::Command('f'), ctrl(false));
+                notice(&mut rt);
+                key(&mut rt, Key::Escape, m);
+                assert_eq!(state(&mut rt), (false, true, mode), "{mode:?} {m:?}: Esc in find's field dismisses the notice and keeps find");
+                assert_eq!(focused(&rt).as_deref(), Some("find-input"), "{mode:?} {m:?}: and find's field keeps the keyboard");
+                key(&mut rt, Key::Escape, m);
+                assert_eq!(state(&mut rt), (false, false, mode), "{mode:?} {m:?}: the next Esc closes find");
+                assert_eq!(focused(&rt).as_deref(), Some(note), "{mode:?} {m:?}: and gives the note the keyboard");
+                if mode == Mode::Source {
+                    notice(&mut rt);
+                    key(&mut rt, Key::Escape, m);
+                    assert_eq!(state(&mut rt), (false, false, mode), "{m:?}: Esc in the note dismisses the notice first");
+                    assert_eq!(focused(&rt).as_deref(), Some("editor"), "{m:?}: and the note keeps the keyboard");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A long name being typed in the title bar stays in the title's room: the field stops at
     /// the room less ".md", the name scrolls inside it, and the caret and ".md" stay in view, at
     /// 640 and 1280, in both modes. A short name keeps its own small field (RENFIT).

@@ -708,8 +708,9 @@ pub fn follow_link_at_caret(s: &mut App, tx: &mut Tx) {
 fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // A caret move that follows a key is not a click (see `App::check_link_click`).
     s.key_moved = true;
-    // The field would keep Escape, so the writer's Esc order runs here (WR-77).
-    if matches!(ev.key, Key::Escape) && !ev.mods.shift {
+    // The field would keep Escape, so the writer's Esc order runs here (WR-77), for Esc with
+    // a modifier too: the field gives up the keyboard on any Esc.
+    if matches!(ev.key, Key::Escape) {
         return s.writer_escape(tx);
     }
     // The writer's editing keys come from the keymap, so a preset changes them here too.

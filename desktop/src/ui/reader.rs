@@ -79,9 +79,10 @@ pub fn find_bar(v: V) -> El {
 }
 
 /// Keys in the find field: Enter, Shift+Enter, Esc and Ctrl+F (KEY items 77 to 80). Esc
-/// dismisses the notice first, as on the page (RD-85, WR-77).
+/// dismisses the notice first, as on the page (RD-85, WR-77). Esc with a modifier does the
+/// same, since the field gives up the keyboard on any Esc.
 fn on_find_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if matches!(ev.key, Key::Escape) && !ev.mods.shift {
+    if matches!(ev.key, Key::Escape) {
         if s.notice.take().is_none() {
             s.close_find(tx);
         }

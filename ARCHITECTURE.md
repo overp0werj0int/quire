@@ -154,7 +154,8 @@ or the outline. A test checks that every focusable element in the panes is in it
   Space and Enter. Closing find, Esc in the docked search field and closing the shown
   tab call `App::keys_to_note` themselves, so the writer has the keys after each. In the
   drawer, Esc in the search field is the drawer's, as from a row: the drawer closes and
-  hands focus back.
+  hands focus back. A Rune text field gives up focus on Esc with any modifier, so the
+  note, find's field and the search field take Shift+Esc, Ctrl+Esc and Alt+Esc as Esc.
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
   sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the

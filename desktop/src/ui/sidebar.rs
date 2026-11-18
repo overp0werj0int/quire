@@ -564,10 +564,11 @@ fn search_panel(v: V) -> El {
                 .placeholder("Search notes", theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
                 .on_edit(|s: &mut App| &mut s.query)
-                // Down moves into the results. Esc gives the note the keys, which the field
-                // would otherwise drop; in the drawer Esc is the drawer's, as from a row (FOCUS).
+                // Down moves into the results. Esc, with any modifier, gives the note the keys,
+                // which the field would otherwise drop; in the drawer Esc is the drawer's, as from
+                // a row (FOCUS).
                 .on_input_key(move |s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
-                    if ev.mods != rune::Mods::default() {
+                    if ev.mods != rune::Mods::default() && ev.key != rune::Key::Escape {
                         return false;
                     }
                     match (&ev.key, &first) {
