@@ -332,11 +332,13 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// ELGAP: a name or folder cut to the title bar's room ends where its ink does, so ".md"
-    /// and "/" sit as close after it as after one shown whole, at every width; the cut name
-    /// keeps its whole text for the tooltip and the screen reader.
+    /// ELGAP: a name or folder cut to the title bar's room ends where its ink does, so "/" sits
+    /// as close after a cut folder as after one shown whole, at every width and scale; the cut
+    /// name keeps its whole text for the tooltip and the screen reader. DOTS: ".md" sits a thin
+    /// gap after a cut name's ellipsis, so the two never read as four dots, and right after a
+    /// name shown whole.
     #[test]
-    fn a_cut_name_ends_right_before_its_extension() {
+    fn a_cut_name_keeps_a_thin_gap_before_its_extension() {
         use crate::bench::DT;
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-elgap-{}", std::process::id()));
@@ -349,8 +351,8 @@ pub(crate) mod scroll_tests {
         };
         for note in [name, "Short"] {
             rt.update(|s, tx| s.open_file(&format!("{folder}/{note}.md"), None, tx));
-            for w in [1280.0, 640.0, 520.0] {
-                rt.set_viewport((w, 600.0), 1.0);
+            for (w, scale) in [(1280.0, 1.0), (640.0, 1.0), (520.0, 1.0), (640.0, 1.5), (520.0, 2.0)] {
+                rt.set_viewport((w, 600.0), scale);
                 for _ in 0..30 {
                     rt.frame(DT);
                 }
@@ -360,8 +362,14 @@ pub(crate) mod scroll_tests {
                     let (cut, next) = after(sep);
                     let t = cut.text.clone().unwrap_or_default();
                     let ink = rune::text::measure(&t, &[], style, None).0;
-                    assert!((cut.rect[2] - ink).abs() <= 1.0, "{note} at {w}: '{t}' before '{sep}' is {} wide for {ink} of text", cut.rect[2]);
-                    assert!(next.rect[0] - (cut.rect[0] + cut.rect[2]) < if sep == "/" { 6.5 } else { 0.5 }, "{note} at {w}: '{sep}' sits right after '{t}'");
+                    assert!((cut.rect[2] - ink).abs() <= 1.0, "{note} at {w} x{scale}: '{t}' before '{sep}' is {} wide for {ink} of text", cut.rect[2]);
+                    let gap = next.rect[0] - (cut.rect[0] + cut.rect[2]);
+                    let want = match sep {
+                        "/" => 6.0,
+                        _ if t.ends_with('…') => crate::ui::editor::CUT_GAP,
+                        _ => 0.0,
+                    };
+                    assert!((gap - want).abs() < 0.5, "{note} at {w} x{scale}: '{sep}' sits {gap} pt after '{t}', not {want}");
                 }
                 let (shown, _) = after(".md");
                 if shown.text.as_deref() != Some(note) {

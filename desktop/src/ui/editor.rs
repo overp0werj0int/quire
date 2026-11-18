@@ -472,7 +472,7 @@ pub(super) fn crumb(v: V) -> El {
                 .cursor(rune::Cursor::Text)
                 .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
                 .child(name_el)
-                .child(label(".md", style, quiet.faint)),
+                .child(label(".md", style, quiet.faint).ml(if cut { CUT_GAP } else { 0.0 })),
         ),
         Some(edit) => {
             // The field grows with the name, up to the title's room less ".md", and the name
@@ -515,9 +515,15 @@ pub(super) fn crumb(v: V) -> El {
     if reloaded { r.child(super::reader::reloaded(v)) } else { r }
 }
 
+/// The room between a cut name's box and ".md", so the ellipsis and the full stop never read
+/// as four dots (RD-32). With the ellipsis's side bearing and the box's rounding to device
+/// pixels, about 2 pt shows between their ink. A name shown whole keeps its own bearing alone.
+pub(crate) const CUT_GAP: f32 = 1.5;
+
 /// The folder and the name the crumb shows in `room`, the title's width inside its padding,
-/// cut here rather than by Rune, so each one's box ends where its ink does and "/" and ".md"
-/// sit as close after a cut one as after one shown whole (ELGAP). The name keeps its start and
+/// cut here rather than by Rune, so each one's box ends where its ink does: "/" sits as close
+/// after a cut folder as after one shown whole (ELGAP), and ".md" `CUT_GAP` after a cut name
+/// (DOTS). The name keeps its start and
 /// has its room first; the folder keeps its end and takes what the name leaves, at least "…".
 fn crumb_fit(dir: &str, name: &str, room: f32, style: TextStyle) -> (String, String) {
     let width = |t: &str| rune::text::measure(t, &[], style, None).0;
@@ -528,8 +534,8 @@ fn crumb_fit(dir: &str, name: &str, room: f32, style: TextStyle) -> (String, Str
     // Rune rounds a text's box up to whole device pixels: a cut keeps a point to spare.
     let fits = |t: &str, w: f32| width(t) <= w - 1.0;
     let name_room = room - md - slash - least;
-    let shown = if width(name) <= name_room { name.to_string() } else { cut_end(name, name_room, &fits) };
-    let folder_room = room - md - slash - width(&shown);
+    let (shown, after) = if width(name) <= name_room { (name.to_string(), 0.0) } else { (cut_end(name, name_room - CUT_GAP, &fits), CUT_GAP) };
+    let folder_room = room - md - slash - width(&shown) - after;
     let folder = if dir.is_empty() || width(dir) <= folder_room { dir.to_string() } else { cut_head(dir, folder_room, &fits) };
     (folder, shown)
 }
