@@ -19,6 +19,8 @@ use crate::theme;
 /// The size of a sidebar button and of a panel tab: the smallest pointer target. The drawn
 /// icons stay small inside it.
 const TARGET: f32 = 24.0;
+/// How far the open panel tab's pill reaches past its text on each side.
+const TAB_PAD: f32 = 7.0;
 
 /// A row's room after its button, so the button's icon sits 13 points from the row's end.
 const BUTTON_END: f32 = 1.0;
@@ -42,10 +44,11 @@ pub fn sidebar(v: V) -> El {
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
     );
 
-    // The panel switch is a row of tabs in the caption's type, so they read as tabs, not as
-    // labels: the others in the rows' colour, brighter under the pointer, and the open one in
-    // the text colour over a mark of the accent. The new folder button lines up with the rows'
-    // buttons below it.
+    // The panel switch is a row of tabs. They are set apart from the section labels (OPEN) by
+    // shape: a medium weight with no letter-spacing, and the open one in the text colour on a
+    // soft pill that reaches past its text, which stays on the rows' text edge. The others take
+    // the rows' colour, brighter under the pointer. The new folder button lines up with the
+    // rows' buttons below it.
     let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
     for (id, lbl) in [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")] {
         let on = s.left_panel == id;
@@ -62,10 +65,10 @@ pub fn sidebar(v: V) -> El {
                         tx.focus("search", false);
                     }
                 })
-                .child(super::styles::caps(lbl, true).color(if on { c.text } else { c.dim }).group_color(c.text))
                 .children(on.then(|| {
-                    el().key("tab-mark").pin(Some(0.0), None, Some(0.0), Some(1.0)).h(2.0).radius(1.0).fill(c.accent).transition(super::swap())
-                })),
+                    el().key("tab-mark").pin(Some(-TAB_PAD), Some(2.0), Some(-TAB_PAD), Some(2.0)).radius(5.0).fill(c.text.alpha(0.08)).transition(super::swap())
+                }))
+                .child(text(lbl.to_uppercase()).font(super::styles::tab(panel::CAPTION)).color(if on { c.text } else { c.dim }).group_color(c.text)),
         );
     }
 

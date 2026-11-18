@@ -52,6 +52,12 @@ pub fn nav(size: f32, bold: bool) -> TextStyle {
     panel(size, if bold { 700.0 } else { 400.0 })
 }
 
+/// A side panel tab's name (Files, Search, Tags): medium, with no letter-spacing, so it reads
+/// as a tab and not as a section label.
+pub fn tab(size: f32) -> TextStyle {
+    panel(size, 500.0)
+}
+
 /// A key name, such as Ctrl+N, wherever it shows.
 pub fn keys(size: f32) -> TextStyle {
     panel(size, 400.0)

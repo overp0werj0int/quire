@@ -59,3 +59,9 @@ contrast on every fill, and the text, the current row's colour, 1.15 times more 
 a theme's own text leaves no room for both steps (Catppuccin Latte, Rosé Pine Dawn), the panels'
 text moves toward black or white. The panels' ghost reaches 3:1, and the title bar's path takes
 it for "/" and faint for ".md", which were 1.96:1 in Paper.
+
+Update, 2026-11-18: the Files, Search and Tags switch no longer takes the caption style. In
+bold spaced capitals it read as three more section labels like OPEN. The tabs are now
+medium-weight capitals with no letter-spacing, in the rows' colour, and the open tab is in the
+text colour on a soft pill (8 % of the text colour) that reaches 7 px past its text. The text
+still starts on the rows' text edge. Section labels keep the caption style.
