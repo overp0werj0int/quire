@@ -46,6 +46,9 @@ pub struct V<'a> {
     /// The writer's current find match where the page lays it out, unscrolled, read only while
     /// a toast shows with find open (`App::band_laid_out`).
     pub find_at: Option<[f32; 4]>,
+    /// The current match waiting to be placed above the band, as its `place` number and where
+    /// the page laid it out, unscrolled (`App::place_match`).
+    pub place_at: Option<(u32, [f32; 4])>,
 }
 
 impl V<'_> {
@@ -122,7 +125,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     map_page(s);
     let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
     let find_at = (s.writing() && s.foot_shows() && s.find_query().is_some()).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
-    let v = V { s, p, dark, vw, vh, trailing, caret, find_at };
+    let place_at = s.reader.find.place.and_then(|p| cx.layout(&crate::reader::place_key(p.n)).map(|r| (p.n, r)));
+    let v = V { s, p, dark, vw, vh, trailing, caret, find_at, place_at };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);
@@ -158,6 +162,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if let Some(n) = s.notice.as_deref().filter(|_| !v.is_vault()) {
         root = root.child(reader::notice(v, n));
     }
+    root = root.children(reader::find_placed(v));
     root = root.children(layer::layers(v));
     if s.layer_swap {
         // The palette giving way to Settings: the two cards never show together.

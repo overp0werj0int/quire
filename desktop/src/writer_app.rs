@@ -342,14 +342,15 @@ impl App {
         self.select_match(&m, tx);
     }
 
-    /// Selects the current match in the editor and glides it into view (WR-118).
+    /// Selects the current match in the editor and glides it into view (WR-118), above the
+    /// toast's band while one shows (RD-104).
     fn select_match(&mut self, m: &[Range<usize>], tx: &mut Tx) {
         let Some(r) = m.get(self.reader.find.cur).cloned() else { return };
         if let Some(e) = self.cur_edit_opt() {
             e.set_selection(r.start, r.end);
             e.break_history_group();
         }
-        tx.scroll_center(crate::reader::FIND_CUR);
+        self.center_or_place(tx);
     }
 
     // ---------- Scrolling ----------

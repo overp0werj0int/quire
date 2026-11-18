@@ -16,6 +16,10 @@ use crate::page::r;
 pub const SCROLL: &str = "doc-scroll";
 /// The current find match's highlight, which scrolling centres.
 pub const FIND_CUR: &str = "find-cur";
+/// The key of the current match's second highlight while it waits to be placed above a band.
+pub fn place_key(n: u32) -> String {
+    format!("find-place-{n}")
+}
 /// How long a key glide lasts; a key inside it continues from where it is heading (RD-22).
 const KEY_GLIDE: f64 = 0.11;
 /// The second key of a two-key chord comes within this (RD-23).
@@ -54,8 +58,10 @@ pub struct Reader {
     /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
     pub thumb: Live<[f32; 4]>,
     pub thumb_shown: Live<f32>,
-    /// How tall the toast band last laid out, 0 while no pill shows (RD-104).
+    /// How tall the toast band last laid out, 0 while no pill shows (RD-104), and where its
+    /// foot, the view's, sits in the window.
     pub(crate) band: f32,
+    foot: f32,
     /// The room after the page's last line that the band has asked for (RD-104). When the
     /// band shrinks or goes, it follows down frame by frame (`App::release_room`).
     pub(crate) room: f32,
@@ -75,7 +81,7 @@ impl Default for Reader {
     fn default() -> Self {
         Reader {
             wide: None,
-            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0 },
+            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0, place: None, placed: 0 },
             toast: None,
             copied: None,
             reloaded: None,
@@ -86,6 +92,7 @@ impl Default for Reader {
             thumb: Live::new([0.0; 4]),
             thumb_shown: Live::new(0.0),
             band: 0.0,
+            foot: 0.0,
             room: 0.0,
             room_at: 0.0,
             pending: None,
@@ -376,6 +383,21 @@ impl PageMap {
     }
 }
 
+/// A match find brings up while a band shows (`App::place_match`). Its highlight carries
+/// `place_key(n)` meanwhile, and the view reports where it lays out.
+#[derive(Clone, Copy)]
+pub(crate) struct Place {
+    pub n: u32,
+    /// When find asked, and the scroll offset then.
+    at: f64,
+    from: f32,
+    /// Where its top goes, from the view's top, once its first layout has decided.
+    to: Option<f32>,
+}
+
+/// How long a placement follows its match while the rows around it measure.
+const PLACE_FOR: f64 = 0.6;
+
 pub struct Find {
     pub open: bool,
     pub q: TextEdit,
@@ -385,6 +407,10 @@ pub struct Find {
     pub due: Option<f64>,
     /// The current match, an index into `blocks::find_all`.
     pub cur: usize,
+    /// A match find brought up while a band shows, placed above the band as it lays out.
+    pub(crate) place: Option<Place>,
+    /// The last `place` number handed out.
+    placed: u32,
 }
 
 // ---------- The numbers ----------
@@ -658,26 +684,83 @@ impl App {
     /// Brings the current find match into view (RD-60, adapted): a match whose block shows
     /// between 20% and 75% of the view's height stays put, and any other is centred. A block
     /// far from the view may not be laid out, so the page first goes to where the map puts it,
-    /// and centres the match once its row lays out.
-    pub(crate) fn center_match(&self, tx: &mut Tx) {
+    /// and centres the match once its row lays out. While a band shows, the block also has to
+    /// end above it to stay, and the match is placed above the band (`App::place_match`).
+    pub(crate) fn center_match(&mut self, tx: &mut Tx) {
         let m = self.find_matches();
         let doc = self.doc();
         let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
         let Some(b) = doc.blocks.get(i) else { return };
         let [offset, max, vh, _] = self.reader.scroll.get();
+        let band = if self.foot_shows() { self.reader.band } else { 0.0 };
         let mut map = self.reader.map.borrow_mut();
         let Some(top) = map.block_top(i).filter(|_| map.covers(doc.blocks.len())) else {
-            return tx.scroll_center(FIND_CUR);
+            drop(map);
+            return self.center_or_place(tx);
         };
         let (y0, y1) = (top - offset, top - offset + map.height(i));
-        if y0 >= 0.2 * vh && y1 <= 0.75 * vh {
+        if y0 >= 0.2 * vh && y1 <= 0.75 * vh && y1 <= vh - band {
             return;
         }
         if top > offset - vh && top < offset + 2.0 * vh {
-            return tx.scroll_center(FIND_CUR);
+            drop(map);
+            return self.center_or_place(tx);
         }
         tx.scroll_to_instant(SCROLL, 0.0, (top - 0.5 * vh).clamp(0.0, max.max(0.0)));
         map.wait(block_key(b), Arrive::Center, self.now.get());
+    }
+
+    /// Centres the current match, and while a band shows, places it above the band once it is
+    /// laid out (`App::place_match`).
+    pub(crate) fn center_or_place(&mut self, tx: &mut Tx) {
+        tx.scroll_center(FIND_CUR);
+        let band = self.foot_shows() && self.reader.band > 0.0;
+        let (at, from) = (self.now.get(), self.reader.scroll.get()[0]);
+        let f = &mut self.reader.find;
+        f.place = None;
+        if band {
+            f.placed = f.placed.wrapping_add(1);
+            f.place = Some(Place { n: f.placed, at, from, to: None });
+        }
+    }
+
+    /// The current match, waiting as `place` number `n`, laid out at `[x, y, w, h]` in window
+    /// points before scrolling, with `top` of the view under the toolbar's band. Find's glide
+    /// to the view's centre (`App::center_or_place`) goes on to the room the toast's band
+    /// leaves instead: centred there, or by the least scroll from where the match was that
+    /// clears the band when centring would put it under the toolbar's band. A match that cannot
+    /// fit between the two bands stays centred in the view (RD-60, WR-118, RD-104). The first
+    /// report decides where the match goes in the view; later ones, as the rows around it
+    /// measure, keep the glide going there.
+    pub(crate) fn place_match(&mut self, n: u32, [_, y, _, h]: [f32; 4], top: f32, tx: &mut Tx) {
+        let Some(mut p) = self.reader.find.place.filter(|p| p.n == n) else { return };
+        if self.now.get() - p.at > PLACE_FOR {
+            self.reader.find.place = None;
+            return;
+        }
+        let vh = self.reader.scroll.get()[2];
+        let view = self.reader.foot - vh;
+        let to = match p.to {
+            Some(to) => to,
+            None => {
+                // The match where it was, and the band's top, from the view's top.
+                let (m, band) = (y - p.from - view, vh - self.reader.band);
+                let top = if self.writing() { top } else { 0.2 * vh };
+                if !self.foot_shows() || band - h < top {
+                    self.reader.find.place = None;
+                    return;
+                }
+                let centred = (band - h) / 2.0;
+                let to = if centred >= top { centred } else { m.clamp(top, band - h) };
+                p.to = Some(to);
+                self.reader.find.place = Some(p);
+                to
+            }
+        };
+        // The key that asked for this glides it, though the layout's report comes in a commit
+        // of its own.
+        tx.animated();
+        tx.scroll_to(SCROLL, 0.0, y - view - to);
     }
 
     /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
@@ -689,6 +772,7 @@ impl App {
     pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, tx: &mut Tx) {
         let grew = h > self.reader.band + 0.5;
         self.reader.band = h;
+        self.reader.foot = y + h;
         self.reader.room = self.reader.room.max(h);
         tx.live_only();
         if !grew {
@@ -788,14 +872,16 @@ impl App {
                 None => {}
             }
         }
-        match map.arrive(key, now, self.now.get()) {
+        let arrival = map.arrive(key, now, self.now.get());
+        drop(map);
+        match arrival {
             Some(Arrival::Key(at)) => tx.scroll_key_to(key.to_owned(), at),
             Some(Arrival::Cut(cut, to)) => {
                 tx.scroll_to_instant(SCROLL, 0.0, cut);
                 tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
             }
             Some(Arrival::Glide(to)) => tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0)),
-            Some(Arrival::Center) => tx.scroll_center(FIND_CUR),
+            Some(Arrival::Center) => self.center_or_place(tx),
             None => tx.live_only(),
         }
     }

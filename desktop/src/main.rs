@@ -4674,13 +4674,16 @@ mod layer_matrix_tests {
             glide(&mut rt);
             glide(&mut rt);
             let view = rect(&rt, "doc-scroll").expect("the view");
-            let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
-            let by = y - (view[1] + 0.7 * view[3]);
-            rt.update(|s, tx| {
-                let at = s.reader.scroll.get()[0];
-                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
-            });
-            glide(&mut rt);
+            // Rows that mount as the view moves measure, so the move is made until it holds.
+            for _ in 0..3 {
+                let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+                let by = y - (view[1] + 0.7 * view[3]);
+                rt.update(|s, tx| {
+                    let at = s.reader.scroll.get()[0];
+                    tx.scroll_to_instant(crate::reader::SCROLL, 0.0, at + by);
+                });
+                glide(&mut rt);
+            }
             let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
             assert!((y - (view[1] + 0.7 * view[3])).abs() < 1.0, "{mode:?}: the case puts the match at 70%: {y}");
             let band = rect(&rt, "toast-band").expect("the band");
@@ -4885,6 +4888,63 @@ mod layer_matrix_tests {
                 assert!(max < grown - 30.0 && (at - max).abs() < 0.5, "{scale}x, wheel {wheel}: the room goes and the view ends at the page's end: {at} of {max}, was {grown}");
                 assert!(step <= 5.0, "{scale}x, wheel {wheel}: no frame moves the page more than a glide would: {step} pt");
                 assert!(late < 0.01, "{scale}x, wheel {wheel}: the page moves {late} pt after resting");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// FINDBAND: while a band shows, find places the match it brings up in the room above the
+    /// band, in both modes, stepping forward and back; with no band it centres as before. The
+    /// reader's shorter line clears the band at 480 high by centring alone, so it runs at 400.
+    #[test]
+    fn find_lands_its_match_above_a_tall_band() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findband-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let text: String = (0..120).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let long = format!("A folder named {}is already there.", "A long folder name ".repeat(10));
+        for mode in [Mode::Source, Mode::Preview] {
+            // Half the match's line: 14 pt in the writer, 11 in the reader.
+            let half = if mode == Mode::Source { 14.0 } else { 11.0 };
+            let (mut rt, _) = crate::bench::open(&dir, &text, mode);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((520.0, if mode == Mode::Source { 480.0 } else { 400.0 }), 1.0);
+            rt.update(|s, tx| {
+                s.notice = Some(long.clone());
+                s.toast("Saved", tx);
+            });
+            glide(&mut rt);
+            let band = rect(&rt, "toast-band").expect("the band");
+            let view = rect(&rt, "doc-scroll").expect("the view");
+            assert!(band[3] > 150.0, "{mode:?}: the case needs a tall band: {band:?}");
+            rt.update(|s, tx| {
+                s.open_find(tx);
+                s.reader.find.q = rune::TextEdit::new("Line 4");
+                s.find_changed(tx);
+            });
+            glide(&mut rt);
+            glide(&mut rt);
+            for (i, forward) in [true, true, true, false, true, true].into_iter().enumerate() {
+                // A toast again each time, so the band stays its full height.
+                rt.update(|s, tx| {
+                    s.toast("Saved", tx);
+                    s.find_step(forward, tx);
+                });
+                glide(&mut rt);
+                let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+                assert!(y + half <= band[1] + 0.5 && y - half >= view[1], "{mode:?}, step {i}: the match comes above the band: {} to {}, band from {}", y - half, y + half, band[1]);
+            }
+            // With no band, find centres in the whole view again: the writer as WR-118 has it.
+            if mode == Mode::Source {
+                rt.update(|s, _| {
+                    s.notice = None;
+                    s.reader.toast = None;
+                });
+                glide(&mut rt);
+                rt.update(|s, tx| s.find_step(true, tx));
+                glide(&mut rt);
+                let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
+                assert!((y - (view[1] + view[3] / 2.0)).abs() < 30.0, "with no band the match is centred in the view: {y}");
             }
         }
         let _ = std::fs::remove_dir_all(&dir);

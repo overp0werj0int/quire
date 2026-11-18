@@ -233,10 +233,8 @@ fn doc_scroll(v: V) -> El {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
         // float on a clear band. The caret stays below them while you type.
         let below = if find_row(v) { find_top(v) + super::reader::FIND_H } else { TOOLBAR_TOP + TOOLBAR_H };
-        // The caret, and a match find shows, stay below the band's fade.
-        let clear = if find_row(v) { FIND_FADE_OUT } else { 12.0 };
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
-        margin = below + clear;
+        margin = top_band(v);
     }
     // While a toast or the notice shows, the line being typed stays above its band, fade
     // included (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room
@@ -252,6 +250,15 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_margin(margin);
     }
     scroll.child(content)
+}
+
+/// How far the toolbar's band, and the find bar on its own row under it, reach down the view,
+/// with the fade below them that the caret and a match find shows stay under. 0 with no toolbar.
+pub(super) fn top_band(v: V) -> f32 {
+    if !shows_toolbar(v) {
+        return 0.0;
+    }
+    if find_row(v) { find_top(v) + super::reader::FIND_H + FIND_FADE_OUT } else { TOOLBAR_TOP + TOOLBAR_H + 12.0 }
 }
 
 /// Where the find bar's top sits in the note area: 10 under the title bar, which is the
@@ -617,6 +624,9 @@ fn source(v: V, width: f32, room: f32) -> El {
     if s.find_query().is_some() {
         let cur = s.reader.find.cur;
         for (k, r) in s.source_matches().into_iter().enumerate() {
+            if k == cur && let Some(p) = s.reader.find.place {
+                marks.push(TextHighlight::new(r.clone(), Color::TRANSPARENT).key(crate::reader::place_key(p.n)));
+            }
             marks.push(if k == cur { TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR) } else { TextHighlight::new(r, c.find) });
         }
     }

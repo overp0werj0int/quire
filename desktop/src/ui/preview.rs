@@ -254,7 +254,7 @@ pub fn preview(v: V) -> El {
     let doc = s.doc();
     let find = s.find_query().map(|q| {
         let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
-        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur }
+        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur, place: s.reader.find.place.map(|p| p.n) }
     });
     // A row is built again only when something it draws from changes.
     let set = s.settings();
@@ -267,7 +267,7 @@ pub fn preview(v: V) -> El {
         s.vault.as_ref().map(|v| &v.path),
         (set.size, &set.preview_font, &set.code_font),
         format!("{:?}{:?}", v.p, column(v)),
-        find.as_ref().map(|f| (&f.q, f.cur)),
+        find.as_ref().map(|f| (&f.q, f.cur, f.place)),
         &s.names,
         s.images.epoch.get(),
         s.reader.copied.map(|(l, _)| l),
@@ -292,7 +292,7 @@ pub fn preview(v: V) -> El {
             estimate,
             move |_: &App, i| Cow::Owned(doc.blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
             move |s: &App, i| {
-                let v = V { s, p, dark, vw, vh, trailing, caret: None, find_at: None };
+                let v = V { s, p, dark, vw, vh, trailing, caret: None, find_at: None, place_at: None };
                 let doc = rows.clone();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
@@ -329,6 +329,8 @@ struct Hl {
     /// For text whose lower case changes its length, where byte offsets would not line up.
     q_ascii: String,
     cur: Option<(usize, usize)>,
+    /// The current match's `place` number while it waits to be placed above a band.
+    place: Option<u32>,
 }
 
 /// What every block needs: the view, the page's look, the whole document (for anchors) and
@@ -373,6 +375,9 @@ impl Cx<'_> {
         let mut k = k0;
         while let Some(f) = hay[at..].find(q.as_str()) {
             let (a, b) = (at + f, at + f + q.len());
+            if h.cur == Some((pid, k)) && let Some(n) = h.place {
+                out.push(TextHighlight::new(a..b, Color::TRANSPARENT).key(crate::reader::place_key(n)));
+            }
             out.push(if h.cur == Some((pid, k)) {
                 TextHighlight::new(a..b, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR)
             } else {
