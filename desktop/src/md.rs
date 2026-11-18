@@ -531,10 +531,18 @@ pub fn search(files: &BTreeMap<String, String>, q: &str) -> Vec<SearchResult> {
 /// A search hit's line as the sidebar shows it (C17): its Markdown syntax gone, cut at word
 /// edges to what `rows` lines of `cols` monospaced characters hold, with whole words ahead of
 /// the match while they fit `before` characters, and "…" where it was cut. Returns the text and
-/// the match's byte range in it, empty when the match was all syntax, such as a link's address.
+/// the match's byte range in it. A match that is all syntax, such as a link's address, shows in
+/// the line as written, so it is still marked.
 pub fn snippet(line: &str, col: usize, len: usize, before: usize, cols: usize, rows: usize) -> (String, std::ops::Range<usize>) {
-    let (plain, map) = strip_line(line);
-    let inside: Vec<usize> = (0..plain.len()).filter(|&i| plain.is_char_boundary(i) && (col..col + len).contains(&map[i])).collect();
+    let within = |plain: &str, map: &[usize]| -> Vec<usize> { (0..plain.len()).filter(|&i| plain.is_char_boundary(i) && (col..col + len).contains(&map[i])).collect() };
+    let (mut plain, mut map) = strip_line(line);
+    let mut inside = within(&plain, &map);
+    if inside.is_empty() && len > 0 {
+        let lead = line.len() - line.trim_start().len();
+        plain = line.trim().to_string();
+        map = (lead..lead + plain.len()).collect();
+        inside = within(&plain, &map);
+    }
     let m0 = inside.first().copied().unwrap_or_else(|| (0..plain.len()).find(|&i| map[i] >= col).unwrap_or(plain.len()));
     let m1 = inside.last().map_or(m0, |&i| i + plain[i..].chars().next().map_or(1, char::len_utf8));
     let space = |i: usize| plain.as_bytes()[i] == b' ';
@@ -828,10 +836,10 @@ mod tests {
         assert!(wrapped(&t, 14) <= 2);
         let (t, _) = snippet("# Plain notes", 8, 5, 20, 30, 2);
         assert_eq!(t, "Plain notes");
-        // A match inside a link's address shows the link's text, unmarked.
+        // A match inside a link's address shows the line as written, with the match marked.
         let ln = "see [here](https://notes.example) now";
-        let (t, m) = snippet(ln, ln.find("notes").unwrap(), 5, 20, 30, 2);
-        assert_eq!((t.as_str(), m.is_empty()), ("see here now", true));
+        let (t, m) = snippet(ln, ln.find("notes").unwrap(), 5, 20, 40, 2);
+        assert_eq!((t.as_str(), &t[m]), ("see [here](https://notes.example) now", "notes"));
         assert_eq!(snippet("x_y and *é* done", 0, 1, 20, 30, 2).0, "x_y and é done");
         assert_eq!(wrapped("aaa bbb ccc", 7), 2);
     }

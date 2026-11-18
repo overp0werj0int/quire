@@ -51,7 +51,7 @@ pub fn find_bar(v: V) -> El {
         .grow(1.0)
         .min_w(0.0)
         .color(c.text)
-        .placeholder("Find in document", c.ghost)
+        .placeholder("Find in note", c.ghost)
         .caret(c.text, c.selection)
         .on_edit(|s: &mut App| &mut s.reader.find.q)
         .on_input_change(|s: &mut App, tx| s.find_changed(tx))
@@ -124,7 +124,7 @@ const HELP: &[(&str, &[HelpRow])] = &[
             h("Next / previous match", &["reader.find-next", "reader.find-previous"]),
             h("Copy or edit a block", &["reader.block-menu"]),
             h("Copy the block under the mouse", &["reader.copy-block-under-pointer"]),
-            h("Copy the whole file", &["reader.copy-all"]),
+            h("Copy the whole note", &["reader.copy-all"]),
         ],
     ),
     (

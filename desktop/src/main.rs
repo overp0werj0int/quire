@@ -2061,7 +2061,7 @@ mod writer_chrome_tests {
         let inside = |r: [f32; 4], o: [f32; 4]| r[0] >= o[0] - 0.5 && r[1] >= o[1] - 0.5 && r[0] + r[2] <= o[0] + o[2] + 0.5 && r[1] + r[3] <= o[1] + o[3] + 0.5;
         assert!(inside(hint.rect, bar), "the hint {:?} sits in the top bar {bar:?}", hint.rect);
         assert!(hint.opacity > 0.99, "drawn without a hover: opacity {}", hint.opacity);
-        let words = rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.contains("esc to leave zen mode"))).expect("the hint's text");
+        let words = rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(|t| t.contains("Esc to leave zen mode"))).expect("the hint's text");
         assert!(inside(words.rect, bar) && words.opacity > 0.99);
         let mid = bar[0] + bar[2] / 2.0;
         assert!((words.rect[0] + words.rect[2] / 2.0 - mid).abs() < 1.0, "centred: {:?} in {bar:?}", words.rect);

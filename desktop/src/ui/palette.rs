@@ -121,7 +121,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         .clip_rounded(0.0)
         .child(hint("↑↓".into(), "select"))
         .child(hint("↵".into(), if cmds { "run" } else { "open" }))
-        .child(hint("esc".into(), "close"))
+        .child(hint("Esc".into(), "close"))
         .child(el().grow(1.0))
         .child(if cmds { hint(crate::keymap::label(v.s.preset(), "app.quick-switcher"), "for notes") } else { row().gap(5.0).center_y().child(label("type", sans(11.5, 400.0), p.mute)).child(label(">", keys(11.0), p.mute)).child(label("for commands", sans(11.5, 400.0), p.mute)) });
 

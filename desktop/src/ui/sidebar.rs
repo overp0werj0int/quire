@@ -344,6 +344,15 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
     }
 }
 
+/// The room a cut folder keeps: "…" and its last part, up to 72 pt, so a long folder shows
+/// where the note is rather than a bare "…".
+fn last_part(dir: &str, style: rune::TextStyle) -> f32 {
+    match dir.rsplit_once('/') {
+        Some((_, last)) => rune::text::measure(&format!("…/{last}"), &[], style, None).0.min(72.0),
+        None => rune::text::measure(dir, &[], style, None).0.min(72.0),
+    }
+}
+
 /// Room left of a tree row's name for the folder chevron, so names line up at `TEXT_X`.
 const CHEV: f32 = 12.0;
 
@@ -504,7 +513,7 @@ fn search_panel(v: V) -> El {
                 .role("button")
                 .on_press_tx(move |s: &mut App, tx| s.open_file(&path, first, tx))
                 .child(text(md::base(&r.path)).font(name_style).color(c.dim).truncate().shrink())
-                .child(text(md::dir(&r.path)).font(small).color(c.faint).truncate().grow(1.0).shrink().mt(shift))
+                .child(text(md::dir(&r.path)).font(small).color(c.faint).truncate_head().grow(1.0).shrink().min_w(last_part(md::dir(&r.path), small)).mt(shift))
                 .child(text(if r.hits.is_empty() { String::new() } else { r.hits.len().to_string() }).font(small).color(c.faint).mt(shift)),
         );
         for (hi, h) in r.hits.iter().take(4).enumerate() {

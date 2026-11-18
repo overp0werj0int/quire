@@ -754,7 +754,7 @@ impl App {
 
     pub fn copy_all(&mut self, tx: &mut Tx) {
         tx.copy(self.active_text().to_string());
-        self.toast("Copied the whole file", tx);
+        self.toast("Copied the whole note", tx);
     }
 
     pub fn copy_selection(&mut self, tx: &mut Tx) {

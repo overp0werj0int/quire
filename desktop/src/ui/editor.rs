@@ -397,9 +397,13 @@ pub(super) fn crumb(v: V) -> El {
     // The separator and the extension read on every theme: "/" at 3:1, ".md" at 4.5:1.
     let quiet = Roles::panel(p);
     // A long folder or name is cut to the bar's room: the folder keeps its end, the name its start.
-    let mut r = row().key("crumb").h(24.0).shrink().min_w(0.0).gap(6.0).center_y();
+    // The name has its room first: the folder takes what the name leaves, up to its own width,
+    // and keeps at least "…".
+    let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
-        r = r.child(text(dir).font(style).color(p.mute).truncate_head().shrink().min_w(0.0)).child(label("/", style, quiet.ghost));
+        let whole = rune::text::measure(&dir, &[], style, None).0;
+        let least = rune::text::measure("…", &[], style, None).0.min(whole);
+        r = r.child(text(dir).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)).child(label("/", style, quiet.ghost));
     }
     let r = match &s.renaming {
         None => r.child(

@@ -168,7 +168,7 @@ fn focus_bar(v: V) -> El {
     // of the pill. A window too narrow even for that shows only the word count.
     let right = pill_width(v) + 10.0 + v.trailing + 12.0;
     let left = 14.0 + 52.0 + 8.0;
-    let full = format!("{count} · esc to leave zen mode");
+    let full = format!("{count} · Esc to leave zen mode");
     let w = rune::text::measure(&full, &[], sans(12.0, 400.0), None).0;
     let (words, left) = if w <= v.vw - 2.0 * right {
         (full, right)
