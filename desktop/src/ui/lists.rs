@@ -35,7 +35,7 @@ pub(super) fn list(el: El, role: &'static str) -> El {
 /// A row of a `list`. Tab lands on it when it is `current`; a click, Enter or Space runs `run`.
 pub(super) fn item(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     let (w, gap, c) = super::focus_ring(p);
-    el.focusable(true).focus_selected(current).focus_ring(w, gap, c).keeps_text_selection().on_press_tx(run)
+    super::focus::stop(el).focusable(true).focus_selected(current).focus_ring(w, gap, c).keeps_text_selection().on_press_tx(run)
 }
 
 /// An `item` that shows a note: after `run`, the keyboard goes to the note, so the reader's

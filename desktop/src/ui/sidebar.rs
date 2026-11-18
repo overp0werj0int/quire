@@ -33,8 +33,9 @@ pub fn sidebar(v: V) -> El {
     let name = vault.map_or(String::new(), |v| v.name.clone());
 
     let c = Roles::panel(p);
+    let (rw, rg, rc) = super::focus_ring(p);
     let head = row().key("vault-head").pt(6.0).pb(4.0).w_full().child(
-        panel::shade("vault-button", panel::BODY, 0, 0.0, &c, false)
+        super::focus::stop(panel::shade("vault-button", panel::BODY, 0, 0.0, &c, false))
             .grow(1.0)
             .min_w(0.0)
             .gap(6.0)
@@ -42,6 +43,7 @@ pub fn sidebar(v: V) -> El {
             .label(name.clone())
             // A click opens the menu and leaves the keyboard where it was; only Tab puts it here.
             .keeps_text_selection()
+            .focus_ring(rw, rg, rc)
             .control(|s: &mut App, tx| s.open_menu(MenuOf::Folder, (0.0, 0.0), tx))
             .child(text(name).font(nav(panel::BODY, true)).color(c.text).truncate().grow(1.0).shrink().min_w(0.0))
             .child(icon(&CHEVRON_DOWN, 9.0).color(c.faint)),
@@ -52,21 +54,45 @@ pub fn sidebar(v: V) -> El {
     // soft pill that reaches past its text, which stays on the rows' text edge. The others take
     // the rows' colour, brighter under the pointer. The new folder button lines up with the
     // rows' buttons below it.
-    let mut tabs = row().key("panel-tabs").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
-    for (id, lbl) in [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")] {
+    let mut tabs = row().key("panel-tabs").role("tablist").gap(14.0).pl(panel::TEXT_X).pr(panel::INSET + BUTTON_END).pt(panel::CAPTION_Y - 5.0).pb(panel::CAPTION_GAP - 5.0).center_y();
+    // Each tab is a Tab stop; Left and Right move between them, and Enter or Space opens one
+    // (FOCUS). A click opens it and leaves the keyboard where it was, except that SEARCH puts it
+    // in the field.
+    const PANELS: [(Panel, &str); 3] = [(Panel::Files, "Files"), (Panel::Search, "Search"), (Panel::Tags, "Tags")];
+    let tab_key = |i: usize| format!("panel-{}", PANELS[i].1.to_lowercase());
+    for (i, (id, lbl)) in PANELS.into_iter().enumerate() {
         let on = s.left_panel == id;
+        let (left, right) = (tab_key((i + 2) % 3), tab_key((i + 1) % 3));
+        let pick = move |s: &mut App, tx: &mut rune::Tx| {
+            s.left_panel = id;
+            if id == Panel::Search && !tx.by_keys() {
+                tx.focus("search", false);
+            }
+        };
         tabs = tabs.child(
-            row()
-                .key(format!("panel-{}", lbl.to_lowercase()))
+            super::focus::stop(row())
+                .key(tab_key(i))
                 .h(TARGET)
                 .center_y()
                 .hover_group()
                 .role("tab")
-                .on_press_tx(move |s: &mut App, tx| {
-                    s.left_panel = id;
-                    if id == Panel::Search {
-                        tx.focus("search", false);
+                .checked(on)
+                .label(lbl)
+                .focusable(true)
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .on_press_tx(pick)
+                .on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
+                    if ev.mods != rune::Mods::default() {
+                        return false;
                     }
+                    match ev.key {
+                        rune::Key::Left => tx.focus(left.clone(), true),
+                        rune::Key::Right => tx.focus(right.clone(), true),
+                        rune::Key::Enter => pick(s, tx),
+                        _ => return false,
+                    }
+                    true
                 })
                 .children(on.then(|| {
                     el().key("tab-mark").pin(Some(-TAB_PAD), Some(2.0), Some(-TAB_PAD), Some(2.0)).radius(5.0).fill(c.text.alpha(0.08)).transition(super::swap())
@@ -77,7 +103,7 @@ pub fn sidebar(v: V) -> El {
 
     if s.left_panel == Panel::Files {
         tabs = tabs.child(el().grow(1.0)).child(
-            row()
+            super::focus::stop(row())
                 .key("new-folder-button")
                 .size(TARGET, TARGET)
                 .center()
@@ -86,7 +112,10 @@ pub fn sidebar(v: V) -> El {
                 .hover_group()
                 .label("New folder")
                 .help("New folder")
-                .on_press_tx(|s: &mut App, tx| s.start_new_folder("", tx))
+                .role("button")
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(|s: &mut App, tx| s.start_new_folder("", tx))
                 .child(icon(&FOLDER_PLUS, 13.0).color(c.faint).group_color(c.text)),
         );
     }
@@ -98,11 +127,14 @@ pub fn sidebar(v: V) -> El {
     let list = col().key("side-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).child(col().key("side-list").w_full().pb(12.0).child(body));
 
     let foot_btn = |key: &str, t: &str, kbd: String, run: fn(&mut App, &mut rune::Tx)| {
-        panel::shade(key, panel::BODY, 0, 0.0, &c, false)
+        super::focus::stop(panel::shade(key, panel::BODY, 0, 0.0, &c, false))
             .justify_between()
             .hover_group()
             .role("button")
-            .on_press_tx(move |s: &mut App, tx| run(s, tx))
+            .label(t)
+            .focus_ring(rw, rg, rc)
+            .keeps_text_selection()
+            .control(move |s: &mut App, tx| run(s, tx))
             .child(text(t).font(nav(panel::BODY, false)).color(c.dim).group_color(c.text))
             .child(text(kbd).font(keys(panel::CAPTION)).color(c.faint))
     };
@@ -115,7 +147,7 @@ pub fn sidebar(v: V) -> El {
         .child(foot_btn("foot-settings", "Settings", crate::keymap::label(v.s.preset(), "app.settings"), |s, tx| s.open_settings(tx)));
 
     // The sidebar runs the window's full height, its edge a line from top to bottom.
-    let side = col()
+    let side = super::focus::pane(col(), crate::focus::Pane::Sidebar)
         .key("sidebar")
         .w(248.0)
         .h_full()
@@ -415,7 +447,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .child(el().w(CHEV).h(CHEV))
         .child(
             el().key("new-folder-box").grow(1.0).min_w(0.0).px(4.0).py(1.0).radius(3.0).fill(c.hover).child(
-                text_input(edit, nav(panel::BODY, true))
+                super::focus::stop(text_input(edit, nav(panel::BODY, true)))
                     .key("new-folder")
                     .single_line()
                     .w_full()
@@ -467,6 +499,9 @@ fn search_panel(v: V) -> El {
     let c = Roles::panel(p);
     let s = v.s;
     let q = s.query.text.trim().to_string();
+    let results = if q.is_empty() { Vec::new() } else { md::search(s.files(), &q) };
+    let first = results.first().map(|r| format!("res:{}", r.path));
+    let (rw, rg, rc) = super::focus_ring(p);
     let mut box_ = row()
         .key("search-box")
         .h(panel::row_h(panel::BODY))
@@ -480,7 +515,7 @@ fn search_panel(v: V) -> El {
         .fill(p.bg)
         .child(icon(&SEARCH, 11.0).color(c.faint))
         .child(
-            text_input(&s.query, nav(panel::BODY, false))
+            super::focus::stop(text_input(&s.query, nav(panel::BODY, false)))
                 .key("search")
                 .single_line()
                 .px(2.0)
@@ -490,11 +525,17 @@ fn search_panel(v: V) -> El {
                 .color(p.ink)
                 .placeholder("Search notes", theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
-                .on_edit(|s: &mut App| &mut s.query),
+                .on_edit(|s: &mut App| &mut s.query)
+                // Down moves into the results (FOCUS).
+                .on_input_key(move |_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
+                    let Some(k) = first.as_ref().filter(|_| ev.key == rune::Key::Down && ev.mods == rune::Mods::default()) else { return false };
+                    tx.focus(k.clone(), true);
+                    true
+                }),
         );
     if !s.query.text.is_empty() {
         box_ = box_.child(
-            row()
+            super::focus::stop(row())
                 .key("search-clear")
                 .size(18.0, 18.0)
                 .center()
@@ -502,14 +543,15 @@ fn search_panel(v: V) -> El {
                 .hover(c.hover)
                 .label("Clear search")
                 .help("Clear search")
-                .on_press_tx(|s: &mut App, tx| {
+                .role("button")
+                .focus_ring(rw, rg, rc)
+                .control(|s: &mut App, tx| {
                     s.query = rune::TextEdit::new("");
                     tx.focus("search", false);
                 })
                 .child(icon(&CLOSE, 8.0).color(p.mute)),
         );
     }
-    let results = if q.is_empty() { Vec::new() } else { md::search(s.files(), &q) };
     let total: usize = results.iter().map(|r| r.hits.len()).sum();
     let summary = if q.is_empty() {
         "Searches every note in this folder".to_string()
@@ -531,8 +573,18 @@ fn search_panel(v: V) -> El {
         let name_style = nav(panel::BODY, true);
         let small = nav(panel::CAPTION, false);
         let shift = super::baseline_shift(name_style, small);
-        let head = panel::shade("res-head", panel::BODY, 0, 0.0, &c, false).gap(8.0).role("button");
-        let mut block = col().key(format!("res-{ri}")).py(4.0).child(
+        let mut head = panel::shade(format!("res:{}", r.path), panel::BODY, 0, 0.0, &c, false).gap(8.0).role("button").label(md::base(&r.path).to_string());
+        if ri == 0 {
+            // Up from the first result goes back to the field (FOCUS).
+            head = head.on_key(|_: &mut App, ev: &rune::KeyEvent, tx| {
+                let up = ev.key == rune::Key::Up && ev.mods == rune::Mods::default();
+                if up {
+                    tx.focus("search", false);
+                }
+                up
+            });
+        }
+        let mut block = col().key(format!("res-block:{}", r.path)).py(4.0).child(
             lists::opener(head, p, false, move |s: &mut App, tx| s.open_file(&path, first, tx))
                 .child(text(md::base(&r.path)).font(name_style).color(c.dim).truncate().shrink())
                 .child(text(md::dir(&r.path)).font(small).color(c.faint).truncate_head().grow(1.0).shrink().min_w(last_part(md::dir(&r.path), small)).mt(shift))
@@ -558,7 +610,7 @@ fn search_panel(v: V) -> El {
             };
             let path = r.path.clone();
             let sel = Sel { start: h.pos, end: h.pos + ql, line: Some(h.line), force_source: true };
-            let hit = el().key(format!("hit-{hi}")).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button");
+            let hit = el().key(format!("hit:{}:{hi}", r.path)).label(snip_label(ln)).mx(panel::INSET).pl(panel::TEXT_X - panel::INSET).pr(panel::RIGHT - panel::INSET).py(4.0).radius(3.0).hover(c.hover).role("button");
             block = block.child(
                 lists::opener(hit, p, false, move |s: &mut App, tx| s.open_file(&path, Some(sel), tx))
                     .child(rich(text_, spans).font(nav(panel::BODY_SMALL, false).lh(16.0)).color(mix(c.dim, c.faint, 0.5)).max_lines(2).w_full()),
@@ -570,6 +622,12 @@ fn search_panel(v: V) -> El {
         found = found.child(block);
     }
     out.child(found)
+}
+
+/// A hit's name for screen readers and type-select: its line, without the Markdown marks
+/// that lead it.
+fn snip_label(line: &str) -> String {
+    line.trim_start_matches(|ch: char| ch == '#' || ch == '>' || ch == '-' || ch == '*' || ch.is_whitespace()).to_string()
 }
 
 /// A search snippet's room: at most this many characters ahead of the match, and the characters
@@ -586,7 +644,7 @@ fn tags_panel(v: V) -> El {
     }
     for (tag, n) in tags {
         let t = tag.clone();
-        let shade = panel::shade(format!("tag-{tag}"), panel::BODY, 0, 0.0, &c, false).justify_between().role("button");
+        let shade = panel::shade(format!("tag-row:{tag}"), panel::BODY, 0, 0.0, &c, false).justify_between().role("button").label(tag.clone());
         out = out.child(
             lists::item(shade, v.p, false, move |s: &mut App, tx| {
                 s.search_tag(&t, tx);

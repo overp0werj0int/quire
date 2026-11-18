@@ -9,6 +9,7 @@ mod bench;
 mod blocks;
 mod cli;
 mod commands;
+mod focus;
 mod folders;
 mod format;
 mod images;
@@ -3903,15 +3904,16 @@ mod layer_matrix_tests {
         // The tags: Enter shows the tag's notes, and the keyboard follows to them.
         rt.update(|s, _| s.left_panel = Panel::Tags);
         settle(&mut rt);
-        assert_eq!(tab_to(&mut rt, |k| k.starts_with("tag-")), "tag-kept");
+        assert_eq!(tab_to(&mut rt, |k| k.starts_with("tag-row:")), "tag-row:kept");
         down(&mut rt, Key::Enter);
         let (.., panel, query, _) = state(&mut rt);
         assert_eq!((panel, query.as_str()), (Panel::Search, "#kept"), "Enter on a tag searches for it");
-        assert_eq!(focused(&rt).as_deref(), Some("res-head"), "the keyboard goes to the results");
+        let first = focused(&rt).unwrap_or_default();
+        assert!(first.starts_with("res:"), "the keyboard goes to the results: {first}");
 
         // The search results: Down reaches a match, and Enter opens the note at it.
         down(&mut rt, Key::Down);
-        assert_eq!(focused(&rt).as_deref(), Some("hit-0"), "Down moves to a match");
+        assert_eq!(focused(&rt), Some(format!("hit:{}:0", &first["res:".len()..])), "Down moves to a match");
         down(&mut rt, Key::Enter);
         let (_, mode, ..) = state(&mut rt);
         assert_eq!(mode, Mode::Source, "a match opens in the writer");
@@ -3960,5 +3962,244 @@ mod layer_matrix_tests {
             assert!(band[1] + 32.0 <= pill[1] - 16.0, "{mode:?}: band {band:?}, pill {pill:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A window on a small folder, in preview with the outline docked: the note and a folder
+    /// `Box` with two notes, and a tag in each.
+    fn garden(dir: &std::path::Path, mode: Mode) -> Runtime<App> {
+        let (mut rt, _) = crate::bench::open(dir, &format!("{NOTE}\n## Second\n\n{}### Third\n\nEnd. #kept\n", "More text to scroll by.\n\n".repeat(80)), mode);
+        let root = dir.join("notes");
+        std::fs::create_dir_all(root.join("Box")).unwrap();
+        std::fs::write(root.join("Box/a.md"), "# A\n\nSee [[note]]. #kept\n").unwrap();
+        std::fs::write(root.join("Box/b.md"), "# B\n").unwrap();
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(move |s, tx| {
+            s.open_vault(root, tx);
+            s.open_file("note.md", None, tx);
+            s.mode = mode;
+            s.persist.right_open = true;
+            s.persist.left_open = true;
+            s.expanded.insert("Box".into());
+            tx.blur();
+        });
+        settle(&mut rt);
+        rt
+    }
+
+    fn text_key(rt: &mut Runtime<App>, t: &str) {
+        let shift = t.chars().all(|c| c.is_ascii_uppercase());
+        key(rt, Key::Text(t.into()), Mods { shift, ..Mods::default() });
+    }
+
+    /// Lets a glide or a scroll finish.
+    fn glide(rt: &mut Runtime<App>) {
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+    }
+
+    /// The focus rule (`crate::focus`) as a matrix: every stop, reached with the keyboard
+    /// alone, crossed with the reader's keys, with each way it can go away, and with a layer
+    /// that closes over it.
+    #[test]
+    fn every_stop_follows_the_focus_rule() {
+        use crate::focus::{Pane, stop};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-focus-matrix-{}", std::process::id()));
+        let mut fails = Vec::new();
+
+        // Every focusable element in the panes is a stop of the table, in its pane.
+        for mode in [Mode::Preview, Mode::Source] {
+            let rt = garden(&dir, mode);
+            for e in rt.elements().into_iter().filter(|e| e.focusable) {
+                let k = e.key.clone().unwrap_or_default();
+                let want = if e.path.contains("sidebar/") {
+                    Pane::Sidebar
+                } else if e.path.contains("/outline/") {
+                    Pane::Outline
+                } else if e.path.contains("/toolbar/") {
+                    Pane::Note
+                } else {
+                    continue;
+                };
+                if stop(&k) != Some(want) {
+                    fails.push(format!("{mode:?}: {k} ({}) is not a {want:?} stop", e.path));
+                }
+            }
+        }
+
+        // Reachable from the keyboard alone: Tab from the reader reaches every stop, and the
+        // panel tabs' arrows, Enter and the search field's Down reach the rest.
+        let mut rt = garden(&dir, Mode::Preview);
+        let mut reached = Vec::new();
+        for _ in 0..40 {
+            key(&mut rt, Key::Tab, Mods::default());
+            reached.extend(focused(&rt));
+        }
+        let wants = ["tab:", "vault-button", "panel-files", "panel-search", "panel-tags", "new-folder-button", "file:", "foot-new", "foot-settings", "ol-", "bl-"];
+        for want in wants {
+            if !reached.iter().any(|k| k.starts_with(want)) {
+                fails.push(format!("Tab never reaches {want}"));
+            }
+        }
+        rt.update(|_, tx| tx.focus("panel-files", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Right, Mods::default());
+        if focused(&rt).as_deref() != Some("panel-search") {
+            fails.push(format!("Right on FILES moves to {:?}", focused(&rt)));
+        }
+        key(&mut rt, Key::Enter, Mods::default());
+        for _ in 0..3 {
+            if focused(&rt).as_deref() != Some("search") {
+                key(&mut rt, Key::Tab, Mods::default());
+            }
+        }
+        if focused(&rt).as_deref() != Some("search") {
+            fails.push(format!("Enter on SEARCH, then Tab: focus on {:?}", focused(&rt)));
+        }
+        for c in ["k", "e", "p", "t"] {
+            text_key(&mut rt, c);
+        }
+        key(&mut rt, Key::Down, Mods::default());
+        let first = focused(&rt).unwrap_or_default();
+        if !first.starts_with("res:") {
+            fails.push(format!("Down in the search field: focus on {first}"));
+        }
+        key(&mut rt, Key::Up, Mods::default());
+        if focused(&rt).as_deref() != Some("search") {
+            fails.push(format!("Up from the first result: focus on {:?}", focused(&rt)));
+        }
+        let keys: Vec<String> = rt.elements().into_iter().filter_map(|e| e.key).filter(|k| k.starts_with("res:") || k.starts_with("hit:")).collect();
+        let unique: std::collections::HashSet<&String> = keys.iter().collect();
+        if keys.len() < 2 || unique.len() != keys.len() {
+            fails.push(format!("the results' rows share keys: {keys:?}"));
+        }
+        // In the writer Tab indents, so F6 leaves the editor for the sidebar, and Tab goes on
+        // from there to the toolbar.
+        let mut rt = garden(&dir, Mode::Source);
+        for _ in 0..2 {
+            key(&mut rt, Key::Function(6), Mods::default());
+        }
+        let mut bar = Vec::new();
+        for _ in 0..40 {
+            key(&mut rt, Key::Tab, Mods::default());
+            if let Some(k) = focused(&rt).filter(|k| k.starts_with("fmt-")) {
+                bar.push(k);
+                key(&mut rt, Key::Right, Mods::default());
+                bar.extend(focused(&rt));
+                key(&mut rt, Key::Tab, Mods::default());
+                bar.extend(focused(&rt));
+                break;
+            }
+        }
+        if bar.len() != 3 || !bar[1].starts_with("fmt-") || bar[1] == bar[0] || bar[2].starts_with("fmt-") {
+            fails.push(format!("the toolbar is not one Tab stop with Right inside: {bar:?}"));
+        }
+
+        // The stops, as a key and the ways each goes away. Every way leaves the page's
+        // reader keys working.
+        let ctrl_shift_b = |rt: &mut Runtime<App>| key(rt, Key::Command('b'), ctrl(true));
+        let zen = |rt: &mut Runtime<App>| key(rt, Key::Command('.'), ctrl(false));
+        let esc = |rt: &mut Runtime<App>| key(rt, Key::Escape, Mods::default());
+        let outline_key = |rt: &mut Runtime<App>| text_key(rt, "o");
+        type Away = (&'static str, fn(&mut Runtime<App>));
+        let side: Vec<Away> = vec![("Ctrl+Shift+B", ctrl_shift_b), ("zen", zen), ("Esc", esc)];
+        let outline: Vec<Away> = vec![("o", outline_key), ("zen", zen), ("Esc", esc)];
+        let stops: [(&str, &Vec<Away>); 11] = [
+            ("tab:note.md", &side),
+            ("vault-button", &side),
+            ("panel-files", &side),
+            ("panel-tags", &side),
+            ("new-folder-button", &side),
+            ("dir:Box", &side),
+            ("file:Box|a.md", &side),
+            ("foot-new", &side),
+            ("foot-settings", &side),
+            ("ol-0", &outline),
+            ("bl-0", &outline),
+        ];
+        for (k, aways) in stops {
+            let mut rt = garden(&dir, Mode::Preview);
+            let k2 = k.to_string();
+            rt.update(move |_, tx| tx.focus(k2, true));
+            settle(&mut rt);
+            if focused(&rt).as_deref() != Some(k) {
+                fails.push(format!("{k}: cannot take focus ({:?})", focused(&rt)));
+                continue;
+            }
+            // The reader's keys do not reach the reader behind a stop.
+            let y0 = seen(&mut rt).page_y;
+            for c in ["j", "G", "n", "w"] {
+                text_key(&mut rt, c);
+            }
+            key(&mut rt, Key::PageDown, Mods::default());
+            glide(&mut rt);
+            let after = seen(&mut rt);
+            if (after.page_y - y0).abs() > 0.5 || after.layers != 0 {
+                fails.push(format!("{k}: a reader key acted behind it (page {y0} to {}, layers {})", after.page_y, after.layers));
+            }
+            // A layer that closes gives the stop back with its ring.
+            let mut rt = garden(&dir, Mode::Preview);
+            let k2 = k.to_string();
+            rt.update(move |_, tx| tx.focus(k2, true));
+            settle(&mut rt);
+            key(&mut rt, Key::Command('k'), ctrl(true));
+            key(&mut rt, Key::Escape, Mods::default());
+            let ring = rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key, e.focus_visible));
+            if ring != Some((Some(k.to_string()), true)) {
+                fails.push(format!("{k}: after the palette closes, focus is {ring:?}"));
+            }
+            // However the stop goes away, the reader has its keys back.
+            for (how, away) in aways.iter() {
+                for (label, press) in [("Space", " "), ("j", "j")] {
+                    let mut rt = garden(&dir, Mode::Preview);
+                    let k2 = k.to_string();
+                    rt.update(move |_, tx| tx.focus(k2, true));
+                    settle(&mut rt);
+                    away(&mut rt);
+                    glide(&mut rt);
+                    let y0 = seen(&mut rt).page_y;
+                    text_key(&mut rt, press);
+                    glide(&mut rt);
+                    let y1 = seen(&mut rt).page_y;
+                    if y1 > y0 - 5.0 {
+                        fails.push(format!("{k}, then {how}: {label} does nothing ({y0} to {y1})"));
+                    }
+                }
+            }
+        }
+
+        // F6 moves between the panes, round; Shift+F6 goes back. The note's links are skipped.
+        let mut rt = garden(&dir, Mode::Preview);
+        let f6 = |rt: &mut Runtime<App>, back: bool| key(rt, Key::Function(6), Mods { shift: back, ..Mods::default() });
+        let mut path = Vec::new();
+        for _ in 0..4 {
+            f6(&mut rt, false);
+            path.push(focused(&rt).map(|k| stop(&k).map_or(k.clone(), |p| format!("{p:?}"))).unwrap_or_else(|| "Note".into()));
+        }
+        if path != ["Outline", "Sidebar", "Note", "Outline"] {
+            fails.push(format!("F6 goes {path:?}"));
+        }
+        f6(&mut rt, true);
+        f6(&mut rt, true);
+        if focused(&rt).is_none_or(|k| stop(&k) != Some(Pane::Sidebar)) {
+            fails.push(format!("Shift+F6 twice from the outline goes to {:?}", focused(&rt)));
+        }
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        f6(&mut rt, false);
+        if focused(&rt).is_none_or(|k| stop(&k) != Some(Pane::Outline)) {
+            fails.push(format!("F6 in the writer goes to {:?}", focused(&rt)));
+        }
+        f6(&mut rt, false);
+        f6(&mut rt, false);
+        if !seen(&mut rt).editor_focused {
+            fails.push(format!("F6 twice from the outline in the writer goes to {:?}, not the editor", focused(&rt)));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
     }
 }

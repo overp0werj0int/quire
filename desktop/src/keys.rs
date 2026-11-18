@@ -3,6 +3,7 @@
 use rune::{KeyEvent, Tx};
 
 use crate::app::{App, Screen};
+use crate::focus::Pane;
 use crate::keymap::{self, Ctx};
 use crate::layer::{Kind, Layer};
 
@@ -18,6 +19,12 @@ pub fn mod_click() -> String {
 /// does not take them. Each context on top of the window gets the key in turn (KEY-02), and
 /// the first action with a handler runs.
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    let stop = tx.focused().and_then(crate::focus::stop);
+    page_key(s, ev, tx, stop)
+}
+
+/// A key for the page, with the stop that holds the keyboard, if one does.
+fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool {
     let preset = s.preset();
     let vault = s.screen == Screen::Vault;
     // The toast is not a layer: its Undo key acts whatever is open.
@@ -28,16 +35,17 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if let Some(kind) = s.layer().map(Layer::kind) {
         return layer_key(s, kind, ev, tx);
     }
-    let stack: &[Ctx] = if !vault {
-        &[Ctx::Global]
-    } else if s.mode == crate::app::Mode::Preview {
-        &[Ctx::Reader, Ctx::Global]
-    } else {
-        &[Ctx::Writer, Ctx::Global]
-    };
-    // The Menu key or Shift+F10 with nothing focused: the page's block menu, as Rune opens a
-    // focused control's (a sidebar row's, say).
-    if vault && s.mode == crate::app::Mode::Preview && tx.focused().is_none() && menu_key(ev) {
+    // A focused stop owns the keyboard: past its own keys, Esc and F6, only the window's
+    // shortcuts act (`focus`).
+    if let Some(pane) = stop
+        && let Some(done) = s.stop_key(pane, ev, tx)
+    {
+        return done;
+    }
+    let stack: &[Ctx] = if stop.is_some() { &[Ctx::Global] } else { page_stack(s) };
+    // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
+    // control's (a sidebar row's, say).
+    if vault && s.mode == crate::app::Mode::Preview && crate::focus::on_note(tx) && menu_key(ev) {
         s.block_menu_here(tx);
         return true;
     }
@@ -118,8 +126,9 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
             handler(a.id).expect("found above")(s, tx);
             return true;
         }
+        // The stop inside the closed layer no longer holds the keyboard.
         s.close_layer(tx);
-        return on_key(s, ev, tx);
+        return page_key(s, ev, tx, None);
     }
     let (own, window) = layer_stack(kind);
     for a in own.iter().flat_map(|c| keymap::lookup(preset, *c, ev)) {
@@ -155,7 +164,7 @@ fn layer_stack(kind: Kind) -> (&'static [Ctx], &'static [Ctx]) {
 }
 
 /// The contexts a key goes through with no layer open, top first (KEY-02).
-fn page_stack(s: &App) -> &'static [Ctx] {
+pub(crate) fn page_stack(s: &App) -> &'static [Ctx] {
     if s.screen != Screen::Vault {
         &[Ctx::Global]
     } else if s.mode == crate::app::Mode::Preview {
@@ -197,6 +206,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.zoom-out" => |s, _| s.zoom(Some(false)),
         "reader.zoom-reset" => |s, _| s.zoom(None),
         "app.undo-delete" => |s, tx| s.undo_delete(tx),
+        "app.next-pane" => |s, tx| s.step_pane(false, tx),
+        "app.previous-pane" => |s, tx| s.step_pane(true, tx),
         "app.escape" => |s, tx| {
             s.escape(tx);
         },

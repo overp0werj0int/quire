@@ -108,6 +108,8 @@ pub const TABLE: &[Action] = &[
     same(22, "app.zoom-out", "Smaller text", &[Global], In, &["Ctrl+-"]),
     same(23, "app.escape", "Close or leave", &[Global], Quire, &["Esc"]),
     same(94, "app.undo-delete", "Undo the delete", &[Global], Quire, &["Ctrl+Shift+R"]),
+    same(96, "app.next-pane", "Next pane", &[Global], Quire, &["F6"]),
+    same(97, "app.previous-pane", "Previous pane", &[Global], Quire, &["Shift+F6"]),
     // Reader.
     same(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
     same(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),
@@ -531,7 +533,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 87, "every KEY item with chords was read");
+        assert_eq!(seen, 89, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }

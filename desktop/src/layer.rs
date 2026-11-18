@@ -300,7 +300,8 @@ impl App {
     /// takes it over (`open_layer`).
     fn give_back(&mut self, back: Option<String>, tx: &mut Tx) {
         if let Some(key) = &back {
-            tx.return_focus(key.clone(), tx.focus_visible());
+            // A stop shows its ring, so the next key visibly acts on it (FOCUS).
+            tx.return_focus(key.clone(), tx.focus_visible() || crate::focus::stop(key).is_some());
         }
         self.handed = Some(back);
     }

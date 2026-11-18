@@ -2,6 +2,7 @@
 
 pub(crate) mod editor;
 mod chip;
+mod focus;
 mod layer;
 mod lists;
 mod lock;

@@ -6,7 +6,7 @@
 
 use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, TextEdit, TextHighlight, TextStyle, Tx, col, el, icon, row, text, text_input};
 
-use super::widgets::label;
+use super::widgets::{Control, label};
 use super::{V, outline, preview};
 use crate::app::{App, Mode};
 use crate::keymap::{self, Ctx};
@@ -36,7 +36,9 @@ pub fn body(v: V) -> El {
     if !focus {
         sheet = sheet.border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
     }
-    let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().child(doc_scroll(v));
+    // Where no editor shows, the reader's keyboard anchor takes focus that lost its element.
+    let writer = v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a));
+    let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().children((!writer).then(super::focus::note_anchor)).child(doc_scroll(v));
     // In zen mode the progress bar runs along the window's top edge (`ui::view`).
     let progress = if focus { None } else { progress(v) };
     // Text fades under the title bar and into the sheet's foot (WR-177). The bands let presses
@@ -52,7 +54,7 @@ pub fn body(v: V) -> El {
             area = area.child(fade_top()).child(fade_foot());
         }
         area = area.children(progress).child(super::reader::find_bar(v));
-    } else if v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a)) {
+    } else if writer {
         // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
         // (PAGE-84).
         let shown = &v.s.reader.thumb_shown;
@@ -295,6 +297,7 @@ fn lock_button(v: V) -> El {
     let p = v.p;
     let open = v.s.active.as_deref().is_some_and(|a| v.s.note_unlocked(a));
     let help = crate::commands::lock_name(open);
+    let (rw, rg, rc) = super::focus_ring(p);
     row()
         .key("fmt-lock")
         .size(28.0, 28.0)
@@ -305,7 +308,8 @@ fn lock_button(v: V) -> El {
         .role("button")
         .label(help)
         .help(help)
-        .on_press_tx(|s: &mut App, tx| s.ask_lock(tx))
+        .focus_ring(rw, rg, rc)
+        .control(|s: &mut App, tx| s.ask_lock(tx))
         .child(icon(&LOCK, 16.0).color(if open { p.acc } else { p.mute }).group_color(if open { p.acc } else { p.ink }))
 }
 
@@ -318,7 +322,8 @@ fn toolbar(v: V) -> El {
     use crate::format::Fmt;
     let p = v.p;
     let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
-    let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).on_press_tx(move |s: &mut App, tx| s.format(f, tx));
+    let (rw, rg, rc) = super::focus_ring(p);
+    let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).role("button").focus_ring(rw, rg, rc).control(move |s: &mut App, tx| s.format(f, tx));
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
     // At rest the toolbar has no background and no border, as the text around it. The
     // background, its shadow and the find bar's corner and hairline come in while the note
@@ -352,7 +357,7 @@ fn toolbar(v: V) -> El {
             .inert()
             .stuck_reveal(8.0)
     });
-    row()
+    super::focus::stop(row())
         .key("toolbar")
         .self_start()
         .h(TOOLBAR_H)
@@ -369,6 +374,10 @@ fn toolbar(v: V) -> El {
         .on_press(|_: &mut App| {})
         .role("toolbar")
         .label("Formatting")
+        // One Tab stop, Left and Right inside it (FOCUS). A click on a button leaves the
+        // keyboard in the note, so the format applies where the caret is.
+        .focus_group()
+        .keeps_text_selection()
         .children(band)
         .child(back)
         .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
@@ -385,7 +394,7 @@ fn toolbar(v: V) -> El {
         .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
         .child(btn("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code))
         .child(sep("sep-3"))
-        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).on_press_tx(|s: &mut App, tx| s.pick_image(tx)))
+        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).role("button").focus_ring(rw, rg, rc).control(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
         .child(lock_button(v))
 }
@@ -436,7 +445,7 @@ pub(super) fn crumb(v: V) -> El {
                     .center_y()
                     .child(
                         el().key("rename-box").no_window_drag().w(w).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
-                            text_input(edit, style)
+                            super::focus::stop(text_input(edit, style))
                                 .key("rename")
                                 .single_line()
                                 .w_full()
@@ -550,7 +559,7 @@ fn source(v: V, width: f32, room: f32) -> El {
     // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in the
     // direction of its own first strong character.
     let input = with_edit_menu(input, "editor").paragraph_styles(paragraph_styles(&hangs, gutter)).on_layout_tx(|s: &mut App, r, tx| s.field_laid_out(r, tx));
-    el().key("source").w(width + gutter).ml(-gutter).pt(pad_top).child(input)
+    el().key("source").w(width + gutter).ml(-gutter).pt(pad_top).child(super::focus::note_box(el().w_full()).child(input))
 }
 
 /// The gutter marks hang in: round(E × 3.2), 45 at 14 (WR-26, SHEET-028).

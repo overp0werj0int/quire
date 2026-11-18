@@ -57,8 +57,8 @@ pub fn outline(v: V) -> El {
         let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
         let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
         // A heading cut short offers its whole text; one shown in full has no tooltip (C7).
-        let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_);
-        let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on);
+        let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_.clone());
+        let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on).label(text_);
         // The current row's dot sits in the row's left padding, so the text keeps its place.
         let pad = panel::TEXT_X - panel::INSET + depth as f32 * panel::INDENT;
         let top = ((panel::row_h(size) - panel::DOT) / 2.0).round();
@@ -93,7 +93,7 @@ pub fn outline(v: V) -> El {
     let mut links = lists::list(col().key("outline-links").w_full(), "list");
     for (i, (bp, _)) in back.iter().enumerate() {
         let path = bp.clone();
-        let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button");
+        let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button").label(md::base(bp).to_string());
         links = links.child(
             lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx))
                 .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
@@ -105,7 +105,7 @@ pub fn outline(v: V) -> El {
         list = list.child(text("No notes link here yet.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
     let scroll = col().key("outline-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(list);
-    col()
+    super::focus::pane(col(), crate::focus::Pane::Outline)
         .key("outline")
         .w(PANEL_W)
         .h_full()
