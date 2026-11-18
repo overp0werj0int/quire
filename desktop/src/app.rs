@@ -1456,8 +1456,12 @@ impl App {
     }
 
     /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
-    /// new folder, rename and the create prompt close, then zen mode ends.
+    /// the notice goes, then new folder, rename and the create prompt close, then zen mode ends.
+    /// The keyboard stays where it was.
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
+        if self.notice.take().is_some() {
+            return true;
+        }
         if self.new_folder.is_some() {
             self.new_folder = None;
         } else if self.renaming.is_some() {

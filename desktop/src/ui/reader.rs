@@ -78,10 +78,13 @@ pub fn find_bar(v: V) -> El {
         )
 }
 
-/// Keys in the find field: Enter, Shift+Enter, Esc and Ctrl+F (KEY items 77 to 80).
+/// Keys in the find field: Enter, Shift+Enter, Esc and Ctrl+F (KEY items 77 to 80). Esc
+/// dismisses the notice first, as on the page (RD-85, WR-77).
 fn on_find_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if matches!(ev.key, Key::Escape) && !ev.mods.shift {
-        s.close_find(tx);
+        if s.notice.take().is_none() {
+            s.close_find(tx);
+        }
         return true;
     }
     match keymap::lookup(s.preset(), Ctx::Find, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
@@ -244,8 +247,24 @@ pub(super) fn help_sheet(v: V) -> Card {
 /// A toast's place: this far above the note area's bottom edge (RD-98).
 const TOAST_LIFT: f32 = 28.0;
 
-/// The tallest pill at the note area's foot.
-const PILL_H: f32 = 32.0;
+/// A pill's height at the note area's foot: one line of popup text, 7 px above and below it.
+/// The toast with Undo and the notice hold their 24 px buttons in the same 30 px.
+const PILL_H: f32 = 30.0;
+
+/// The room between the notice and the toast under it.
+const PILL_GAP: f32 = 8.0;
+
+/// The width a pill at the note area's foot may take: the part of the note area no drawer
+/// covers, 16 px clear of its edges (`foot_row`).
+fn foot_room(v: V) -> f32 {
+    let (left, right) = if v.is_vault() { super::editor::docked(v) } else { (0.0, 0.0) };
+    let over = if v.left_over() { super::sidebar::W } else { 0.0 } + if v.right_over() { super::outline::PANEL_W } else { 0.0 };
+    (v.vw - left - right - over - 32.0).max(0.0)
+}
+
+fn width(t: &str, style: rune::TextStyle) -> f32 {
+    rune::text::measure(t, &[], style, None).0
+}
 
 /// A toast (RD-98): a pill at the bottom centre of the note area, `TOAST_LIFT` above its bottom
 /// edge, over `toast_band`.
@@ -255,75 +274,156 @@ pub fn toast(v: V, msg: &str) -> El {
 }
 
 /// Where the notice sits: in the toast's place, or just above the toast while one shows.
-pub(super) fn notice_lift(v: V) -> f32 {
-    if v.is_vault() && v.s.toast_shows() { TOAST_LIFT + PILL_H + 8.0 } else { TOAST_LIFT }
+fn notice_lift(v: V) -> f32 {
+    if v.is_vault() && v.s.toast_shows() { TOAST_LIFT + PILL_H + PILL_GAP } else { TOAST_LIFT }
 }
 
 /// The row that holds a pill at the note area's foot, `lift` above it: a toast, a toast with
 /// Undo, or the notice. The pill centres in the part of the note area no drawer covers, 16 px
-/// clear of the drawer's edge and of the window's, and is cut when that room is too small.
-pub(super) fn foot_row(v: V, key: &'static str, lift: f32, pill: El) -> El {
+/// clear of the drawer's edge and of the window's (`foot_room`).
+fn foot_row(v: V, key: &'static str, lift: f32, pill: El) -> El {
     let left = if v.left_over() { super::sidebar::W } else { 0.0 };
     let right = if v.right_over() { super::outline::PANEL_W } else { 0.0 };
     row().key(key).pin(Some(left), None, Some(right), Some(lift)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
 }
 
-/// How far the toast band's solid part reaches up from the note area's bottom edge: the
-/// tallest pill and 16 px clear above it.
-const TOAST_CLEAR: f32 = TOAST_LIFT + PILL_H + 16.0;
+/// The room above the top pill that the band keeps solid.
+const BAND_CLEAR: f32 = 16.0;
 
 /// The fade above the band's solid part.
-const TOAST_FADE: f32 = 32.0;
+const BAND_FADE: f32 = 32.0;
 
-/// How far the whole band, fade included, reaches up from the note area's bottom edge.
-pub const TOAST_BAND: f32 = TOAST_CLEAR + TOAST_FADE;
+/// How far the toast band, fade included, reaches up from the note area's bottom edge, or None
+/// when no pill shows: 16 px above the top pill (a toast, the notice, or the notice over a
+/// toast), then the fade.
+pub(super) fn band_h(v: V) -> Option<f32> {
+    let toast = v.s.toast_shows().then_some(PILL_H);
+    let notice = v.s.notice.as_deref().map(|m| notice_fit(v, m).1);
+    let stack = match (toast, notice) {
+        (Some(t), Some(n)) => t + PILL_GAP + n,
+        (t, n) => t.or(n)?,
+    };
+    Some(TOAST_LIFT + stack + BAND_CLEAR + BAND_FADE)
+}
 
-/// While a toast shows, the page fades out under it, in both modes, so no line of the note
-/// reads behind or beside the pill: the page's colour from the note area's bottom edge to
-/// 16 px above the tallest pill (32 px), then a 32 px fade above that. Presses go through it to
-/// the page, and it fades in and out over 140 ms.
-pub fn toast_band(v: V) -> El {
+/// While a pill shows at the note area's foot, the page fades out under it, in both modes, so
+/// no line of the note reads behind or beside it: the page's colour from the note area's bottom
+/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). Presses go
+/// through it to the page, and it fades in and out over 140 ms.
+pub fn toast_band(v: V) -> Option<El> {
+    let h = band_h(v)?;
     let bg = Roles::new(v.p).bg;
-    let stops = [(0.0, bg.alpha(0.0)), (TOAST_FADE / TOAST_BAND, bg), (1.0, bg)];
+    let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
-    el().key("toast-band")
-        .pin(Some(0.0), None, Some(0.0), Some(0.0))
-        .h(TOAST_BAND)
-        .linear_gradient(std::f32::consts::PI, stops)
-        .inert()
-        .transition(rune::Transition::opacity().springs(fade))
+    Some(
+        el().key("toast-band")
+            .pin(Some(0.0), None, Some(0.0), Some(0.0))
+            .h(h)
+            .linear_gradient(std::f32::consts::PI, stops)
+            .inert()
+            .transition(rune::Transition::opacity().springs(fade)),
+    )
+}
+
+/// A pill's button: Undo on the toast, dismiss on the notice. 24 px tall, so it takes a press
+/// over the pill's height less 3 px at each edge.
+fn pill_button(c: &Roles, key: &str) -> El {
+    row().key(key).h(24.0).px(10.0).gap(8.0).center_y().radius(999.0).hover(c.hover).role("button")
+}
+
+/// What the toast with Undo shows of its sentence in `room`. When the room is short it gives
+/// up parts in this order, so the text never runs under the button: the key hint, then the
+/// end of the name, down to its first eight letters and "…", then the name ("Moved to the
+/// trash"). Undo always shows whole.
+#[derive(Debug, PartialEq)]
+enum UndoFit {
+    /// The name, or its start and "…", and whether the key hint shows.
+    Named(String, bool),
+    /// "Moved to the trash".
+    Short,
+}
+
+/// The longest start of `name` that fits `w` with "…" after it, keeping at least `least`
+/// letters; None when even that does not fit.
+fn cut(name: &str, w: f32, least: usize, style: rune::TextStyle) -> Option<String> {
+    if width(name, style) <= w {
+        return Some(name.to_string());
+    }
+    let chars: Vec<char> = name.chars().collect();
+    let with = |n: usize| format!("{}…", chars[..n].iter().collect::<String>().trim_end());
+    (1..chars.len()).rev().map(with).take_while(|t| t.chars().count() > least.min(chars.len() - 1)).find(|t| width(t, style) <= w)
+}
+
+fn undo_fit(room: f32, name: &str, key: &str) -> UndoFit {
+    let body = styles::popup();
+    let button = |hint: bool| 20.0 + width("Undo", body) + if hint { 8.0 + width(key, keys(11.0)) } else { 0.0 };
+    // The pill's 14 px and 4 px of padding, and the 6 px between the sentence and the button.
+    let free = |hint: bool| room - 24.0 - button(hint) - width("Moved ", body) - width(" to the trash", body);
+    if width(name, body) <= free(true) {
+        return UndoFit::Named(name.to_string(), true);
+    }
+    cut(name, free(false), 8, body).map_or(UndoFit::Short, |t| UndoFit::Named(t, false))
 }
 
 /// After a delete, the toast's place holds what went and an Undo button with its key, until
-/// the button or the key is pressed or `folders::UNDO_FOR` is up. A long name is cut, never the
-/// button.
+/// the button or the key is pressed or `folders::UNDO_FOR` is up (`undo_fit`).
 pub fn undo_toast(v: V, name: &str) -> El {
     let c = Roles::new(v.p);
     let body = styles::popup();
     let key = keymap::label(v.s.preset(), "app.undo-delete");
-    let undo = row()
-        .key("toast-undo")
-        .h(24.0)
-        .px(10.0)
-        .gap(8.0)
-        .center_y()
-        .radius(999.0)
-        .hover(c.hover)
-        .role("button")
+    let fit = undo_fit(foot_room(v), name, &key);
+    let hint = matches!(fit, UndoFit::Named(_, true));
+    let undo = pill_button(&c, "toast-undo")
         .label(format!("Undo ({key})"))
         .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
         .child(text("Undo").font(body).color(c.accent))
-        .child(text(key).font(keys(11.0)).color(c.faint));
-    let msg = row()
-        .key("toast-msg")
-        .shrink()
-        .min_w(0.0)
-        .center_y()
-        .child(text("Moved ").font(body).color(c.text))
-        .child(text(name.to_string()).font(body).color(c.text).truncate().shrink().min_w(0.0))
-        .child(text(" to the trash").font(body).color(c.text));
+        .children(hint.then(|| text(key).font(keys(11.0)).color(c.faint)));
+    let words = |t: &str| text(t.to_string()).font(body).color(c.text);
+    let msg = row().key("toast-msg").shrink().min_w(0.0).center_y();
+    let msg = match fit {
+        UndoFit::Named(shown, _) => msg.child(words("Moved ")).child(words(&shown)).child(words(" to the trash")),
+        // Below the short sentence's own width (a window narrower than Quire allows) it is cut.
+        UndoFit::Short => msg.child(words("Moved to the trash").truncate().shrink().min_w(0.0)),
+    };
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
     foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+}
+
+/// The notice's text width and its pill's height in its room: on one line the toast's 30 px,
+/// else wrapped at the widest the room allows.
+fn notice_fit(v: V, msg: &str) -> (f32, f32) {
+    let body = styles::popup();
+    let room = foot_room(v) - 24.0 - 20.0 - width("dismiss", body);
+    let whole = width(msg, body);
+    if whole <= room {
+        return (whole, PILL_H);
+    }
+    let w = room.max(0.0);
+    (w, rune::text::measure(msg, &[], body, Some(w)).1 + 14.0)
+}
+
+/// The notice: what went wrong, in the toast's place, or just above the toast while one shows.
+/// It is a pill in the toast's family: on one line the toast's shape, with "dismiss" where
+/// Undo sits; wrapped, the same padding and type with corners of half the one-line height.
+/// Esc dismisses it too (RD-85, WR-77).
+pub(super) fn notice(v: V, msg: &str) -> El {
+    let c = Roles::new(v.p);
+    let body = styles::popup();
+    let (w, h) = notice_fit(v, msg);
+    let dismiss = pill_button(&c, "notice-x").label("Dismiss").on_press(|s: &mut App| s.notice = None).child(text("dismiss").font(body).color(v.p.mute));
+    // The text's first line centres on the button's 24 px.
+    let words = row().py(4.0).child(text(msg.to_string()).font(body).color(v.p.err).wrap().w(w));
+    let pill = super::widgets::floating(row(), &c)
+        .key("notice")
+        .radius(if h > PILL_H { PILL_H / 2.0 } else { 999.0 })
+        .pl(14.0)
+        .pr(4.0)
+        .py(3.0)
+        .gap(6.0)
+        .items_start()
+        .child(words)
+        .child(dismiss);
+    foot_row(v, "notice-row", notice_lift(v), pill)
 }
 
 /// The progress line (RD-37, RD-38, WR-178): 2 px of accent along the top of the note area,

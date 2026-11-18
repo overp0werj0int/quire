@@ -79,11 +79,9 @@ pub fn body(v: V) -> El {
     } else {
         v.s.reader.toast.as_ref().map(|(msg, _)| super::reader::toast(v, msg))
     };
-    if let Some(toast) = toast {
-        area = area.child(super::reader::toast_band(v)).child(toast);
-    }
+    area = area.children(super::reader::toast_band(v)).children(toast);
     if let Some(n) = &v.s.notice {
-        area = area.child(super::notice(v, n));
+        area = area.child(super::reader::notice(v, n));
     }
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     // The outline slides in from the right and out to it over 160 ms (WR-99).
@@ -240,11 +238,15 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
         margin = below + clear;
     }
-    // While a toast shows, the line being typed stays above its band, fade included
-    // (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room applies
-    // only while the caret is in the view's lower half, where the top edge is not in play.
-    if s.writing() && s.toast_shows() && v.caret.is_some_and(|c| c[1] + c[3] / 2.0 > v.vh / 2.0) {
-        margin = margin.max(super::reader::TOAST_BAND);
+    // While a toast or the notice shows, the line being typed stays above its band, fade
+    // included (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room
+    // applies only while the caret is in the view's lower half, where the top edge is not in
+    // play.
+    if s.writing()
+        && v.caret.is_some_and(|c| c[1] + c[3] / 2.0 > v.vh / 2.0)
+        && let Some(band) = super::reader::band_h(v)
+    {
+        margin = margin.max(band);
     }
     if margin > 0.0 {
         scroll = scroll.scroll_margin(margin);
@@ -511,7 +513,7 @@ pub fn source_column(v: V) -> crate::page::Column {
 }
 
 /// The widths of the docked sidebar and outline, 0 for one that is not docked.
-fn docked(v: V) -> (f32, f32) {
+pub(super) fn docked(v: V) -> (f32, f32) {
     (if v.left_visible() { 249.0 } else { 0.0 }, if v.right_visible() { 236.0 } else { 0.0 })
 }
 

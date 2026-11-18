@@ -4007,6 +4007,212 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// As the room narrows, with either drawer open or none, the toast with Undo gives up its
+    /// parts in one order: the key hint, then the name's end down to eight letters and "…",
+    /// then the name. Its text never runs under Undo or out of the pill, and Undo shows whole
+    /// (UNDON).
+    #[test]
+    fn the_undo_toast_never_runs_under_its_button() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-undo-fit-{}", std::process::id()));
+        let long = "On slow software and the long wait for it";
+        for drawer in [None, Some(("sidebar-over", "toggle-left")), Some(("outline-over", "toggle-right"))] {
+            // What shows at each room: the room is not the window's width, as a docked sidebar
+            // takes part of it.
+            let mut stages = Vec::new();
+            for w in [1280.0, 760.0, 700.0, 640.0, 600.0, 580.0, 560.0, 540.0, 520.0] {
+                let mut rt = garden(&dir, Mode::Preview);
+                rt.set_viewport((w, 600.0), 1.0);
+                settle(&mut rt);
+                rt.update(|s, tx| {
+                    s.delete_note();
+                    s.deleted.as_mut().expect("a delete to undo").name = long.into();
+                    s.open_file("Box/a.md", None, tx);
+                });
+                settle(&mut rt);
+                if let Some((over, toggle)) = drawer {
+                    // Wide enough, the panel docks and no drawer opens.
+                    if w >= if over == "sidebar-over" { crate::app::SIDEBAR_DOCK_W } else { crate::app::OUTLINE_DOCK_W } {
+                        continue;
+                    }
+                    press_key(&mut rt, toggle, false);
+                    glide(&mut rt);
+                    assert!(rt.find(over).is_some(), "{w}: the {over} is open");
+                }
+                let els = rt.elements();
+                let pill = els.iter().find(|e| e.key.as_deref() == Some("toast") && !e.exiting).expect("the toast shows").rect;
+                let undo = els.iter().find(|e| e.key.as_deref() == Some("toast-undo") && !e.exiting).expect("Undo shows");
+                let texts: Vec<_> = els.iter().filter(|e| e.path.contains("/toast/") && !e.path.contains("toast-undo") && e.text.is_some()).collect();
+                let undo_text = els.iter().find(|e| e.path.starts_with(&undo.path) && e.text.as_deref() == Some("Undo")).expect("Undo's text");
+                assert!(undo_text.rect[0] >= undo.rect[0] && undo_text.rect[0] + undo_text.rect[2] <= undo.rect[0] + undo.rect[2], "{w} {drawer:?}: Undo shows whole");
+                for t in &texts {
+                    let r = t.rect;
+                    assert!(r[0] + r[2] <= undo.rect[0] + 0.5, "{w} {drawer:?}: {:?} runs under Undo {:?}", t.text, undo.rect);
+                    assert!(r[0] >= pill[0] && r[0] + r[2] <= pill[0] + pill[2], "{w} {drawer:?}: {:?} runs out of the pill {pill:?}", t.text);
+                }
+                let shown: Vec<&str> = texts.iter().filter_map(|e| e.text.as_deref()).collect();
+                let hint = els.iter().any(|e| e.path.starts_with(&undo.path) && e.text.as_deref().is_some_and(|t| t.contains("Ctrl")));
+                let stage = match shown.as_slice() {
+                    ["Moved ", n, " to the trash"] if *n == long => if hint { 0 } else { 1 },
+                    ["Moved ", n, " to the trash"] => {
+                        let kept = n.strip_suffix('…').unwrap_or_else(|| panic!("{w} {drawer:?}: a cut name ends in …: {n}"));
+                        assert!(long.starts_with(kept) && kept.chars().count() >= 8, "{w} {drawer:?}: the name keeps its first eight letters: {n}");
+                        2
+                    }
+                    ["Moved to the trash"] => 3,
+                    other => panic!("{w} {drawer:?}: the toast reads {other:?}"),
+                };
+                let room = els.iter().find(|e| e.key.as_deref() == Some("toast-row")).expect("the toast's row").rect[2] - 32.0;
+                stages.push((room, stage, w));
+            }
+            stages.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for pair in stages.windows(2) {
+                assert!(pair[1].1 >= pair[0].1, "{drawer:?}: a narrower room gives back a part it had given up: {pair:?}");
+            }
+            if drawer.is_some_and(|d| d.0 == "sidebar-over") {
+                assert!(stages.iter().any(|s| s.2 == 520.0 && s.1 == 3), "at 520 with the sidebar's drawer the toast reads \"Moved to the trash\": {stages:?}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The notice is a pill in the toast's family (NOTCOV, PILL): on one line the toast's 30 pt
+    /// with round ends, as wide as its text and "dismiss" need; a long one wraps in the room
+    /// with 15 pt corners. The toast band sits behind it, alone or stacked over a toast, and
+    /// the line being typed stays above the band.
+    #[test]
+    fn the_notice_is_a_pill_over_the_band() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-notice-pill-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| (e.rect, e.radius));
+        let short = "A folder named Docs is already there.";
+        let long = "A folder named An exceptionally long folder name reserved for duplicate detection An exceptionally long folder name reserved for duplicate detection is already there.";
+        for mode in [Mode::Source, Mode::Preview] {
+            for (w, msg) in [(1280.0, short), (1280.0, long), (640.0, short), (640.0, long)] {
+                let mut rt = garden(&dir, mode);
+                rt.set_viewport((w, 800.0), 1.0);
+                rt.update(|s, _| s.notice = Some(msg.into()));
+                settle(&mut rt);
+                let ((n, radius), (x, _)) = (rect(&rt, "notice").expect("the notice shows"), rect(&rt, "notice-x").expect("its dismiss"));
+                let main = rect(&rt, "doc-area").expect("the note area").0;
+                assert!(n[0] >= main[0] + 16.0 - 0.5 && n[0] + n[2] <= main[0] + main[2] - 16.0 + 0.5, "{mode:?} {w}: the notice {n:?} stays in its room {main:?}");
+                assert_eq!(x[3], 24.0, "{mode:?} {w}: dismiss takes a 24 pt press");
+                assert!(x[0] + x[2] <= n[0] + n[2] && x[1] >= n[1] + 3.0, "{mode:?} {w}: dismiss {x:?} sits in the pill {n:?}");
+                if msg == short {
+                    assert_eq!(n[3], 30.0, "{mode:?} {w}: one line is the toast's height");
+                    assert!(radius >= 15.0, "{mode:?} {w}: with round ends: {radius}");
+                    let t = rt.elements().into_iter().find(|e| e.text.as_deref() == Some(short)).expect("the message");
+                    assert!(n[2] - t.rect[2] - x[2] <= 24.5, "{mode:?} {w}: as wide as its text and dismiss: {n:?}");
+                } else {
+                    assert!(n[3] > 30.0, "{mode:?} {w}: a long message wraps: {n:?}");
+                    assert_eq!(radius, 15.0, "{mode:?} {w}: wrapped, its corners are half the one-line height");
+                }
+                let (band, _) = rect(&rt, "toast-band").unwrap_or_else(|| panic!("{mode:?} {w}: the band shows behind the notice"));
+                assert_eq!(band[1] + 32.0 + 16.0, n[1], "{mode:?} {w}: the band is solid from 16 pt above the notice");
+                rt.update(|s, tx| s.toast("Saved", tx));
+                glide(&mut rt);
+                let ((t, _), (n, _), (band, _)) = (rect(&rt, "toast").unwrap(), rect(&rt, "notice").unwrap(), rect(&rt, "toast-band").unwrap());
+                assert_eq!(n[1] + n[3] + 8.0, t[1], "{mode:?} {w}: the notice stacks 8 pt above the toast");
+                assert_eq!(band[1] + 32.0 + 16.0, n[1], "{mode:?} {w}: the band covers the stack");
+            }
+        }
+        // In the writer the line being typed stays above the band behind a wrapped notice.
+        let (mut rt, _) = crate::bench::open(&dir, &"A line of the note.\n\n".repeat(200), Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        key(&mut rt, Key::End, ctrl(false));
+        rt.update(|s, _| s.notice = Some(long.into()));
+        glide(&mut rt);
+        for c in ["Z", "Z", "Z"] {
+            key(&mut rt, Key::Text(c.into()), Mods::default());
+        }
+        glide(&mut rt);
+        let (band, _) = rect(&rt, "toast-band").expect("the band");
+        let (caret, _) = rect(&rt, "caret-at").expect("the caret");
+        assert!(caret[1] + caret[3] <= band[1], "the line being typed clears the band: caret {caret:?}, band {band:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Esc dismisses a showing notice first, before find, zen and the switch of mode, and the
+    /// keyboard stays where it was; an open layer still takes Esc before it (NDIS).
+    #[test]
+    fn esc_dismisses_the_notice_first() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-notice-esc-{}", std::process::id()));
+        let notice = |rt: &mut Runtime<App>| {
+            rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+            settle(rt);
+        };
+        let up = |rt: &mut Runtime<App>| {
+            let mut on = false;
+            rt.update_if(|s, _| {
+                on = s.notice.is_some();
+                false
+            });
+            on
+        };
+        for mode in [Mode::Source, Mode::Preview] {
+            let mut rt = garden(&dir, mode);
+            if mode == Mode::Source {
+                rt.update(|s, tx| s.focus_editor(tx));
+                settle(&mut rt);
+            }
+            let before = focused(&rt);
+            notice(&mut rt);
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            assert!(!up(&mut rt), "{mode:?}: Esc dismisses the notice");
+            let mut now = mode;
+            rt.update_if(|s, _| {
+                now = s.mode;
+                false
+            });
+            assert_eq!(now, mode, "{mode:?}: and leaves the mode alone");
+            assert_eq!(focused(&rt), before, "{mode:?}: the keyboard stays where it was");
+            // Before find: the first Esc takes the notice, the second closes find.
+            key(&mut rt, Key::Command('f'), ctrl(false));
+            settle(&mut rt);
+            notice(&mut rt);
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            let find_open = |rt: &mut Runtime<App>| {
+                let mut open = false;
+                rt.update_if(|s, _| {
+                    open = s.reader.find.open;
+                    false
+                });
+                open
+            };
+            assert!(!up(&mut rt) && find_open(&mut rt), "{mode:?}: Esc takes the notice before find");
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            assert!(!find_open(&mut rt), "{mode:?}: the next Esc closes find");
+            // Before zen mode.
+            rt.update(|s, _| s.focus = true);
+            notice(&mut rt);
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            let mut zen = false;
+            rt.update_if(|s, _| {
+                zen = s.focus;
+                false
+            });
+            assert!(!up(&mut rt) && zen, "{mode:?}: Esc takes the notice before zen mode");
+            rt.update(|s, _| s.focus = false);
+            // An open layer takes Esc first.
+            notice(&mut rt);
+            key(&mut rt, Key::Command('k'), ctrl(true));
+            settle(&mut rt);
+            assert!(rt.find("pal-input").is_some(), "{mode:?}: the palette opened");
+            key(&mut rt, Key::Escape, Mods::default());
+            settle(&mut rt);
+            assert!(up(&mut rt) && rt.find("pal-input").is_none(), "{mode:?}: the palette takes Esc before the notice");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The pointer anywhere in a Settings switch's 28 pt target, not only over its 20 pt track,
     /// gives the track its hover fill, on and off, and leaving the target takes it back.
     #[test]

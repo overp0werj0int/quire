@@ -28,7 +28,6 @@ pub use editor::follow_link_at_caret;
 use rune::{Cx, El, TextStyle, col, el, row};
 
 use crate::app::{App, Screen};
-use crate::roles::Roles;
 use crate::theme::{self, Pal};
 
 /// What every builder reads: the state, the palette and the window size.
@@ -118,7 +117,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     s.view_h.set(vh);
     s.view_w.set(vw);
     map_page(s);
-    let caret = (s.writing() && s.toast_shows()).then(|| cx.caret("editor")).flatten();
+    let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
     let v = V { s, p, dark, vw, vh, trailing, caret };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
@@ -153,7 +152,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     }
     // In the folder's window the notice sits in the note area, with the toast (`editor::body`).
     if let Some(n) = s.notice.as_deref().filter(|_| !v.is_vault()) {
-        root = root.child(notice(v, n));
+        root = root.child(reader::notice(v, n));
     }
     root = root.children(layer::layers(v));
     if s.layer_swap {
@@ -214,25 +213,6 @@ fn map_page(s: &App) {
     let b = s.settings().size as f32;
     let keys = || doc.blocks.iter().map(crate::reader::block_key).collect();
     map.set_rows(s.doc_hash(), keys, crate::page::gaps(b, &doc.blocks), crate::page::row_estimate(b));
-}
-
-/// The notice: what went wrong, at the note area's foot where a toast shows (`reader::foot_row`).
-pub(super) fn notice(v: V, msg: &str) -> El {
-    let p = v.p;
-    let card = widgets::floating(row(), &Roles::new(p))
-        .key("notice")
-        .w(360.0)
-        .items_start()
-        .gap(12.0)
-        .padding(12.0)
-        .radius(9.0)
-        .child(widgets::label(msg, styles::popup(), p.err).wrap().grow(1.0).shrink())
-        .child(
-            widgets::label("dismiss", styles::popup(), p.mute)
-                .key("notice-x")
-                .on_press(|s: &mut App| s.notice = None),
-        );
-    reader::foot_row(v, "notice-row", reader::notice_lift(v), card)
 }
 
 #[cfg(test)]

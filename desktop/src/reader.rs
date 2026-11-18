@@ -797,6 +797,11 @@ impl App {
         self.deleted.is_some() || self.reader.toast.is_some()
     }
 
+    /// A pill shows at the note area's foot: a toast or the notice (RD-104).
+    pub(crate) fn foot_shows(&self) -> bool {
+        self.toast_shows() || self.notice.is_some()
+    }
+
     /// Clears a toast or mark whose time is up. True when something went.
     pub(crate) fn expire_reader(&mut self, t: f64) -> bool {
         let mut changed = false;
@@ -964,8 +969,12 @@ impl App {
         }
     }
 
-    /// Esc in the reader (RD-85): close find, else clear the selection, else Quire's Esc.
+    /// Esc in the reader (RD-85): dismiss the notice, else close find, else clear the
+    /// selection, else Quire's Esc.
     pub fn reader_escape(&mut self, tx: &mut Tx) -> bool {
+        if self.notice.take().is_some() {
+            return true;
+        }
         if self.reader.find.open {
             self.close_find(tx);
         } else if tx.text_selection().is_some() {
