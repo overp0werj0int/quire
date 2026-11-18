@@ -394,7 +394,7 @@ pub(super) fn crumb(v: V) -> El {
     let active = s.active.clone().unwrap_or_default();
     let dir = md::dir(&active).to_string();
     let style = literal(12.0);
-    // The separator and the extension read on every theme: "/" at 3:1, ".md" at 4.5:1.
+    // The separator and the extension read on every theme at 4.5:1.
     let quiet = Roles::panel(p);
     // A long folder or name is cut to the bar's room: the folder keeps its end, the name its start.
     // The name has its room first: the folder takes what the name leaves, up to its own width,
@@ -403,7 +403,7 @@ pub(super) fn crumb(v: V) -> El {
     if !dir.is_empty() {
         let whole = rune::text::measure(&dir, &[], style, None).0;
         let least = rune::text::measure("…", &[], style, None).0.min(whole);
-        r = r.child(text(dir).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)).child(label("/", style, quiet.ghost));
+        r = r.child(text(dir).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)).child(label("/", style, quiet.faint));
     }
     let r = match &s.renaming {
         None => r.child(
@@ -500,8 +500,9 @@ fn source(v: V, width: f32, room: f32) -> El {
     let focus = s.settings().paragraph_focus.then(|| md::para_range(doc, caret));
     let (spans, strikes, hangs) = s.source_spans(e, &ink, focus);
     // The field reaches a gutter left of the column, and every line starts at the column, so
-    // marks hang in the gutter (WR-26).
-    let gutter = hang_gutter(e).min(room);
+    // marks hang in the gutter (WR-26). An empty note has no marks to hang, and Rune does not
+    // indent a placeholder, so it takes no gutter: "Start writing…" sits on the column too.
+    let gutter = if doc.is_empty() { 0.0 } else { hang_gutter(e).min(room) };
     let mut marks = Vec::new();
     // Typewriter scrolling centres this character's line (WR-88).
     let at = if caret < doc.len() {

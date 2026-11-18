@@ -22,9 +22,6 @@ pub const PANEL_FAINT: f32 = 4.5;
 pub const PANEL_STEP: f32 = 1.43;
 /// How much more contrast the panels' text (the current row, headings) has than their rows.
 pub const PANEL_TEXT: f32 = 1.15;
-/// The least contrast of the panels' ghost, the title bar's path separator: 3:1, and a little
-/// over so 8-bit colour keeps it.
-pub const PANEL_GHOST: f32 = 3.05;
 
 fn enc(c: Color) -> [f32; 3] {
     [srgb_encode(c.r), srgb_encode(c.g), srgb_encode(c.b)]
@@ -155,7 +152,8 @@ impl Roles {
     /// wash. Faint reaches 4.5:1 (WCAG AA), and dim, the rows, has 1.4 times faint's contrast on
     /// each fill (`PANEL_STEP`), so rows and hints read as two levels. Where the theme's text leaves no room
     /// for that step and one more above it (Catppuccin Latte, Rosé Pine Dawn), the text first
-    /// moves toward black or white. Ghost reaches 3:1, for the title bar's path separator.
+    /// moves toward black or white. The panels have no fainter level: ghost is faint, so the
+    /// title bar's "/" reads at 4.5:1 too.
     pub fn panel(p: &Pal) -> Roles {
         let mut r = Roles::new(p);
         let fills = [p.bg, p.side, r.on_page(r.wash)];
@@ -169,7 +167,7 @@ impl Roles {
             out
         };
         r.faint = lift(r.faint, r.text, &|_| PANEL_FAINT);
-        r.ghost = lift(r.ghost, r.text, &|_| PANEL_GHOST);
+        r.ghost = r.faint;
         let faint = r.faint;
         let extreme = if p.dark { Color::WHITE } else { Color::BLACK };
         r.text = lift(r.text, extreme, &|f| contrast(faint, f) * PANEL_STEP * PANEL_TEXT);
@@ -333,7 +331,8 @@ mod tests {
     /// The side panels' small text reads in every theme: faint at 4.5:1 or more against
     /// the window, the sidebar and the outline's wash, dim (the rows) 1.4 times faint's contrast,
     /// and the text above both, so the open tab of Files, Search and Tags and the current row
-    /// still read as the strongest. Ghost, the title bar's "/", reaches 3:1.
+    /// still read as the strongest. Nothing in them is fainter: ghost, and with it the title
+    /// bar's "/", reaches 4.5:1 too.
     #[test]
     fn panel_text_reads_on_every_theme() {
         let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
@@ -348,7 +347,7 @@ mod tests {
                 assert!(dim >= faint * PANEL_STEP, "{id}: rows {dim:.2} not a step above faint {faint:.2} on {}", hx(fill));
                 assert!(text >= dim * PANEL_TEXT * 0.99, "{id}: text {text:.2} not above rows {dim:.2} on {}", hx(fill));
                 let ghost = contrast(r.ghost, fill);
-                assert!(ghost >= PANEL_GHOST && ghost < faint, "{id}: ghost {ghost:.2}, faint {faint:.2} on {}", hx(fill));
+                assert!(ghost >= PANEL_FAINT, "{id}: the \"/\" at {ghost:.2} on {}", hx(fill));
             }
         }
     }

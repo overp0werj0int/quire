@@ -119,7 +119,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     cx.focus_ring(w, gap, c);
     // Tooltips in the panel family, so a name and its key read as one line (KT). The system
     // look otherwise, which on macOS replaces AppKit's own tooltips with Rune's.
-    cx.help_look(rune::HelpLook::system(dark).font(styles::tooltip()));
+    // Wide enough that a long note name shows whole in two or three lines (C7).
+    cx.help_look(rune::HelpLook::system(dark).font(styles::tooltip()).max_width(Some(widgets::TIP_WRAP)));
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };

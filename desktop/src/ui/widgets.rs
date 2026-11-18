@@ -243,11 +243,14 @@ pub fn settings_seg_literal(v: super::V, key: &str, segs: Vec<Seg>) -> El {
     segmented(v.p, key, segs, 26.0, settings_seg_pad(v), 6.0, literal(12.0), v.p.side, 8.0)
 }
 
-/// The widest line of a cut name's tooltip, inside the tooltip's 300 pt.
-const TIP_W: f32 = 280.0;
+/// How wide a tooltip's text grows before it wraps (`ui::view` sets it).
+pub const TIP_WRAP: f32 = 360.0;
 
-/// The tooltip of a cut note or folder name (C7), in two lines at most. A name that fits one
-/// line has its folder on the next, cut at its start; a longer name takes both lines, cut with
+/// The widest line of a cut name's tooltip, a little inside `TIP_WRAP`.
+const TIP_W: f32 = TIP_WRAP - 20.0;
+
+/// The tooltip of a cut note or folder name (C7), in three lines at most. A name that fits two
+/// lines has its folder on the next, cut at its start; a longer name takes all three, cut with
 /// "…" at its end.
 pub fn name_tip(path: &str) -> String {
     let style = super::styles::tooltip();
@@ -271,10 +274,11 @@ pub fn name_tip(path: &str) -> String {
     };
     let one = |t: &str| size(t).1 <= line + 0.5;
     let two = |t: &str| size(t).1 <= 2.0 * line + 0.5;
+    let three = |t: &str| size(t).1 <= 3.0 * line + 0.5;
     let name = crate::md::base(path);
     match crate::md::dir(path) {
-        dir if !dir.is_empty() && one(name) => format!("{name}\n{}", cut(&format!("in {dir}"), true, &one)),
-        _ => cut(name, false, &two),
+        dir if !dir.is_empty() && two(name) => format!("{name}\n{}", cut(&format!("in {dir}"), true, &one)),
+        _ => cut(name, false, &three),
     }
 }
 
@@ -394,21 +398,27 @@ mod tests {
         }
     }
 
-    /// C7: a cut name's tooltip is the name, not the file path, in two lines at most: a short
-    /// name has its folder under it, cut at its start; a long name takes both lines and ends "…".
+    /// C7: a cut name's tooltip is the name, not the file path, in three lines at most: a name
+    /// that fits two has its folder under it, cut at its start; a longer one takes all three and
+    /// ends "…".
     #[test]
-    fn a_cut_names_tooltip_is_two_lines_at_most() {
+    fn a_cut_names_tooltip_is_three_lines_at_most() {
+        let style = super::super::styles::tooltip();
+        let line = rune::text::measure("A", &[], style, None).1;
+        let lines = |t: &str| (rune::text::measure(t, &[], style, Some(TIP_W)).1 / line).round();
         let deep = "Projects/Archive/2025/Quarterly reviews and retrospectives for the platform team/Q3";
         let tip = name_tip(&format!("{deep}/Plan.md"));
         let (name, folder) = tip.split_once('\n').expect("the folder on its own line");
         assert_eq!(name, "Plan");
         assert!(folder.starts_with('…') && folder.ends_with("/Q3"), "{folder}");
-        let long = "A moderately long but perfectly normal note title about planning the next product release, again and again";
-        let tip = name_tip(&format!("Drafts/{long}.md"));
+        let long = "A moderately long but perfectly normal note title about planning the next product release";
+        assert_eq!(name_tip(&format!("Drafts/{long}.md")), format!("{long}\nin Drafts"), "a two-line name keeps its folder");
+        let long = format!("{long}, again and again");
+        assert_eq!(name_tip(&format!("Drafts/{long}.md")), long, "a three-line name shows whole");
+        let longer = format!("{long}, and once more with feeling, because some people name their notes with the whole first paragraph");
+        let tip = name_tip(&format!("Drafts/{longer}.md"));
         assert!(!tip.contains('\n') && !tip.contains("Drafts") && tip.ends_with('…'), "{tip}");
-        let style = super::super::styles::tooltip();
-        let line = rune::text::measure("A", &[], style, None).1;
-        assert!(rune::text::measure(&tip, &[], style, Some(TIP_W)).1 <= 2.0 * line + 0.5, "{tip}");
+        assert_eq!(lines(&tip), 3.0, "{tip}");
         assert_eq!(name_tip("Plan.md"), "Plan");
     }
 }

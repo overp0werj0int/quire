@@ -2070,6 +2070,62 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// An empty note's "Start writing…" sits on the text column, where the caret blinks, not
+    /// out in the gutter where marks hang.
+    #[test]
+    fn the_placeholder_sits_on_the_text_column() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-placeholder-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, "", crate::app::Mode::Source);
+        rt.set_viewport((640.0, 600.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let field = info(&rt, "editor").expect("the editor");
+        let caret = field.caret.expect("the editor shows a caret");
+        // Rune draws the placeholder at the field's left edge.
+        assert!((field.rect[0] - caret[0]).abs() < 1.0, "the placeholder at {} and the caret at {}", field.rect[0], caret[0]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WR-223: the zen hint has one place at each width, in the writer and in the preview, and
+    /// keeps 16 pt from the pill, which shows under the pointer.
+    #[test]
+    fn the_zen_hint_keeps_its_place_and_its_distance() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-zen-place-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, tx| s.toggle_focus(tx));
+        let mut bad = Vec::new();
+        for w in [480.0, 520.0, 560.0, 600.0, 640.0, 720.0, 900.0, 1280.0] {
+            rt.set_viewport((w, 600.0), 1.0);
+            let mut at = Vec::new();
+            for mode in [crate::app::Mode::Source, crate::app::Mode::Preview] {
+                rt.update(|s, tx| {
+                    if s.mode != mode {
+                        s.toggle_mode(tx);
+                    }
+                });
+                for _ in 0..60 {
+                    rt.frame(DT);
+                }
+                let hint = |t: &str| t.split_once(' ').is_some_and(|(n, rest)| n.chars().all(|c| c.is_ascii_digit() || c == ',') && rest.starts_with("word"));
+                let words = rt.elements().into_iter().find(|e| e.text.as_deref().is_some_and(hint)).expect("the hint's text").rect;
+                let pill = info(&rt, "zen-actions").expect("the pill").rect;
+                if pill[0] - (words[0] + words[2]) < 15.5 {
+                    bad.push(format!("{w} {mode:?}: the hint {words:?} ends {:.1} pt from the pill {pill:?}", pill[0] - (words[0] + words[2])));
+                }
+                at.push(words);
+            }
+            if (at[0][0] - at[1][0]).abs() > 0.5 || (at[0][2] - at[1][2]).abs() > 0.5 {
+                bad.push(format!("{w}: the hint at {:?} in the writer, {:?} in the preview", at[0], at[1]));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-177 in zen mode's preview: the page's text fades at the top and into the foot, as the
     /// writer's does. Outside zen mode the preview has no fades.
     #[test]
