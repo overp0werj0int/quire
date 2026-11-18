@@ -2283,6 +2283,27 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WR-108, RD-38: with the caret in the note's first block, preview opens at its top, and
+    /// the progress bar reads 0 there as it does in source.
+    #[test]
+    fn wr_108_the_first_block_leaves_preview_at_the_top() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-top-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        let share = |rt: &rune::Runtime<crate::app::App>| info(rt, "progress").map_or(0.0, |e| e.rect[2]);
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        assert_eq!(share(&rt), 0.0, "source reads 0 at the top");
+        rt.update(|s, tx| s.switch_mode(tx));
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        assert_eq!(rt.state.reader.scroll.get()[0], 0.0, "preview stays at its top");
+        assert_eq!(share(&rt), 0.0, "and reads 0 there");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The sidebar runs the window's full height, and its toggle keeps its place in the window's
     /// corner whether the sidebar is open or closed.
     #[test]

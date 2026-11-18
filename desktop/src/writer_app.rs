@@ -388,7 +388,12 @@ impl App {
             let block = doc.blocks.iter().rposition(|b| b.lines.start <= line).unwrap_or(0);
             self.wstate.back = Some((self.reader.scroll.get()[0], block));
             self.mode = Mode::Preview;
-            self.land(block, false, tx);
+            if block == 0 {
+                // The first block leaves the preview at its top, where progress reads 0 (RD-38).
+                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, 0.0);
+            } else {
+                self.land(block, false, tx);
+            }
         } else {
             let top = self.top();
             let line = self.doc().blocks.get(top).map_or(0, |b| b.lines.start);
