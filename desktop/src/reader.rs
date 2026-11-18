@@ -108,6 +108,8 @@ pub struct PageMap {
     shift: f32,
     /// The scroll content's top in the window, as last laid out.
     content_y: f32,
+    /// The rows' left edge in the window, as last laid out.
+    left: f32,
     /// Each top-level block's first source line, and the note's line count.
     pub starts: Vec<usize>,
     pub lines: usize,
@@ -204,9 +206,10 @@ impl PageMap {
         moved
     }
 
-    /// Row `key` laid out at window `y`, `h` points tall. Whether that moved any block.
-    pub fn row_laid_out(&mut self, key: &str, y: f32, h: f32) -> bool {
+    /// Row `key` laid out at window `x`, `y`, `h` points tall. Whether that moved any block.
+    pub fn row_laid_out(&mut self, key: &str, x: f32, y: f32, h: f32) -> bool {
         let Some(&i) = self.index.get(key) else { return false };
+        self.left = x;
         let mut moved = false;
         if self.heights.get(key) != Some(&h) {
             self.heights.insert(key.to_owned(), h);
@@ -234,6 +237,13 @@ impl PageMap {
     /// Block `i`'s top in the scroll content.
     pub fn block_top(&self, i: usize) -> Option<f32> {
         self.base.get(i).map(|t| t + self.shift)
+    }
+
+    /// Where the keyboard opens block `i`'s menu, in the window, with the page scrolled to
+    /// `offset`: at the text's left edge, below the block's first line still in view.
+    pub fn menu_at(&self, i: usize, offset: f32, line: f32) -> Option<(f32, f32)> {
+        let top = self.block_top(i)?.max(offset);
+        Some((self.left, self.content_y + top + line))
     }
 
     /// The map covers `blocks` blocks: right after a switch it may still hold the last note's
@@ -669,10 +679,10 @@ impl App {
 
     /// Row `key` of the page laid out at window rect `[x, y, w, h]` (`ui/preview.rs`): the page
     /// map takes its height and place, and a trip waiting for the row lands by it.
-    pub(crate) fn row_laid_out(&mut self, key: &str, [_, y, _, h]: [f32; 4], tx: &mut Tx) {
+    pub(crate) fn row_laid_out(&mut self, key: &str, [x, y, _, h]: [f32; 4], tx: &mut Tx) {
         let now = self.reader.scroll.get();
         let mut map = self.reader.map.borrow_mut();
-        if map.row_laid_out(key, y, h) {
+        if map.row_laid_out(key, x, y, h) {
             map.follow(now, &self.reader.bar);
         }
         if let Some((k, travel, since)) = map.later.take() {
@@ -729,6 +739,19 @@ impl App {
     pub fn edit_block_at(&mut self, line: usize, scope: crate::sheet::Scope, tx: &mut Tx) {
         self.reader.hover = Some(line);
         self.open_sheet(scope, tx);
+    }
+
+    /// The Menu key or Shift+F10 in the reader: the menu of the block under the pointer, else of
+    /// the block at the top of the view (RD-68), as a right-click on it opens it.
+    pub fn block_menu_here(&mut self, tx: &mut Tx) {
+        let Some(lines) = self.block_here() else { return };
+        let Some(i) = self.doc().blocks.iter().position(|b| b.lines.start == lines.start) else { return };
+        let at = self.reader.map.borrow().menu_at(i, self.reader.scroll.get()[0], self.b() * 1.6);
+        if let Some(at) = at {
+            self.open_menu(crate::layer::MenuOf::Block(lines.start), at, tx);
+            // Opened from the keyboard, its first item shows marked, as the writer's does.
+            tx.focus("block-menu", true);
+        }
     }
 
     pub fn copy_block_here(&mut self, tx: &mut Tx) {

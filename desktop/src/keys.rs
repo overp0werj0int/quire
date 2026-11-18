@@ -35,6 +35,12 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     } else {
         &[Ctx::Writer, Ctx::Global]
     };
+    // The Menu key or Shift+F10, which no focused control took: the page's block menu, as Rune
+    // opens a focused control's.
+    if vault && s.mode == crate::app::Mode::Preview && menu_key(ev) {
+        s.block_menu_here(tx);
+        return true;
+    }
     for ctx in stack {
         if *ctx == Ctx::Reader {
             // The second key of `g g` (RD-23).
@@ -72,6 +78,17 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
     }
     false
+}
+
+/// The Menu key, or Shift+F10: a context menu from the keyboard.
+fn menu_key(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    let plain = !m.cmd && !m.ctrl && !m.alt && !m.logo;
+    match ev.key {
+        rune::Key::ContextMenu => plain,
+        rune::Key::Function(10) => plain && m.shift,
+        _ => false,
+    }
 }
 
 /// A key while a layer is open, which holds the keyboard: the page behind never hears it.

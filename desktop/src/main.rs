@@ -3426,7 +3426,7 @@ mod layer_matrix_tests {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-reader-keys-{}", std::process::id()));
         type Way = (&'static str, fn(&mut Runtime<App>));
-        let ways: [Way; 9] = [
+        let ways: [Way; 10] = [
             ("Ctrl+P", |rt| key(rt, Key::Command('p'), ctrl(false))),
             ("the mode button", |rt| press_key(rt, "mode", false)),
             ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
@@ -3449,6 +3449,11 @@ mod layer_matrix_tests {
                 key(rt, Key::Command('p'), ctrl(false));
                 let block = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
                 press(rt, (block[0] + 20.0, block[1] + block[3] / 2.0), true);
+                key(rt, Key::Escape, Mods::default());
+            }),
+            ("Ctrl+P, a block menu by Shift+F10, Esc", |rt| {
+                key(rt, Key::Command('p'), ctrl(false));
+                key(rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
                 key(rt, Key::Escape, Mods::default());
             }),
             ("Ctrl+P, the folder menu by a click, Esc", |rt| {
@@ -3669,5 +3674,42 @@ mod layer_matrix_tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
+
+    /// In preview the Menu key or Shift+F10 opens the block menu from the keyboard: for the
+    /// block under the pointer, else the block at the top of the view, below its first line,
+    /// with its first item marked.
+    #[test]
+    fn the_block_menu_opens_from_the_keyboard() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-layer-blockkey-{}", std::process::id()));
+        let menu = |rt: &mut Runtime<App>| {
+            let mut out = None;
+            rt.update_if(|s, _| {
+                out = s.menu().and_then(|m| match m.of {
+                    crate::layer::MenuOf::Block(line) => Some(line),
+                    _ => None,
+                });
+                false
+            });
+            out
+        };
+        let mut rt = window(&dir, true, (960.0, 600.0));
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        assert_eq!(menu(&mut rt), Some(0), "Shift+F10 opens the top block's menu");
+        let marked = rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
+        assert_eq!(marked, Some(("tm-0".into(), true)), "its first item is marked");
+        let ([_, y, _, _], _) = rt.presented("block-menu").expect("the block menu");
+        let head = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block")).expect("a block").rect;
+        assert!(y > head[1] && y < head[1] + 80.0, "below the block's first line: menu at {y}, block {head:?}");
+        key(&mut rt, Key::Escape, Mods::default());
+        assert_eq!(menu(&mut rt), None, "Esc closes it");
+
+        let third = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("block")).nth(2).expect("a third block").rect;
+        rt.pointer_move(third[0] + 20.0, third[1] + third[3] / 2.0);
+        settle(&mut rt);
+        key(&mut rt, Key::ContextMenu, Mods::default());
+        assert_eq!(menu(&mut rt), Some(4), "the Menu key opens the menu of the block under the pointer");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
