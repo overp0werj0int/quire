@@ -3936,4 +3936,29 @@ mod layer_matrix_tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// While a toast shows, in both modes, the page's colour runs from the note area's foot to
+    /// above the pill, so no line of the note reads behind or beside it (RD-104).
+    #[test]
+    fn a_toast_sits_on_the_page_colour() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toast-band-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        for mode in [Mode::Source, Mode::Preview] {
+            let (mut rt, _) = crate::bench::open(&dir, &"A line of the note.\n\n".repeat(200), mode);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            settle(&mut rt);
+            assert_eq!(rect(&rt, "toast-band"), None, "{mode:?}: no band without a toast");
+            rt.update(|s, tx| s.toast("Copied", tx));
+            settle(&mut rt);
+            let band = rect(&rt, "toast-band").unwrap_or_else(|| panic!("{mode:?}: a band under the toast"));
+            let pill = rect(&rt, "toast").expect("the toast shows");
+            let main = rect(&rt, "main").expect("the note area");
+            assert_eq!(band[1] + band[3], main[1] + main[3], "{mode:?}: the band reaches the note area's foot");
+            assert!(band[0] <= main[0] && band[0] + band[2] >= main[0] + main[2], "{mode:?}: the band spans the note area: {band:?} {main:?}");
+            // Its 32 px fade ends 16 px above the pill, so the pill sits on solid page colour.
+            assert!(band[1] + 32.0 <= pill[1] - 16.0, "{mode:?}: band {band:?}, pill {pill:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

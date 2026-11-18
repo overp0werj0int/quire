@@ -241,8 +241,11 @@ pub(super) fn help_sheet(v: V) -> Card {
     Card { el: card, plane: Some(col().center()) }
 }
 
-/// A toast (RD-98): a pill at the bottom centre of the note area, 28 px above its bottom edge,
-/// inside the foot's fade, so the text it covers is already faint.
+/// A toast's place: this far above the note area's bottom edge (RD-98).
+const TOAST_LIFT: f32 = 28.0;
+
+/// A toast (RD-98): a pill at the bottom centre of the note area, `TOAST_LIFT` above its bottom
+/// edge, over `toast_band`.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
     toast_row(popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(sans(13.0, 400.0)).color(c.text).truncate().shrink().min_w(0.0)))
@@ -251,7 +254,25 @@ pub fn toast(v: V, msg: &str) -> El {
 /// The row that holds a toast, 16 px clear of the note area's sides, so the pill always fits
 /// and its text is cut instead.
 fn toast_row(pill: El) -> El {
-    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(28.0)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
+    row().key("toast-row").pin(Some(0.0), None, Some(0.0), Some(TOAST_LIFT)).px(16.0).justify_center().raise().child(pill.shrink().min_w(0.0))
+}
+
+/// While a toast shows, the page fades out under it, in both modes, so no line of the note
+/// reads behind or beside the pill: the page's colour from the note area's bottom edge to
+/// 16 px above the tallest pill (32 px), then a 32 px fade above that. Presses go through it to
+/// the page, and it fades in and out over 140 ms.
+pub fn toast_band(v: V) -> El {
+    const SOLID: f32 = TOAST_LIFT + 32.0 + 16.0;
+    const FADE: f32 = 32.0;
+    let bg = Roles::new(v.p).bg;
+    let stops = [(0.0, bg.alpha(0.0)), (FADE / (SOLID + FADE), bg), (1.0, bg)];
+    let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
+    el().key("toast-band")
+        .pin(Some(0.0), None, Some(0.0), Some(0.0))
+        .h(SOLID + FADE)
+        .linear_gradient(std::f32::consts::PI, stops)
+        .inert()
+        .transition(rune::Transition::opacity().springs(fade))
 }
 
 /// After a delete, the toast's place holds what went and an Undo button with its key, until
