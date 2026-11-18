@@ -4213,6 +4213,41 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A long name being typed in the title bar stays in the title's room: the field stops at
+    /// the room less ".md", the name scrolls inside it, and the caret and ".md" stay in view, at
+    /// 640 and 1280, in both modes. A short name keeps its own small field (RENFIT).
+    #[test]
+    fn a_long_name_stays_in_the_title_bar() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-rename-fit-{}", std::process::id()));
+        let el = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("no {k}"));
+        let long = "A very long name for a note that keeps going and going on and on past every edge there is";
+        for mode in [Mode::Source, Mode::Preview] {
+            for w in [640.0, 1280.0] {
+                let mut rt = garden(&dir, mode);
+                rt.set_viewport((w, 800.0), 1.0);
+                rt.update(|s, tx| s.start_rename(tx));
+                settle(&mut rt);
+                key(&mut rt, Key::Text("A".into()), Mods::default());
+                settle(&mut rt);
+                let short = el(&rt, "rename-box").rect;
+                for c in long.chars().skip(1) {
+                    key(&mut rt, Key::Text(c.to_string()), Mods::default());
+                }
+                settle(&mut rt);
+                let (title, field) = (el(&rt, "title").rect, el(&rt, "rename"));
+                let room = title[0] + title[2];
+                let ext = rt.elements().into_iter().find(|e| e.text.as_deref() == Some(".md") && e.rect[1] < 40.0).expect("the .md after the name").rect;
+                assert_eq!(field.text.as_deref(), Some(long), "{mode:?} {w}: the name was typed");
+                assert!(el(&rt, "rename-box").rect[0] + el(&rt, "rename-box").rect[2] <= room && ext[0] + ext[2] <= room, "{mode:?} {w}: the field and .md {ext:?} stay in the title's room, to x {room}");
+                let caret = field.caret.expect("the field's caret");
+                assert!(caret[0] >= field.rect[0] && caret[0] + caret[2] <= field.rect[0] + field.rect[2], "{mode:?} {w}: the caret {caret:?} shows in the field {:?}", field.rect);
+                assert!((short[2] - (8.0 * 12.0 * 0.6 + 10.0)).abs() < 0.1, "{mode:?} {w}: a one-letter name keeps the field's least width: {short:?}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The pointer anywhere in a Settings switch's 28 pt target, not only over its 20 pt track,
     /// gives the track its hover fill, on and off, and leaving the target takes it back.
     #[test]

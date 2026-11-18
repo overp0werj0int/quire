@@ -458,13 +458,18 @@ pub(super) fn crumb(v: V) -> El {
                 .child(label(".md", style, quiet.faint)),
         ),
         Some(edit) => {
+            // The field grows with the name, up to the title's room less ".md", and the name
+            // then scrolls inside it under the caret.
             let w = (edit.text.chars().count() as f32 + 1.0).max(8.0) * 12.0 * 0.6 + 10.0;
+            let least = 8.0 * 12.0 * 0.6 + 10.0;
             r.child(
                 row()
                     .key("rename-row")
+                    .shrink()
+                    .min_w(0.0)
                     .center_y()
                     .child(
-                        el().key("rename-box").no_window_drag().w(w).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
+                        el().key("rename-box").no_window_drag().w(w).shrink().min_w(least).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
                             super::focus::stop(text_input(edit, style))
                                 .key("rename")
                                 .single_line()
