@@ -445,9 +445,19 @@ mod tests {
         let (name, folder) = tip.split_once('\n').expect("the folder on its own line");
         assert_eq!(name, "Plan");
         assert!(folder.starts_with('…') && folder.ends_with("/Q3"), "{folder}");
-        let long = "A moderately long but perfectly normal note title about planning the next product release";
+        // Names grown to two and three lines in the tooltip's family, whichever `panel_font` is.
+        let grow = |n: f32| {
+            let mut t = "A moderately long but perfectly normal note title".to_string();
+            while lines(&format!("{t} again")) <= n {
+                t.push_str(" again");
+            }
+            t
+        };
+        let long = grow(2.0);
+        assert_eq!(lines(&long), 2.0, "{long}");
         assert_eq!(name_tip(&format!("Drafts/{long}.md")), format!("{long}\nin Drafts"), "a two-line name keeps its folder");
-        let long = format!("{long}, again and again");
+        let long = grow(3.0);
+        assert_eq!(lines(&long), 3.0, "{long}");
         assert_eq!(name_tip(&format!("Drafts/{long}.md")), long, "a three-line name shows whole");
         let longer = format!("{long}, and once more with feeling, because some people name their notes with the whole first paragraph");
         let tip = name_tip(&format!("Drafts/{longer}.md"));
