@@ -201,6 +201,7 @@ struct Parked {
 
 pub fn init() -> App {
     let mut persist = store::load();
+    crate::ui::styles::set_panel_font(&persist.settings.panel_font);
     let writer = Writer::start(None);
     seed_sample(&mut persist);
     let mut app = App {

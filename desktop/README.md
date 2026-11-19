@@ -59,6 +59,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 ### Look
 
 - Sets notes in iA Writer Quattro S, with code in iA Writer Mono S, at 14 px. Settings, Editor picks the source-mode font (Quattro S, Duospace, Mono S, IBM Plex Mono, Courier Prime or Spline Sans Mono), the code font and the size, from 9 to 32 px. Settings, Appearance picks the preview's font: Quattro S, Newsreader or Instrument Sans.
+- Sets the sidebar, the menus, key names and tooltips in iA Writer Quattro S. For the system's monospace font instead, set `"panel_font": "mono"` under `settings` in `state.json` (`~/.config/quire/state.json` on Linux); `"quattro"` is the default. Settings has no row for it.
 - Has 14 themes in Settings, Appearance: 6 for light mode and 8 for dark mode. You pick one for each mode, and "Match system" switches between them.
 - Works Settings from the keyboard. Tab and Shift+Tab move through the controls in reading order, with a ring in the accent on the one in focus. Space or Return presses it. The arrow keys move through a set of choices, such as the themes or a segmented control, and pick one. Esc closes Settings.
 - Works every menu from the keyboard. Up and Down move through it, a letter jumps to an item, Enter or Space picks one and Esc closes it. Right-click the folder's label in the sidebar, or press `Shift+F10` on it, for its menu. `Shift+F10` or the Menu key opens the editor's menu below the caret.

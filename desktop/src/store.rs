@@ -41,6 +41,9 @@ pub struct Settings {
     /// The formatting toolbar above the note, in source mode.
     pub toolbar: bool,
     pub update_links: bool,
+    /// The sidebar's and menus' family, with no row in Settings (SB-07): `quattro`, iA Writer
+    /// Quattro S, or `mono`, the system's monospace.
+    pub panel_font: String,
     pub sync: Sync,
     pub mcp: Mcp,
 }
@@ -65,6 +68,7 @@ impl Default for Settings {
             typewriter_scroll: false,
             toolbar: true,
             update_links: true,
+            panel_font: "quattro".into(),
             sync: Sync::default(),
             mcp: Mcp::default(),
         }

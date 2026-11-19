@@ -1,8 +1,9 @@
 //! The chrome's text styles (PAGE-09). The chrome sets its text in two families, each with one
 //! role:
 //!
-//! - The panel family, fontconfig's `monospace` as omarky reads it (decision 0008), is for
-//!   navigation: the side panels, their captions and footers, and the menus. Key names and
+//! - The panel family, the settings file's `panel_font` (SB-07): iA Writer Quattro S, the
+//!   note's face, by default, or fontconfig's `monospace` as omarky reads it (decision 0008).
+//!   It is for navigation: the side panels, their captions and footers, and the menus. Key names and
 //!   literal values (paths, addresses, tokens, configuration) take it wherever they appear, so
 //!   a key looks the same in the footer, the palette and the shortcut list. Tooltips take it
 //!   too, since most name a key: "Hide outline (Ctrl+\)" is one line in one family.
@@ -15,15 +16,36 @@
 //! the page has its own looks in `preview/`, and `note` names the rest.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rune::{Color, El, Family, TextStyle, text};
 
 use crate::roles::Roles;
 use crate::theme::{Pal, SANS, normal_lh, px};
 
+/// Whether the panel family is the system's monospace, set once from the settings file.
+static MONO: AtomicBool = AtomicBool::new(false);
+
+/// Sets the panel family from the settings file's `panel_font`. Any value but `mono` is
+/// Quattro, the default.
+pub fn set_panel_font(id: &str) {
+    MONO.store(id == "mono", Ordering::Relaxed);
+}
+
+/// The panel family: the settings file's choice (`set_panel_font`).
+pub fn panel_family() -> Family {
+    panel_family_of(if MONO.load(Ordering::Relaxed) { "mono" } else { "quattro" })
+}
+
+/// The panel family for a `panel_font` value: `mono` is the system's monospace, any other
+/// value iA Writer Quattro S.
+pub fn panel_family_of(id: &str) -> Family {
+    if id == "mono" { system_mono() } else { Family::Named("iA Writer Quattro S") }
+}
+
 /// The family fontconfig's `monospace` resolves to (JetBrains Mono on Omarchy), read once, as
 /// omarky reads it. Named rather than `Family::SystemMono`, which loads only the regular face.
-pub fn panel_family() -> Family {
+fn system_mono() -> Family {
     static F: OnceLock<&'static str> = OnceLock::new();
     Family::Named(F.get_or_init(|| {
         std::process::Command::new("fc-match")
@@ -114,6 +136,19 @@ pub fn fixed_advance(family: Family) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SB-07: the panel family is the settings file's `panel_font`, Quattro by default and the
+    /// system's monospace for `mono`; a settings file without it opens with Quattro.
+    #[test]
+    fn the_panel_font_is_a_setting() {
+        assert_eq!(crate::store::Settings::default().panel_font, "quattro");
+        assert_eq!(panel_family_of("quattro"), Family::Named("iA Writer Quattro S"));
+        assert_eq!(panel_family_of("anything else"), panel_family_of("quattro"), "an unknown value is the default");
+        assert_ne!(panel_family_of("mono"), panel_family_of("quattro"));
+        assert_eq!(panel_family_of("mono"), system_mono());
+        let old: crate::store::Settings = serde_json::from_str(r#"{"font":"plex"}"#).unwrap();
+        assert_eq!(old.panel_font, "quattro", "an older settings file takes the default");
+    }
 
     /// C14: every chrome style is in one of the two families, and the two differ.
     #[test]

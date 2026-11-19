@@ -352,8 +352,9 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// KT: a title bar tooltip names its button and its key on one line in the panel family,
-    /// whose characters share one width, as the key does in the footer and the palette.
+    /// KT: a title bar tooltip names its button and its key on one line in the panel family, as
+    /// the key is in the palette. With `panel_font` set to `mono` its characters share one
+    /// width (SB-07).
     #[test]
     fn tooltips_name_the_key_in_the_panel_family() {
         use crate::bench::DT;
@@ -378,7 +379,9 @@ pub(crate) mod scroll_tests {
             per_char.push((text.clone(), (r[2] - 14.0) / text.chars().count() as f32));
         }
         let (lo, hi) = per_char.iter().fold((f32::MAX, 0.0f32), |(lo, hi), (_, w)| (lo.min(*w), hi.max(*w)));
-        assert!(hi - lo < 0.25, "every character is one width, as in a monospace: {per_char:?}");
+        if crate::ui::styles::panel_family() == crate::ui::styles::panel_family_of("mono") {
+            assert!(hi - lo < 0.25, "every character is one width, as in a monospace: {per_char:?}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
