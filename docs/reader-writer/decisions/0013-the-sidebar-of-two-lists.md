@@ -34,6 +34,10 @@ What this overrides:
   Instrument Sans, inside the panel. Rows, titles and key names stay in the panel family
   (SB-07). The caption style itself is unchanged: `styles::caption` already has a sans
   variant.
+- **0008, the font.** The panel family is no longer always fontconfig's `monospace`. It is
+  a setting in the settings file, `panel_font`, with no row in Settings, and its default is
+  iA Writer Quattro S, the face the note uses. `mono` gives the system's monospace back
+  (SB-07). Both side panels follow it.
 - **0008, colours.** The shelf's surface and the selected fill join the fills `Roles::panel`
   lifts faint against, so the 4.5:1 rule holds on them too. Accent used as text, a new use,
   gets the same lift (SB-06).
@@ -47,7 +51,6 @@ What this overrides:
 Kept, though the spec is silent or draws otherwise:
 
 - The width stays 248, not the mock's 264, so the page does not move (SB-124).
-- Rows stay in the panel family. The spec asks for "Quattro S", which Quire does not use.
 - The title bar's magnifier stays, because it finds in the note (SB-118).
 - The drawer below 680 pt holds the same sidebar (SB-121).
 - Every keyboard rule of KEY-95 and KEY-98 holds. The spec draws only the pointer, so
@@ -55,3 +58,15 @@ Kept, though the spec is silent or draws otherwise:
 
 Items marked `[proposed]` in `behavior/sidebar.md` are choices nobody confirmed. Each names
 the other choice.
+
+Update, 2026-11-19: the user answered four more questions after the spec was written.
+
+- The panels' font: "Let's try Quatro S, put it in config file, I'm not sure we want
+  everything monospace in bars, I would like to look at the results." The panel family is
+  the `panel_font` setting, Quattro S by default, the system's monospace the other value
+  (SB-07).
+- The new notes folder setting goes. "+" and Ctrl+N make the note in the active tab's
+  folder, or at the root with no tab (SB-12, SB-13).
+- A text result opens in the current mode: the writer puts the caret at the match, the
+  reader scrolls to it and marks it (SB-64).
+- The fold and the handle's place are kept once for the app, not for each folder (SB-47).

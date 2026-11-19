@@ -48,7 +48,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 
 | Element | Mock | Quire |
 | --- | --- | --- |
-| Row: vault note, folder | 12.5 px mono, about 27 tall, padding 5 and 8, 1 px gap, radius 6 | `styles::nav(panel::BODY)` (12 pt, panel family); height `panel::row_h(panel::BODY)` (28); 8 pt side padding, 1 pt gap and radius 6 as values |
+| Row: vault note, folder | 12.5 px mono, about 27 tall, padding 5 and 8, 1 px gap, radius 6 | `styles::nav(panel::BODY)` (12 pt, panel family: iA Writer Quattro S by default, SB-07); height `panel::row_h(panel::BODY)` (28); 8 pt side padding, 1 pt gap and radius 6 as values |
 | Folder name | weight 500, text strong | `styles::tab(panel::BODY)` (weight 500), renamed `styles::medium` |
 | Active note in the vault | weight 600, text strong | `styles::nav(panel::BODY, true)` |
 | Tab | title 12.5 px mono, caption 10.5 px sans, line 1.15, padding 4, about 35 tall | title `styles::nav(panel::BODY)`; caption `styles::sans(10.5, 400)` (a value: no small sans token exists); 4 pt padding; about 36 tall |
@@ -61,7 +61,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 | Key hint (`Ctrl /`, `Enter`) | 10 px sans, 500, 1 px border, radius 4 | `styles::keys(styles::CAPTION)` (panel family, PAGE-09), 1 pt `Pal::line` border, radius 4 |
 
 - **SB-06** [adapted: 0013] [verify: unit, golden] The sidebar's colours are the roles in the first table, in every theme. `Roles::panel` lifts faint, dim and text against the shelf surface and the selected fill as well as today's fills, so faint keeps 4.5:1 on all of them. The accent as text gets the same lift to 4.5:1 (spec: sizes and colours; kept: decision 0008's contrast rule).
-- **SB-07** [adapted: 0013] [verify: geometry] The sidebar's type and sizes are those of the second table. Rows and titles are in the panel family. Tab captions, section labels and their counts are in Instrument Sans (spec: sizes; decision 0013 amends PAGE-09 for these).
+- **SB-07** [adapted: 0013] [verify: geometry, unit] The sidebar's type and sizes are those of the second table. Rows and titles are in the panel family. Tab captions, section labels and their counts are in Instrument Sans. The panel family is a setting kept in the settings file, `panel_font`, with no row in Settings: `quattro`, iA Writer Quattro S, the face the note uses, is the default; `mono` is the system's monospace, as decision 0008 reads it. It sets both side panels, their menus, key names and tooltips. Every row, label and key hint fits its room in both, at 1x and 1.5x (user; spec: sizes; decision 0013 amends PAGE-09 and 0008 for these).
 - **SB-08** [adapted: 0013] [verify: geometry] A row's pointer target is at least 24 pt each way. A tab's close button and a folder's "+" are 14 pt icons in 24 pt targets (kept: `sidebar_targets_are_large_enough`).
 
 ## Top bar
@@ -69,8 +69,8 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 - **SB-09** [adapted: 0013] [verify: geometry] The top bar holds the search field, which takes the row's width, and the "+" button at its right, 6 pt apart, with 8 pt padding and a 1 pt divider under it (spec: S1, sizes).
 - **SB-10** [adapted: 0013] [verify: geometry, state] The field shows a magnifier, then "Search notes" in faint, then the key hint of search from the active preset (`Ctrl+/`) while it is empty. With text, the text is in strong and a "×" clear button takes the hint's place. Its border turns faint while it has focus (spec: S1, S3).
 - **SB-11** [adapted: 0013] [verify: script] A click in the field, or Ctrl+/, puts the keyboard in it, in both modes. Ctrl+Shift+G (omarky preset) and Ctrl+Shift+F (quire preset) do the same. A key that focuses it selects the text already there. A hidden sidebar shows first, docked or as the drawer. Ctrl+P and Ctrl+F keep their meanings (user; spec: S1; kept: `App::open_search`).
-- **SB-12** [adapted: 0013] [verify: script] The "+" button and Ctrl+N make a note in the folder Settings names for new notes (SB-13). By default that is the active tab's folder, or the vault root with no tab. It opens in a new tab at the end of the shelf, and the note's name field opens in the title bar, as New note does today. Its tooltip is "New note" with its key (spec: S1, interactions; kept: `folders::new_note_in`).
-- **SB-13** [adapted: 0013] [verify: unit, state] [proposed] Settings' new notes folder keeps its choices and gets "The open note's folder" as a new first choice, the default. A folder chosen before stays chosen. The folder root, today's default, reads as the new default. The other choice was to drop the setting, since "+" now follows the open note (the orchestrator's default).
+- **SB-12** [adapted: 0013] [verify: script] The "+" button and Ctrl+N make a note in the active tab's folder, or at the vault root with no tab. It opens in a new tab at the end of the shelf, and the note's name field opens in the title bar, as New note does today. Its tooltip is "New note" with its key (spec: S1, interactions; kept: `folders::new_note_in`).
+- **SB-13** [dropped] [verify: -] Settings' new notes folder. "+" and Ctrl+N follow the open note (SB-12), so the setting goes, with its row in Settings. A settings file that still names a folder loads, and the folder is ignored (user).
 
 ## Open shelf
 
@@ -116,7 +116,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 - **SB-44** [adapted: 0013] [verify: geometry] The folded shelf shows its label with a chevron pointing right and "N tabs", then only the active tab, still filled, closable and able to fold its outline out. A 1 pt line runs under it. The vault takes the rest (spec: S5).
 - **SB-45** [adapted: 0013] [verify: state] Opening a note from the vault while the shelf is folded adds its tab and makes it the one shown. The shelf stays folded (spec: S5).
 - **SB-46** [adapted: 0013] [verify: state] The fold is remembered between sessions (spec: S4).
-- **SB-47** [adapted: 0013] [verify: state] [proposed] One fold and one handle place serve every folder, kept in `state.json`. The other choice was one for each folder, in its session.
+- **SB-47** [adapted: 0013] [verify: state] One fold and one handle place serve every folder, kept in `state.json`, not in each folder's session (user).
 
 ## Vault
 
@@ -139,7 +139,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 - **SB-61** [adapted: 0013] [verify: geometry, state] Title and Text rows use the tab's two rows: the name on top, and below it the folder (Titles) or the first matching line cut at words, as `md::snippet` cuts it today (Text). The matched letters are in the accent as text (spec: S3; kept: `md::snippet`).
 - **SB-62** [adapted: 0013] [verify: state] A Tags row shows a 12 pt tag icon, the tag, and "N notes" on the right. Tags are listed by how many notes carry them, most first (spec: S3; kept: `md::tags`' order).
 - **SB-63** [adapted: 0013] [verify: state] A note that has a tab says " · open" in its caption. Choosing it switches to its tab. Search never opens a second tab for a note (spec: S3).
-- **SB-64** [adapted: 0013] [verify: script] Choosing a Titles row opens or switches to the note, in the current mode. Choosing a Text row does the same and puts the caret at the start of the first match in the writer, with nothing selected (spec: S3; kept: KEY-98, a search match opens in the writer).
+- **SB-64** [adapted: 0013] [verify: script] Choosing a Titles row opens or switches to the note, in the current mode. Choosing a Text row does the same, at its first match, and stays in the current mode. In the writer the caret goes to the start of the match, with nothing selected. In preview the note scrolls to the match and marks it as find marks it. Reading stays reading (user; spec: S3; kept: KEY-98's caret at the match). Today a match always opened in the writer.
 - **SB-65** [adapted: 0013] [verify: state] The row Enter would open has the selected fill and an "Enter" key hint at its right. While the field has the keyboard it is the first row. While a row has the keyboard it is that row (spec: S3).
 - **SB-66** [adapted: 0013] [verify: script] Enter in the field opens the filled row. Down in the field moves the keyboard to the first row. Up and Down move between rows. Up from the first row moves the keyboard back to the field (spec: S3; kept: KEY-98's Down and Up).
 - **SB-67** [adapted: 0013] [verify: state] Search never creates a note. There is no "create note" row (spec: S3).

@@ -70,3 +70,8 @@ bold spaced capitals it read as three more section labels like OPEN. The tabs ar
 medium-weight capitals with no letter-spacing, in the rows' colour, and the open tab is in the
 text colour on a soft pill (8 % of the text colour) that reaches 7 px past its text. The text
 still starts on the rows' text edge. Section labels keep the caption style.
+
+Update, 2026-11-19: the panels' font is a setting, `panel_font` in the settings file, with no
+row in Settings (decision 0013, SB-07). Its default is iA Writer Quattro S, which the user
+wants to try in the panels. `mono` is the family `fc-match monospace` names, as above. The
+sizes, line heights and spacing stay as they are in both.

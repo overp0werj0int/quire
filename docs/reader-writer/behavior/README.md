@@ -13,6 +13,7 @@ is checked.
 | `writer.md` | `WR` | Source mode: live formatting, editing keys, focus, typewriter, chrome, help sheet |
 | `edit-sheet.md` | `SHEET` | Editing one block or section from the reader |
 | `keymap.md` | `KEY` | Every key binding, in the omarky and quire presets |
+| `sidebar.md` | `SB` | The left sidebar: the top bar, the Open shelf, the vault, search, tags, the footer, Note mode and the drawer |
 | `verification.md` | `VER` | How the items are checked |
 
 ## Item format
