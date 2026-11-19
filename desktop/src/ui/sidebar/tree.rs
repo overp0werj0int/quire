@@ -203,7 +203,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .child(icon(&FOLDER, ICON).color(p.acc))
         .child(
             el().key("new-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(3.0).fill(c.hover).child(
-                super::super::focus::stop(text_input(edit, nav(panel::BODY, true)))
+                super::super::focus::stop(text_input(edit, medium(panel::BODY)))
                     .key("new-folder")
                     .single_line()
                     .w_full()
