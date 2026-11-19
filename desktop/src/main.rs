@@ -519,8 +519,11 @@ pub(crate) mod scroll_tests {
                 assert!(e.rect[2] >= 24.0 && e.rect[3] >= 24.0, "{k} is {:?}", e.rect);
                 seen.insert(k.to_string());
             }
-            if k.starts_with("dir:") || k.starts_with("tab:") {
+            if k.starts_with("dir:") {
                 assert_eq!(e.rect[3], 28.0, "{k} keeps its height");
+            }
+            if k.starts_with("tab:") {
+                assert_eq!(e.rect[3], 36.0, "{k}, a tab of two rows, keeps its height");
             }
         }
         assert_eq!(seen.len(), 7, "every kind was measured: {seen:?}");
@@ -4903,8 +4906,52 @@ mod layer_matrix_tests {
 
 
 
+    /// The open folder's root.
+    fn dir_root(s: &App) -> std::path::PathBuf {
+        s.vault.as_ref().map(|v| v.path.clone()).expect("a folder")
+    }
 
 
+    /// SB-15, SB-127, SB-128: a tab is the note's name over its folder, the vault's name for a
+    /// note at the root; two notes of one name are told apart by their folders, and a long
+    /// name and a long folder stay in the tab.
+    #[test]
+    fn a_tab_shows_its_name_over_its_folder() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-names-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        let deep = "Quarterly planning/for every team/across every region";
+        let long = "A moderately long but perfectly normal note title about planning";
+        let root = dir.join("notes");
+        for p in ["Box/note.md".to_string(), format!("{deep}/{long}.md")] {
+            std::fs::create_dir_all(root.join(&p).parent().unwrap()).unwrap();
+            std::fs::write(root.join(&p), "# N\n").unwrap();
+        }
+        let open = format!("{deep}/{long}.md");
+        rt.update(move |s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.open_file("note.md", None, tx);
+            s.open_file("Box/note.md", None, tx);
+            s.open_file(&open, None, tx);
+        });
+        settle(&mut rt);
+        let texts = |rt: &Runtime<App>, tab: &str| -> Vec<(String, [f32; 4])> {
+            rt.elements().into_iter().filter(|e| !e.exiting && e.path.split('/').any(|s| s == tab)).filter_map(|e| e.text.map(|t| (t, e.rect))).collect()
+        };
+        let words = |rt: &Runtime<App>, tab: &str| texts(rt, tab).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        assert_eq!(words(&rt, "tab:note.md"), ["note", "notes"], "a note at the root: the vault's name");
+        assert_eq!(words(&rt, "tab:Box|note.md"), ["note", "Box"], "one name, told apart by the folder");
+        let key = crate::folders::row_key("tab", &format!("{deep}/{long}.md"));
+        let tab = rect_of(&rt, &key);
+        let x = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("x") && e.path.split('/').any(|s| s == key)).expect("its close button").rect;
+        let parts = texts(&rt, &key);
+        assert_eq!(parts.len(), 2, "a name and a folder: {parts:?}");
+        for (t, r) in &parts {
+            assert!(r[0] >= tab[0] && r[0] + r[2] <= x[0] + 0.5, "'{t}' {r:?} stays left of the close button {x:?}");
+        }
+        assert!(parts[1].1[1] > parts[0].1[1], "the folder is under the name");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a

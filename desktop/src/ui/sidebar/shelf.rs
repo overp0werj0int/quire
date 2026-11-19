@@ -1,22 +1,30 @@
-//! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14, SB-21). A tab dragged up
-//! or down moves within the shelf. In Folder mode a tab per open note, in Note mode one per
-//! note opened as a file. Two-row tabs come next; the rows are today's.
+//! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14 to SB-21). Each tab is two
+//! rows, the note's name over its folder, with a close button on hover and always on the
+//! active tab. A tab dragged up or down moves within the shelf. In Folder mode a tab per open
+//! note, in Note mode one per note opened as a file.
 
 use rune::{Anim, Color, Cursor, El, Phase, PointerButton, Spring, col, icon, row, text};
 
 use super::super::V;
 use super::super::lists;
 use super::super::panel;
-use super::super::styles::nav;
+use super::super::styles::{nav, sans};
 use super::super::widgets::{CLOSE, name_tip};
 use super::BUTTON_END;
+use super::tree::last_part;
 use crate::app::{App, Shelved};
 use crate::md;
 use crate::roles::Roles;
 use crate::sidebar::Reorder;
 
-/// The size of a row's close button: the smallest pointer target. The drawn icon stays small.
+/// The size of a tab's close button: the smallest pointer target. The drawn icon stays small.
 const TARGET: f32 = 24.0;
+/// A tab's height: its two rows and 4 pt above and below (SB-07).
+const TAB_H: f32 = 36.0;
+/// The room between two tabs.
+const GAP: f32 = 1.0;
+/// A tab's corners.
+const RADIUS: f32 = 6.0;
 /// The spring the tabs a lifted tab passes step aside on.
 const STEP: Spring = Spring::new(0.18, 0.0);
 
@@ -25,15 +33,20 @@ pub(super) fn count(v: V) -> usize {
     v.s.shelf().len()
 }
 
-/// The shelf's tabs, one Tab stop. With no note open there are none. Folded, the active tab's
-/// alone, which has nowhere to move (SB-44).
+/// The height of `n` tabs.
+pub(super) fn height(n: usize) -> f32 {
+    n as f32 * TAB_H + n.saturating_sub(1) as f32 * GAP
+}
+
+/// The shelf's tabs, one Tab stop that enters at the active tab. With no note open there are
+/// none. Folded, the active tab's alone, which has nowhere to move (SB-44).
 pub(super) fn rows(v: V, folded: bool) -> El {
     let s = v.s;
     let shelf = s.shelf();
     let on = s.shelved();
     // A drag the shelf's tabs changed under is let go of (`App::reorder`).
     let drag = s.reorder.filter(|r| !folded && r.len() == shelf.len());
-    let mut list = lists::list(col().key("open-notes").w_full(), "list");
+    let mut list = lists::list(col().key("open-notes").w_full().gap(GAP), "list");
     for (i, t) in shelf.iter().enumerate() {
         if folded && on.as_ref() != Some(t) {
             continue;
@@ -44,14 +57,26 @@ pub(super) fn rows(v: V, folded: bool) -> El {
     list
 }
 
-/// A tab's row: the note's name, with its close button on hover and on the active tab. A
-/// middle click closes it too.
+/// A tab's two rows: the note's name, cut at its end, over its folder's path, cut at its start
+/// (SB-15, SB-128). The active tab has the selected fill and its close button always shows;
+/// another shows its button under the pointer (SB-16). A click on another tab switches to it, a
+/// click on the active tab does nothing yet, and a middle click closes either (SB-19).
 fn tab(v: V, t: &Shelved, on: bool) -> El {
+    let s = v.s;
     let c = Roles::panel(v.p);
-    let (name, tip) = match t {
-        Shelved::Tab(p) => (md::base(p).to_string(), p.clone()),
-        Shelved::File(f) => (f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()), crate::store::tilde(f)),
+    let (title, folder, tip) = match t {
+        Shelved::Tab(p) => {
+            let dir = md::dir(p);
+            let folder = if dir.is_empty() { s.vault.as_ref().map_or_else(String::new, |v| v.name.clone()) } else { dir.to_string() };
+            (md::base(p).to_string(), folder, p.clone())
+        }
+        Shelved::File(f) => {
+            let name = f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let folder = f.parent().map_or_else(String::new, crate::store::tilde);
+            (md::base(&name).to_string(), folder, crate::store::tilde(f))
+        }
     };
+    let small = sans(10.5, 400.0);
     let close_t = t.clone();
     let close = row()
         .key("x")
@@ -64,20 +89,37 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press(move |s: &mut App| s.close_shelved(&close_t))
         .child(icon(&CLOSE, 8.0).color(c.faint));
-    let shade = panel::shade(t.key(), panel::BODY, 0, 0.0, &c, on)
+    let names = col()
+        .grow(1.0)
+        .shrink()
+        .min_w(0.0)
+        .gap(1.0)
+        .child(text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip)))
+        .child(row().w_full().child(text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small))));
+    let mut el = row()
+        .key(t.key())
+        .h(TAB_H)
+        .mx(panel::INSET)
+        .pl(panel::TEXT_X - panel::INSET)
         .pr(BUTTON_END)
+        .gap(2.0)
+        .center_y()
+        .radius(RADIUS)
         .hover_group()
         .role("listitem")
         .checked(on)
-        .label(name.clone())
+        .label(title)
         .pointer_buttons([PointerButton::Primary, PointerButton::Middle]);
+    el = if on { el.fill(c.selected) } else { el.hover(c.hover) };
     let press_t = t.clone();
-    lists::opener(shade, v.p, on, move |s: &mut App, tx| {
+    let el = lists::item(el, v.p, on, move |s: &mut App, tx| {
         if tx.button() == PointerButton::Middle {
             s.close_shelved(&press_t);
-        } else if std::mem::take(&mut s.dropped) && !tx.by_keys() {
-            // The release of a drag that lifted the tab is no click (SB-21).
-        } else if s.shelved().as_ref() != Some(&press_t) {
+        } else if (std::mem::take(&mut s.dropped) && !tx.by_keys()) || s.shelved().as_ref() == Some(&press_t) {
+            // The release of a drag that lifted the tab is no click (SB-21), and a click on
+            // the active tab folds its outline out (SB-26), in a later stage.
+            return;
+        } else {
             match &press_t {
                 Shelved::Tab(p) => s.open_file(p, None, tx),
                 Shelved::File(f) => {
@@ -85,10 +127,13 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
                 }
             }
         }
-    })
-    .child(text(name).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(&tip)))
-    .child(close)
+        s.close_drawer();
+        s.keys_to_note(tx);
+    });
+    el.child(names).child(close)
 }
+
+
 
 /// A tab the pointer can drag to a new place, `i` of `len` (SB-21). Past a few points it lifts
 /// and follows the pointer, over the others, and the tabs it passes step aside on springs. The
@@ -117,7 +162,7 @@ fn reorder(v: V, el: El, i: usize, len: usize, drag: Option<Reorder>) -> El {
         match d.phase {
             Phase::Down => {
                 s.dropped = false;
-                s.reorder = Some(Reorder::press(i, len, panel::row_h(panel::BODY)));
+                s.reorder = Some(Reorder::press(i, len, TAB_H + GAP));
             }
             Phase::Move => {
                 if let Some(r) = &mut s.reorder {

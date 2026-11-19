@@ -29,9 +29,9 @@ fn room(v: V) -> f32 {
     (v.vh - super::super::titlebar::BAR_H - bars).max(0.0)
 }
 
-/// The shelf's height for `n` rows.
+/// The shelf's height for `n` tabs.
 fn shelf_h(n: usize) -> f32 {
-    LABEL_TOP + LABEL_H + panel::RING_ROOM + n as f32 * panel::row_h(panel::BODY) + SHELF_END
+    LABEL_TOP + LABEL_H + panel::RING_ROOM + shelf::height(n) + SHELF_END
 }
 
 /// The vault's least height: its label and two rows (SB-36).
