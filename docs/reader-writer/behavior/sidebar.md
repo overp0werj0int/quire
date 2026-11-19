@@ -54,7 +54,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 | Tab | title 12.5 px mono, caption 10.5 px sans, line 1.15, padding 4, about 35 tall | title `styles::nav(panel::BODY)`; caption `styles::sans(10.5, 400)` (a value: no small sans token exists); 4 pt padding; about 36 tall |
 | Outline entry | 11.5 px, padding 3, about 22 tall, indent 16 with a guide | `styles::nav(panel::BODY_SMALL)` (11 pt); 24 tall, the least pointer target (SB-08), since no fill shows an entry's edge; the guide 16 pt in from the tab's edge, the text 13 pt past the guide (4 to the entry's edge and 8 in it) |
 | Section label | 10 px sans, 600, capitals, 0.1 em apart; 10 px chevron; count 10 px, not capitals | `styles::caption(t, false, p)` (Instrument Sans 10, 600, 1 pt apart, faint); `CHEVRON_DOWN` or `CHEVRON_RIGHT` at 10 in faint; count `styles::sans(10.0, 500.0)` in faint |
-| Icons | 14 px, 1.5 px stroke, round caps | 14 pt; new `FOLDER`, `FOLDER_OPEN`, `TAG` and `GEAR` drawn from the spec's symbols; `SEARCH`, `PLUS` and `CLOSE` kept |
+| Icons | 14 px, 1.5 px stroke, round caps | 14 pt; `FOLDER`, `FOLDER_OPEN`, `TAG`, `GEAR`, `PLUS`, `SB_SEARCH` and `SB_CLOSE` drawn from the spec's 16-unit symbols at 1.5 stroke (round caps and joins); `SB_CHEVRON` at 10 pt, 1.6 stroke |
 | Tree indent | 21 px a level; guide 1 px at the parent icon's centre | 21 pt a level, a value (`panel::INDENT`, 14, stays for the outline panel) |
 | Top bar, footer | padding 8; buttons 28 × 28, radius 6; field radius 7; 1 px divider | the mock's values; dividers in `Pal::line` |
 | Handle | 9 px tall, a line above and below, grip 22 × 2 | the mock's values; lines `Pal::line`, grip in faint, radius 1 |

@@ -17,7 +17,7 @@ use rune::{El, ScrollSpec, col, el, icon, row, text, text_input};
 use super::V;
 use super::panel;
 use super::styles::{keys, nav};
-use super::widgets::{CLOSE, Control, GEAR, PLUS, SEARCH, TAG};
+use super::widgets::{Control, GEAR, PLUS, SB_CLOSE, SB_SEARCH, TAG};
 use crate::app::App;
 use crate::keymap;
 use crate::roles::Roles;
@@ -34,7 +34,7 @@ const BUTTON: f32 = 28.0;
 /// The top bar's and the footer's padding.
 const BAR_PAD: f32 = 8.0;
 /// The sidebar's icons (SB-07).
-const ICON: f32 = 14.0;
+pub(super) const ICON: f32 = 14.0;
 /// The longest key hint the search field shows, in characters, as `Ctrl+/` (SB-10).
 const HINT_CHARS: usize = 6;
 
@@ -90,7 +90,7 @@ fn top_bar(v: V) -> El {
         .focus_ring(rw, rg, rc)
         .keeps_text_selection()
         .control(|s: &mut App, tx| s.new_note(None, tx))
-        .child(icon(&PLUS, 12.0).color(c.text));
+        .child(icon(&PLUS, ICON).color(c.text));
     row()
         .key("side-top")
         .w_full()
@@ -166,7 +166,7 @@ fn search_field(v: V) -> El {
                     s.query = rune::TextEdit::new("");
                     tx.focus("search", false);
                 })
-                .child(icon(&CLOSE, 8.0).color(c.dim)),
+                .child(icon(&SB_CLOSE, ICON).color(c.faint)),
         )
     };
     row()
@@ -183,7 +183,7 @@ fn search_field(v: V) -> El {
         .border(1.0, p.line)
         .border_layout()
         .focus_within_ring(1.0, -1.0, c.faint)
-        .child(icon(&SEARCH, ICON).color(c.faint))
+        .child(icon(&SB_SEARCH, ICON).color(c.faint))
         .child(field)
         .children(end)
 }

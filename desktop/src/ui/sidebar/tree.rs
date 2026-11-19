@@ -167,7 +167,7 @@ fn count_or_add(v: V, f: &Folder) -> El {
         .help("New note in this folder")
         .group_opacity(0.0, 1.0)
         .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&path), None, tx))
-        .child(icon(&PLUS, 12.0).color(c.dim));
+        .child(icon(&PLUS, ICON).color(c.dim));
     let count = text(f.count.to_string()).key("count").font(nav(panel::BODY_SMALL, false)).color(c.faint).group_opacity(1.0, 0.0);
     row().min_w(TARGET).h(TARGET).center_y().justify_end().pr(COUNT_END).child(count).child(add)
 }
