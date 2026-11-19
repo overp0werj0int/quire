@@ -5588,6 +5588,35 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-44: while the Open shelf is folded to its label and the active tab, clicking the active
+    /// tab still folds its outline out under it and clicking again folds it back, with the vault
+    /// moving down cleanly beneath the shelf.
+    #[test]
+    fn the_folded_shelf_folds_its_outline_out() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-folded-shelf-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        click(&mut rt, "label-shelf");
+        glide(&mut rt);
+        assert_eq!(tab_order(&mut rt), ["tab:Box|many.md"], "folded shelf shows only the active tab");
+        assert!(entries(&rt).is_empty(), "its outline starts folded");
+        let shelf_closed = rect_of(&rt, "shelf");
+        click(&mut rt, "tab:Box|many.md");
+        glide(&mut rt);
+        assert_eq!(entries(&rt), ["One", "Two", "Three"], "clicking the active tab folds its outline out");
+        let shelf_open = rect_of(&rt, "shelf");
+        let vault_open = rect_of(&rt, "vault");
+        assert!(shelf_open[3] > shelf_closed[3] + 70.0, "the folded shelf grows for the three entries: {shelf_closed:?} -> {shelf_open:?}");
+        assert!((vault_open[1] - (shelf_open[1] + shelf_open[3])).abs() < 0.5, "the vault sits directly under the folded shelf: {vault_open:?} under {shelf_open:?}");
+        assert_eq!(tab_order(&mut rt), ["tab:Box|many.md"], "the shelf stays folded");
+        click(&mut rt, "tab:Box|many.md");
+        glide(&mut rt);
+        assert!(entries(&rt).is_empty(), "clicking again folds the outline back");
+        let shelf_back = rect_of(&rt, "shelf");
+        assert!((shelf_back[3] - shelf_closed[3]).abs() < 0.5, "and the shelf returns to its folded height: {shelf_back:?} vs {shelf_closed:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-82, SB-83, SB-84: Right on the active tab folds its outline out and Left folds it back,
     /// with the keyboard staying on the tab; Right on another tab does nothing. Up and Down walk
     /// the tabs and the entries between them, Left on an entry goes to its tab, Enter or Space
