@@ -222,8 +222,8 @@ impl App {
     /// else the search field.
     pub(crate) fn sidebar_stop(&self) -> String {
         if self.note_mode() {
-            let shown = self.note_path().or_else(|| self.notes.first().cloned());
-            return shown.map_or_else(|| "open-notes".into(), |f| format!("note:{}", f.display()));
+            let shown = self.shelved().or_else(|| self.shelf().into_iter().next());
+            return shown.map_or_else(|| "open-notes".into(), |t| t.key());
         }
         let q = self.query.text.trim();
         if !q.is_empty() {
@@ -233,10 +233,10 @@ impl App {
         if self.show_tags {
             return if crate::md::tags(self.files()).is_empty() { "foot-tags".into() } else { "tags".into() };
         }
-        let tab = self.active.as_ref().filter(|a| self.tabs.contains(a));
+        let tab = self.shelved().map(|t| t.key());
         // A folded vault shows no tree: the active tab, else the vault's label.
         if tab.is_some() && self.persist.sidebar.folded == Some(crate::sidebar::Section::Vault) {
-            return tab.map_or_else(|| "label-vault".into(), |a| format!("tab:{a}"));
+            return tab.unwrap_or_else(|| "label-vault".into());
         }
         let shows = |path: &str| {
             let dir = crate::md::dir(path);
@@ -251,7 +251,7 @@ impl App {
         match self.active.as_deref() {
             Some(a) if shows(a) => crate::folders::row_key("file", a),
             _ if !self.files().is_empty() || self.vault.as_ref().is_some_and(|v| !v.folders.is_empty()) => "tree".into(),
-            _ => tab.map_or_else(|| "search".into(), |a| format!("tab:{a}")),
+            _ => tab.unwrap_or_else(|| "search".into()),
         }
     }
 

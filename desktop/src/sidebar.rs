@@ -1,6 +1,6 @@
 //! The sidebar's two lists as state: which one is folded and where the handle between them
-//! sits (`docs/reader-writer/behavior/sidebar.md`, SB-33 to SB-47). Pure, with no drawing:
-//! `ui::sidebar` draws from it.
+//! sits, and a tab dragged to a new place (`docs/reader-writer/behavior/sidebar.md`, SB-21,
+//! SB-33 to SB-47). Pure, with no drawing: `ui::sidebar` draws from it.
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +45,83 @@ pub fn split(stored: Option<f32>, room: f32, fit: f32, min_shelf: f32, min_vault
     stored.unwrap_or(fit.min(room / 2.0)).max(min_shelf).min((room - min_vault).max(0.0))
 }
 
+
+/// Points the pointer travels before a press on a tab lifts it: Rune's click slop, so a
+/// press that does not lift is a click (SB-21).
+const SLOP: f32 = 4.0;
+
+/// A tab held by the pointer, ported from rune-kit's `shell/reorder.rs`. A press, then past
+/// `SLOP` a lift that carries it from its place `from` to `to`, `dy` from the press, tabs
+/// `pitch` apart. `len` is how many tabs the shelf had at the press: a drag over a shelf whose
+/// tabs changed since is stale.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Reorder {
+    from: usize,
+    to: usize,
+    dy: f32,
+    pitch: f32,
+    lifted: bool,
+    len: usize,
+}
+
+impl Reorder {
+    /// The pointer went down on tab `from` of `len`, tabs `pitch` apart.
+    pub fn press(from: usize, len: usize, pitch: f32) -> Self {
+        Reorder { from, to: from, dy: 0.0, pitch: pitch.max(1.0), lifted: false, len }
+    }
+
+    /// The pointer moved `dy` since the press. Past the slop the tab lifts, and stays lifted.
+    pub fn drag(&mut self, dy: f32) {
+        self.lifted |= dy.abs() >= SLOP;
+        if !self.lifted {
+            return;
+        }
+        self.dy = dy;
+        let to = self.from as f32 + (dy / self.pitch).round();
+        self.to = to.clamp(0.0, self.len.saturating_sub(1) as f32) as usize;
+    }
+
+    /// The lifted tab, by its place before the drag.
+    pub fn lifted(&self) -> Option<usize> {
+        self.lifted.then_some(self.from)
+    }
+
+    /// How many tabs the shelf had at the press.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// How far tab `i` sits from its place: the lifted tab with the pointer, and the tabs
+    /// between its place and its target a step toward the gap it left.
+    pub fn shift(&self, i: usize) -> f32 {
+        let Reorder { from, to, dy, pitch, lifted, .. } = *self;
+        if !lifted {
+            0.0
+        } else if i == from {
+            dy
+        } else if from < i && i <= to {
+            -pitch
+        } else if to <= i && i < from {
+            pitch
+        } else {
+            0.0
+        }
+    }
+
+    /// The drop: `(from, to)` when the tab lifted and lands somewhere new.
+    pub fn end(self) -> Option<(usize, usize)> {
+        (self.lifted && self.from != self.to).then_some((self.from, self.to))
+    }
+}
+
+/// Moves the item at `from` to `to`, the others keeping their order.
+pub fn move_tab<T>(tabs: &mut Vec<T>, from: usize, to: usize) {
+    if from < tabs.len() && to < tabs.len() {
+        let t = tabs.remove(from);
+        tabs.insert(to, t);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,5 +164,43 @@ mod tests {
         assert_eq!(split(stored, 800.0, 100.0, 70.0, 100.0), 400.0, "a taller window puts it back");
         assert_eq!(split(stored, 150.0, 100.0, 70.0, 100.0), 50.0, "the vault keeps its minimum, the shelf takes the rest");
         assert_eq!(split(stored, 60.0, 100.0, 70.0, 100.0), 0.0, "nothing left for the shelf");
+    }
+
+
+    /// SB-21: a lifted tab follows the pointer, and the tabs between its place and its target
+    /// step a pitch toward the gap it left; the drop moves it there.
+    #[test]
+    fn reorder_shifts_the_passed_tabs() {
+        let mut r = Reorder::press(1, 5, 37.0);
+        r.drag(80.0);
+        assert_eq!(r.lifted(), Some(1));
+        let shifts: Vec<f32> = (0..5).map(|i| r.shift(i)).collect();
+        assert_eq!(shifts, [0.0, 80.0, -37.0, -37.0, 0.0], "down two places");
+        r.drag(-500.0);
+        assert_eq!((r.shift(0), r.shift(2)), (37.0, 0.0), "up past the top: clamped to the first place");
+        assert_eq!(r.end(), Some((1, 0)));
+        let mut r = Reorder::press(3, 5, 37.0);
+        r.drag(900.0);
+        assert_eq!(r.end(), Some((3, 4)), "down past the end: the last place");
+        let mut tabs = vec!["a", "b", "c", "d"];
+        move_tab(&mut tabs, 0, 2);
+        assert_eq!(tabs, ["b", "c", "a", "d"]);
+        move_tab(&mut tabs, 3, 0);
+        assert_eq!(tabs, ["d", "b", "c", "a"]);
+    }
+
+    /// SB-21: a press that moves less than the slop is a click: nothing lifts or moves, and a
+    /// drag that comes back to its place moves nothing either.
+    #[test]
+    fn a_press_that_does_not_move_is_a_click() {
+        let mut r = Reorder::press(2, 4, 37.0);
+        r.drag(3.0);
+        assert_eq!((r.lifted(), r.shift(2), r.shift(3)), (None, 0.0, 0.0));
+        assert_eq!(r.end(), None);
+        let mut r = Reorder::press(2, 4, 37.0);
+        r.drag(40.0);
+        r.drag(2.0);
+        assert_eq!(r.lifted(), Some(2), "once lifted it stays lifted");
+        assert_eq!(r.end(), None, "dropped in its own place");
     }
 }

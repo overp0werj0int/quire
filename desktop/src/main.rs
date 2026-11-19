@@ -3203,7 +3203,7 @@ mod note_mode_tests {
         for _ in 0..60 {
             rt.frame(DT);
         }
-        let row = format!("note:{}", loose.join("a.md").display());
+        let row = crate::folders::row_key("note", &loose.join("a.md").to_string_lossy());
         assert!(shown(&rt, "open-notes") && shown(&rt, &row), "the Open list holds the note");
         // SB-119: the shelf and a footer with the settings button alone; the Open label does
         // not fold.
@@ -4779,6 +4779,132 @@ mod layer_matrix_tests {
         assert!(rect(&rt, "handle").is_none(), "no handle while a section is folded");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The tabs from top to bottom as drawn, once the ones that moved have glided to their
+    /// places.
+    fn tab_order(rt: &mut Runtime<App>) -> Vec<String> {
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let mut tabs: Vec<_> = rt.elements().into_iter().filter(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.starts_with("tab:"))).collect();
+        tabs.sort_by(|a, b| a.rect[1].total_cmp(&b.rect[1]));
+        tabs.into_iter().filter_map(|e| e.key).collect()
+    }
+
+    /// `garden` with three tabs, note.md, Box/a.md and Box/b.md, and `active` shown.
+    fn three_tabs(dir: &std::path::Path, active: &'static str) -> Runtime<App> {
+        let mut rt = garden(dir, Mode::Preview);
+        rt.update(move |s, tx| {
+            s.open_file("Box/a.md", None, tx);
+            s.open_file("Box/b.md", None, tx);
+            s.open_file(active, None, tx);
+        });
+        settle(&mut rt);
+        rt
+    }
+
+    fn rect_of(rt: &Runtime<App>, k: &str) -> [f32; 4] {
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect).unwrap_or_else(|| panic!("no {k}"))
+    }
+
+    /// Drags the tab keyed `tab` by `dy` in six steps; Esc before the release when `esc`.
+    fn drag_tab(rt: &mut Runtime<App>, tab: &str, dx: f32, dy: f32, esc: bool) {
+        let r = rect_of(rt, tab);
+        let (x, y) = (r[0] + 40.0, r[1] + r[3] / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        for i in 1..=6 {
+            rt.pointer_move(x + dx * i as f32 / 6.0, y + dy * i as f32 / 6.0);
+            rt.frame(DT);
+        }
+        if esc {
+            rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+            rt.frame(DT);
+        }
+        rt.pointer_up(x + dx, y + dy);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+    }
+
+    fn tabs_and_active(rt: &mut Runtime<App>) -> (Vec<String>, Option<String>) {
+        let mut out = None;
+        rt.update_if(|s, _| {
+            out = Some((s.tabs.clone(), s.active.clone()));
+            false
+        });
+        out.unwrap()
+    }
+
+    /// SB-21: a tab dragged down two places, or up past the top, lands there, and the active
+    /// tab and the keyboard stay as they were. Nothing moves on disk, and the tree's own drag
+    /// never starts. A press that does not move is a click.
+    #[test]
+    fn a_dragged_tab_moves() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-drag-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "Box/a.md");
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|a.md", "tab:Box|b.md"]);
+        rt.update(|_, tx| tx.focus(crate::focus::NOTE, false));
+        settle(&mut rt);
+        let before = focused(&rt);
+        drag_tab(&mut rt, "tab:note.md", 0.0, 74.0, false);
+        assert_eq!(tab_order(&mut rt), ["tab:Box|a.md", "tab:Box|b.md", "tab:note.md"], "down two places");
+        assert_eq!(tabs_and_active(&mut rt), (vec!["Box/a.md".into(), "Box/b.md".into(), "note.md".into()], Some("Box/a.md".into())), "the order is the session's, and the active tab stays");
+        assert_eq!(focused(&rt), before, "the keyboard stays where it was");
+        drag_tab(&mut rt, "tab:Box|b.md", 0.0, -500.0, false);
+        assert_eq!(tab_order(&mut rt), ["tab:Box|b.md", "tab:Box|a.md", "tab:note.md"], "up past the top: first");
+        // Over the tree's folder, the drop moves the tab and no note.
+        let target = rect_of(&rt, "dir:Box");
+        let from = rect_of(&rt, "tab:note.md");
+        drag_tab(&mut rt, "tab:note.md", 0.0, target[1] - from[1], false);
+        assert!(dir.join("notes/note.md").is_file() && !dir.join("notes/Box/note.md").exists(), "no note moved");
+        rt.update_if(|s, _| {
+            assert!(s.dragging.is_none(), "the tree's drag never started");
+            false
+        });
+        drag_tab(&mut rt, "tab:note.md", 0.0, 2.0, false);
+        assert_eq!(tab_order(&mut rt), ["tab:Box|b.md", "tab:Box|a.md", "tab:note.md"], "a press that does not move moves nothing");
+        assert_eq!(tabs_and_active(&mut rt).1.as_deref(), Some("note.md"), "it is a click: the tab is shown");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-21: while it is lifted the tab follows the pointer and the tabs it passes step aside;
+    /// Esc puts it back, and the release that follows moves nothing.
+    #[test]
+    fn esc_puts_a_lifted_tab_back() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-esc-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "note.md");
+        let (a, b) = (rect_of(&rt, "tab:Box|a.md"), rect_of(&rt, "tab:note.md"));
+        let (x, y) = (b[0] + 40.0, b[1] + b[3] / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        for i in 1..=6 {
+            rt.pointer_move(x, y + 45.0 * i as f32 / 6.0);
+            rt.frame(DT);
+        }
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!((rect_of(&rt, "tab:note.md")[1] - (b[1] + 45.0)).abs() < 0.5, "the lifted tab follows the pointer");
+        assert!((rect_of(&rt, "tab:Box|a.md")[1] - b[1]).abs() < 0.5, "the tab it passed stepped up into its place: {:?} from {a:?}", rect_of(&rt, "tab:Box|a.md"));
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        rt.pointer_up(x, y + 45.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|a.md", "tab:Box|b.md"], "Esc put it back");
+        assert_eq!((rect_of(&rt, "tab:note.md"), rect_of(&rt, "tab:Box|a.md")), (b, a), "both in their places");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+
+
+
+
+
+
 
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a

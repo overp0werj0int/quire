@@ -87,6 +87,24 @@ pub struct Sel {
     pub force_source: bool,
 }
 
+/// A tab of the Open shelf: a note of the open folder, by its path, or in Note mode a note
+/// opened as a file.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Shelved {
+    Tab(String),
+    File(PathBuf),
+}
+
+impl Shelved {
+    /// The tab's element key, with `|` for `/` as the tree's rows have it.
+    pub fn key(&self) -> String {
+        match self {
+            Shelved::Tab(p) => crate::folders::row_key("tab", p),
+            Shelved::File(f) => crate::folders::row_key("note", &f.to_string_lossy()),
+        }
+    }
+}
+
 pub struct App {
     pub screen: Screen,
     pub persist: Persist,
@@ -157,6 +175,12 @@ pub struct App {
     /// While the sidebar's handle is dragged, the shelf's stored height before the drag, which
     /// a drag called off puts back.
     pub handle: Option<Option<f32>>,
+    /// A tab held by the pointer on the Open shelf, by its place among the tabs it shows
+    /// (SB-21). Any change to the tabs lets go of it.
+    pub reorder: Option<crate::sidebar::Reorder>,
+    /// A tab drag that lifted has just been let go of: the press its release sends after it,
+    /// with the tab still under the pointer, is no click (SB-21). The next press down clears it.
+    pub dropped: bool,
     pub new_folder: Option<crate::folders::NewFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
@@ -253,6 +277,8 @@ pub fn init() -> App {
         theme_changed: None,
         dragging: None,
         handle: None,
+        reorder: None,
+        dropped: false,
         new_folder: None,
         sync: Default::default(),
         images: Default::default(),
@@ -812,6 +838,7 @@ impl App {
         let Some(i) = self.notes.iter().position(|n| n == file) else { return };
         let shown = self.note_path().as_deref() == Some(file);
         self.notes.remove(i);
+        self.reorder = None;
         // A closed note forgets its undo history and locks again.
         self.parked.remove(file);
         if !shown {
@@ -1083,6 +1110,7 @@ impl App {
         }
         if !self.tabs.iter().any(|t| t == path) {
             self.tabs.push(path.to_string());
+            self.reorder = None;
         }
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
@@ -1121,6 +1149,7 @@ impl App {
         }
         let Some(i) = self.tabs.iter().position(|x| x == p) else { return };
         self.tabs.remove(i);
+        self.reorder = None;
         self.edits.remove(p);
         // A closed note locks again.
         self.unlocked.remove(p);
@@ -1135,6 +1164,51 @@ impl App {
         self.renaming = None;
         self.persist_later();
     }
+
+    /// The Open shelf's tabs in their order: in Folder mode the tabs whose notes exist, in Note
+    /// mode the notes opened as files.
+    pub fn shelf(&self) -> Vec<Shelved> {
+        if self.note_mode() {
+            return self.notes.iter().cloned().map(Shelved::File).collect();
+        }
+        self.tabs.iter().filter(|t| self.files().contains_key(*t)).cloned().map(Shelved::Tab).collect()
+    }
+
+    /// The shelf's active tab.
+    pub fn shelved(&self) -> Option<Shelved> {
+        if self.note_mode() {
+            return self.note_path().map(Shelved::File);
+        }
+        self.active.clone().filter(|a| self.tabs.contains(a)).map(Shelved::Tab)
+    }
+
+    /// Closes a tab of the shelf.
+    pub fn close_shelved(&mut self, t: &Shelved) {
+        match t {
+            Shelved::Tab(p) => self.close_tab(p),
+            Shelved::File(f) => self.close_note(f),
+        }
+    }
+
+    /// Moves the shelf's tab at `from` to `to`, both places among the tabs it shows (SB-21).
+    /// The order is kept with the folder's session.
+    pub fn move_shelved(&mut self, from: usize, to: usize) {
+        let shelf = self.shelf();
+        let (Some(a), Some(b)) = (shelf.get(from), shelf.get(to)) else { return };
+        match (a, b) {
+            (Shelved::Tab(a), Shelved::Tab(b)) => {
+                let at = |p: &str| self.tabs.iter().position(|t| t == p);
+                if let (Some(i), Some(j)) = (at(a), at(b)) {
+                    crate::sidebar::move_tab(&mut self.tabs, i, j);
+                }
+            }
+            _ => crate::sidebar::move_tab(&mut self.notes, from, to),
+        }
+        self.reorder = None;
+        self.persist_later();
+    }
+
+
 
     pub fn toggle_folder(&mut self, p: &str) {
         if !self.expanded.remove(p) {
