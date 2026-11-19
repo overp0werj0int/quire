@@ -24,7 +24,7 @@ path = "src/main.rs"
 # and the by-paragraph span lookup and blank-line fix.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "9895586760e5167ccbe71a252854e4a5d84ea691", default-features = false, features = ["accessibility", "dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "9895586760e5167ccbe71a252854e4a5d84ea691", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -47,6 +47,13 @@ profile = ["rune/frame-profile"]
 
 [build-dependencies]
 embed-resource = "3"
+
+# Rune's long-field a11y selection encoding (`a11y/text.rs`, upstream 0796df5f / 3ef98871) is
+# handled by its vendored macOS and Windows adapters, not Linux's unvendored `accesskit_unix`
+# (`accesskit_consumer 0.39.2` panics at `text.rs:1533` on the first keystroke in an empty
+# `text_input`). Keep `accessibility` off on Linux until Rune guards or patches Linux AT-SPI.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "9895586760e5167ccbe71a252854e4a5d84ea691", default-features = false, features = ["accessibility"] }
 
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
