@@ -47,7 +47,8 @@ pub(super) fn lists(v: V) -> El {
     let n = shelf::count(v);
     let out = col().key("lists").w_full().grow(1.0).min_h(0.0);
     if s.note_mode() {
-        return out.child(shelf_el(v, n, None, false));
+        // The shelf takes the room down to the footer, its label fixed (SB-119).
+        return out.child(shelf_el(v, n, None, false).grow(1.0));
     }
     if n == 0 {
         return out.child(vault_el(v, false, false));

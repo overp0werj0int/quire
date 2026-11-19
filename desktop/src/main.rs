@@ -3204,6 +3204,9 @@ mod note_mode_tests {
         assert!(shown(&rt, "foot-settings") && shown(&rt, "label-shelf"), "the settings button and the Open label show");
         let folds = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label-shelf")).is_some_and(|e| e.focusable || e.expanded.is_some());
         assert!(!folds, "the Open label does not fold in Note mode");
+        let rect = |k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect).unwrap_or_else(|| panic!("{k}"));
+        let (shelf, foot) = (rect("shelf"), rect("side-foot"));
+        assert!((shelf[1] + shelf[3] - foot[1]).abs() < 0.5, "the shelf {shelf:?} reaches the footer {foot:?}");
 
         // Edits save to the file; nothing is added to, renamed in, or deleted from its folder.
         rt.update(|s, tx| {
