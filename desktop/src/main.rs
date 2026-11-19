@@ -3966,6 +3966,114 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// What the search tests read: the query, the open note, the mode and whether a drawer is
+    /// open.
+    fn search_state(rt: &mut Runtime<App>) -> (String, String, Mode, bool) {
+        let mut out = None;
+        rt.update_if(|s, _| {
+            out = Some((s.query.text.clone(), s.active.clone().unwrap_or_default(), s.mode, s.open_layers().next().is_some()));
+            false
+        });
+        out.unwrap()
+    }
+
+    /// Types `q` into the sidebar's search field, with the keyboard there.
+    fn search_for(rt: &mut Runtime<App>, q: &str) {
+        rt.update(|_, tx| tx.focus("search", true));
+        settle(rt);
+        key(rt, Key::Text(q.into()), Mods::default());
+    }
+
+    /// Opens the sidebar's drawer at 640 wide.
+    fn sidebar_drawer(rt: &mut Runtime<App>) {
+        rt.set_viewport((640.0, 480.0), 1.0);
+        settle(rt);
+        rt.update(|s, tx| s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx));
+        settle(rt);
+    }
+
+    /// SB-66, SB-69, SB-122: Enter in the field opens the filled row, the first, in the
+    /// current mode with the keyboard in the note; in the drawer it closes the drawer. With no
+    /// match Enter does nothing.
+    #[test]
+    fn enter_opens_the_filled_result() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-enter-result-{}", std::process::id()));
+        for (mode, drawer) in [(Mode::Source, false), (Mode::Preview, false), (Mode::Source, true)] {
+            let mut rt = garden(&dir, mode);
+            if drawer {
+                sidebar_drawer(&mut rt);
+            }
+            search_for(&mut rt, "b");
+            let mut first = String::new();
+            rt.update_if(|s, _| {
+                first = s.results().and_then(|r| r.first().and_then(|row| row.note().map(str::to_string))).unwrap_or_default();
+                false
+            });
+            assert_eq!(first, "Box/b.md", "{mode:?}: the name match comes first");
+            key(&mut rt, Key::Enter, Mods::default());
+            glide(&mut rt);
+            let (query, active, now, layer) = search_state(&mut rt);
+            assert_eq!((query.as_str(), active.as_str(), now, layer), ("b", "Box/b.md", mode, false), "{mode:?} drawer {drawer}: Enter opens the first result and the results stay");
+            let want = if mode == Mode::Source { "editor" } else { crate::focus::NOTE };
+            assert!(focused(&rt).is_none_or(|k| k == want) && (mode == Mode::Preview || focused(&rt).is_some()), "{mode:?} drawer {drawer}: with the keyboard in the note: {:?}", focused(&rt));
+        }
+        let mut rt = garden(&dir, Mode::Source);
+        search_for(&mut rt, "zzzq");
+        key(&mut rt, Key::Enter, Mods::default());
+        assert_eq!(search_state(&mut rt).1, "note.md", "Enter with no match opens nothing");
+        assert_eq!(focused(&rt).as_deref(), Some("search"), "and the field keeps the keyboard");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-89, SB-92: in the field the first Esc clears the query and the field keeps the
+    /// keyboard; the next gives the note the keyboard, or in the drawer closes the drawer.
+    #[test]
+    fn esc_clears_then_leaves() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-esc-search-{}", std::process::id()));
+        for drawer in [false, true] {
+            let mut rt = garden(&dir, Mode::Source);
+            if drawer {
+                sidebar_drawer(&mut rt);
+            }
+            search_for(&mut rt, "kept");
+            key(&mut rt, Key::Escape, Mods::default());
+            let (query, .., layer) = search_state(&mut rt);
+            assert_eq!((query.as_str(), layer), ("", drawer), "drawer {drawer}: the first Esc clears the query, and the drawer stays");
+            assert_eq!(focused(&rt).as_deref(), Some("search"), "drawer {drawer}: the field keeps the keyboard");
+            assert!(rt.find("tree").is_some() && rt.find("results").is_none(), "drawer {drawer}: the lists are back");
+            key(&mut rt, Key::Escape, Mods::default());
+            assert!(!search_state(&mut rt).3, "drawer {drawer}: the next Esc leaves no drawer");
+            assert_eq!(focused(&rt).as_deref(), Some("editor"), "drawer {drawer}: and the note has the keyboard");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-90, SB-94: Esc on a result row, with or without Shift, clears the search and puts
+    /// the keyboard in the empty field with its ring, docked or in the drawer, where the
+    /// drawer stays.
+    #[test]
+    fn esc_on_a_result_clears_to_the_field() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-esc-result-{}", std::process::id()));
+        for (drawer, m) in [(false, Mods::default()), (true, Mods::default()), (false, Mods { shift: true, ..Mods::default() })] {
+            let mut rt = garden(&dir, Mode::Preview);
+            if drawer {
+                sidebar_drawer(&mut rt);
+            }
+            search_for(&mut rt, "kept");
+            key(&mut rt, Key::Down, Mods::default());
+            assert!(focused(&rt).is_some_and(|k| k.starts_with("res-")), "Down puts the keyboard on a result: {:?}", focused(&rt));
+            key(&mut rt, Key::Escape, m);
+            let (query, .., layer) = search_state(&mut rt);
+            assert_eq!((query.as_str(), layer), ("", drawer), "drawer {drawer} {m:?}: Esc on a row clears the search, and the drawer stays");
+            let ring = rt.elements().into_iter().find(|e| e.focused).is_some_and(|e| e.focus_visible);
+            assert!(focused(&rt).as_deref() == Some("search") && ring, "drawer {drawer} {m:?}: the field has the keyboard with its ring: {:?}", focused(&rt));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_sidebar_lists_work_from_the_keyboard() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -4546,7 +4654,7 @@ mod layer_matrix_tests {
             let mut seen = String::new();
             rt.update_if(|s, _| {
                 let layers: Vec<_> = s.open_layers().map(crate::layer::Layer::kind).collect();
-                seen = format!("layers {layers:?}, naming {} {}, find {}, {:?}", s.renaming.is_some(), s.new_folder.is_some(), s.reader.find.open, s.mode);
+                seen = format!("layers {layers:?}, naming {} {}, find {}, {:?}, query {:?}", s.renaming.is_some(), s.new_folder.is_some(), s.reader.find.open, s.mode, s.query.text);
                 false
             });
             (seen, focused(rt))
@@ -6024,7 +6132,9 @@ mod layer_matrix_tests {
                 fails.push(format!("{case}: {at} ring y {top} to {bottom}, list shows y {} to {}", v[1], v[1] + v[3]));
             }
         };
-        key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
+        // F6 lands on the active tab (SB-97); the tree's row is the next stop's.
+        rt.update(|s, tx| tx.focus(s.tree_stop().unwrap(), true));
+        settle(&mut rt);
         look(&mut rt, Key::End, "side-scroll", "the tree's last row");
         look(&mut rt, Key::Home, "side-scroll", "the tree's first row");
         rt.update(|s, tx| s.search_tag("many", tx));
@@ -6033,6 +6143,8 @@ mod layer_matrix_tests {
         assert!(focused(&rt).is_some_and(|k| k.starts_with("res-")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
         look(&mut rt, Key::End, "results-scroll", "the last result");
         look(&mut rt, Key::Home, "results-scroll", "the first result");
+        // Esc clears the search to the field, and the next gives the note the keyboard.
+        key(&mut rt, Key::Escape, Mods::default());
         key(&mut rt, Key::Escape, Mods::default());
         key(&mut rt, Key::Function(6), Mods::default());
         look(&mut rt, Key::End, "outline-scroll", "the outline's last row");
@@ -6659,12 +6771,13 @@ mod layer_matrix_tests {
                 }
                 key(rt, Key::Escape, Mods::default());
             }),
-            ("Esc in the search field", |rt| {
+            ("Esc in the search field, twice: it clears, then leaves", |rt| {
                 rt.update(|s, tx| s.open_search(tx));
                 settle(rt);
                 for c in ["m", "o", "r", "e"] {
                     text_key(rt, c);
                 }
+                key(rt, Key::Escape, Mods::default());
                 key(rt, Key::Escape, Mods::default());
             }),
             ("Ctrl+W on one of several tabs", |rt| {
@@ -6772,8 +6885,9 @@ mod layer_matrix_tests {
             }
         }
 
-        // Esc in the drawer's search field is the drawer's: it closes, and what had the
-        // keyboard before it opened has it again, with or without a query typed (SESC).
+        // Esc in the drawer's search field clears a query and the drawer stays (SB-92); Esc in
+        // the empty field is the drawer's: it closes, and what had the keyboard before it
+        // opened has it again (SESC).
         for mode in [Mode::Source, Mode::Preview] {
             for query in ["more", ""] {
                 let mut rt = garden(&dir, mode);
@@ -6788,6 +6902,13 @@ mod layer_matrix_tests {
                     text_key(&mut rt, &c.to_string());
                 }
                 let open = seen(&mut rt).layers;
+                if !query.is_empty() {
+                    key(&mut rt, Key::Escape, Mods::default());
+                    let (q, .., layer) = search_state(&mut rt);
+                    if !q.is_empty() || !layer || focused(&rt).as_deref() != Some("search") {
+                        fails.push(format!("the first Esc in the drawer's search field ({mode:?}): query {q:?}, drawer {layer}, focus {:?}", focused(&rt)));
+                    }
+                }
                 key(&mut rt, Key::Escape, Mods::default());
                 let before = seen(&mut rt);
                 for c in ["Q", "Q"] {

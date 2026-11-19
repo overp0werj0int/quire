@@ -1578,6 +1578,47 @@ impl App {
         self.center_match(false, tx);
     }
 
+    /// Chooses the result keyed `key`, by a click, Enter or Space on its row or Enter in the
+    /// field (SB-63, SB-64, SB-66, SB-88). A note's row opens it in the current mode and gives
+    /// it the keyboard, closing the drawer, even when it showed already (SB-122). A tag's row
+    /// lists the tag's notes; chosen by keys, the keyboard goes to the first of them.
+    pub fn choose_result(&mut self, key: &str, tx: &mut Tx) {
+        use crate::search::Row;
+        let Some(r) = self.results() else { return };
+        let Some(row) = r.rows().find(|row| row.key() == key) else { return };
+        if let Row::Tag(tag, _) = row {
+            self.search_tag(tag, tx);
+            let first = self.results().and_then(|r| r.tagged.first().map(|p| Row::Tagged(p).key()));
+            if let Some(k) = first.filter(|_| tx.by_keys()) {
+                tx.focus(k, true);
+            }
+            return;
+        }
+        let at = match row {
+            Row::Text(h) => Some((h.first.pos, h.first.line)),
+            _ => None,
+        };
+        self.open_result(row.note().unwrap_or_default(), at, tx);
+        self.close_drawer();
+        self.keys_to_note(tx);
+    }
+
+    /// Esc in search, from the field or a result (SB-89, SB-90, SB-92, SB-93): a showing
+    /// notice goes first; then a query clears, and the keyboard is in the field with its ring,
+    /// docked or in the drawer. False when the field was empty already, for the caller's own
+    /// Esc: the note takes the keyboard, or the drawer closes.
+    pub fn search_escape(&mut self, tx: &mut Tx) -> bool {
+        if self.esc_takes_notice() {
+            return true;
+        }
+        if self.query.text.is_empty() {
+            return false;
+        }
+        self.query = TextEdit::new("");
+        tx.focus("search", true);
+        true
+    }
+
     /// The footer's tags button (SB-74, SB-75): every tag, as the search for "#", with the
     /// keyboard in the field and the caret after it, so typing narrows them. While the tags
     /// show it clears the field instead, and a keyboard on a result goes to the field.

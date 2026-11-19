@@ -12,13 +12,15 @@
 //!   would with the keyboard on the note (`chord`), except that a text field keeps the
 //!   writer's chords at the caret from the note (`field`). The editor's own chords, which its
 //!   text field handles, go on to the editor (`edit_chord`).
-//! - Esc gives the keyboard back to the note (`App::keys_to_note`).
+//! - Esc gives the keyboard back to the note (`App::keys_to_note`). In search it first
+//!   clears the query to the field (`App::search_escape`).
 //! - When the element that holds focus goes away, for any reason (its pane hides, zen mode,
 //!   its row is gone, a rename ends, find closes, its tab closes), the keyboard goes to the
-//!   note. Every stop and every pane carries `focus_return(NOTE)` (`ui::focus`), and NOTE
+//!   note, or from a search result to the field. Every stop and every pane carries
+//!   `focus_return(NOTE)` (`ui::focus`), and NOTE
 //!   keys the editor's box in the writer and the reader's keyboard anchor elsewhere. Find,
 //!   the search field's Esc and a closed tab call `App::keys_to_note` themselves.
-//! - F6 and Shift+F6 move between the panes that show: the sidebar's current list, the note,
+//! - F6 and Shift+F6 move between the panes that show: the sidebar's stop (`sidebar_stop`), the note,
 //!   the outline's current heading. Tab moves inside a pane and on to the next. Into the
 //!   writer, Tab and F6 alike leave the caret where it was, in view (`tab_into_note`).
 //!
@@ -215,10 +217,11 @@ impl App {
         (left, right)
     }
 
-    /// Where F6 puts the keyboard in the sidebar: the first result while search shows, the
-    /// tags while they show, else the tree's current row, else the tree, else the active tab,
-    /// else the search field.
+    /// Where F6 puts the keyboard in the sidebar (SB-97): the filled result while search
+    /// shows, else the active tab, else the tree's current row, else the tree, else the search
+    /// field. A folded section shows none of its rows.
     pub(crate) fn sidebar_stop(&self) -> String {
+        use crate::sidebar::Section;
         if self.note_mode() {
             let shown = self.shelved().or_else(|| self.shelf().into_iter().next());
             return shown.map_or_else(|| "open-notes".into(), |t| t.key());
@@ -226,10 +229,18 @@ impl App {
         if let Some(r) = self.results() {
             return r.first().map_or_else(|| "search".into(), |row| row.key());
         }
-        let tab = self.shelved().map(|t| t.key());
-        // A folded vault shows no tree: the active tab, else the vault's label.
-        if tab.is_some() && self.persist.sidebar.folded == Some(crate::sidebar::Section::Vault) {
-            return tab.unwrap_or_else(|| "label-vault".into());
+        let folded = self.persist.sidebar.folded;
+        if let Some(t) = self.shelved().filter(|_| folded != Some(Section::Shelf)) {
+            return t.key();
+        }
+        self.tree_stop().unwrap_or_else(|| "search".into())
+    }
+
+    /// The tree's stop: its current row, the open note's, while the note's folders are open,
+    /// else the tree itself. None while the vault is folded or holds nothing.
+    pub(crate) fn tree_stop(&self) -> Option<String> {
+        if self.persist.sidebar.folded == Some(crate::sidebar::Section::Vault) {
+            return None;
         }
         let shows = |path: &str| {
             let dir = crate::md::dir(path);
@@ -242,9 +253,9 @@ impl App {
             }).all(|d| self.expanded.contains(&d))
         };
         match self.active.as_deref() {
-            Some(a) if shows(a) => crate::folders::row_key("file", a),
-            _ if !self.files().is_empty() || self.vault.as_ref().is_some_and(|v| !v.folders.is_empty()) => "tree".into(),
-            _ => tab.unwrap_or_else(|| "search".into()),
+            Some(a) if shows(a) => Some(crate::folders::row_key("file", a)),
+            _ if !self.files().is_empty() || self.vault.as_ref().is_some_and(|v| !v.folders.is_empty()) => Some("tree".into()),
+            _ => None,
         }
     }
 

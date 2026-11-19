@@ -165,7 +165,7 @@ impl App {
             let row = match made {
                 Some(path) => row_key("dir", &path),
                 None if !parent.is_empty() => row_key("dir", &parent),
-                None => self.sidebar_stop(),
+                None => self.tree_stop().unwrap_or_else(|| self.sidebar_stop()),
             };
             tx.focus(row, true);
         }

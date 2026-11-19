@@ -157,10 +157,13 @@ or the outline. A test checks that every focusable element in the panes is in it
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
   key to `keys::on_key`. Without it Rune hands the lost focus to the next control in the old
   tree. In the reader that was a paragraph with links, focused with no link in it, which ate
-  Space and Enter. Closing find, Esc in the docked search field and closing the shown
-  tab call `App::keys_to_note` themselves, so the writer has the keys after each. In the
-  drawer, Esc in the search field is the drawer's, as from a row: the drawer closes and
-  hands focus back. Esc with Shift, Ctrl or Alt is Esc everywhere (MODESC2):
+  Space and Enter. A search result's row is the exception: it returns focus to the search
+  field (SB-72). Closing find, Esc in the empty docked search field and closing the shown
+  tab call `App::keys_to_note` themselves, so the writer has the keys after each. In
+  search, from the field or a result, Esc goes by `App::search_escape`: a showing notice
+  first, then a query clears and the field has the keyboard, docked or in the drawer; only
+  then does Esc leave. In the drawer, Esc in the empty search field is the drawer's, as from
+  a row: the drawer closes and hands focus back. Esc with Shift, Ctrl or Alt is Esc everywhere (MODESC2):
   `keys::esc_again` sends it round again as plain Esc, from the window's keys
   (`keys::on_key`, before any layer or stop sees it), the lists' own key handler and the
   edit sheet's, so every handler sees plain Esc, Rune's modal dismissal and a field's blur
@@ -168,7 +171,9 @@ or the outline. A test checks that every focusable element in the panes is in it
   name fields and the palette act on Esc with any modifier themselves. Esc with the logo
   key stays the system's.
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
-  sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
+  sidebar's stop (`App::sidebar_stop`: the filled result while search shows, else the
+  active tab, else the tree's current row, else the search field), the note, the outline's
+  current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the
   outline. Tab from the toolbar and Shift+Tab from the outline give the writer the keyboard
   as F6 does (`App::tab_into_note`), with the caret where it was: Rune's Tab would scroll

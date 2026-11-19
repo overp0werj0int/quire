@@ -123,21 +123,24 @@ fn search_field(v: V) -> El {
         .label("Search notes")
         .help(keymap::tip(s.preset(), "Search notes", "app.search-notes"))
         .on_edit(|s: &mut App| &mut s.query)
-        // Down moves into the results. Esc takes a showing notice first, in the drawer too
-        // (`App::esc_takes_notice`), then gives the note the keys, which the field would
-        // otherwise drop; in the drawer that Esc is the drawer's, as from a row (FOCUS).
-        // Esc with Shift, Ctrl or Alt goes round again as Esc (`keys::esc_again`).
+        // Down moves into the results and Enter chooses the filled row, the first (SB-66);
+        // with no match Enter does nothing (SB-69). Esc goes by `App::search_escape`, then
+        // gives the note the keys, which the field would otherwise drop; in the drawer that
+        // Esc is the drawer's, as from a row (SB-92). Esc with Shift, Ctrl or Alt goes round
+        // again as Esc (`keys::esc_again`).
         .on_input_key(move |s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
             if crate::keys::esc_again(ev, tx) {
                 return true;
             }
-            if ev.mods != rune::Mods::default() && ev.key != rune::Key::Escape {
+            if ev.mods != rune::Mods::default() {
                 return false;
             }
             match (&ev.key, &first) {
-                (rune::Key::Escape, _) if s.esc_takes_notice() => {}
+                (rune::Key::Escape, _) if s.search_escape(tx) => {}
                 (rune::Key::Escape, _) if s.layer().is_none() => s.keys_to_note(tx),
                 (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
+                (rune::Key::Enter, Some(k)) => s.choose_result(k, tx),
+                (rune::Key::Enter, None) => {}
                 _ => return false,
             }
             true

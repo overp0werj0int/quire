@@ -53,46 +53,33 @@ pub(super) fn results(v: V, r: &Results) -> El {
             Row::Tag(t, n) => tag_row(v, &key, t, n, tag_q.as_deref().unwrap_or(&ql), on),
         };
         let el = if on { el.child(kbd(v, "Enter".into())) } else { el };
-        out = out.child(choose(v, el, &row, on, key == first_key));
+        let first = key == first_key;
+        out = out.child(choose(v, el, key, on, first));
     }
     out
 }
 
-/// What choosing `row` does, by a click, Enter or Space (SB-63, SB-64, SB-77). A note's row
-/// opens it in the current mode, or switches to its tab, and the keyboard goes to the note. A
-/// tag lists its notes; chosen by keys, the keyboard goes to the first of them. Up from the
-/// first row goes back to the field (SB-66).
-fn choose(v: V, el: El, row: &Row, on: bool, first: bool) -> El {
-    let el = match *row {
-        Row::Tag(t, _) => {
-            let t = t.to_string();
-            lists::item(el, v.p, on, move |s: &mut App, tx| {
-                s.search_tag(&t, tx);
-                if tx.by_keys() {
-                    if let Some(k) = s.results().and_then(|r| r.tagged.first().map(|p| Row::Tagged(p).key())) {
-                        tx.focus(k, true);
-                    }
-                }
-            })
+/// A result row's keys: a click, Enter or Space chooses it (`App::choose_result`). Esc goes
+/// by `App::search_escape`, so it clears the search and lands in the field (SB-90); Up from
+/// the first row goes back to the field (SB-66). A row that goes away with the keyboard, as a
+/// note edited out of the results does, hands it to the field (SB-72).
+fn choose(v: V, el: El, key: String, on: bool, first: bool) -> El {
+    let k = key.clone();
+    lists::item(el, v.p, on, move |s: &mut App, tx| s.choose_result(&k, tx)).focus_return("search").on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
+        if crate::keys::esc_again(ev, tx) {
+            return true;
         }
-        _ => {
-            let path = row.note().unwrap_or_default().to_string();
-            let at = match row {
-                Row::Text(h) => Some((h.first.pos, h.first.line)),
-                _ => None,
-            };
-            lists::opener(el, v.p, on, move |s: &mut App, tx| s.open_result(&path, at, tx))
+        if ev.mods != rune::Mods::default() {
+            return false;
         }
-    };
-    if !first {
-        return el;
-    }
-    el.on_key(|_: &mut App, ev: &rune::KeyEvent, tx| {
-        let up = ev.key == rune::Key::Up && ev.mods == rune::Mods::default();
-        if up {
-            tx.focus("search", false);
+        match ev.key {
+            rune::Key::Escape => s.search_escape(tx),
+            rune::Key::Up if first => {
+                tx.focus("search", false);
+                true
+            }
+            _ => false,
         }
-        up
     })
 }
 
