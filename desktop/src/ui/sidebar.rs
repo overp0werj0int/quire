@@ -564,9 +564,10 @@ fn search_panel(v: V) -> El {
                 .placeholder("Search notes", theme::hex("#9a9184"))
                 .caret(p.ink, p.sel)
                 .on_edit(|s: &mut App| &mut s.query)
-                // Down moves into the results. Esc gives the note the keys, which the field would
-                // otherwise drop; in the drawer Esc is the drawer's, as from a row (FOCUS). Esc
-                // with Shift, Ctrl or Alt goes round again as Esc (`keys::esc_again`).
+                // Down moves into the results. Esc takes a showing notice first, in the drawer too
+                // (`App::esc_takes_notice`), then gives the note the keys, which the field would
+                // otherwise drop; in the drawer that Esc is the drawer's, as from a row (FOCUS).
+                // Esc with Shift, Ctrl or Alt goes round again as Esc (`keys::esc_again`).
                 .on_input_key(move |s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
                     if crate::keys::esc_again(ev, tx) {
                         return true;
@@ -575,11 +576,8 @@ fn search_panel(v: V) -> El {
                         return false;
                     }
                     match (&ev.key, &first) {
-                        (rune::Key::Escape, _) if s.layer().is_none() => {
-                            if !s.esc_takes_notice() {
-                                s.keys_to_note(tx);
-                            }
-                        }
+                        (rune::Key::Escape, _) if s.esc_takes_notice() => {}
+                        (rune::Key::Escape, _) if s.layer().is_none() => s.keys_to_note(tx),
                         (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
                         _ => return false,
                     }

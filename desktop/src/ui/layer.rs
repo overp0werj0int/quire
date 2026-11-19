@@ -45,7 +45,13 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
     // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
     // As it closes, focus goes back where it was (`App::give_back`); when that is gone, such as
     // the row a menu deleted, the note has the keyboard, as for any stop that goes away.
-    let el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind)).focus_return(crate::focus::NOTE);
+    let mut el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind)).focus_return(crate::focus::NOTE);
+    if matches!(kind, Kind::Drawer(_)) {
+        // In a drawer the first Esc takes a showing notice and the keyboard stays where it was
+        // (`App::esc_takes_notice`). This hears it from any stop inside before Rune's modal
+        // does, which would clear focus and close the drawer; a field asks for itself.
+        el = el.on_key(|s: &mut App, ev: &rune::KeyEvent, _| ev.key == rune::Key::Escape && ev.mods == rune::Mods::default() && s.esc_takes_notice());
+    }
     let (key, paint) = plane(kind);
     match card.plane {
         Some(plane) => out.push(plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).child(el)),

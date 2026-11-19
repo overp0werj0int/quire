@@ -130,7 +130,9 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let preset = s.preset();
     if kind.light() {
         if matches!(ev.key, rune::Key::Escape) {
-            s.dismiss(tx);
+            if !s.esc_takes_notice() {
+                s.dismiss(tx);
+            }
             return true;
         }
         if !crate::focus::chord(ev) {

@@ -4468,6 +4468,68 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DRESC: in a drawer the first Esc dismisses a showing message and the keyboard stays where
+    /// it was in the drawer; the next Esc closes the drawer. From a row, a panel tab, the Search
+    /// field and the outline's drawer, at 640 wide. A modal layer still takes Esc first: over
+    /// the palette, Esc closes the palette and the message stays.
+    #[test]
+    fn in_a_drawer_esc_takes_the_message_first() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-dresc-{}", std::process::id()));
+        use crate::app::Drawer;
+        let state = |rt: &mut Runtime<App>| {
+            let mut seen = (false, vec![]);
+            rt.update_if(|s, _| {
+                seen = (s.notice.is_some(), s.open_layers().map(crate::layer::Layer::kind).collect::<Vec<_>>());
+                false
+            });
+            seen
+        };
+        let places: [(&str, Drawer, Option<&str>); 5] = [
+            ("a row", Drawer::Sidebar, Some("file:note.md")),
+            ("a panel tab", Drawer::Sidebar, Some("panel-tags")),
+            ("the Search field", Drawer::Sidebar, Some("search")),
+            ("the drawer itself", Drawer::Sidebar, None),
+            ("the outline's drawer", Drawer::Outline, Some("ol-1")),
+        ];
+        for (place, drawer, at) in places {
+            let mut rt = garden(&dir, Mode::Source);
+            rt.set_viewport((640.0, 800.0), 1.0);
+            settle(&mut rt);
+            rt.update(|s, tx| {
+                if at == Some("search") {
+                    s.left_panel = crate::app::Panel::Search;
+                }
+                s.open_layer(crate::layer::Layer::Drawer(drawer), tx);
+            });
+            settle(&mut rt);
+            if let Some(k) = at {
+                rt.update(|_, tx| tx.focus(k, true));
+                settle(&mut rt);
+            }
+            let held = focused(&rt);
+            assert!(at.is_none() || held.as_deref() == at, "{place}: the setup puts the keyboard there: {held:?}");
+            rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+            settle(&mut rt);
+            let open = crate::layer::Kind::Drawer(drawer);
+            assert_eq!(state(&mut rt), (true, vec![open]), "{place}: the message shows over the open drawer");
+            key(&mut rt, Key::Escape, Mods::default());
+            assert_eq!(state(&mut rt), (false, vec![open]), "{place}: the first Esc dismisses the message and the drawer stays");
+            assert_eq!(focused(&rt), held, "{place}: and the keyboard stays where it was");
+            key(&mut rt, Key::Escape, Mods::default());
+            assert_eq!(state(&mut rt), (false, vec![]), "{place}: the next Esc closes the drawer");
+        }
+        // The palette is no drawer: it takes Esc before the message.
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
+        settle(&mut rt);
+        rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+        settle(&mut rt);
+        key(&mut rt, Key::Escape, Mods::default());
+        assert_eq!(state(&mut rt), (true, vec![]), "Esc closes the palette and leaves the message");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// MODESC: on the note in preview, Esc with Shift, Ctrl or Alt runs the reader's Esc order
     /// as Esc does: a showing notice goes, then find closes, then the writer shows.
     #[test]

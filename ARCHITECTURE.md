@@ -108,7 +108,12 @@ showed when it opened.
   drawer) closes when the page under it changes: the mode, the note, zen mode, a lock, or a
   window wide enough to dock the drawer. A menu also closes when the window's size changes.
   Every layer closes when the window leaves the folder.
-- `keys::on_key` gives the keyboard to the open layer. Over a light layer, Esc closes it. A
+- `keys::on_key` gives the keyboard to the open layer. Over a light layer, Esc closes it,
+  but in a drawer a showing notice goes first and the keyboard stays where it was
+  (`App::esc_takes_notice`, DRESC): from a stop inside, the drawer's card hears that Esc
+  (`El::on_key` in `ui::layer`) before Rune's modal, which would clear focus and close it,
+  and the drawer's fields ask for themselves. Over a menu, even one over a drawer, Esc
+  closes the menu first. A
   window shortcut closes it and then acts as if it had not been open, so over a menu inside
   a drawer it closes both and acts. A key with no modifier stays in the layer. Over the palette, Settings or the lock dialog, the layer's own keys act
   first. A window shortcut closes the layer and acts. Help and the edit sheet swallow every
