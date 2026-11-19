@@ -110,7 +110,16 @@ pub fn baseline_shift(big: TextStyle, small: TextStyle) -> f32 {
     (baseline(big) - baseline(small)).max(0.0)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times the view has run on this thread: a test's proof that something moved
+    /// with no view run (VER-32).
+    pub static VIEWS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 pub fn view(s: &App, cx: &mut Cx<App>) -> El {
+    #[cfg(test)]
+    VIEWS.with(|n| n.set(n.get() + 1));
     theme::set_scale(cx.env().scale);
     let reduced = cx.system_reduced_motion() || crate::motion::forced();
     cx.reduced_motion(reduced);
@@ -208,9 +217,8 @@ fn map_page(s: &App) {
     let mut map = s.reader.map.borrow_mut();
     map.reading = reading(s);
     map.starts.clear();
-    map.heads.clear();
-    map.marks.clear();
-    map.marked = None;
+    map.outline.clear();
+    map.shelf.clear();
     if !map.reading {
         // The writer's progress takes the reader's measure (WR-178): it needs the line count.
         map.lines = s.active.as_ref().map_or(0, |_| s.active_text().split('\n').count());

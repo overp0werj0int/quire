@@ -5457,6 +5457,65 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-29, VER-32: in preview the entry of the section at the view's top is in the accent, none
+    /// above the first H1, and it follows a wheel scroll through its live colour with no view run.
+    #[test]
+    fn the_current_entry_follows_the_scroll() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-follow-{}", std::process::id()));
+        let long = format!("Before.\n\n# One\n\n{}# Two\n\n{}# Three\n\n{}", "Text to scroll by.\n\n".repeat(30), "More.\n\n".repeat(30), "End.\n\n".repeat(30));
+        let mut rt = garden(&dir, Mode::Preview);
+        std::fs::write(dir.join("notes/Box/long.md"), &long).unwrap();
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.open_file("Box/long.md", None, tx);
+            s.persist.right_open = false;
+        });
+        glide(&mut rt);
+        let lit = |rt: &mut Runtime<App>| {
+            let mut out = (None, vec![]);
+            rt.update_if(|s, _| {
+                let map = s.reader.map.borrow();
+                out = (map.shelf.marked, map.shelf.marks.iter().map(|m| m.ink.get() == m.on[1]).collect());
+                false
+            });
+            out
+        };
+        click(&mut rt, "tab:Box|long.md");
+        assert_eq!(lit(&mut rt), (None, vec![false, false, false]), "above the first H1 no entry is marked");
+        click(&mut rt, "tab:Box|long.md");
+        let (x, y) = rt.find(crate::reader::SCROLL).expect("the page");
+        rt.pointer_move(x, y);
+        rt.frame(DT);
+        for _ in 0..2 {
+            rt.wheel(x, y, -120.0);
+            rt.frame(DT);
+        }
+        click(&mut rt, "tab:Box|long.md");
+        rt.pointer_move(x, y);
+        glide(&mut rt);
+        assert_eq!(lit(&mut rt), (Some(0), vec![true, false, false]), "in the first section, its entry is in the accent");
+        for _ in 0..2 {
+            rt.wheel(x, y, -120.0);
+            rt.frame(DT);
+        }
+        assert_eq!(lit(&mut rt).0, Some(0), "still in the first section");
+        let views = crate::ui::VIEWS.with(|n| n.get());
+        let mut seen = vec![Some(0)];
+        for _ in 0..60 {
+            rt.wheel(x, y, -120.0);
+            rt.frame(DT);
+            let (m, inks) = lit(&mut rt);
+            assert_eq!(inks.iter().filter(|&&i| i).count(), m.map_or(0, |_| 1), "one entry in the accent, the marked one: {m:?} {inks:?}");
+            if seen.last() != Some(&m) {
+                seen.push(m);
+            }
+        }
+        assert_eq!(seen, [Some(0), Some(1), Some(2)], "the mark walked down the sections");
+        assert_eq!(crate::ui::VIEWS.with(|n| n.get()), views, "with no view run");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-27: a note with no H1 has no outline, and a click on its active tab does nothing.
     #[test]
     fn a_note_with_no_h1_has_no_outline() {

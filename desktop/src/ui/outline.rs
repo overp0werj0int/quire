@@ -34,14 +34,14 @@ pub fn outline(v: V) -> El {
         heads.iter().rposition(|h| h.line <= line).and_then(row_of)
     } else if live && !heads.is_empty() {
         let blocks = s.doc();
-        map.heads = heads
+        map.outline.heads = heads
             .iter()
             .enumerate()
             .filter_map(|(i, h)| Some((blocks.blocks.iter().position(|b| b.lines.start == h.line)?, row_of(i))))
             .collect();
-        map.first_row = row_of(0);
-        let cur = map.head_row(s.reader.scroll.get()[0]);
-        map.marked = cur;
+        map.outline.first_row = row_of(0);
+        let cur = map.head_row(&map.outline, s.reader.scroll.get()[0]);
+        map.outline.marked = cur;
         cur
     } else {
         None
@@ -69,7 +69,7 @@ pub fn outline(v: V) -> El {
             };
             shade = shade.live_fill(&mark.fill);
             name = name.live_text_color(&mark.ink);
-            map.marks.push(mark);
+            map.outline.marks.push(mark);
         }
         contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(name));
     }

@@ -94,7 +94,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 - **SB-28** [adapted: 0013] [verify: script] A click on an entry scrolls the note to its heading, as the outline panel's rows do (`App::jump`), in both modes (spec: interactions; kept: RD-47, WR-100's jump).
 - **SB-29** [adapted: 0013] [verify: state] The entry for the section in view is in the accent as text. In preview it is the last H1 at or above the top block and follows scrolling with no view run, as the outline panel does (VER-32). In the writer it is the last H1 at or before the caret. Above the first H1 no entry is marked (spec: S2; kept: RD-47, WR-100).
 - **SB-30** [adapted: 0013] [verify: geometry] Entries are smaller than tab titles, in faint, indented 16 pt under the tab with a 1 pt guide line, and never filled, under the pointer either (spec: S2, sizes).
-- **SB-31** [adapted: 0013] [verify: state] [proposed] Under the pointer an entry's text turns from faint to Text, the only hover mark it has. The other choice was no hover mark.
+- **SB-31** [dropped] [verify: -] An entry has no hover mark. A text that turned from faint to Text under the pointer was proposed, but the hover tint paints over the live accent of the current entry in preview, so that entry lost its mark while the pointer was on it (stage 5, probe).
 - **SB-32** [adapted: 0013] [verify: state] The outline panel on the right is unchanged and still lists H1 to H4 (spec: S2).
 
 ## Handle and split

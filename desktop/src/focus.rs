@@ -271,7 +271,7 @@ impl App {
             let (line, _) = crate::md::line_col(doc, caret);
             shown.iter().rposition(|&i| heads[i].line <= line)
         } else {
-            self.reader.map.borrow().marked
+            self.reader.map.borrow().outline.marked
         };
         match cur.or((!shown.is_empty()).then_some(0)) {
             Some(n) => format!("ol-{}", shown[n]),

@@ -5,7 +5,7 @@
 //! Alt+Up and Alt+Down move the focused one, Delete and Backspace close it. In Folder mode a
 //! tab per open note, in Note mode one per note opened as a file.
 
-use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Mods, Phase, PointerButton, Spring, Tx, col, icon, row, text};
+use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Live, Mods, Phase, PointerButton, Spring, Tx, col, icon, row, text};
 
 use super::super::V;
 use super::super::lists;
@@ -207,38 +207,53 @@ fn fold(s: &mut App, t: &Shelved, out: bool, tx: &mut Tx) {
 
 /// The active tab `t`'s outline: its note's H1s, one entry each, indented under the tab beside
 /// a guide line, in faint and never filled; the entry of the section in view in the accent
-/// (SB-27, SB-29, SB-30).
+/// (SB-27, SB-29, SB-30). In the writer that is the last H1 at or before the caret's line. In
+/// the reader it is the last H1 at or above the view's top, by the outline panel's rule, and
+/// the page's scroll handler moves it through live colours with no view run
+/// (`reader::PageMap::mark`). Above the first H1 no entry is marked.
 fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
-    let cur = current(v, heads);
+    let s = v.s;
+    let c = Roles::panel(v.p);
+    let mut map = s.reader.map.borrow_mut();
+    let live = map.reading && s.mode != Mode::Source;
+    let cur = if s.mode == Mode::Source {
+        let doc = s.active_text();
+        let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
+        let line = md::line_col(doc, caret).0;
+        heads.iter().rposition(|h| h.line <= line)
+    } else if live {
+        let blocks = s.doc();
+        map.shelf.heads = heads.iter().enumerate().filter_map(|(n, h)| Some((blocks.blocks.iter().position(|b| b.lines.start == h.line)?, Some(n)))).collect();
+        map.shelf.first_row = None;
+        let cur = map.head_row(&map.shelf, s.reader.scroll.get()[0]);
+        map.shelf.marked = cur;
+        cur
+    } else {
+        None
+    };
     let mut out = col().key("toc").ml(panel::INSET + GUIDE_X).mr(panel::INSET).border_sides([0.0, 0.0, 0.0, 1.0], v.p.line).border_layout();
     for (n, h) in heads.iter().enumerate() {
-        out = out.child(entry(v, t, n, h, cur == Some(n)));
+        let on = cur == Some(n);
+        let ink = |on: bool| if on { c.accent_text } else { c.faint };
+        let mut name = text(h.text.clone()).font(nav(panel::BODY_SMALL, false)).color(ink(on)).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
+        if live {
+            // The ink alone: an entry is never filled (SB-30).
+            let mark = crate::reader::Mark { on: [Color::TRANSPARENT, ink(true)], off: [Color::TRANSPARENT, ink(false)], fill: Live::new(Color::TRANSPARENT), ink: Live::new(ink(on)) };
+            name = name.live_text_color(&mark.ink);
+            map.shelf.marks.push(mark);
+        }
+        out = out.child(entry(v, t, n, h, name));
     }
     out
 }
 
-/// The entry of the section in view: in the writer the last H1 at or before the caret's line,
-/// none above the first (SB-29).
-fn current(v: V, heads: &[md::Heading]) -> Option<usize> {
-    let s = v.s;
-    if s.mode != Mode::Source {
-        return None;
-    }
-    let doc = s.active_text();
-    let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
-    let line = md::line_col(doc, caret).0;
-    heads.iter().rposition(|h| h.line <= line)
-}
-
-/// Entry `n` of tab `t`'s outline, for heading `h`, `on` while its section is in view. A row of
-/// the shelf's list: a click scrolls the note to its heading, as the outline panel's rows do,
-/// and Enter or Space does too and gives the note the keyboard (SB-28, SB-83). Left moves the
-/// keyboard to its tab (SB-84). Under the pointer its text turns from faint to Text (SB-31).
-fn entry(v: V, t: &Shelved, n: usize, h: &md::Heading, on: bool) -> El {
-    let c = Roles::panel(v.p);
+/// Entry `n` of tab `t`'s outline, for heading `h`, its text `name`. A row of the shelf's list:
+/// a click scrolls the note to its heading, as the outline panel's rows do, and Enter or Space
+/// does too and gives the note the keyboard (SB-28, SB-83). Left moves the keyboard to its tab
+/// (SB-84). It has no hover mark (SB-31).
+fn entry(v: V, t: &Shelved, n: usize, h: &md::Heading, name: El) -> El {
     let line = h.line;
-    let name = text(h.text.clone()).font(nav(panel::BODY_SMALL, false)).color(if on { c.accent_text } else { c.faint }).group_color(c.dim).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
-    let el = row().key(format!("toc:{n}")).h(ENTRY_H).ml(ENTRY_IN).px(ENTRY_PAD).center_y().radius(RADIUS).hover_group().role("listitem").label(h.text.clone());
+    let el = row().key(format!("toc:{n}")).h(ENTRY_H).ml(ENTRY_IN).px(ENTRY_PAD).center_y().radius(RADIUS).role("listitem").label(h.text.clone());
     let tab = t.key();
     lists::item(el, v.p, false, move |s: &mut App, tx| {
         s.jump(line, tx);

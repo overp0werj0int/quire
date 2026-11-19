@@ -141,12 +141,10 @@ pub struct PageMap {
     pub lines: usize,
     /// The writer's text field in the window as last laid out: its top and its height.
     field: [f32; 2],
-    /// The outline's rows, when it shows: each heading's block and its row, the row current
-    /// above the first, and each row's colours.
-    pub heads: Vec<(usize, Option<usize>)>,
-    pub first_row: Option<usize>,
-    pub marks: Vec<Mark>,
-    pub marked: Option<usize>,
+    /// The outline panel's rows, and the entries of the shelf's outline under the active tab
+    /// (SB-29), when they show.
+    pub outline: Marks,
+    pub shelf: Marks,
     /// A trip waiting for its row to be laid out, to land by where the row is.
     pending: Option<Pending>,
     /// A trip into a note whose page isn't mapped yet (a `[[note#Heading]]` link): the block's
@@ -182,6 +180,37 @@ pub enum Arrival {
 
 /// How long a trip waits for its row, in seconds.
 const PENDING: f64 = 0.6;
+
+/// An outline's rows: each heading's block and its row, the row current above the first, each
+/// row's colours, and the row marked now.
+#[derive(Default)]
+pub struct Marks {
+    pub heads: Vec<(usize, Option<usize>)>,
+    pub first_row: Option<usize>,
+    pub marks: Vec<Mark>,
+    pub marked: Option<usize>,
+}
+
+impl Marks {
+    pub fn clear(&mut self) {
+        self.heads.clear();
+        self.marks.clear();
+        self.marked = None;
+    }
+
+    /// Marks `row`, and no other, through the rows' live colours.
+    fn mark(&mut self, row: Option<usize>) {
+        if row == self.marked {
+            return;
+        }
+        for (n, m) in self.marks.iter().enumerate() {
+            let [fill, ink] = if Some(n) == row { m.on } else { m.off };
+            m.fill.set(fill);
+            m.ink.set(ink);
+        }
+        self.marked = row;
+    }
+}
 
 /// An outline row's live colours, [fill, text], and their values when current and not.
 pub struct Mark {
@@ -328,11 +357,11 @@ impl PageMap {
         self.base.partition_point(|&t| t + self.shift <= y).saturating_sub(1)
     }
 
-    /// The outline row current at `offset`: the last heading whose top is above the viewport's
-    /// top plus 100 points.
-    pub fn head_row(&self, offset: f32) -> Option<usize> {
+    /// The row of outline `m` current at `offset`: the last heading whose top is above the
+    /// viewport's top plus 100 points.
+    pub fn head_row(&self, m: &Marks, offset: f32) -> Option<usize> {
         let y = offset + 100.0;
-        self.heads.iter().rev().find(|(k, _)| self.block_top(*k).is_some_and(|t| t <= y)).map_or(self.first_row, |(_, row)| *row)
+        m.heads.iter().rev().find(|(k, _)| self.block_top(*k).is_some_and(|t| t <= y)).map_or(m.first_row, |(_, row)| *row)
     }
 
     /// The outline highlight and the reading progress line (RD-38) at the scroll `now`
@@ -347,18 +376,11 @@ impl PageMap {
         bar.set([0.0, 0.0, now[3] * k.clamp(0.0, 1.0), 2.0]);
     }
 
-    /// Moves the outline's highlight to the row current at `offset`, without a view run.
+    /// Moves both outlines' highlights to the rows current at `offset`, without a view run.
     pub fn mark(&mut self, offset: f32) {
-        let row = self.head_row(offset);
-        if row == self.marked {
-            return;
-        }
-        for (n, m) in self.marks.iter().enumerate() {
-            let [fill, ink] = if Some(n) == row { m.on } else { m.off };
-            m.fill.set(fill);
-            m.ink.set(ink);
-        }
-        self.marked = row;
+        let rows = [self.head_row(&self.outline, offset), self.head_row(&self.shelf, offset)];
+        self.outline.mark(rows[0]);
+        self.shelf.mark(rows[1]);
     }
 
     /// The reading progress (RD-38) at the scroll `[offset, max, height, _]`.
@@ -1303,6 +1325,26 @@ mod tests {
         assert_eq!(first_match(&ms, 2), 1);
         assert_eq!(first_match(&ms, 9), 0);
         assert_eq!((step(3, 4, true), step(0, 4, false), step(0, 0, true)), (0, 3, 0));
+    }
+
+    /// VER-32, SB-29: one scroll offset moves the outline panel's highlight and the shelf's
+    /// current entry through their live colours, with no view run. The panel marks its first row
+    /// above the first heading; the shelf marks nothing there.
+    #[test]
+    fn both_outlines_follow_the_scroll() {
+        let mut map = PageMap::default();
+        map.set_rows(Some(1), || (0..10).map(|i| format!("b{i}")).collect(), vec![0.0; 10], 100.0);
+        let rows = |n: usize| (0..n).map(|_| Mark { fill: Live::new(Color::TRANSPARENT), ink: Live::new(Color::BLACK), on: [Color::WHITE, Color::WHITE], off: [Color::TRANSPARENT, Color::BLACK] }).collect::<Vec<_>>();
+        map.outline = Marks { heads: vec![(2, Some(0)), (4, Some(1)), (7, Some(2))], first_row: Some(0), marks: rows(3), marked: None };
+        map.shelf = Marks { heads: vec![(4, Some(0)), (7, Some(1))], first_row: None, marks: rows(2), marked: None };
+        let inks = |m: &Marks| m.marks.iter().map(|r| r.ink.get() == Color::WHITE).collect::<Vec<_>>();
+        map.mark(0.0);
+        assert_eq!((map.outline.marked, map.shelf.marked), (Some(0), None), "above the first H1 the shelf marks nothing");
+        assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![true, false, false], vec![false, false]));
+        map.mark(350.0);
+        assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![false, true, false], vec![true, false]), "block 4 is at the view's top");
+        map.mark(900.0);
+        assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![false, false, true], vec![false, true]));
     }
 
     #[test]
