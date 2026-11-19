@@ -93,7 +93,7 @@ const W: &[Ctx] = &[Writer, Sheet];
 pub const TABLE: &[Action] = &[
     a(8, "app.command-palette", "Command palette", &[Global], Adapted, &["Ctrl+Shift+K"], &["Ctrl+P"]),
     same(9, "app.quick-switcher", "Quick switcher", &[Global], Quire, &["Ctrl+O"]),
-    a(10, "app.search-notes", "Search all notes", &[Global], Adapted, &["Ctrl+Shift+G"], &["Ctrl+Shift+F"]),
+    a(10, "app.search-notes", "Search all notes", &[Global], Adapted, &["Ctrl+/", "Ctrl+?", "Ctrl+Shift+G"], &["Ctrl+/", "Ctrl+?", "Ctrl+Shift+F"]),
     a(11, "app.toggle-sidebar", "Toggle sidebar", &[Global], Adapted, &["Ctrl+Shift+B"], &["Ctrl+\\"]),
     a(12, "app.toggle-outline", "Toggle outline", &[Global], Adapted, &["Ctrl+\\"], &["Ctrl+Shift+O"]),
     a(13, "app.toggle-mode", "Source / preview", &[Global], Adapted, &["Ctrl+P", "Ctrl+Shift+P"], &["Ctrl+E"]),
@@ -130,7 +130,7 @@ pub const TABLE: &[Action] = &[
     same(40, "reader.zoom-reset", "Text size 14 px", &[Reader], In, &["Ctrl+0"]),
     same(41, "reader.edit-block", "Edit this block", &[Reader], In, &["e"]),
     same(42, "reader.edit-section", "Edit this section", &[Reader], In, &["E"]),
-    same(43, "reader.help", "Keyboard help", &[Reader], In, &["?"]),
+    same(43, "reader.help", "Keyboard help", &[Reader], Adapted, &["?", "F1"]),
     same(44, "reader.close-tab", "Close tab", &[Reader], In, &["q"]),
     same(45, "reader.escape", "Close find or clear the selection", &[Reader], In, &["Esc"]),
     same(46, "reader.versions", "Versions", &[Reader], Deferred, &["v", "V"]),
@@ -159,7 +159,7 @@ pub const TABLE: &[Action] = &[
     same(63, "writer.find-next", "Next match", &[Writer], In, &["Ctrl+G", "F3"]),
     same(64, "writer.find-previous", "Previous match", &[Writer], In, &["Shift+F3"]),
     same(65, "writer.recent-notes", "Recent notes", &[Writer], In, &["Ctrl+R"]),
-    same(66, "writer.help", "Keyboard help", &[Writer], In, &["Ctrl+/", "Ctrl+?"]),
+    same(66, "writer.help", "Keyboard help", &[Writer], Adapted, &["F1"]),
     a(67, "writer.paragraph-focus", "Paragraph focus", &[Writer], Adapted, &["Ctrl+Shift+F"], &["Ctrl+Shift+D"]),
     same(68, "writer.typewriter", "Typewriter scrolling", &[Writer], In, &["Ctrl+Shift+T"]),
     same(69, "writer.next-font", "Next font", &[Writer], In, &["Ctrl+Shift+M"]),
@@ -186,7 +186,7 @@ pub const TABLE: &[Action] = &[
     same(86, "field.submit", "Submit", &[Field], Quire, &["Enter"]),
     same(87, "field.cancel", "Cancel", &[Field], Quire, &["Esc"]),
     // Help.
-    same(88, "help.close", "Close help", &[Help], In, &["Esc", "?", "q", "Ctrl+/", "Ctrl+?"]),
+    same(88, "help.close", "Close help", &[Help], Adapted, &["Esc", "?", "q", "F1"]),
     // Rewrite.
     same(89, "rewrite.send", "Send", &[Rewrite], Deferred, &["Enter"]),
     same(90, "rewrite.close", "Close", &[Rewrite], Deferred, &["Esc"]),
@@ -548,7 +548,7 @@ mod tests {
         assert!(ids(o, Writer, &ev(Key::Command('k'), true, true)).is_empty(), "Ctrl+K never fires on Ctrl+Shift+K");
         assert_eq!(ids(o, Global, &ev(Key::Command('+'), true, true)), ["app.zoom-in"], "Ctrl+Shift+= types +");
         assert_eq!(ids(o, Global, &ev(Key::Command('='), true, false)), ["app.zoom-in"]);
-        assert_eq!(ids(o, Writer, &ev(Key::Command('?'), true, true)), ["writer.help"]);
+        assert_eq!(ids(o, Global, &ev(Key::Command('?'), true, true)), ["app.search-notes"], "Ctrl+Shift+/ types ?");
         assert_eq!(ids(o, Reader, &ev(Key::Text("G".into()), false, true)), ["reader.bottom"]);
         assert_eq!(ids(o, Reader, &ev(Key::Text("?".into()), false, true)), ["reader.help"]);
         assert_eq!(ids(o, Reader, &ev(Key::Text(" ".into()), false, true)), ["reader.page-up"]);
@@ -556,6 +556,24 @@ mod tests {
         alt.mods.alt = true;
         assert!(ids(o, Reader, &alt).is_empty(), "reader keys with Alt are ignored");
         assert_eq!(ids(o, Reader, &ev(Key::Text("n".into()), false, false)), ["reader.find-next"], "deferred actions never run");
+    }
+
+    /// SB-100 to SB-102: Ctrl+/ and Ctrl+? search in both presets beside each preset's own
+    /// key, and F1 opens help in both modes and closes it; Ctrl+/ no longer reaches help.
+    #[test]
+    fn ctrl_slash_searches_and_f1_is_help() {
+        let f1 = KeyEvent { key: Key::Function(1), mods: Mods::default() };
+        for (p, own) in [(Preset::Omarky, 'g'), (Preset::Quire, 'f')] {
+            assert_eq!(ids(p, Global, &ev(Key::Command('/'), true, false)), ["app.search-notes"], "{p:?}");
+            assert_eq!(ids(p, Global, &ev(Key::Command('?'), true, true)), ["app.search-notes"], "{p:?}");
+            assert_eq!(ids(p, Global, &ev(Key::Command(own), true, true)), ["app.search-notes"], "{p:?} keeps its own key");
+            assert_eq!(label(p, "app.search-notes"), if cfg!(target_os = "macos") { "⌘/" } else { "Ctrl+/" }, "{p:?}: the field's hint");
+            assert_eq!(ids(p, Writer, &f1), ["writer.help"], "{p:?}");
+            assert_eq!(ids(p, Reader, &f1), ["reader.help"], "{p:?}");
+            assert_eq!(ids(p, Help, &f1), ["help.close"], "{p:?}");
+            assert!(ids(p, Writer, &ev(Key::Command('/'), true, false)).is_empty(), "{p:?}: Ctrl+/ is not the writer's");
+            assert!(ids(p, Help, &ev(Key::Command('/'), true, false)).is_empty(), "{p:?}: Ctrl+/ does not close help");
+        }
     }
 
     /// KEY-05: labels follow the preset.

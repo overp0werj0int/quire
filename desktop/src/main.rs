@@ -4074,6 +4074,70 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-11, SB-100: Ctrl+/, Ctrl+? and the preset's own key put the keyboard in the search
+    /// field from the note in both modes, showing a hidden sidebar first, and select the text
+    /// already there.
+    #[test]
+    fn ctrl_slash_focuses_search() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-ctrl-slash-{}", std::process::id()));
+        let chords = [(Key::Command('/'), ctrl(false)), (Key::Command('?'), ctrl(true)), (Key::Command('g'), ctrl(true))];
+        for mode in [Mode::Source, Mode::Preview] {
+            for (k, m) in chords.clone() {
+                let mut rt = garden(&dir, mode);
+                rt.update(|s, tx| {
+                    s.persist.left_open = false;
+                    s.query = rune::TextEdit::new("old");
+                    s.keys_to_note(tx);
+                });
+                settle(&mut rt);
+                key(&mut rt, k.clone(), m);
+                let mut got = (false, 0, 0);
+                rt.update_if(|s, _| {
+                    got = (s.persist.left_open, s.query.anchor.min(s.query.focus), s.query.anchor.max(s.query.focus));
+                    false
+                });
+                assert_eq!(focused(&rt).as_deref(), Some("search"), "{mode:?} {k:?}: the field has the keyboard");
+                assert_eq!(got, (true, 0, 3), "{mode:?} {k:?}: the sidebar shows and the old text is selected");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-101, SB-102: F1 opens help in both modes and closes it; `?` still opens the
+    /// reader's; Ctrl+/ over help leaves it open.
+    #[test]
+    fn f1_opens_help() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-f1-{}", std::process::id()));
+        let help = |rt: &mut Runtime<App>| {
+            let mut on = false;
+            rt.update_if(|s, _| {
+                on = s.layer_is(crate::layer::Kind::Help);
+                false
+            });
+            on
+        };
+        for mode in [Mode::Source, Mode::Preview] {
+            let mut rt = garden(&dir, mode);
+            rt.update(|s, tx| s.keys_to_note(tx));
+            settle(&mut rt);
+            key(&mut rt, Key::Function(1), Mods::default());
+            assert!(help(&mut rt), "{mode:?}: F1 opens help");
+            key(&mut rt, Key::Command('/'), ctrl(false));
+            assert!(help(&mut rt), "{mode:?}: Ctrl+/ leaves help open");
+            key(&mut rt, Key::Function(1), Mods::default());
+            assert!(!help(&mut rt), "{mode:?}: F1 closes it");
+            if mode == Mode::Source {
+                assert_eq!(focused(&rt).as_deref(), Some("editor"), "the writer has the keyboard again");
+            } else {
+                text_key(&mut rt, "?");
+                assert!(help(&mut rt), "? still opens the reader's help");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_sidebar_lists_work_from_the_keyboard() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());

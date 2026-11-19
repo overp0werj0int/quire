@@ -1167,7 +1167,7 @@ impl App {
         self.center_match(true, tx);
     }
 
-    /// `?` in the reader and Ctrl+/ in the writer: the keyboard help, or closes it. As it
+    /// `?` or F1 in the reader and F1 in the writer: the keyboard help, or closes it. As it
     /// closes, the caret goes back to the note (WR-158).
     pub fn toggle_help(&mut self, tx: &mut Tx) {
         if self.layer_is(crate::layer::Kind::Help) {

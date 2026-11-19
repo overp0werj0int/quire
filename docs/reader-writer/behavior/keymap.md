@@ -38,7 +38,7 @@ Notes on reading this file:
 
 - **KEY-08** [adapted: 0003] [verify: unit, script] app.command-palette (global): omarky preset `Ctrl+Shift+K`; quire preset `Ctrl+P`. Opens Quire's command palette on its commands list. In the omarky preset `Ctrl+P` and `Ctrl+Shift+P` both switch modes (WR-69), so the palette takes a chord that neither app uses.
 - **KEY-09** [quire] [verify: -] app.quick-switcher (global): omarky preset `Ctrl+O`; quire preset `Ctrl+O`. Opens Quire's quick switcher of notes, recent first. omarky's file chooser is not ported (RD-82, RD-95, WR-67).
-- **KEY-10** [adapted: 0003] [verify: unit, script] app.search-notes (global): omarky preset `Ctrl+Shift+G`; quire preset `Ctrl+Shift+F`. Opens search of all notes in the sidebar. In the omarky preset `Ctrl+Shift+F` is paragraph focus (WR-75), so search moves (RD-52).
+- **KEY-10** [adapted: 0003] [verify: unit, script] app.search-notes (global): omarky preset `Ctrl+/`, `Ctrl+?` or `Ctrl+Shift+G`; quire preset `Ctrl+/`, `Ctrl+?` or `Ctrl+Shift+F`. Puts the keyboard in the sidebar's search field (SB-11, SB-100). In the omarky preset `Ctrl+Shift+F` is paragraph focus (WR-75), so search moves (RD-52). `Ctrl+/` was the writer's help until decision 0013 (SB-100, SB-101).
 - **KEY-11** [adapted: 0003] [verify: unit, script] app.toggle-sidebar (global): omarky preset `Ctrl+Shift+B`; quire preset `Ctrl+\`. Shows or hides the file tree. In the omarky preset `Ctrl+\` is the outline (RD-41, WR-74).
 - **KEY-12** [adapted: 0003] [verify: unit, script] app.toggle-outline (global): omarky preset `Ctrl+\`; quire preset `Ctrl+Shift+O`. Shows or hides Quire's outline panel on the right, in both modes (RD-41, RD-82, WR-74, WR-95). It gives the palette's keyless "Show outline" command a key. The quire preset avoids `Ctrl+Shift+\`, because a symbol chord matches its character (KEY-03). Shift turns `\` into `|` on a US layout and into other characters elsewhere.
 - **KEY-13** [adapted: 0003] [verify: unit, script] app.toggle-mode (global): omarky preset `Ctrl+P` or `Ctrl+Shift+P`; quire preset `Ctrl+E`. Switches the note between source and preview, keeping the place both ways (WR-69, WR-107, WR-108, WR-111, WR-112). In the omarky preset this is omarky's preview round trip. In the quire preset `Ctrl+Shift+P` stays unbound.
@@ -77,7 +77,7 @@ Notes on reading this file:
 - **KEY-40** [in] [verify: unit, script] reader.zoom-reset (reader): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets the text size to 14 px (RD-82, PAGE-19). In the writer `Ctrl+0` clears a heading instead (KEY-56).
 - **KEY-41** [in] [verify: unit, script] reader.edit-block (reader): omarky preset `e`; quire preset `e`. Opens the edit sheet on one block (RD-78, SHEET-001, SHEET-002).
 - **KEY-42** [in] [verify: unit, script] reader.edit-section (reader): omarky preset `E`; quire preset `E`. Opens the edit sheet on the block's section (RD-78, SHEET-001, SHEET-009).
-- **KEY-43** [in] [verify: unit, script] reader.help (reader): omarky preset `?`; quire preset `?`. Opens the help sheet (RD-86).
+- **KEY-43** [adapted: 0013] [verify: unit, script] reader.help (reader): omarky preset `?` or `F1`; quire preset `?` or `F1`. Opens the help sheet (RD-86). `F1` is added so one key opens help in both modes (SB-102).
 - **KEY-44** [in] [verify: unit, script] reader.close-tab (reader): omarky preset `q`; quire preset `q`. Runs app.close-tab (RD-84).
 - **KEY-45** [in] [verify: unit, script] reader.escape (reader): omarky preset `Esc`; quire preset `Esc`. Dismisses Quire's notice, else closes find, else clears the selection, else falls through to app.escape, else returns to source mode (RD-61, RD-72, RD-85, WR-111).
 - **KEY-46** [deferred] [verify: -] reader.versions (reader): omarky preset `v` or `V`; quire preset `v` or `V`. Opens the version list in changes mode (RD-84).
@@ -106,7 +106,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-63** [in] [verify: unit, script] writer.find-next (writer): omarky preset `Ctrl+G` or `F3`; quire preset `Ctrl+G` or `F3`. Goes to the next match, even with the bar hidden (WR-70, WR-120).
 - **KEY-64** [in] [verify: unit, script] writer.find-previous (writer): omarky preset `Shift+F3`; quire preset `Shift+F3`. Goes to the previous match (WR-70, WR-120).
 - **KEY-65** [in] [verify: unit, script] writer.recent-notes (writer): omarky preset `Ctrl+R`; quire preset `Ctrl+R`. Opens the quick switcher, recent notes first (WR-71).
-- **KEY-66** [in] [verify: unit, script] writer.help (writer): omarky preset `Ctrl+/` or `Ctrl+?`; quire preset `Ctrl+/` or `Ctrl+?`. Toggles the help sheet (WR-72, WR-73, WR-158, KEY-03).
+- **KEY-66** [adapted: 0013] [verify: unit, script] writer.help (writer): omarky preset `F1`; quire preset `F1`. Toggles the help sheet (WR-72, WR-73, WR-158). `Ctrl+/` and `Ctrl+?` moved to search (SB-100, SB-101).
 - **KEY-67** [adapted: 0003] [verify: unit, script] writer.paragraph-focus (writer): omarky preset `Ctrl+Shift+F`; quire preset `Ctrl+Shift+D`. Toggles the fade of every paragraph but the current one (WR-75, WR-79). In the quire preset `Ctrl+Shift+F` searches all notes. D stands for dim.
 - **KEY-68** [in] [verify: unit, script] writer.typewriter (writer): omarky preset `Ctrl+Shift+T`; quire preset `Ctrl+Shift+T`. Toggles typewriter scrolling (WR-75, WR-85).
 - **KEY-69** [in] [verify: unit, script] writer.next-font (writer): omarky preset `Ctrl+Shift+M`; quire preset `Ctrl+Shift+M`. Steps the source font to the next iA Writer family (WR-75, WR-125).
@@ -143,7 +143,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 
 ## Help
 
-- **KEY-88** [in] [verify: unit, script] help.close (help): omarky preset `Esc`, `?`, `q`, `Ctrl+/` or `Ctrl+?`; quire preset `Esc`, `?`, `q`, `Ctrl+/` or `Ctrl+?`. Closes the help sheet in either mode. Every other key is swallowed (RD-80, WR-158, WR-159).
+- **KEY-88** [adapted: 0013] [verify: unit, script] help.close (help): omarky preset `Esc`, `?`, `q` or `F1`; quire preset `Esc`, `?`, `q` or `F1`. Closes the help sheet in either mode. Every other key is swallowed (RD-80, WR-158, WR-159). `Ctrl+/` and `Ctrl+?` no longer close it (SB-102).
 
 ## Rewrite
 
