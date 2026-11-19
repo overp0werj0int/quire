@@ -5532,6 +5532,61 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-133: a locked note's tab has no count and no outline while it is locked.
+    #[test]
+    fn a_locked_note_has_no_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-locked-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        std::fs::write(dir.join("notes/Box/sealed.md"), crate::lock::seal(&crate::lock::new_key("pw"), SECTIONS)).unwrap();
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.open_file("Box/sealed.md", None, tx);
+        });
+        glide(&mut rt);
+        assert_eq!(sections_of(&rt, "tab:Box|sealed.md"), None, "no count");
+        click(&mut rt, "tab:Box|sealed.md");
+        assert!(entries(&rt).is_empty(), "and a click folds nothing out");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-120: in Note mode the active tab counts its sections, and a click folds its outline out
+    /// and back, as in Folder mode.
+    #[test]
+    fn note_mode_folds_the_outline_out() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-note-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let loose = dir.join("loose");
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(loose.join("many.md"), SECTIONS).unwrap();
+        let file = loose.canonicalize().unwrap().join("many.md");
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        let f = file.clone();
+        rt.update(move |s, tx| {
+            assert!(s.start_note(&f));
+            s.toggle_focus(tx);
+            s.toggle_left(tx);
+        });
+        glide(&mut rt);
+        let tab = crate::folders::row_key("note", &file.to_string_lossy());
+        assert_eq!(sections_of(&rt, &tab).as_deref(), Some("· 3 sections"), "its caption counts the H1s");
+        assert!(entries(&rt).is_empty(), "the outline starts folded");
+        click(&mut rt, &tab);
+        assert_eq!(entries(&rt), ["One", "Two", "Three"], "a click on the tab folds its outline out");
+        click(&mut rt, &tab);
+        assert!(entries(&rt).is_empty(), "and the next folds it back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-82, SB-83, SB-84: Right on the active tab folds its outline out and Left folds it back,
     /// with the keyboard staying on the tab; Right on another tab does nothing. Up and Down walk
     /// the tabs and the entries between them, Left on an entry goes to its tab, Enter or Space
