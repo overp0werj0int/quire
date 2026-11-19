@@ -5450,6 +5450,54 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The opacity of the element keyed `k` inside the tree row keyed `row`.
+    fn opacity_in(rt: &Runtime<App>, row: &str, k: &str) -> f32 {
+        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(k) && e.path.split('/').any(|s| s == row)).map(|e| e.opacity).unwrap_or_else(|| panic!("no {k} in {row}"))
+    }
+
+    /// SB-51, SB-53, SB-08: a folder's count shows at rest; under the pointer a "+" in a 24 pt
+    /// target takes its place, ending where the count ends. A click on it makes a note in the
+    /// folder, opened in a tab, and leaves the folder open.
+    #[test]
+    fn a_folder_shows_plus_on_hover() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-plus-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.pointer_move(700.0, 400.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(opacity_in(&rt, "dir:Box", "count") > 0.99 && opacity_in(&rt, "dir:Box", "add") < 0.01, "at rest the count, no +");
+        let row = rect_of(&rt, "dir:Box");
+        rt.pointer_move(row[0] + 60.0, row[1] + 14.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(opacity_in(&rt, "dir:Box", "count") < 0.01 && opacity_in(&rt, "dir:Box", "add") > 0.99, "under the pointer the + and no count");
+        let add = rect_in(&rt, "dir:Box", "add").unwrap();
+        let count = rect_in(&rt, "dir:Box", "count").unwrap();
+        assert_eq!((add[2], add[3]), (24.0, 24.0), "a 24 pt target");
+        assert_eq!(add[0] + add[2], row[0] + row[2] - 1.0, "at the row's end");
+        assert!((count[0] + count[2] - (add[0] + add[2] - 7.0)).abs() < 0.5, "the count ends where the + ends: {count:?} {add:?}");
+        let before = dir.join("notes/Box").read_dir().unwrap().count();
+        press(&mut rt, (add[0] + 12.0, add[1] + 12.0), false);
+        settle(&mut rt);
+        rt.update(|s, tx| s.cancel_rename(tx));
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let mut state = None;
+        rt.update_if(|s, _| {
+            state = Some((s.active.clone().unwrap_or_default(), s.expanded.contains("Box"), s.files().keys().filter(|p| p.starts_with("Box/")).count()));
+            false
+        });
+        let (active, open, notes) = state.unwrap();
+        assert!(active.starts_with("Box/"), "the new note is in Box and shown: {active}");
+        assert!(open, "the + does not close the folder");
+        assert_eq!(notes, before + 1, "one note more in Box");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
     /// folded vault unfolds it and opens the name field in the tree.

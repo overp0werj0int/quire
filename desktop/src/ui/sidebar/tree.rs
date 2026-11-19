@@ -18,6 +18,8 @@ use crate::theme;
 
 /// The size of a folder's "+": the smallest pointer target. The drawn icon stays small.
 const TARGET: f32 = 24.0;
+/// From a count's last digit to the end of the "+"'s target, where the "+" ends.
+const COUNT_END: f32 = 7.0;
 
 /// The tree: every folder and note, one Tab stop.
 pub(super) fn tree(v: V) -> El {
@@ -60,26 +62,12 @@ fn walk(v: V, n: &Folder, depth: usize, rows: &mut Vec<(usize, El)>) {
         let open = s.expanded.contains(&f.path);
         let path = f.path.clone();
         let menu_path = f.path.clone();
-        let add_path = f.path.clone();
-        let add = row()
-            .key("add")
-            .size(TARGET, TARGET)
-            .center()
-            .radius(3.0)
-            .hover(Roles::panel(v.p).hover)
-            .label("New note in this folder")
-            .help("New note in this folder")
-            .group_opacity(0.0, 1.0)
-            .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
-            .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
         let branch = Branch::Folder { path: f.path.clone(), open, first: first_row(f) };
-        let count = text(f.count.to_string()).key("count").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(v.p).faint);
-        let r = lists::item(folder_row(v, f, depth, open), v.p, false, move |s: &mut App, _| s.toggle_folder(&path)).child(count);
+        let r = lists::item(folder_row(v, f, depth, open), v.p, false, move |s: &mut App, _| s.toggle_folder(&path));
         rows.push((
             depth,
             lists::tree_arrows(r, branch, parent.clone())
-                .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx))
-                .child(add),
+                .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx)),
         ));
         if open {
             walk(v, f, depth + 1, rows);
@@ -163,7 +151,29 @@ fn folder_row(v: V, f: &Folder, depth: usize, open: bool) -> El {
         r = r.fill(p.soft).border(1.0, p.acc.alpha(0.45));
     }
     let (glyph, icon_key) = if open { (&FOLDER_OPEN, "folder-open") } else { (&FOLDER, "folder-shut") };
-    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(panel::BODY), c.text))
+    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(panel::BODY), c.text)).child(count_or_add(v, f))
+}
+
+/// A folder's count, at the row's right in faint, and the "+" that takes its place while the
+/// pointer is over the row: a 24 pt target that makes a note in the folder and leaves the
+/// folder as it was (SB-51, SB-53, SB-08). The count's last digit and the "+" end together.
+fn count_or_add(v: V, f: &Folder) -> El {
+    let c = Roles::panel(v.p);
+    let path = f.path.clone();
+    let add = row()
+        .key("add")
+        .pin(None, Some(0.0), Some(0.0), None)
+        .size(TARGET, TARGET)
+        .center()
+        .radius(5.0)
+        .hover(c.hover)
+        .label("New note in this folder")
+        .help("New note in this folder")
+        .group_opacity(0.0, 1.0)
+        .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&path), None, tx))
+        .child(icon(&PLUS, 12.0).color(c.dim));
+    let count = text(f.count.to_string()).key("count").font(nav(panel::BODY_SMALL, false)).color(c.faint).group_opacity(1.0, 0.0);
+    row().min_w(TARGET).h(TARGET).center_y().justify_end().pr(COUNT_END).child(count).child(add)
 }
 
 /// A note's row: its name, where a folder's icon starts at its level, in Text; the active
