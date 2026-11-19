@@ -67,6 +67,13 @@ pub struct Roles {
     pub wash: Color,
     /// The colour of a panel row under the pointer.
     pub hover: Color,
+    /// The sidebar's Open shelf and its search field, opaque: the sunken tone over the sidebar,
+    /// darker than the sidebar in both themes (SB-02).
+    pub shelf: Color,
+    /// The one filled row of the sidebar: the active tab, the result Enter opens (SB-03).
+    pub selected: Color,
+    /// The accent used as text (SB-06). Equal to the accent here; `panel` lifts it to 4.5:1.
+    pub accent_text: Color,
     pub hairline: Color,
     pub hairline_soft: Color,
     pub selection: Color,
@@ -108,6 +115,7 @@ impl Roles {
         let flat = |c: Color, a: f32| mix(bg, c, a);
         let named = |c: Option<Color>| c.unwrap_or(accent);
         let blue = named(n.blue);
+        let sunken = (if dark { Color::BLACK } else { fg }).alpha(ld(0.035, 0.22));
         Roles {
             bg,
             accent,
@@ -117,11 +125,14 @@ impl Roles {
             faint: mix(fg, bg, 0.58),
             ghost: mix(fg, bg, 0.8),
             raised: fg.alpha(ld(0.045, 0.04)),
-            sunken: (if dark { Color::BLACK } else { fg }).alpha(ld(0.035, 0.22)),
+            sunken,
             panel: n.panel.unwrap_or_else(|| darker(bg, ld(1.04, 1.2))),
             card: fg.alpha(0.035),
             wash: fg.alpha(ld(0.025, 0.02)),
             hover: fg.alpha(0.06),
+            shelf: mix(p.side, Color { a: 1.0, ..sunken }, sunken.a),
+            selected: fg.alpha(0.1),
+            accent_text: accent,
             hairline: fg.alpha(ld(0.14, 0.12)),
             hairline_soft: fg.alpha(ld(0.09, 0.075)),
             selection: accent.alpha(ld(0.22, 0.3)),
@@ -156,7 +167,7 @@ impl Roles {
     /// title bar's "/" reads at 4.5:1 too.
     pub fn panel(p: &Pal) -> Roles {
         let mut r = Roles::new(p);
-        let fills = [p.bg, p.side, r.on_page(r.wash)];
+        let fills = r.panel_fills(p);
         let lift = |c: Color, toward: Color, min: &dyn Fn(Color) -> f32| {
             let mut out = c;
             let mut t = 0.0;
@@ -172,7 +183,15 @@ impl Roles {
         let extreme = if p.dark { Color::WHITE } else { Color::BLACK };
         r.text = lift(r.text, extreme, &|f| contrast(faint, f) * PANEL_STEP * PANEL_TEXT);
         r.dim = lift(r.dim, r.text, &|f| contrast(faint, f) * PANEL_STEP);
+        r.accent_text = lift(r.accent, r.text, &|_| PANEL_FAINT);
         r
+    }
+
+    /// Every fill the side panels' text sits on: the window, the sidebar, the outline's wash,
+    /// the shelf, and the selected fill on the shelf and on the sidebar.
+    pub fn panel_fills(&self, p: &Pal) -> [Color; 6] {
+        let over = |under: Color, c: Color| mix(under, Color { a: 1.0, ..c }, c.a);
+        [p.bg, p.side, self.on_page(self.wash), self.shelf, over(self.shelf, self.selected), over(p.side, self.selected)]
     }
 
     /// The colour and face of one highlighter style (PAGE-50).
@@ -341,13 +360,33 @@ mod tests {
         assert_eq!(pals.len(), 15);
         for (id, p) in pals {
             let r = Roles::panel(p);
-            for fill in [p.bg, p.side, r.on_page(r.wash)] {
+            for fill in r.panel_fills(p) {
                 let (text, dim, faint) = (contrast(r.text, fill), contrast(r.dim, fill), contrast(r.faint, fill));
                 assert!(faint >= PANEL_FAINT, "{id}: faint {faint:.2} on {}", hx(fill));
                 assert!(dim >= faint * PANEL_STEP, "{id}: rows {dim:.2} not a step above faint {faint:.2} on {}", hx(fill));
                 assert!(text >= dim * PANEL_TEXT * 0.99, "{id}: text {text:.2} not above rows {dim:.2} on {}", hx(fill));
                 let ghost = contrast(r.ghost, fill);
                 assert!(ghost >= PANEL_FAINT, "{id}: the \"/\" at {ghost:.2} on {}", hx(fill));
+            }
+        }
+    }
+
+    /// SB-02, SB-06: the shelf is darker than the sidebar in every theme, the selected fill
+    /// shows on it, and the accent as text reads at 4.5:1 on every fill the sidebar has.
+    #[test]
+    fn the_shelf_reads_in_every_theme() {
+        let lum = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+        let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
+        let mut pals: Vec<(&str, &Pal)> = crate::theme::THEMES.iter().map(|t| (t.id, theme_pal(t.id, t.dark))).collect();
+        pals.push(("omarchy", &omarchy));
+        for (id, p) in pals {
+            let r = Roles::panel(p);
+            assert!(lum(r.shelf) < lum(p.side), "{id}: the shelf {} is not darker than the sidebar {}", hx(r.shelf), hx(p.side));
+            let [.., shelf, on_shelf, _] = r.panel_fills(p);
+            assert!(contrast(shelf, on_shelf) > 1.05, "{id}: the selected fill does not show on the shelf");
+            for fill in r.panel_fills(p) {
+                let a = contrast(r.accent_text, fill);
+                assert!(a >= PANEL_FAINT, "{id}: the accent as text {a:.2} on {}", hx(fill));
             }
         }
     }
