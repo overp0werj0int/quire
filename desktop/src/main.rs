@@ -5532,6 +5532,70 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-82, SB-83, SB-84: Right on the active tab folds its outline out and Left folds it back,
+    /// with the keyboard staying on the tab; Right on another tab does nothing. Up and Down walk
+    /// the tabs and the entries between them, Left on an entry goes to its tab, Enter or Space
+    /// on the active tab folds, and Enter on an entry jumps and gives the note the keyboard. Esc
+    /// on an entry gives the note the keyboard, as on a tab.
+    #[test]
+    fn keys_walk_and_fold_the_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-keys-{}", std::process::id()));
+        let none = Mods::default();
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        rt.update(|_, tx| tx.focus("tab:note.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Right, none);
+        assert!(entries(&rt).is_empty(), "Right on another tab folds nothing out");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:note.md"));
+        key(&mut rt, Key::Down, none);
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|many.md"));
+        key(&mut rt, Key::Right, none);
+        assert_eq!(entries(&rt), ["One", "Two", "Three"], "Right folds the outline out");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|many.md"), "and the keyboard stays on the tab");
+        let mut walk = vec![];
+        for _ in 0..4 {
+            key(&mut rt, Key::Down, none);
+            walk.push(focused(&rt).unwrap_or_default());
+        }
+        assert_eq!(walk, ["toc:0", "toc:1", "toc:2", "tab:Box|none.md"], "Down walks the entries, then the next tab");
+        key(&mut rt, Key::Up, none);
+        assert_eq!(focused(&rt).as_deref(), Some("toc:2"), "Up walks back into them");
+        key(&mut rt, Key::Left, none);
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|many.md"), "Left on an entry goes to its tab");
+        assert_eq!(entries(&rt).len(), 3, "and leaves the outline out");
+        key(&mut rt, Key::Left, none);
+        assert!(entries(&rt).is_empty(), "Left on the tab folds it back");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|many.md"));
+        key(&mut rt, Key::Down, none);
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|none.md"), "folded, Down skips to the next tab");
+        key(&mut rt, Key::Up, none);
+        key(&mut rt, Key::Enter, none);
+        assert_eq!(entries(&rt).len(), 3, "Enter on the active tab folds out");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|many.md"), "and the keyboard stays");
+        key(&mut rt, Key::Text(" ".into()), none);
+        assert!(entries(&rt).is_empty(), "Space folds back");
+        key(&mut rt, Key::Right, none);
+        key(&mut rt, Key::Down, none);
+        key(&mut rt, Key::Escape, none);
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "Esc on an entry gives the note the keyboard: {:?}", focused(&rt));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = sectioned(&dir, Mode::Source, "Box/many.md");
+        click(&mut rt, "tab:Box|many.md");
+        rt.update(|_, tx| tx.focus("toc:2", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Enter, none);
+        let mut caret = (0, 0);
+        rt.update_if(|s, _| {
+            let at = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus);
+            caret = crate::md::line_col(s.active_text(), at);
+            false
+        });
+        assert_eq!(caret.0, SECTIONS.split('\n').position(|l| l == "# Three").unwrap(), "Enter on an entry jumps to its heading");
+        assert_eq!(focused(&rt).as_deref(), Some("editor"), "and gives the note the keyboard");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-28: a click on an entry scrolls the note to its heading, in both modes: the reader's
     /// top block is the heading's, and the writer's caret goes to its line.
     #[test]
