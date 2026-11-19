@@ -181,6 +181,8 @@ pub struct App {
     /// A tab drag that lifted has just been let go of: the press its release sends after it,
     /// with the tab still under the pointer, is no click (SB-21). The next press down clears it.
     pub dropped: bool,
+    /// The tab the shelf last scrolled to, by its element key (SB-24).
+    shelf_shown: Option<String>,
     pub new_folder: Option<crate::folders::NewFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
@@ -279,6 +281,7 @@ pub fn init() -> App {
         handle: None,
         reorder: None,
         dropped: false,
+        shelf_shown: None,
         new_folder: None,
         sync: Default::default(),
         images: Default::default(),
@@ -518,6 +521,7 @@ impl App {
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
         self.lift_over_band(tx);
+        self.reveal_tab(tx);
         changed |= self.release_room(tx);
         changed |= self.expire_sheet(t);
         changed |= self.drop_stale_layers(tx);
@@ -1221,6 +1225,17 @@ impl App {
         }
     }
 
+    /// Before each frame: when the active tab changed, by a click, a key or a note opened
+    /// elsewhere, the shelf scrolls just far enough to show it (SB-24).
+    fn reveal_tab(&mut self, tx: &mut Tx) {
+        let key = self.shelved().map(|t| t.key());
+        if key != self.shelf_shown {
+            if let Some(k) = &key {
+                tx.scroll_into_view_in("shelf-scroll", k.clone());
+            }
+            self.shelf_shown = key;
+        }
+    }
 
     pub fn toggle_folder(&mut self, p: &str) {
         if !self.expanded.remove(p) {

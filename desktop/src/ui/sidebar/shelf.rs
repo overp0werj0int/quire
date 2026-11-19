@@ -1,4 +1,4 @@
-//! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14 to SB-21). Each tab is two
+//! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14 to SB-24). Each tab is two
 //! rows, the note's name over its folder, with a close button on hover and always on the
 //! active tab. A tab dragged up or down moves within the shelf; Alt+Up and Alt+Down move the
 //! focused one, Delete and Backspace close it. In Folder mode a tab per open note, in Note mode

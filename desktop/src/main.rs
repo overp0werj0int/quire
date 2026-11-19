@@ -4977,6 +4977,45 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-24: when the active tab changes, the shelf scrolls just far enough to show it.
+    #[test]
+    fn the_shelf_scrolls_to_the_active_tab() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-scroll-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        let names: Vec<String> = (1..=8).map(|i| format!("n{i}.md")).collect();
+        for n in &names {
+            std::fs::write(dir.join("notes").join(n), "# N\n").unwrap();
+        }
+        rt.set_viewport((1280.0, 560.0), 1.0);
+        let all = names.clone();
+        rt.update(move |s, tx| {
+            s.open_vault(dir_root(s), tx);
+            for n in &all {
+                s.open_file(n, None, tx);
+            }
+        });
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let shows = |rt: &Runtime<App>, tab: &str| {
+            let (scroll, r) = (rect_of(rt, "shelf-scroll"), rect_of(rt, tab));
+            r[1] >= scroll[1] - 0.5 && r[1] + r[3] <= scroll[1] + scroll[3] + 0.5
+        };
+        assert!(!shows(&rt, "tab:note.md"), "more tabs than fit: the first is out of view");
+        assert!(shows(&rt, "tab:n8.md"), "the last opened shows");
+        rt.update(|s, tx| s.open_file("note.md", None, tx));
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        assert!(shows(&rt, "tab:note.md"), "the shelf scrolled up to it");
+        rt.update(|s, tx| s.open_file("n5.md", None, tx));
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        assert!(shows(&rt, "tab:n5.md"), "and down to a tab below");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The open folder's root.
     fn dir_root(s: &App) -> std::path::PathBuf {
