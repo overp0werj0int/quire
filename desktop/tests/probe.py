@@ -14,6 +14,7 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
     tests/probe.py "tap:editor@0.1 key:End+cmd@0.4 type:hello_there@0.8 key:s+cmd@1.6"
 
     tap:KEY@T         a click on the element keyed KEY          tap:700,300@T   a click at a point
+    hover:KEY@T       move the pointer over KEY                 hover:700,300@T move to a point
     key:NAME[+cmd][+shift][+alt]@T                               type:TEXT@T     (use _ for a space)
     scroll:DY,X,Y@T   a wheel turn (positive DY moves towards the note's top)
 
@@ -69,16 +70,17 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|key|type|scroll):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|hover|key|type|scroll):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
-        if kind == "tap":
+        if kind in ("tap", "hover"):
+            ev_type = "tap" if kind == "tap" else "move"
             if re.fullmatch(r"[0-9.]+,[0-9.]+", body):
                 x, y = body.split(",")
-                events.append({"t": t, "type": "tap", "x": float(x), "y": float(y)})
+                events.append({"t": t, "type": ev_type, "x": float(x), "y": float(y)})
             else:
-                events.append({"t": t, "type": "tap", "key": body})
+                events.append({"t": t, "type": ev_type, "key": body})
         elif kind == "key":
             name, *mods = body.split("+")
             events.append(dict({"t": t, "type": "key", "name": name}, **{m: True for m in mods}))
@@ -115,7 +117,8 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
             shutil.copy(note, notes)
             env.update(QUIRE_FOLDER=notes, QUIRE_NOTE=os.path.basename(note))
         elif folder:
-            notes = os.path.join(work, "notes")
+            name = os.path.basename(os.path.normpath(folder)) or "notes"
+            notes = os.path.join(work, name)
             shutil.rmtree(notes, ignore_errors=True)
             shutil.copytree(folder, notes)
             env.update(QUIRE_FOLDER=notes)
@@ -155,7 +158,13 @@ def answer(what, els, home):
         return "\n".join("%-28s %s" % (e["key"], e.get("rect")) for e in els if e.get("key"))
     if what == "notes":
         out = []
-        for top in (os.path.join(home, "Documents"), os.path.join(os.path.dirname(home), "notes")):
+        work = os.path.dirname(home)
+        roots = [os.path.join(home, "Documents")]
+        for entry in sorted(os.listdir(work)):
+            p = os.path.join(work, entry)
+            if entry != "home" and os.path.isdir(p):
+                roots.append(p)
+        for top in roots:
             for dp, ds, fs in sorted(os.walk(top)):
                 ds[:] = [d for d in ds if not d.startswith(".")]
                 for f in sorted(fs):
