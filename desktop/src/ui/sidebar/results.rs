@@ -10,11 +10,11 @@ use rune::{El, Span, col, icon, rich, row, text};
 use super::super::V;
 use super::super::lists;
 use super::super::panel;
-use super::super::styles::{nav, sans};
+use super::super::styles::nav;
 use super::super::widgets::TAG;
-use super::parts::{caption_style, label_row, two_rows};
+use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TAB_TITLE_LH, TEXT_X, caption_style, section_label, two_rows};
 use super::tree::last_part;
-use super::{BUTTON_END, kbd};
+use super::kbd;
 use crate::app::App;
 use crate::md;
 use crate::roles::Roles;
@@ -40,15 +40,15 @@ pub(super) fn results(v: V, r: &Results) -> El {
 /// The list itself, one Tab stop that enters at the filled row (SB-81).
 fn list(v: V, r: &Results) -> El {
     let c = Roles::panel(v.p);
-    let mut out = lists::list(col().key("results").w_full(), "list");
+    let mut out = lists::list(col().key("results").w_full().gap(GAP), "list");
     let Some(first) = r.first() else {
-        return out.child(text("No matches").font(nav(panel::BODY_SMALL, false)).color(c.faint).py(6.0).pl(panel::TEXT_X).pr(panel::RIGHT));
+        return out.child(text("No matches").font(nav(panel::BODY_SMALL, false)).color(c.faint).py(6.0).pl(TEXT_X).pr(TEXT_X));
     };
     let first_key = first.key();
     let filled = v.s.res_focus.clone().filter(|k| r.rows().any(|row| row.key() == *k)).unwrap_or(first_key.clone());
     let ql = r.query.to_lowercase();
     let tag_q = ql.strip_prefix('#').map(|t| t.trim().to_string());
-    let section = |key: &str, name: &str, n: usize| label_row(v.p, key, None, name, n.to_string()).mt(2.0);
+    let section = |key: &str, name: &str, n: usize| section_label(v.p, key, name, n.to_string());
     let vault = v.s.vault.as_ref();
     let look = (format!("{:?}", v.p), &v.s.settings().panel_font, vault.map(|x| &x.name), &r.query);
     let mut last = None;
@@ -120,7 +120,7 @@ fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), lin
     let s = v.s;
     let c = Roles::panel(v.p);
     let small = caption_style();
-    let title = rich(name, marks).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full();
+    let title = rich(name, marks).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full();
     let open = s.tabs.iter().any(|t| t == path);
     let caption = match line {
         Some((t, marks)) => rich(t, marks).font(small).color(c.faint).truncate().shrink().min_w(0.0),
@@ -132,7 +132,7 @@ fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), lin
         }
     };
     let caption = row().w_full().child(caption).children(open.then(|| text(" · open").font(small).color(c.faint)));
-    let el = two_rows(key, title, caption).pr(BUTTON_END + 4.0).role("button").label(md::base(path).to_string());
+    let el = two_rows(key, title, caption).pr(ROW_PX).gap(7.0).role("button").label(md::base(path).to_string());
     if on { el.fill(c.selected) } else { el.hover(c.hover) }
 }
 
@@ -144,18 +144,17 @@ fn tag_row(v: V, key: &str, tag: &str, n: usize, q: &str, on: bool) -> El {
     let notes = format!("{n} {}", if n == 1 { "note" } else { "notes" });
     let el = row()
         .key(key)
-        .h(panel::row_h(panel::BODY))
-        .mx(panel::INSET)
-        .pl(panel::TEXT_X - panel::INSET)
-        .pr(BUTTON_END + 4.0)
-        .gap(6.0)
+        .h(ROW_H)
+        .mx(INSET)
+        .px(ROW_PX)
+        .gap(7.0)
         .center_y()
-        .radius(super::parts::RADIUS)
+        .radius(RADIUS)
         .role("button")
         .label(format!("#{tag}"))
         .child(icon(&TAG, 12.0).color(c.faint))
-        .child(rich(name, marks).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
-        .child(text(notes).font(sans(10.0, 500.0)).color(c.faint));
+        .child(rich(name, marks).font(nav(ROW_TEXT, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(text(notes).font(nav(COUNT_TEXT, false)).color(c.faint));
     if on { el.fill(c.selected) } else { el.hover(c.hover) }
 }
 

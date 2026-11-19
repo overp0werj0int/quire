@@ -9,27 +9,24 @@ use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Live, Mods, Phase, PointerBut
 
 use super::super::V;
 use super::super::lists;
-use super::super::panel;
 use super::super::styles::nav;
 use super::super::widgets::{SB_CLOSE, name_tip};
 use super::{BUTTON_END, ICON};
-use super::parts::{RADIUS, TWO_ROWS_H, caption_style, two_rows};
+use super::parts::{GAP, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
 use crate::app::{App, Mode, Shelved};
 use crate::md;
 use crate::roles::Roles;
 use crate::sidebar::Reorder;
 
-/// The size of a tab's close button: the smallest pointer target. The drawn icon stays small.
+/// The size of a tab's close button: the smallest pointer target. The drawn icon stays 14 pt.
 const TARGET: f32 = 24.0;
 /// A tab's height.
 const TAB_H: f32 = TWO_ROWS_H;
-/// The room between two tabs.
-const GAP: f32 = 1.0;
 /// The spring the tabs a lifted tab passes step aside on.
 const STEP: Spring = Spring::new(0.18, 0.0);
-/// An outline entry's height: its 11 pt line and the room above and below it. The drawing's
-/// is about 21, but an entry has no fill to show where it ends, so it takes the least pointer
+/// An outline entry's height: its 11.5 pt line and the room above and below it. The drawing's
+/// is about 22, but an entry has no fill to show where it ends, so it takes the least pointer
 /// target (SB-08, SB-30).
 const ENTRY_H: f32 = 24.0;
 /// The outline's guide line, in from the tab's edge (SB-30).
@@ -56,9 +53,8 @@ fn count_text(n: usize) -> Option<String> {
     }
 }
 
-/// The room before the caption's count: a space of its face. A text's leading space is not laid
-/// out.
-const COUNT_GAP: f32 = 3.0;
+/// The room before the caption's count: matches the space after `·` in Instrument Sans 10.5 pt.
+const COUNT_GAP: f32 = 2.0;
 
 /// How many tabs the shelf has.
 pub(super) fn count(v: V) -> usize {
@@ -79,7 +75,7 @@ pub(super) fn fit(v: V) -> f32 {
 
 /// The height an outline of `n` entries adds under its tab.
 fn outline_h(n: usize) -> f32 {
-    GAP + n as f32 * ENTRY_H
+    GAP + n as f32 * ENTRY_H + n.saturating_sub(1) as f32 * GAP
 }
 
 /// Whether the active tab's outline, of `n` entries, is out (SB-26, SB-27).
@@ -151,7 +147,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
         .child(icon(&SB_CLOSE, ICON).color(if on { c.dim } else { c.faint }));
-    let title_el = text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
+    let title_el = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
     let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint).ml(COUNT_GAP)));
     let mut el = two_rows(t.key(), title_el, caption)
@@ -231,11 +227,11 @@ fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
     } else {
         None
     };
-    let mut out = col().key("toc").ml(panel::INSET + GUIDE_X).mr(panel::INSET).border_sides([0.0, 0.0, 0.0, 1.0], v.p.line).border_layout();
+    let mut out = col().key("toc").ml(INSET + GUIDE_X).mr(INSET).gap(GAP).border_sides([0.0, 0.0, 0.0, 1.0], v.p.line).border_layout();
     for (n, h) in heads.iter().enumerate() {
         let on = cur == Some(n);
         let ink = |on: bool| if on { c.accent_text } else { c.faint };
-        let mut name = text(h.text.clone()).font(nav(panel::BODY_SMALL, false)).color(ink(on)).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
+        let mut name = text(h.text.clone()).font(nav(OUT_TEXT, false)).color(ink(on)).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
         if live {
             // The ink alone: an entry is never filled (SB-30).
             let mark = crate::reader::Mark { on: [Color::TRANSPARENT, ink(true)], off: [Color::TRANSPARENT, ink(false)], fill: Live::new(Color::TRANSPARENT), ink: Live::new(ink(on)) };

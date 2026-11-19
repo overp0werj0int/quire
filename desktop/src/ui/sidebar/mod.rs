@@ -27,8 +27,8 @@ pub(super) const W: f32 = 248.0;
 /// What the docked sidebar takes from the page: its width and the line on its right edge.
 pub(super) const DOCKED_W: f32 = W + 1.0;
 
-/// A row's room after its button, so the button's icon sits 13 points from the row's end.
-const BUTTON_END: f32 = 1.0;
+/// A row's room after its 24 pt button so the 14 pt icon inside ends 8 pt from the row's end.
+const BUTTON_END: f32 = 3.0;
 /// The top bar's and the footer's buttons, and the search field's height.
 const BUTTON: f32 = 28.0;
 /// The top bar's and the footer's padding.
@@ -111,7 +111,7 @@ fn search_field(v: V) -> El {
     let s = v.s;
     let first = s.results().and_then(|r| r.first().map(|row| row.key()));
     let (rw, rg, rc) = super::focus_ring(p);
-    let field = super::focus::stop(text_input(&s.query, nav(panel::BODY, false)))
+    let field = super::focus::stop(text_input(&s.query, nav(parts::ROW_TEXT, false)))
         .key("search")
         .single_line()
         .py(1.0)
@@ -149,7 +149,7 @@ fn search_field(v: V) -> El {
     // (SB-100), Ctrl+Shift+G does not, and the field's tooltip names it instead.
     let k = keymap::label(s.preset(), "app.search-notes");
     let end = if s.query.text.is_empty() {
-        (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k))
+        (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k).mr(5.0))
     } else {
         Some(
             super::focus::stop(row())
@@ -192,7 +192,7 @@ fn search_field(v: V) -> El {
 pub(super) fn kbd(v: V, k: String) -> El {
     let p = v.p;
     let c = Roles::panel(p);
-    el().key("kbd").mr(4.0).px(4.0).py(2.0).radius(4.0).border(1.0, p.line).border_layout().child(text(k).font(keys(super::styles::CAPTION)).color(c.faint))
+    el().key("kbd").px(4.0).py(2.0).radius(4.0).border(1.0, p.line).border_layout().child(text(k).font(keys(super::styles::CAPTION).lh(12.0)).color(c.faint))
 }
 
 /// The footer: the tags button on the left, the settings button on the right (SB-78). Note

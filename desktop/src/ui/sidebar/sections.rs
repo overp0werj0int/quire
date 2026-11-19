@@ -7,18 +7,21 @@ use rune::{El, Phase, ScrollSpec, col, el, icon};
 use super::super::V;
 use super::super::panel;
 use super::super::widgets::{Control, SB_CHEVRON};
-use super::parts::{LABEL_H, label_row};
+use super::parts::{GAP, LABEL_H, ROW_H, label_row};
 use super::{BAR_PAD, BUTTON, shelf, tree};
 use crate::app::App;
 use crate::roles::Roles;
 use crate::sidebar::{Section, split};
 
-/// The room above a label.
-const LABEL_TOP: f32 = 2.0;
+/// The room above the Open shelf's label, matching `.shelf`'s 8 pt top padding.
+const SHELF_TOP: f32 = 8.0;
+/// The room above the vault's label: 5 pt clears the focus ring below the handle and puts the
+/// 10 pt label text 12 pt below the handle, matching `.body 8 + .lab 4`.
+const VAULT_TOP: f32 = 5.0;
 /// The handle: 9 pt, its two lines inside (SB-33).
 const HANDLE: f32 = 9.0;
-/// The room under the shelf's last row.
-const SHELF_END: f32 = 6.0;
+/// The room under the shelf's last row, matching `.shelf`'s 8 pt bottom padding.
+const SHELF_END: f32 = 8.0;
 
 /// The height the shelf and the vault share: the window less its corner, the top bar and the
 /// footer.
@@ -29,12 +32,12 @@ fn room(v: V) -> f32 {
 
 /// The shelf's height for rows `rows` tall.
 fn shelf_h(rows: f32) -> f32 {
-    LABEL_TOP + LABEL_H + panel::RING_ROOM + rows + SHELF_END
+    SHELF_TOP + LABEL_H + panel::RING_ROOM + rows + SHELF_END
 }
 
 /// The vault's least height: its label and two rows (SB-36).
 fn vault_min() -> f32 {
-    LABEL_TOP + LABEL_H + panel::RING_ROOM + 2.0 * panel::row_h(panel::BODY)
+    VAULT_TOP + LABEL_H + panel::RING_ROOM + 2.0 * ROW_H + GAP
 }
 
 /// The shelf over the vault. With no note open the vault takes the whole room and its label
@@ -72,9 +75,9 @@ fn shelf_el(v: V, n: usize, h: Option<f32>, folds: bool) -> El {
     let folded = folds && v.s.persist.sidebar.folded == Some(Section::Shelf);
     let count = if folded { format!("{n} {}", if n == 1 { "tab" } else { "tabs" }) } else { n.to_string() };
     let head = label(v, Section::Shelf, "Open", count, folds.then_some(folded));
-    let out = col().key("shelf").w_full().min_h(0.0).fill(c.shelf).pt(LABEL_TOP).child(head);
+    let out = col().key("shelf").w_full().min_h(0.0).fill(c.shelf).pt(SHELF_TOP).child(head);
     if folded {
-        return out.pb(SHELF_END).border_sides([0.0, 0.0, 1.0, 0.0], p.line).border_layout().child(shelf::rows(v, true));
+        return out.pb(SHELF_END).border_sides([0.0, 0.0, 1.0, 0.0], p.line).border_layout().child(col().w_full().pt(GAP).child(shelf::rows(v, true)));
     }
     let rows = col().key("shelf-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).scroll_margin(panel::RING_ROOM).child(col().w_full().pt(panel::RING_ROOM).pb(SHELF_END).child(shelf::rows(v, false)));
     match h {
@@ -97,9 +100,9 @@ fn vault_el(v: V, folds: bool, folded: bool) -> El {
     if s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some("")) {
         head = head.fill(v.p.soft).border(1.0, v.p.acc.alpha(0.45));
     }
-    let out = col().key("vault").w_full().pt(LABEL_TOP).child(head);
+    let out = col().key("vault").w_full().pt(VAULT_TOP).child(head);
     if folded {
-        return out.pb(LABEL_TOP).border_sides([1.0, 0.0, 0.0, 0.0], v.p.line).border_layout();
+        return out.pb(VAULT_TOP).border_sides([1.0, 0.0, 0.0, 0.0], v.p.line).border_layout();
     }
     out.grow(1.0).min_h(0.0).child(super::scroll("side-scroll", tree::tree(v)))
 }

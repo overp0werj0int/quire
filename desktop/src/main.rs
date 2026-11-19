@@ -524,7 +524,7 @@ pub(crate) mod scroll_tests {
                 assert_eq!(e.rect[3], 28.0, "{k} keeps its height");
             }
             if k.starts_with("tab:") {
-                assert_eq!(e.rect[3], 36.0, "{k}, a tab of two rows, keeps its height");
+                assert_eq!(e.rect[3], 35.0, "{k}, a tab of two rows, keeps its height");
             }
         }
         assert_eq!(seen.len(), 7, "every kind was measured: {seen:?}");
@@ -5005,10 +5005,10 @@ mod layer_matrix_tests {
         // Far down, the vault keeps its label and two rows; far up, the shelf its label and a tab.
         drag(&mut rt, 2000.0);
         let vault = rect(&rt, "vault").unwrap();
-        assert!(vault[3] >= 26.0 + 2.0 * 28.0, "the vault keeps its least height: {vault:?}");
+        assert!(vault[3] >= 24.0 + 2.0 * 27.0, "the vault keeps its least height: {vault:?}");
         drag(&mut rt, -2000.0);
         let up = rect(&rt, "shelf").unwrap();
-        assert!(up[3] >= 26.0 + 28.0 && up[3] < 80.0, "the shelf keeps its label and a tab: {up:?}");
+        assert!(up[3] >= 24.0 + 35.0 && up[3] <= 84.0, "the shelf keeps its label and a tab: {up:?}");
         rt.update(|s, _| s.persist.sidebar.folded = Some(Section::Shelf));
         settle(&mut rt);
         assert!(rect(&rt, "handle").is_none(), "no handle while a section is folded");
