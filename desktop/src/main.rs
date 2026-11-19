@@ -5314,6 +5314,67 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The tree's rows, top to bottom, by key, once rows that moved have come to rest.
+    fn tree_rows(rt: &mut Runtime<App>) -> Vec<String> {
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let mut rows: Vec<_> = rt.elements().into_iter().filter(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.starts_with("dir:") || k.starts_with("file:"))).collect();
+        rows.sort_by(|a, b| a.rect[1].total_cmp(&b.rect[1]));
+        rows.into_iter().filter_map(|e| e.key).collect()
+    }
+
+    /// The count a folder row shows.
+    fn count_of(rt: &Runtime<App>, folder: &str) -> String {
+        let row = crate::folders::row_key("dir", folder);
+        rt.elements().into_iter().find(|e| e.key.as_deref() == Some("count") && e.path.split('/').any(|s| s == row)).and_then(|e| e.text).unwrap_or_else(|| panic!("no count on {row}"))
+    }
+
+    /// SB-54: at the root and in each folder, the subfolders come first and then the notes,
+    /// each by name ignoring case.
+    #[test]
+    fn subfolders_come_first() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-order-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        let root = dir.join("notes");
+        for p in ["zeta.md", "alpha/x.md", "Box/Inner/c.md", "Box/apple.md"] {
+            std::fs::create_dir_all(root.join(p).parent().unwrap()).unwrap();
+            std::fs::write(root.join(p), "# N\n").unwrap();
+        }
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.expanded.extend(["alpha".to_string(), "Box".to_string(), "Box/Inner".to_string()]);
+        });
+        settle(&mut rt);
+        assert_eq!(
+            tree_rows(&mut rt),
+            ["dir:alpha", "file:alpha|x.md", "dir:Box", "dir:Box|Inner", "file:Box|Inner|c.md", "file:Box|a.md", "file:Box|apple.md", "file:Box|b.md", "file:note.md", "file:zeta.md"]
+        );
+        assert_eq!([count_of(&rt, "alpha"), count_of(&rt, "Box"), count_of(&rt, "Box/Inner")], ["1", "4", "1"], "a folder counts its subfolders' notes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-51, SB-52: a folder's count follows its notes: a note made in it, moved into it or
+    /// deleted from it changes the number at once.
+    #[test]
+    fn folder_counts_follow_the_notes() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-counts-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        assert_eq!(count_of(&rt, "Box"), "2");
+        rt.update(|s, tx| s.new_note_in(Some("Box"), Some("fresh"), tx));
+        settle(&mut rt);
+        assert_eq!(count_of(&rt, "Box"), "3", "a note made in the folder");
+        rt.update(|s, tx| s.move_note("note.md", "Box", tx));
+        settle(&mut rt);
+        assert_eq!(count_of(&rt, "Box"), "4", "a note moved into it");
+        rt.update(|s, _| s.delete_path("Box/a.md"));
+        settle(&mut rt);
+        assert_eq!(count_of(&rt, "Box"), "3", "a note deleted from it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
     /// folded vault unfolds it and opens the name field in the tree.

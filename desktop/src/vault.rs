@@ -16,6 +16,8 @@ pub struct Vault {
     files: BTreeMap<String, String>,
     /// Counts the writes to `files`: one for each `put` and `take`.
     writes: u64,
+    /// Counts the changes to which notes there are: a `put` of a new path, a `take` of one.
+    paths: u64,
     /// Tells this vault from any other read in this run, so a cache of its notes is never
     /// taken for another's.
     id: u64,
@@ -83,7 +85,7 @@ pub fn load(root: &Path) -> std::io::Result<Vault> {
     }
     folders.sort();
     let name = root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
-    Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder, id: next_id(), writes: 0, ver: Default::default() })
+    Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder, id: next_id(), writes: 0, paths: 0, ver: Default::default() })
 }
 
 /// Reads one note for Note mode (`Scope::Note`): the vault's root is the note's folder and its
@@ -106,6 +108,7 @@ pub fn load_one(file: &Path) -> std::io::Result<Vault> {
         scope: Scope::Note,
         id: next_id(),
         writes: 0,
+        paths: 0,
         ver: Default::default(),
     })
 }
@@ -130,14 +133,20 @@ impl Vault {
     pub fn put(&mut self, path: String, text: String) {
         self.writes += 1;
         self.ver.insert(path.clone(), self.writes);
-        self.files.insert(path, text);
+        if self.files.insert(path, text).is_none() {
+            self.paths += 1;
+        }
     }
 
     /// Takes the note at `path` out, with its text.
     pub fn take(&mut self, path: &str) -> Option<String> {
         self.writes += 1;
         self.ver.remove(path);
-        self.files.remove(path)
+        let text = self.files.remove(path);
+        if text.is_some() {
+            self.paths += 1;
+        }
+        text
     }
 
     /// This vault's own number: no other vault read in this run has it.
@@ -150,6 +159,11 @@ impl Vault {
         self.writes
     }
 
+    /// Changes when a note is added or taken out, and not when a note's text changes.
+    pub fn paths(&self) -> u64 {
+        self.paths
+    }
+
     /// The `writes` count at the last write to the note at `path`: 0 for one read from disk and not
     /// written since.
     pub fn ver(&self, path: &str) -> u64 {
@@ -159,7 +173,7 @@ impl Vault {
     /// A vault of `files` with no folder on disk, for tests.
     #[cfg(test)]
     pub fn for_tests(files: BTreeMap<String, String>) -> Vault {
-        Vault { name: "test".into(), path: PathBuf::new(), folders: Vec::new(), files, born: Default::default(), scope: Scope::Folder, id: next_id(), writes: 0, ver: Default::default() }
+        Vault { name: "test".into(), path: PathBuf::new(), folders: Vec::new(), files, born: Default::default(), scope: Scope::Folder, id: next_id(), writes: 0, paths: 0, ver: Default::default() }
     }
 }
 

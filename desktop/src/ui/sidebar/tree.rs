@@ -1,7 +1,5 @@
 //! The vault's tree of folders and notes, with the new folder row and
-//! a note being dragged. Today's rows, until stage 4 of the sidebar's plan rebuilds them.
-
-use std::collections::BTreeMap;
+//! a note being dragged. The rows come from `App::vault_tree`.
 
 use rune::{El, col, el, icon, row, text, text_input};
 
@@ -12,7 +10,7 @@ use super::super::styles::nav;
 use super::super::widgets::{CHEVRON_RIGHT, PLUS, floating, label, name_tip};
 use super::BUTTON_END;
 use crate::app::App;
-use crate::folders::{MenuOn, row_key};
+use crate::folders::{Folder, MenuOn, row_key};
 use crate::layer::MenuOf;
 use crate::md;
 use crate::roles::Roles;
@@ -21,44 +19,11 @@ use crate::theme;
 /// The size of a folder's "+": the smallest pointer target. The drawn icon stays small.
 const TARGET: f32 = 24.0;
 
-struct Node {
-    folders: BTreeMap<String, Node>,
-    files: Vec<String>,
-    path: String,
-}
-
-impl Node {
-    fn new(path: String) -> Node {
-        Node { folders: BTreeMap::new(), files: Vec::new(), path }
-    }
-    fn add(&mut self, path: &str) -> &mut Node {
-        let mut n = self;
-        for part in path.split('/') {
-            let child = if n.path.is_empty() { part.to_string() } else { format!("{}/{part}", n.path) };
-            n = n.folders.entry(part.to_string()).or_insert_with(|| Node::new(child));
-        }
-        n
-    }
-}
-
-fn natural(a: &str, b: &str) -> std::cmp::Ordering {
-    a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b))
-}
-
 /// The tree: every folder and note, one Tab stop.
 pub(super) fn tree(v: V) -> El {
     let p = v.p;
     let s = v.s;
-    let Some(vault) = &s.vault else { return col() };
-    let mut root = Node::new(String::new());
-    for f in &vault.folders {
-        root.add(f);
-    }
-    for f in vault.files().keys() {
-        let d = md::dir(f);
-        let n = if d.is_empty() { &mut root } else { root.add(d) };
-        n.files.push(f.clone());
-    }
+    let Some(root) = s.vault_tree() else { return col() };
     let mut rows = Vec::new();
     walk(v, &root, 0, &mut rows);
     let root_target = s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some(""));
@@ -67,35 +32,21 @@ pub(super) fn tree(v: V) -> El {
     if root_target {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
     }
-    if vault.files().is_empty() && s.new_folder.is_none() {
+    if root.count == 0 && s.new_folder.is_none() {
         c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
     }
     c.children(rows)
 }
 
-/// A folder's folders, in the tree's order.
-fn folder_names(n: &Node) -> Vec<&String> {
-    let mut names: Vec<&String> = n.folders.keys().collect();
-    names.sort_by(|a, b| natural(a, b));
-    names
-}
-
-/// A folder's notes, in the tree's order.
-fn file_names(n: &Node) -> Vec<&String> {
-    let mut files: Vec<&String> = n.files.iter().collect();
-    files.sort_by(|a, b| natural(md::base(a), md::base(b)));
-    files
-}
-
 /// The key of a folder's first row inside it, where Right moves to.
-fn first_row(n: &Node) -> Option<String> {
-    match folder_names(n).first() {
-        Some(name) => Some(row_key("dir", &n.folders[*name].path)),
-        None => file_names(n).first().map(|f| row_key("file", f)),
+fn first_row(f: &Folder) -> Option<String> {
+    match f.folders.first() {
+        Some(sub) => Some(row_key("dir", &sub.path)),
+        None => f.notes.first().map(|n| row_key("file", n)),
     }
 }
 
-fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
+fn walk(v: V, n: &Folder, depth: usize, rows: &mut Vec<El>) {
     let s = v.s;
     if let Some(nf) = &s.new_folder {
         if nf.parent == n.path {
@@ -103,8 +54,8 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
         }
     }
     let parent = (!n.path.is_empty()).then(|| row_key("dir", &n.path));
-    for name in folder_names(n) {
-        let f = &n.folders[name];
+    for f in &n.folders {
+        let name = f.name();
         let open = s.expanded.contains(&f.path);
         let path = f.path.clone();
         let menu_path = f.path.clone();
@@ -121,7 +72,8 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&add_path), None, tx))
             .child(icon(&PLUS, 9.0).color(Roles::panel(v.p).faint));
         let branch = Branch::Folder { path: f.path.clone(), open, first: first_row(f) };
-        let r = lists::item(tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false), v.p, false, move |s: &mut App, _| s.toggle_folder(&path));
+        let count = text(f.count.to_string()).key("count").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(v.p).faint);
+        let r = lists::item(tree_row(v, &row_key("dir", &f.path), name, &f.path, depth, true, open, false), v.p, false, move |s: &mut App, _| s.toggle_folder(&path)).child(count);
         rows.push(
             lists::tree_arrows(r, branch, parent.clone())
                 .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx))
@@ -131,7 +83,7 @@ fn walk(v: V, n: &Node, depth: usize, rows: &mut Vec<El>) {
             walk(v, f, depth + 1, rows);
         }
     }
-    for f in file_names(n) {
+    for f in &n.notes {
         let on = s.active.as_deref() == Some(f.as_str());
         let path = f.clone();
         let drag_path = f.clone();

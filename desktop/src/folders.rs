@@ -53,6 +53,82 @@ pub struct NewFolder {
     pub edit: TextEdit,
 }
 
+/// A folder of the vault's tree (`""` is the root), its rows in the tree's order: its
+/// subfolders, then its notes, each by name ignoring case (SB-54).
+#[derive(Debug, Default, PartialEq)]
+pub struct Folder {
+    pub path: String,
+    pub folders: Vec<Folder>,
+    /// Its notes, by path.
+    pub notes: Vec<String>,
+    /// The notes in it and in its subfolders (SB-52).
+    pub count: usize,
+}
+
+impl Folder {
+    /// The tree of `notes`, by path, and `folders`, which names the empty ones too.
+    pub fn tree<'a>(notes: impl IntoIterator<Item = &'a String>, folders: &[String]) -> Folder {
+        #[derive(Default)]
+        struct Node {
+            folders: std::collections::BTreeMap<String, Node>,
+            notes: Vec<String>,
+        }
+        fn dig<'n>(mut n: &'n mut Node, path: &str) -> &'n mut Node {
+            for part in path.split('/') {
+                n = n.folders.entry(part.to_string()).or_default();
+            }
+            n
+        }
+        fn finish(n: Node, path: String) -> Folder {
+            let mut folders: Vec<Folder> = n.folders.into_iter().map(|(name, child)| finish(child, md::join(&path, &name))).collect();
+            folders.sort_by(|a, b| natural(a.name(), b.name()));
+            let mut notes = n.notes;
+            notes.sort_by(|a, b| natural(md::base(a), md::base(b)));
+            let count = notes.len() + folders.iter().map(|f| f.count).sum::<usize>();
+            Folder { path, folders, notes, count }
+        }
+        let mut root = Node::default();
+        for f in folders.iter().filter(|f| !f.is_empty()) {
+            dig(&mut root, f);
+        }
+        for p in notes {
+            let d = md::dir(p);
+            let n = if d.is_empty() { &mut root } else { dig(&mut root, d) };
+            n.notes.push(p.clone());
+        }
+        finish(root, String::new())
+    }
+
+    /// The folder's own name, the last part of its path.
+    pub fn name(&self) -> &str {
+        self.path.rsplit('/').next().unwrap_or_default()
+    }
+}
+
+/// By name ignoring case, then as written, so two names that differ only in case keep one order.
+fn natural(a: &str, b: &str) -> std::cmp::Ordering {
+    a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b))
+}
+
+/// The vault's tree, kept until a note is added or taken out or the folders change, so the
+/// view does not sort every note and count the folders each time it is built.
+#[derive(Default)]
+pub struct Tree {
+    at: Option<(u64, u64, Vec<String>)>,
+    root: std::rc::Rc<Folder>,
+}
+
+impl Tree {
+    pub fn of(&mut self, v: &crate::vault::Vault) -> std::rc::Rc<Folder> {
+        let fresh = self.at.as_ref().is_some_and(|(id, paths, folders)| *id == v.id() && *paths == v.paths() && *folders == v.folders);
+        if !fresh {
+            self.root = std::rc::Rc::new(Folder::tree(v.files().keys(), &v.folders));
+            self.at = Some((v.id(), v.paths(), v.folders.clone()));
+        }
+        self.root.clone()
+    }
+}
+
 /// A tree row key holds its path with `|` for `/`, since `/` separates keys in element paths.
 pub fn row_key(kind: &str, path: &str) -> String {
     format!("{kind}:{}", path.replace('/', "|"))
@@ -472,6 +548,44 @@ mod tests {
         assert_eq!(folder_at("root/body/sidebar/results-scroll/#0/results"), None, "nor the results");
         assert_eq!(folder_at("root/body/sidebar/side-foot/foot-tags"), None, "nor the footer");
         assert_eq!(folder_at("root/body/sheet/doc-scroll"), None);
+    }
+
+    fn names(f: &Folder) -> (Vec<&str>, Vec<&str>) {
+        (f.folders.iter().map(|f| f.name()).collect(), f.notes.iter().map(|n| md::base(n)).collect())
+    }
+
+    /// SB-52, SB-54: a folder counts the notes in its subfolders as well, an empty folder
+    /// counts none, and each folder lists its subfolders first, then its notes, each by name
+    /// ignoring case.
+    #[test]
+    fn counts_include_subfolders() {
+        let notes: Vec<String> = ["b.md", "Zed/one.md", "apple.md", "Zed/Deep/er/two.md", "Zed/Deep/three.md", "alpha/x.md"].map(String::from).into();
+        let root = Folder::tree(&notes, &["Empty".into(), "Zed/Deep".into()]);
+        assert_eq!(root.count, 6, "the root counts every note");
+        assert_eq!(names(&root), (vec!["alpha", "Empty", "Zed"], vec!["apple", "b"]), "folders first, then notes, ignoring case");
+        let zed = &root.folders[2];
+        assert_eq!((zed.path.as_str(), zed.count), ("Zed", 3), "Zed's one note and the two under it");
+        assert_eq!(names(zed), (vec!["Deep"], vec!["one"]));
+        assert_eq!((zed.folders[0].count, zed.folders[0].folders[0].path.as_str(), zed.folders[0].folders[0].count), (2, "Zed/Deep/er", 1));
+        assert_eq!(root.folders[1].count, 0, "an empty folder counts none");
+    }
+
+    /// The tree is built again when a note comes or goes or a folder is made, and not when a
+    /// note's text changes, so typing never sorts the vault again.
+    #[test]
+    fn the_tree_follows_the_notes_not_their_text() {
+        let mut v = crate::vault::Vault::for_tests([("a.md".to_string(), "A".to_string())].into());
+        let mut tree = Tree::default();
+        let first = tree.of(&v);
+        assert_eq!(first.count, 1);
+        v.put("a.md".into(), "A, edited".into());
+        assert!(std::rc::Rc::ptr_eq(&first, &tree.of(&v)), "an edit keeps the tree");
+        v.put("Box/b.md".into(), "B".into());
+        assert_eq!((tree.of(&v).count, tree.of(&v).folders[0].count), (2, 1), "a new note counts at once");
+        v.take("a.md");
+        assert_eq!(tree.of(&v).count, 1, "a note taken out stops counting");
+        v.folders.push("New".into());
+        assert_eq!(tree.of(&v).folders.iter().map(|f| f.name()).collect::<Vec<_>>(), ["Box", "New"], "a new folder shows");
     }
 
     #[test]

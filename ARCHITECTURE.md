@@ -358,7 +358,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `layer.rs` | The layers over the page: what is open, where focus goes back, and when a layer closes (see Layers). |
 | `focus.rs` | The focus stops, their panes, the rule a focused stop keeps, and F6 (see Focus). |
 | `commands.rs` | The command palette and the quick switcher. |
-| `vault.rs` | `Vault`, `Op`, `Writer`: reading the folder and writing to it. A vault's notes are private: every write goes through `Vault::put` or `Vault::take`, which count it (`writes`, and `ver` per note), so search's index knows which notes to read again. |
+| `vault.rs` | `Vault`, `Op`, `Writer`: reading the folder and writing to it. A vault's notes are private: every write goes through `Vault::put` or `Vault::take`, which count it (`writes`, and `ver` per note), so search's index knows which notes to read again, and `paths`, which moves only when a note is added or taken out, for the tree. |
 | `store.rs` | `Persist`, `Settings`, `state.json`. |
 | `watch.rs` | The watcher thread, plus the Omarchy theme watcher. |
 | `md.rs` | Markdown analysis: names, links, tags, headings, backlinks, search for the MCP server, and the snippets of search's text results as plain text cut at words (`snippet`). |
@@ -372,7 +372,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `writer_app.rs` | The writer on `App`: the span cache, the editing keys, paragraph focus, typewriter scrolling, the font cycle, find in the source, and the mode switch that keeps the place. `App::poll_writer` runs typewriter scrolling before each frame. Scrolls find their target through keyed transparent highlights in the field (`CARET`, `LINE_AT`). Find marks every match with a highlight in the reader's colours, and the current one is keyed `FIND_CUR`. |
 | `highlight.rs` | Code colours: the `rune-highlights` lexers, with omarky's language aliases, mapped to the theme's syntax roles and cached per block. |
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
-| `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). |
+| `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). `Folder` is the vault's tree in the tree's order (SB-54) with each folder's note count, its subfolders' included (SB-52); `Tree` keeps it on `App::tree` and builds it again only when the vault's `paths` count (a note added or taken out) or its folders change, never for an edit to a note's text. |
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
 | `theme.rs` | Themes, fonts, text measurements. |

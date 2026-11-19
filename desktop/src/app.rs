@@ -118,6 +118,8 @@ pub struct App {
     pub query: TextEdit,
     /// Search's results for `query`, kept until the query or the notes change (`results`).
     pub search: std::cell::RefCell<crate::search::Cache>,
+    /// The vault's tree with its folders' counts, kept until its notes or folders change.
+    pub tree: std::cell::RefCell<crate::folders::Tree>,
     /// The result row that has the keyboard, by its key, as the last frame saw it: the row
     /// the list fills (SB-65).
     pub res_focus: Option<String>,
@@ -245,6 +247,7 @@ pub fn init() -> App {
         mode: Mode::Source,
         query: TextEdit::new(""),
         search: Default::default(),
+        tree: Default::default(),
         res_focus: None,
         layers: Vec::new(),
         handed: None,
@@ -1547,6 +1550,11 @@ impl App {
         let n = self.query.text.len();
         self.query.set_selection(0, n);
         tx.focus("search", false);
+    }
+
+    /// The vault's tree, folders and notes in the tree's order, with each folder's count.
+    pub fn vault_tree(&self) -> Option<std::rc::Rc<crate::folders::Folder>> {
+        self.vault.as_ref().map(|v| self.tree.borrow_mut().of(v))
     }
 
     /// Search's results for the field's query, or None while it holds only spaces, when the
