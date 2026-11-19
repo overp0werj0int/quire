@@ -49,8 +49,10 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
     if matches!(kind, Kind::Drawer(_)) {
         // In a drawer the first Esc takes a showing notice and the keyboard stays where it was
         // (`App::esc_takes_notice`). This hears it from any stop inside before Rune's modal
-        // does, which would clear focus and close the drawer; a field asks for itself.
-        el = el.on_key(|s: &mut App, ev: &rune::KeyEvent, _| ev.key == rune::Key::Escape && ev.mods == rune::Mods::default() && s.esc_takes_notice());
+        // does, which would clear focus and close the drawer; a field asks for itself. Esc with
+        // Shift, Ctrl or Alt is Esc here too: the modal takes Shift+Esc from a button before
+        // `keys::esc_again` can send it round.
+        el = el.on_key(|s: &mut App, ev: &rune::KeyEvent, _| ev.key == rune::Key::Escape && !ev.mods.logo && s.esc_takes_notice());
     }
     let (key, paint) = plane(kind);
     match card.plane {

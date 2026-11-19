@@ -4485,14 +4485,18 @@ mod layer_matrix_tests {
             });
             seen
         };
-        let places: [(&str, Drawer, Option<&str>); 5] = [
+        let places: [(&str, Drawer, Option<&str>); 6] = [
             ("a row", Drawer::Sidebar, Some("file:note.md")),
+            ("a button", Drawer::Sidebar, Some("foot-settings")),
             ("a panel tab", Drawer::Sidebar, Some("panel-tags")),
             ("the Search field", Drawer::Sidebar, Some("search")),
             ("the drawer itself", Drawer::Sidebar, None),
             ("the outline's drawer", Drawer::Outline, Some("ol-1")),
         ];
-        for (place, drawer, at) in places {
+        // Esc with Shift, Ctrl or Alt is Esc from every one of them too.
+        let first = [Mods::default(), Mods { shift: true, ..Mods::default() }, Mods { cmd: true, ..Mods::default() }, Mods { alt: true, ..Mods::default() }];
+        for ((place, drawer, at), esc) in places.into_iter().flat_map(|p| first.map(|m| (p, m))) {
+            let place = format!("{place}, Esc with {esc:?}");
             let mut rt = garden(&dir, Mode::Source);
             rt.set_viewport((640.0, 800.0), 1.0);
             settle(&mut rt);
@@ -4513,7 +4517,7 @@ mod layer_matrix_tests {
             settle(&mut rt);
             let open = crate::layer::Kind::Drawer(drawer);
             assert_eq!(state(&mut rt), (true, vec![open]), "{place}: the message shows over the open drawer");
-            key(&mut rt, Key::Escape, Mods::default());
+            key(&mut rt, Key::Escape, esc);
             assert_eq!(state(&mut rt), (false, vec![open]), "{place}: the first Esc dismisses the message and the drawer stays");
             assert_eq!(focused(&rt), held, "{place}: and the keyboard stays where it was");
             key(&mut rt, Key::Escape, Mods::default());
