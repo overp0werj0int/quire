@@ -53,6 +53,9 @@ pub struct Reader {
     pub map: Rc<RefCell<PageMap>>,
     /// The viewport's offset, scroll range, height and width, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
+    /// When a hand last moved the page, on the clock: the wheel and its glide, a swipe and its
+    /// momentum, a drag, the keys. Set by its scroll handler.
+    pub hand: Rc<std::cell::Cell<f64>>,
     /// The progress line, [x, y, w, h], set with the scroll in the frame it draws (RD-38, WR-178).
     pub bar: Live<[f32; 4]>,
     /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
@@ -63,6 +66,9 @@ pub struct Reader {
     /// The room after the page's last line that the band has asked for (RD-104). When the
     /// band shrinks or goes, it follows down frame by frame (`App::release_room`).
     pub(crate) room: f32,
+    /// Where a band that appeared asks the page to go, and when it appeared: it goes there at
+    /// the next frame unless a hand moved the page in the band's own frame (`App::lift_over_band`).
+    lift: Option<(f32, f64)>,
     /// The clock at the last frame's `App::release_room`.
     room_at: f64,
     /// The first key of a two-key chord and when it came.
@@ -86,12 +92,14 @@ impl Default for Reader {
             hover: None,
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
+            hand: Rc::new(std::cell::Cell::new(f64::NEG_INFINITY)),
             bar: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
             thumb_shown: Live::new(0.0),
             band: 0.0,
             room: 0.0,
             room_at: 0.0,
+            lift: None,
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -390,6 +398,10 @@ pub(crate) struct Place {
     /// Where its top goes, from the view's top, once its first layout has decided.
     to: Option<f32>,
 }
+
+/// How long after a hand last moved the page it still counts as moving: a wheel's glide moves it
+/// every frame.
+const HAND_STILL: f64 = 0.1;
 
 /// How long a placement follows its match while the rows around it measure.
 const PLACE_FOR: f64 = 0.6;
@@ -763,42 +775,58 @@ impl App {
     }
 
     /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
-    /// what the user is on comes above it at once, by the least scroll: the caret's line in the
+    /// what the user is on comes above it on the next frame (`lift_over_band`), by the least
+    /// scroll: the caret's line in the
     /// writer (`caret`, as last drawn), else the current find match's own highlight (`find_at`,
     /// where the page laid it out, before scrolling). A match that cannot fit between the view's
     /// top band (`roof` down from the view's top) and this one is centred instead. Nothing
-    /// scrolls when the band shrinks, when typewriter scrolling holds the caret, or when what the
-    /// user is on is out of view or clear of the band.
+    /// scrolls when the band shrinks, when typewriter scrolling holds the caret, when what the
+    /// user is on is out of view or clear of the band, or while the user is scrolling the page:
+    /// their scroll goes on whole, and the caret's line stays where it went until the next key.
     pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, roof: f32, tx: &mut Tx) {
         let grew = h > self.reader.band + 0.5;
         self.reader.band = h;
         self.reader.room = self.reader.room.max(h);
         tx.live_only();
-        if !grew {
+        if !grew || self.now.get() - self.reader.hand.get() < HAND_STILL {
             return;
         }
         let [offset, _, vh, _] = self.reader.scroll.get();
         let view = y + h - vh;
         // A line from window y `top`, `height` tall, in the view and under the band, comes up.
         let under = |top: f32, height: f32| top < y + h && top + height > view && top + height > y;
-        if let Some([_, top, _, height]) = caret {
-            if !self.settings().typewriter_scroll && under(top, height) {
-                tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
+        let to = if let Some([_, top, _, height]) = caret {
+            if self.settings().typewriter_scroll || !under(top, height) {
+                return;
             }
-            return;
-        }
-        // Find's field has the keyboard, so the editor has no caret to go by.
-        let Some([_, top, _, height]) = find_at.filter(|_| self.find_query().is_some()) else { return };
-        let top = top - offset;
-        if !under(top, height) {
-            return;
-        }
-        if y - (view + roof) >= height {
-            tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
+            offset + top + height - y
         } else {
-            // Centred in the view, as find does (RD-60, WR-118). Rune's `scroll_center` would
-            // keep following `FIND_CUR` after its glide and jump to the next step's match.
-            tx.scroll_to(SCROLL, 0.0, offset + top - view - ((vh - height) / 2.0).max(0.0));
+            // Find's field has the keyboard, so the editor has no caret to go by.
+            let Some([_, top, _, height]) = find_at.filter(|_| self.find_query().is_some()) else { return };
+            let top = top - offset;
+            if !under(top, height) {
+                return;
+            }
+            if y - (view + roof) >= height {
+                offset + top + height - y
+            } else {
+                // Centred in the view, as find does (RD-60, WR-118). Rune's `scroll_center` would
+                // keep following `FIND_CUR` after its glide and jump to the next step's match.
+                offset + top - view - ((vh - height) / 2.0).max(0.0)
+            }
+        };
+        self.reader.lift = Some((to, self.now.get()));
+        tx.wake_after(std::time::Duration::ZERO);
+    }
+
+    /// Runs before each frame: the page goes where a band that appeared last frame asked
+    /// (`App::band_laid_out`), unless a hand moved it in that frame. A wheel's notch that came
+    /// with the key that showed the band would otherwise be lost under the lift's glide.
+    pub(crate) fn lift_over_band(&mut self, tx: &mut Tx) {
+        if let Some((to, at)) = self.reader.lift.take()
+            && self.reader.hand.get() < at
+        {
+            tx.scroll_to(SCROLL, 0.0, to);
         }
     }
 

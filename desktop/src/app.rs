@@ -492,6 +492,7 @@ impl App {
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
+        self.lift_over_band(tx);
         changed |= self.release_room(tx);
         changed |= self.expire_sheet(t);
         changed |= self.drop_stale_layers(tx);

@@ -4790,6 +4790,60 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// NOTCHTOAST: a toast that appears while the wheel is turning the page does not move it.
+    /// Two notches up at the note's end, then a toast with the caret's line under its band: the
+    /// wheel's whole 240 pt arrives and no frame turns the page back. Nothing brings the caret
+    /// back until the next key.
+    #[test]
+    fn a_toast_leaves_a_turning_wheel_alone() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-notchtoast-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = 0.0;
+            rt.update_if(|s, _| {
+                at = s.reader.scroll.get()[0];
+                false
+            });
+            at
+        };
+        let text: String = (0..200).map(|i| format!("Line {i} of the note.\n\n")).collect();
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        rt.key(KeyEvent { key: Key::End, mods: ctrl(false) });
+        glide(&mut rt);
+        let notch = || rune::WheelEvent::new(0.0, 120.0).at(640.0, 400.0).precise(false).notch(true);
+        let start = offset(&mut rt);
+        let mut at = vec![start];
+        for i in 0..60 {
+            match i {
+                0 | 3 => rt.wheel_event(notch()),
+                6 => rt.key(KeyEvent { key: Key::Command('s'), mods: ctrl(false) }),
+                _ => {}
+            }
+            rt.frame(DT);
+            at.push(offset(&mut rt));
+        }
+        assert!(rect(&rt, "toast-band").is_some(), "the toast shows");
+        let back = at.windows(2).map(|w| w[1] - w[0]).fold(0.0f32, f32::max);
+        assert!(back < 0.5, "no frame turns the page back down: {back} pt, {at:?}");
+        assert!((start - at[at.len() - 1] - 240.0).abs() < 1.0, "the wheel's whole turn arrives: {start} to {}", at[at.len() - 1]);
+        // Nothing brings the caret back while the page rests, not even a message that stacks on
+        // the toast; the next key does, above the band.
+        let rest = offset(&mut rt);
+        rt.update(|s, _| s.notice = Some("A folder named Docs is already there.".into()));
+        glide(&mut rt);
+        assert!((offset(&mut rt) - rest).abs() < 0.5, "a stacked message leaves the page: {rest} to {}", offset(&mut rt));
+        rt.key(KeyEvent { key: Key::Left, mods: Mods::default() });
+        glide(&mut rt);
+        let caret = rect(&rt, "caret-at").expect("the caret");
+        let band = rect(&rt, "toast-band").expect("the band");
+        assert!(caret[1] >= 0.0 && caret[1] + caret[3] <= band[1] + 0.5, "the next key brings the caret's line above the band: {caret:?}, band {band:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// FINDREV: with find open in the writer, find's field has the keyboard, so a toast goes by
     /// where the page lays out the current match. The view moves only for a match in view and
     /// under the band, by the least scroll; a match clear of the band or out of view stays put.

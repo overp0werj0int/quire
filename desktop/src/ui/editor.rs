@@ -200,6 +200,7 @@ fn doc_scroll(v: V) -> El {
     // A scroll viewport is a column: in a row its content would stretch to the viewport's
     // height and leave nothing to scroll.
     let live = s.reader.scroll.clone();
+    let hand = s.reader.hand.clone();
     let bar = s.reader.bar.clone();
     let map = s.reader.map.clone();
     let (thumb, shown) = (s.reader.thumb.clone(), s.reader.thumb_shown.clone());
@@ -214,6 +215,11 @@ fn doc_scroll(v: V) -> El {
             let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];
             let moved = live.get()[0] != now[0];
             live.set(now);
+            // A hand moved it this frame (the wheel, a swipe, their glide or momentum, a drag,
+            // the keys), on the clock `App::poll` reads (`App::band_laid_out`).
+            if let (true, _, t) = rune::scroll_watch_state() {
+                hand.set(t);
+            }
             // The progress line (RD-38, WR-178).
             map.borrow_mut().follow(now, &bar);
             thumb.set(thumb_rect(now));
