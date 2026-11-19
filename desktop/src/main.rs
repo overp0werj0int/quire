@@ -5496,14 +5496,12 @@ mod layer_matrix_tests {
         rt.pointer_move(x, y);
         glide(&mut rt);
         assert_eq!(lit(&mut rt), (Some(0), vec![true, false, false]), "in the first section, its entry is in the accent");
-        for _ in 0..2 {
-            rt.wheel(x, y, -120.0);
-            rt.frame(DT);
-        }
-        assert_eq!(lit(&mut rt).0, Some(0), "still in the first section");
+        // Debug builds otherwise force one extra view commit every 0.25 s (`LIVE_ONLY_CHECK`) to
+        // audit `Tx::live_only` handlers.
+        rt.check_live_only(false);
         let views = crate::ui::VIEWS.with(|n| n.get());
         let mut seen = vec![Some(0)];
-        for _ in 0..60 {
+        for _ in 0..62 {
             rt.wheel(x, y, -120.0);
             rt.frame(DT);
             let (m, inks) = lit(&mut rt);
@@ -5513,7 +5511,8 @@ mod layer_matrix_tests {
             }
         }
         assert_eq!(seen, [Some(0), Some(1), Some(2)], "the mark walked down the sections");
-        assert_eq!(crate::ui::VIEWS.with(|n| n.get()), views, "with no view run");
+        assert_eq!(crate::ui::VIEWS.with(|n| n.get()), views, "with no view run from the very first wheel step");
+        assert!(rt.live_only_warnings().is_empty(), "no stale live-only warnings: {:?}", rt.live_only_warnings());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
