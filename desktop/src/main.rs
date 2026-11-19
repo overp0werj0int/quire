@@ -5393,6 +5393,7 @@ mod layer_matrix_tests {
         let (tab, toc, first) = (rect_of(&rt, "tab:Box|many.md"), rect_of(&rt, "toc"), rect_of(&rt, "toc:0"));
         assert!(toc[1] >= tab[1] + tab[3] && toc[1] - (tab[1] + tab[3]) < 2.0, "right under its tab: {toc:?} under {tab:?}");
         assert!((toc[0] - (tab[0] + 16.0)).abs() < 0.5, "its guide 16 in from the tab: {toc:?}, tab {tab:?}");
+        assert!(first[0] - 5.0 > toc[0] + 1.0, "the entry's 5 pt focus ring clears the 1 pt guide line: entry {first:?}, toc {toc:?}");
         assert!(first[3] >= 24.0, "an entry is a pointer target: {first:?}");
         assert!(rt.elements().into_iter().filter(|e| e.key.as_deref().is_some_and(|k| k.starts_with("toc:"))).all(|e| e.fill.a == 0.0), "no entry is filled");
         let next = rect_of(&rt, "tab:Box|none.md");

@@ -31,10 +31,10 @@ const STEP: Spring = Spring::new(0.18, 0.0);
 const ENTRY_H: f32 = 24.0;
 /// The outline's guide line, in from the tab's edge (SB-30).
 const GUIDE_X: f32 = 16.0;
-/// An entry's edge, where its focus ring sits, in from the guide line, and its text in from
-/// its edge: the drawing's 4 and 8.
-const ENTRY_IN: f32 = 4.0;
-const ENTRY_PAD: f32 = 8.0;
+/// An entry's edge in from the guide line (7 pt clears the 5 pt focus ring by 2 pt) and its
+/// text padding (5 pt), keeping the text at the spec's 12 pt past the guide line.
+const ENTRY_IN: f32 = 7.0;
+const ENTRY_PAD: f32 = 5.0;
 
 /// The active note's H1 headings, in order: the outline under its tab (SB-17, SB-27). Setext
 /// headings and headings in code blocks are left out, as the outline panel leaves them out. A
