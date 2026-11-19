@@ -244,6 +244,56 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-12: "+" and Ctrl+N make the note in the active tab's folder, or at the root with no
+    /// tab, and a name with a slash goes from the root.
+    #[test]
+    fn new_notes_follow_the_open_note() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-new-follows-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("Box/a.md", "# A\n"), ("b.md", "# B\n")], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        let active = |rt: &mut Runtime<crate::app::App>| {
+            let mut a = None;
+            rt.update_if(|s, _| {
+                a = s.active.clone();
+                false
+            });
+            a.unwrap_or_default()
+        };
+        rt.update(|s, tx| s.open_file("Box/a.md", None, tx));
+        rt.frame(DT);
+        let (x, y) = rt.find("new-note").expect("the + button");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(DT);
+        assert_eq!(active(&mut rt), "Box/Untitled.md", "+ makes the note in the open note's folder");
+        rt.update(|s, tx| {
+            s.cancel_rename(tx);
+            s.open_file("b.md", None, tx);
+            s.focus_editor(tx);
+        });
+        rt.frame(DT);
+        rt.key(rune::KeyEvent { key: rune::Key::Command('n'), mods: rune::Mods { cmd: true, ..rune::Mods::default() } });
+        rt.frame(DT);
+        assert_eq!(active(&mut rt), "Untitled.md", "Ctrl+N from a note at the root makes it at the root");
+        rt.update(|s, tx| {
+            s.cancel_rename(tx);
+            s.open_file("Box/a.md", None, tx);
+            s.new_note(Some("Drafts/Idea"), tx);
+        });
+        assert_eq!(active(&mut rt), "Drafts/Idea.md", "a path goes from the root");
+        rt.update(|s, tx| {
+            for t in s.tabs.clone() {
+                s.close_tab(&t);
+            }
+            s.new_note(None, tx);
+        });
+        assert_eq!(active(&mut rt), "Untitled 2.md", "with no tab the note goes at the root");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-05, SB-14, SB-48, SB-125: both section labels have one style, a chevron, the name in
     /// small capitals and a count: Open with its tabs, the vault's name with its notes. With no
     /// note open the Open label goes with its list.

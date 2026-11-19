@@ -448,36 +448,11 @@ fn files(v: V) -> El {
         col().key("text").child(label("Folder location", sans(14.0, 500.0), p.ink)).child(text(path).font(literal(12.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
         outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)),
     );
-    let cur = s.settings().new_folder.clone();
-    let mut opts = row().key("folder-opts").w_full().flex_wrap().gap(6.0).mt(12.0).role("radiogroup").focus_group();
-    let mut list = vec![(String::new(), "Folder root".to_string())];
-    list.extend(s.folder_list().into_iter().map(|f| (f.clone(), format!("{f}/"))));
-    for (i, (val, lbl)) in list.into_iter().enumerate() {
-        let on = cur == val;
-        let mut b = row()
-            .key(format!("nf-{i}"))
-            .h(28.0)
-            .px(12.0)
-            .center()
-            .radius(7.0)
-            .border(1.0, p.line)
-            .border_layout()
-            .fill(if on { p.bg } else { Color::TRANSPARENT })
-            .choice(on, move |s: &mut App, _: &mut Tx| s.settings_mut().new_folder = val.clone())
-            .child(label(lbl, sans(12.5, 400.0), if on { p.ink } else { p.mute }));
-        if on {
-            for sh in theme::seg_shadows() {
-                b = b.box_shadow(sh);
-            }
-        }
-        opts = opts.child(b);
-    }
     let upd = s.settings().update_links;
     col()
         .key("files-set")
         .w_full()
         .child(loc)
-        .child(block(v, "new-in", "New notes go in", Some("Notes created from links and the switcher land here too.")).child(opts))
         .child(row_(
             v,
             "links",

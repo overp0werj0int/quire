@@ -41,7 +41,6 @@ pub struct Settings {
     /// The formatting toolbar above the note, in source mode.
     pub toolbar: bool,
     pub update_links: bool,
-    pub new_folder: String,
     pub sync: Sync,
     pub mcp: Mcp,
 }
@@ -66,7 +65,6 @@ impl Default for Settings {
             typewriter_scroll: false,
             toolbar: true,
             update_links: true,
-            new_folder: String::new(),
             sync: Sync::default(),
             mcp: Mcp::default(),
         }
@@ -342,6 +340,23 @@ mod tests {
         assert_eq!(back.sidebar, st.sidebar, "the fold and the handle come back");
         let json = std::fs::read_to_string(&path).unwrap();
         assert!(json.contains(r#""sidebar":{"folded":"vault","shelf_h":212.0}"#), "kept once for the app: {json}");
+        unsafe { std::env::remove_var("QUIRE_STATE") };
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// SB-13: a settings file that still names a new notes folder loads, and the folder is
+    /// dropped when it is written again.
+    #[test]
+    fn an_old_new_folder_setting_still_loads() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let path = std::env::temp_dir().join(format!("quire-old-nf-{}.json", std::process::id()));
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe { std::env::set_var("QUIRE_STATE", &path) };
+        std::fs::write(&path, r#"{"settings":{"font":"plex","new_folder":"Inbox","update_links":false}}"#).unwrap();
+        let st = super::load();
+        assert_eq!((st.settings.font.as_str(), st.settings.update_links), ("plex", false), "the rest of the settings load");
+        let json = serde_json::to_string(&st).unwrap();
+        assert!(!json.contains("new_folder"), "the folder is not written back: {json}");
         unsafe { std::env::remove_var("QUIRE_STATE") };
         let _ = std::fs::remove_file(&path);
     }

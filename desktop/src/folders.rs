@@ -83,8 +83,9 @@ fn split_path(name: &str) -> (String, String) {
 }
 
 impl App {
-    /// A new note in `folder` (`None`: the folder from settings). A `name` with slashes, such as
-    /// `Drafts/Idea`, makes the note in that folder, creating any folders it names.
+    /// A new note in `folder` (`None`: the active tab's folder, or the root with no tab: SB-12).
+    /// A `name` with slashes, such as `Drafts/Idea`, makes the note in that folder from the
+    /// root, creating any folders it names.
     pub fn new_note_in(&mut self, folder: Option<&str>, name: Option<&str>, tx: &mut Tx) {
         if self.refuse_in_note_mode() {
             return;
@@ -94,15 +95,12 @@ impl App {
         }
         let mut base_folder = match folder {
             Some(f) => f.to_string(),
-            None => {
-                let f = self.settings().new_folder.clone();
-                if !f.is_empty() && !self.folder_list().contains(&f) { String::new() } else { f }
-            }
+            None => self.active.as_deref().filter(|a| self.tabs.iter().any(|t| t == a)).map_or_else(String::new, |a| md::dir(a).to_string()),
         };
         let (sub, bn) = match name {
             Some(n) if n.contains('/') => {
                 let (d, b) = split_path(n);
-                // A path from the root wins over the settings folder.
+                // A path from the root wins over the open note's folder.
                 base_folder = String::new();
                 (d, b)
             }
