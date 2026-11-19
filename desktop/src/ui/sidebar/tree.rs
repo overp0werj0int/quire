@@ -8,7 +8,8 @@ use super::super::lists::{self, Branch};
 use super::super::panel;
 use super::super::styles::{medium, nav};
 use super::super::widgets::{FOLDER, FOLDER_OPEN, PLUS, floating, label, name_tip};
-use super::BUTTON_END;
+use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
+use super::{BUTTON_END, ICON};
 use crate::app::App;
 use crate::folders::{Folder, MenuOn, row_key};
 use crate::layer::MenuOf;
@@ -16,10 +17,10 @@ use crate::md;
 use crate::roles::Roles;
 use crate::theme;
 
-/// The size of a folder's "+": the smallest pointer target. The drawn icon stays small.
+/// The size of a folder's "+": the smallest pointer target. The drawn icon stays 14 pt.
 const TARGET: f32 = 24.0;
-/// From a count's last digit to the end of the "+"'s target, where the "+" ends.
-const COUNT_END: f32 = 7.0;
+/// From a count's last digit to the end of the "+"'s 24 pt target, where the 14 pt "+" ends.
+const COUNT_END: f32 = 5.0;
 
 /// The tree: every folder and note, one Tab stop.
 pub(super) fn tree(v: V) -> El {
@@ -32,7 +33,7 @@ pub(super) fn tree(v: V) -> El {
     let mut c = lists::list(col().key("tree").w_full().gap(GAP), "tree")
         .on_secondary_press(|s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Root), (at.x, at.y), tx));
     if root.count == 0 && s.new_folder.is_none() {
-        c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
+        c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(TEXT_X));
     }
     c.children(rows)
 }
@@ -93,27 +94,22 @@ pub(super) fn last_part(dir: &str, style: rune::TextStyle) -> f32 {
     }
 }
 
-/// A row's height (SB-07), the room between rows, and its corners, as the shelf's tabs have.
-const ROW_H: f32 = 28.0;
-const GAP: f32 = 1.0;
-const RADIUS: f32 = 6.0;
 /// One level's indent: an icon and the gap after it (SB-50).
 const STEP: f32 = 21.0;
-/// A folder's icon, and the room from it to the name.
-const ICON: f32 = 14.0;
+/// Room between a folder's 14 pt icon and its name.
 const ICON_GAP: f32 = STEP - ICON;
 
 /// The left edge of a row's first icon or name at `depth`: the rows' text edge at the root,
 /// one step in for each level (SB-50).
 fn lead(depth: usize) -> f32 {
-    panel::TEXT_X + depth as f32 * STEP
+    TEXT_X + depth as f32 * STEP
 }
 
 /// A tree row keyed `key`, its content from `lead(depth)`: the hover fill under the pointer,
 /// cut names offering their whole path, and the drag's marks.
 fn shade(v: V, key: &str, depth: usize) -> El {
     let c = Roles::panel(v.p);
-    row().key(key.to_string()).h(ROW_H).mx(panel::INSET).pl(lead(depth) - panel::INSET).pr(panel::RIGHT - panel::INSET).center_y().radius(RADIUS).hover(c.hover)
+    row().key(key.to_string()).h(ROW_H).mx(INSET).pl(lead(depth) - INSET).pr(ROW_PX).center_y().radius(RADIUS).hover(c.hover)
 }
 
 /// Each row's guide lines: one for each folder above it, at the centre of that folder's icon,
@@ -127,8 +123,8 @@ fn guides(v: V, rows: Vec<(usize, El)>) -> Vec<El> {
         .map(|(i, (depth, r))| {
             let next = depths.get(i + 1).copied().unwrap_or(0);
             r.children((0..depth).map(|k| {
-                // The pixel left of the icon's centre, as the drawing puts it.
-                let x = lead(k) + ICON / 2.0 - 1.0 - panel::INSET;
+                // 14 pt in from the parent row's left padding edge, left of the icon's centre.
+                let x = lead(k) + ICON / 2.0 - 1.0 - INSET;
                 el().key("guide").pin(Some(x), Some(0.0), None, Some(if next > k { -GAP } else { 0.0 })).w(1.0).fill(line).inert()
             }))
         })
@@ -147,7 +143,7 @@ fn folder_row(v: V, f: &Folder, depth: usize, open: bool) -> El {
         r = r.fill(p.soft).border(1.0, p.acc.alpha(0.45));
     }
     let (glyph, icon_key) = if open { (&FOLDER_OPEN, "folder-open") } else { (&FOLDER, "folder-shut") };
-    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(panel::BODY), c.text)).child(el().grow(1.0)).child(count_or_add(v, f))
+    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(ROW_TEXT), c.text)).child(el().grow(1.0)).child(count_or_add(v, f))
 }
 
 /// A folder's count, at the row's right in faint, and the "+" that takes its place while the
@@ -168,7 +164,7 @@ fn count_or_add(v: V, f: &Folder) -> El {
         .group_opacity(0.0, 1.0)
         .on_press_tx(move |s: &mut App, tx| s.new_note_in(Some(&path), None, tx))
         .child(icon(&PLUS, ICON).color(c.dim));
-    let count = text(f.count.to_string()).key("count").font(nav(panel::BODY_SMALL, false)).color(c.faint).group_opacity(1.0, 0.0);
+    let count = text(f.count.to_string()).key("count").font(nav(COUNT_TEXT, false)).color(c.faint).group_opacity(1.0, 0.0);
     row().min_w(TARGET).h(TARGET).center_y().justify_end().pr(COUNT_END).child(count).child(add)
 }
 
@@ -181,7 +177,7 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
     if v.s.dragging.as_ref().is_some_and(|d| d.active && d.path == path) {
         r = r.opacity(0.5);
     }
-    r.child(name(md::base(path), path, nav(panel::BODY, on), if on { c.text } else { c.dim }))
+    r.child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }))
 }
 
 /// A row's name, cut at its end. One that shows in full needs no tooltip; one cut short offers
@@ -203,7 +199,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .child(icon(&FOLDER, ICON).color(p.acc))
         .child(
             el().key("new-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(3.0).fill(c.hover).child(
-                super::super::focus::stop(text_input(edit, medium(panel::BODY)))
+                super::super::focus::stop(text_input(edit, medium(ROW_TEXT)))
                     .key("new-folder")
                     .single_line()
                     .w_full()

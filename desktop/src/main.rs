@@ -521,7 +521,7 @@ pub(crate) mod scroll_tests {
                 seen.insert(k.to_string());
             }
             if k.starts_with("dir:") {
-                assert_eq!(e.rect[3], 28.0, "{k} keeps its height");
+                assert_eq!(e.rect[3], 27.0, "{k} keeps its height");
             }
             if k.starts_with("tab:") {
                 assert_eq!(e.rect[3], 35.0, "{k}, a tab of two rows, keeps its height");
@@ -5803,24 +5803,24 @@ mod layer_matrix_tests {
         let rt = two_levels(&dir);
         let x = |row: &str, k: &str| rect_in(&rt, row, k).unwrap_or_else(|| panic!("no {k} in {row}"));
         let text_x = |row: &str| rt.elements().into_iter().find(|e| e.text.is_some() && e.key.is_none() && e.path.split('/').any(|s| s == row)).unwrap_or_else(|| panic!("no name in {row}")).rect[0];
-        assert_eq!(x("dir:Box", "folder-open"), [22.0, x("dir:Box", "folder-open")[1], 14.0, 14.0], "a root folder's icon at the rows' text edge");
-        assert_eq!(x("dir:Box|Inner", "folder-open")[0], 43.0, "one level in: 21 pt");
-        assert_eq!(text_x("dir:Box"), 43.0, "a folder's name 7 pt after its icon");
-        assert_eq!(text_x("dir:Box|Inner"), 64.0);
-        assert_eq!(text_x("file:note.md"), 22.0, "a note at the root starts at the text edge");
-        assert_eq!(text_x("file:Box|a.md"), 43.0, "a note in Box where Inner's icon starts");
-        assert_eq!(text_x("file:Box|Inner|c.md"), 64.0, "two levels in");
+        assert_eq!(x("dir:Box", "folder-open"), [16.0, x("dir:Box", "folder-open")[1], 14.0, 14.0], "a root folder's icon at the rows' text edge");
+        assert_eq!(x("dir:Box|Inner", "folder-open")[0], 37.0, "one level in: 21 pt");
+        assert_eq!(text_x("dir:Box"), 37.0, "a folder's name 7 pt after its icon");
+        assert_eq!(text_x("dir:Box|Inner"), 58.0);
+        assert_eq!(text_x("file:note.md"), 16.0, "a note at the root starts at the text edge");
+        assert_eq!(text_x("file:Box|a.md"), 37.0, "a note in Box where Inner's icon starts");
+        assert_eq!(text_x("file:Box|Inner|c.md"), 58.0, "two levels in");
         let row = |k: &str| rect_of(&rt, k);
         assert!(guides_in(&rt, "dir:Box").is_empty() && guides_in(&rt, "file:note.md").is_empty(), "root rows have no guide");
         let inner = guides_in(&rt, "dir:Box|Inner");
         assert_eq!(inner.len(), 1);
-        assert_eq!(inner[0][0], 28.0, "Box's guide at its icon's centre");
+        assert_eq!(inner[0][0], 22.0, "Box's guide at its icon's centre");
         assert_eq!((inner[0][1], inner[0][1] + inner[0][3]), (row("dir:Box|Inner")[1], row("file:Box|Inner|c.md")[1]), "through the gap to the next row");
         let c = guides_in(&rt, "file:Box|Inner|c.md");
-        assert_eq!(c.iter().map(|g| g[0]).collect::<Vec<_>>(), [28.0, 49.0], "a row two levels in has both guides");
-        assert_eq!(c[1][1] + c[1][3], row("file:Box|Inner|c.md")[1] + 28.0, "Inner's guide ends with its last row");
+        assert_eq!(c.iter().map(|g| g[0]).collect::<Vec<_>>(), [22.0, 43.0], "a row two levels in has both guides");
+        assert_eq!(c[1][1] + c[1][3], row("file:Box|Inner|c.md")[1] + 27.0, "Inner's guide ends with its last row");
         let b = guides_in(&rt, "file:Box|b.md");
-        assert_eq!((b.len(), b[0][1] + b[0][3]), (1, row("file:Box|b.md")[1] + 28.0), "Box's guide ends with its last row");
+        assert_eq!((b.len(), b[0][1] + b[0][3]), (1, row("file:Box|b.md")[1] + 27.0), "Box's guide ends with its last row");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
