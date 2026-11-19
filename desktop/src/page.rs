@@ -19,6 +19,38 @@ pub fn line(size: f32, leading: f32) -> f32 {
     r(size * leading)
 }
 
+/// A heading's text size and leading at `level` 1 to 6, at body size `b` (PAGE-03, PAGE-14).
+pub fn heading_type(b: f32, level: usize) -> (f32, f32) {
+    let level = level.clamp(1, 6);
+    (step(b, [3.0, 2.0, 1.0, 0.5, 0.0, 0.0][level - 1]), if level <= 2 { 1.25 } else { 1.35 })
+}
+
+/// The text size of a code or diff block, at body size `b`.
+pub fn code_size(b: f32) -> f32 {
+    r(b * 0.84)
+}
+
+/// The text size inside a quote, at body size `b` (BLK-33).
+pub fn quote_size(b: f32) -> f32 {
+    r(b * 0.94)
+}
+
+/// How tall a line of a top-level block's own text is, at body size `b`, as the reader draws
+/// it: a heading's, a code block's or a quote's, else a body line. Find centres a far match by
+/// it before its row is built (`App::center_match`).
+pub fn text_line(b: f32, kind: &crate::blocks::Kind) -> f32 {
+    use crate::blocks::Kind;
+    match kind {
+        Kind::Heading { level, .. } => {
+            let (size, lead) = heading_type(b, *level);
+            line(size, lead)
+        }
+        Kind::Code { .. } | Kind::Diff { .. } => line(code_size(b), 1.5),
+        Kind::Quote { .. } => line(quote_size(b), 1.6),
+        _ => line(b, 1.6),
+    }
+}
+
 /// The OS/2 `xAvgCharWidth` of a bundled face, in em (PAGE-21).
 pub fn avg_char(f: Family) -> f32 {
     match f {

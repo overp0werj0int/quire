@@ -5285,6 +5285,44 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// FARRET: in the reader a find step to a match far from the view lands in one move, where
+    /// the match rests, centred: no frame after the one that first draws it there moves it.
+    /// Hits about 2,100 pt apart, four steps forward and two back, at 520 and 1280 wide.
+    #[test]
+    fn a_far_find_match_lands_in_one_move() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-farret-{}", std::process::id()));
+        let text: String = (0..300).map(|i| if i % 60 == 5 { format!("word at line {i}.\n\n") } else { format!("Line {i} of the note.\n\n") }).collect();
+        for (w, h) in [(520.0, 480.0), (1280.0, 800.0)] {
+            let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Preview);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((w, h), 1.0);
+            rt.update(|s, tx| {
+                s.open_find(tx);
+                s.reader.find.q = rune::TextEdit::new("word");
+                s.find_changed(tx);
+            });
+            glide(&mut rt);
+            glide(&mut rt);
+            for (i, forward) in [true, true, true, true, false, false].into_iter().enumerate() {
+                rt.update(|s, tx| s.find_step(forward, tx));
+                let mut seen = vec![];
+                for _ in 0..40 {
+                    rt.frame(DT);
+                    if let Some((_, y)) = rt.find(crate::reader::FIND_CUR) {
+                        seen.push(y);
+                    }
+                }
+                let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+                let mid = page[1] + page[3] / 2.0;
+                let last = *seen.last().expect("the match is drawn");
+                assert!(seen.iter().all(|y| (y - last).abs() < 0.5), "{w}: step {i} draws the match at {seen:?}, not in one place");
+                assert!((last - mid).abs() < 1.0, "{w}: step {i} rests the match at {last}, the view's middle is {mid}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
     /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
     /// inside the list, and each end of the list leaves room for it.

@@ -44,7 +44,7 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
-    let size = r(b * 0.84);
+    let size = crate::page::code_size(b);
     let style = look.mono_at(size, 1.5);
     let src = expand_tabs(src);
     let spans: Vec<Span> = crate::highlight::highlight(lang, &src)
@@ -99,7 +99,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
-    let size = r(b * 0.84);
+    let size = crate::page::code_size(b);
     let style = look.mono_at(size, 1.5);
     let pad_x = r(b * 1.1);
     let count = TextStyle::new(10.0, 700.0).family(look.mono).lh(line(10.0, 1.3));

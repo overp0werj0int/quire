@@ -171,8 +171,6 @@ enum Arrive {
     /// Glide the block's top to 20 points under the view's top; `to` is the offset asked for
     /// last.
     Glide { to: f32 },
-    /// Centre the current find match.
-    Center,
 }
 
 /// What a row laid out asks of the scroll viewport.
@@ -180,7 +178,6 @@ pub enum Arrival {
     Key(f32),
     Cut(f32, f32),
     Glide(f32),
-    Center,
 }
 
 /// How long a trip waits for its row, in seconds.
@@ -306,10 +303,6 @@ impl PageMap {
                 self.pending = None;
                 Some(Arrival::Key(at))
             }
-            Arrive::Center => {
-                self.pending = None;
-                Some(Arrival::Center)
-            }
             Arrive::Cut => {
                 let want = (top - 20.0).clamp(0.0, max.max(0.0));
                 p.how = Arrive::Glide { to: want };
@@ -386,6 +379,16 @@ impl PageMap {
     }
 }
 
+/// Where a find match `h` tall goes, its top this far under the view's top, in a view `vh`
+/// tall whose top band reaches `roof` down and whose toast band is `band` tall: the middle of
+/// the room between them, or of the view with no band or when it cannot fit there (RD-60,
+/// WR-118, RD-104). Not Rune's `scroll_center`: its reveal outlives its glide and would follow
+/// `FIND_CUR` to the next step's match in one frame.
+fn match_to(vh: f32, h: f32, roof: f32, band: f32) -> f32 {
+    let room = vh - band;
+    if band <= 0.0 || room - roof < h { ((vh - h) / 2.0).max(0.0) } else { roof + (room - roof - h) / 2.0 }
+}
+
 /// A match find brings into view (`App::reveal_match`). Nothing moves until its highlight,
 /// keyed `place_key(n)` meanwhile, has laid out and the view reports where (`App::place_match`).
 #[derive(Clone, Copy)]
@@ -397,6 +400,8 @@ pub(crate) struct Place {
     glide: bool,
     /// Where its top goes, from the view's top, once its first layout has decided.
     to: Option<f32>,
+    /// Rune's anchor put it there (`App::center_match`): its layout's report moves nothing.
+    anchored: bool,
 }
 
 /// How long after a hand last moved the page it still counts as moving: a wheel's glide moves it
@@ -694,17 +699,17 @@ impl App {
 
     /// Brings the current find match into view (RD-60, adapted): a match whose block shows
     /// between 20% and 75% of the view's height, and above a toast's band while one shows,
-    /// stays put, and any other goes where `App::place_match` puts it. A block far from the view
-    /// may not be laid out, so the page first goes to where the map puts it, and places the
-    /// match once its row lays out. A step (`glide`) glides; a search as you type jumps.
+    /// stays put, and any other goes where `App::place_match` puts it. A step (`glide`) glides; a
+    /// search as you type jumps. A block far from the view may not be laid out, and the rows
+    /// between may not have measured: the page jumps there in one move, held until they have.
     pub(crate) fn center_match(&mut self, glide: bool, tx: &mut Tx) {
         let m = self.find_matches();
         let doc = self.doc();
         let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
         let Some(b) = doc.blocks.get(i) else { return };
-        let [offset, max, vh, _] = self.reader.scroll.get();
+        let [offset, _, vh, _] = self.reader.scroll.get();
         let band = if self.foot_shows() { self.reader.band } else { 0.0 };
-        let mut map = self.reader.map.borrow_mut();
+        let map = self.reader.map.borrow();
         let Some(top) = map.block_top(i).filter(|_| map.covers(doc.blocks.len())) else {
             drop(map);
             return self.reveal_match(glide);
@@ -719,8 +724,19 @@ impl App {
             drop(map);
             return self.reveal_match(glide);
         }
-        tx.scroll_to_instant(SCROLL, 0.0, (top - 0.5 * vh).clamp(0.0, max.max(0.0)));
-        map.wait(block_key(b), Arrive::Center, self.now.get());
+        // Rune's anchor goes where the list's estimates put the row, which mounts it, and places
+        // the match's highlight again from its layout before the frame draws, centred by its
+        // block's line. Its report then moves nothing: a correction aimed from that report would
+        // land on rows that measure meanwhile and bounce back.
+        drop(map);
+        self.reveal_match(false);
+        let roof = if self.reader.find.open { crate::ui::editor::FIND_FOOT } else { 0.0 };
+        let to = match_to(vh, crate::page::text_line(self.b(), &b.kind), roof, band);
+        let f = &mut self.reader.find;
+        if let Some(p) = f.place.as_mut() {
+            p.anchored = true;
+        }
+        tx.scroll_key_to(format!("{}/{}", block_key(b), place_key(f.placed)), to);
     }
 
     /// Brings the current match into view once it has laid out (`App::place_match`). Nothing
@@ -729,7 +745,7 @@ impl App {
         let at = self.now.get();
         let f = &mut self.reader.find;
         f.placed = f.placed.wrapping_add(1);
-        f.place = Some(Place { n: f.placed, at, glide, to: None });
+        f.place = Some(Place { n: f.placed, at, glide, to: None, anchored: false });
     }
 
     /// The current match, waiting as `place` number `n`, laid out at `[x, y, w, h]` in window
@@ -748,6 +764,10 @@ impl App {
         }
         let (y, vh) = (y - view[1], view[3]);
         let line = self.reader.find.line.replace(y);
+        if p.anchored {
+            self.reader.find.place = None;
+            return;
+        }
         let to = match p.to {
             Some(to) => to,
             None => {
@@ -757,9 +777,7 @@ impl App {
                     self.reader.find.place = None;
                     return;
                 }
-                // Not Rune's `scroll_center`: its reveal outlives its glide and would follow
-                // `FIND_CUR` to the next step's match in one frame.
-                let to = if band <= 0.0 || room - roof < h { ((vh - h) / 2.0).max(0.0) } else { roof + (room - roof - h) / 2.0 };
+                let to = match_to(vh, h, roof, band);
                 p.to = Some(to);
                 self.reader.find.place = Some(p);
                 to
@@ -891,7 +909,6 @@ impl App {
                 tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
             }
             Some(Arrival::Glide(to)) => tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0)),
-            Some(Arrival::Center) => self.reveal_match(false),
             None => tx.live_only(),
         }
     }

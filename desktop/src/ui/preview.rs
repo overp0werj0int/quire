@@ -16,7 +16,7 @@ use super::octicons;
 use crate::app::App;
 use crate::blocks::{Alert, Block, Doc, Footnote, GalleryItem, Kind, Link, Run};
 use crate::md::Img;
-use crate::page::{self, line, r, step};
+use crate::page::{self, line, r};
 use crate::roles::{Roles, mix};
 use crate::theme;
 
@@ -445,8 +445,7 @@ impl Cx<'_> {
     fn heading(&self, level: usize, runs: &[Run], label: &str, slug: &str, pid: Option<usize>, tone: Tone) -> El {
         let look = self.look;
         let level = level.clamp(1, 6);
-        let size = step(look.b, [3.0, 2.0, 1.0, 0.5, 0.0, 0.0][level - 1]);
-        let lead = if level <= 2 { 1.25 } else { 1.35 };
+        let (size, lead) = page::heading_type(look.b, level);
         let (weight, color) = if level <= 4 { (700.0, look.c.strong) } else { (400.0, look.c.dim) };
         let mut style = TextStyle::new(size, weight).family(look.family).lh(line(size, lead));
         if level == 6 {
@@ -495,7 +494,7 @@ impl Cx<'_> {
         let b = look.b;
         let bar = 2f32.max(r(b / 6.0));
         let inset = if tone.quote_depth >= 8 { r(b * 0.5) } else { r(b * 1.2) };
-        let inner = Tone { color: look.c.dim, size: r(b * 0.94), contained: true, quote_depth: tone.quote_depth + 1, ..tone };
+        let inner = Tone { color: look.c.dim, size: page::quote_size(b), contained: true, quote_depth: tone.quote_depth + 1, ..tone };
         row()
             .w_full()
             .items_stretch()
