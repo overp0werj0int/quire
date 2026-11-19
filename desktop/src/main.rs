@@ -3262,7 +3262,7 @@ mod note_mode_tests {
         rt.update_if(move |s, _| {
             assert_eq!(s.note_path().as_ref(), Some(&b));
             assert_eq!(s.notes.len(), 3);
-            // Closing the note shown shows its neighbour; closing them all leaves none.
+            // Closing the note shown shows the one above it (SB-20); closing them all leaves none.
             s.close_note(&b);
             assert_eq!(s.note_path().as_ref(), Some(&a2));
             for n in s.notes.clone() {
@@ -4904,6 +4904,34 @@ mod layer_matrix_tests {
 
 
 
+    /// SB-20: closing the active tab by its "×" or a middle click shows the tab above it, or the
+    /// one below when it was first. Today's rule showed the one below. A keyboard that was in
+    /// the closed note goes to the note shown; one elsewhere stays.
+    #[test]
+    fn a_closed_tab_hands_over_to_the_one_above() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-close-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "Box/a.md");
+        let close = |rt: &mut Runtime<App>, tab: &str| {
+            let x = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("x") && e.path.split('/').any(|s| s == tab)).expect("its close button").rect;
+            press(rt, (x[0] + x[2] / 2.0, x[1] + x[3] / 2.0), false);
+        };
+        rt.update(|_, tx| tx.focus(crate::focus::NOTE, false));
+        settle(&mut rt);
+        close(&mut rt, "tab:Box|a.md");
+        assert_eq!(tabs_and_active(&mut rt), (vec!["note.md".into(), "Box/b.md".into()], Some("note.md".into())), "the tab above shows");
+        assert_eq!(focused(&rt).as_deref(), Some(crate::focus::NOTE), "the keyboard in the closed note goes to the one shown");
+        rt.update(|_, tx| tx.focus("tab:Box|b.md", false));
+        settle(&mut rt);
+        let t = rect_of(&rt, "tab:note.md");
+        rt.pointer_move(t[0] + 40.0, t[1] + 10.0);
+        rt.button_down(t[0] + 40.0, t[1] + 10.0, rune::PointerButton::Middle);
+        rt.button_up(t[0] + 40.0, t[1] + 10.0, rune::PointerButton::Middle);
+        settle(&mut rt);
+        assert_eq!(tabs_and_active(&mut rt), (vec!["Box/b.md".into()], Some("Box/b.md".into())), "the first closed by a middle click: the one below shows");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:Box|b.md"), "a keyboard outside the note stays where it was");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
 
     /// The open folder's root.
@@ -4911,6 +4939,24 @@ mod layer_matrix_tests {
         s.vault.as_ref().map(|v| v.path.clone()).expect("a folder")
     }
 
+    /// SB-115, SB-130: deleting the active note closes its tab by SB-20's rule, and Undo puts the
+    /// tab back at its place, active again.
+    #[test]
+    fn undo_puts_a_tab_back_at_its_place() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-undo-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "Box/a.md");
+        rt.update(|s, _| s.delete_note());
+        settle(&mut rt);
+        rt.update(|s, _| s.writer.wait(std::time::Duration::from_secs(5)));
+        assert_eq!(tabs_and_active(&mut rt), (vec!["note.md".into(), "Box/b.md".into()], Some("note.md".into())), "the tab above shows");
+        rt.update(|s, tx| s.undo_delete(tx));
+        settle(&mut rt);
+        rt.update(|s, _| s.writer.wait(std::time::Duration::from_secs(5)));
+        assert_eq!(tabs_and_active(&mut rt), (vec!["note.md".into(), "Box/a.md".into(), "Box/b.md".into()], Some("Box/a.md".into())), "back in its place and shown");
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|a.md", "tab:Box|b.md"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// SB-15, SB-127, SB-128: a tab is the note's name over its folder, the vault's name for a
     /// note at the root; two notes of one name are told apart by their folders, and a long

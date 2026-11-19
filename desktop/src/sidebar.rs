@@ -1,6 +1,7 @@
 //! The sidebar's two lists as state: which one is folded and where the handle between them
-//! sits, and a tab dragged to a new place (`docs/reader-writer/behavior/sidebar.md`, SB-21,
-//! SB-33 to SB-47). Pure, with no drawing: `ui::sidebar` draws from it.
+//! sits, which tab is active after a close, and a tab dragged to a new place
+//! (`docs/reader-writer/behavior/sidebar.md`, SB-20, SB-21, SB-33 to SB-47). Pure, with no
+//! drawing: `ui::sidebar` draws from it.
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +46,11 @@ pub fn split(stored: Option<f32>, room: f32, fit: f32, min_shelf: f32, min_vault
     stored.unwrap_or(fit.min(room / 2.0)).max(min_shelf).min((room - min_vault).max(0.0))
 }
 
+/// Which tab is active after the active one, at `i`, closed with `len` tabs left: the one
+/// above it, or the one below when it was first (SB-20). None when no tab is left.
+pub fn next_active(i: usize, len: usize) -> Option<usize> {
+    (len > 0).then(|| i.saturating_sub(1).min(len - 1))
+}
 
 /// Points the pointer travels before a press on a tab lifts it: Rune's click slop, so a
 /// press that does not lift is a click (SB-21).
@@ -166,6 +172,15 @@ mod tests {
         assert_eq!(split(stored, 60.0, 100.0, 70.0, 100.0), 0.0, "nothing left for the shelf");
     }
 
+    /// SB-20: the tab above becomes active, or the one below when the closed tab was first;
+    /// none with no tab left.
+    #[test]
+    fn closing_takes_the_tab_above() {
+        assert_eq!(next_active(2, 3), Some(1), "the tab above");
+        assert_eq!(next_active(0, 3), Some(0), "the first: the one below, now first");
+        assert_eq!(next_active(3, 3), Some(2), "the last: the one above, now last");
+        assert_eq!(next_active(0, 0), None, "no tab left");
+    }
 
     /// SB-21: a lifted tab follows the pointer, and the tabs between its place and its target
     /// step a pitch toward the gap it left; the drop moves it there.

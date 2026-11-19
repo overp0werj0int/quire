@@ -87,7 +87,7 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         .label("Close tab")
         .help("Close tab")
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
-        .on_press(move |s: &mut App| s.close_shelved(&close_t))
+        .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
         .child(icon(&CLOSE, 8.0).color(c.faint));
     let names = col()
         .grow(1.0)
@@ -114,17 +114,18 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
     let press_t = t.clone();
     let el = lists::item(el, v.p, on, move |s: &mut App, tx| {
         if tx.button() == PointerButton::Middle {
-            s.close_shelved(&press_t);
-        } else if (std::mem::take(&mut s.dropped) && !tx.by_keys()) || s.shelved().as_ref() == Some(&press_t) {
-            // The release of a drag that lifted the tab is no click (SB-21), and a click on
-            // the active tab folds its outline out (SB-26), in a later stage.
+            close_tab(s, &press_t, tx);
             return;
-        } else {
-            match &press_t {
-                Shelved::Tab(p) => s.open_file(p, None, tx),
-                Shelved::File(f) => {
-                    s.open_note(f);
-                }
+        }
+        // The release of a drag that lifted the tab is no click (SB-21), and a click on the
+        // active tab folds its outline out (SB-26), in a later stage.
+        if (std::mem::take(&mut s.dropped) && !tx.by_keys()) || s.shelved().as_ref() == Some(&press_t) {
+            return;
+        }
+        match &press_t {
+            Shelved::Tab(p) => s.open_file(p, None, tx),
+            Shelved::File(f) => {
+                s.open_note(f);
             }
         }
         s.close_drawer();
@@ -133,6 +134,15 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
     el.child(names).child(close)
 }
 
+/// Closes `t` by its button or a middle click. The note shown goes with its editor, so a
+/// keyboard that was in it goes to the note shown now (SB-20); a keyboard elsewhere stays.
+fn close_tab(s: &mut App, t: &Shelved, tx: &mut rune::Tx) {
+    let in_note = s.shelved().as_ref() == Some(t) && tx.focused().is_some_and(|k| crate::focus::stop(k).is_none());
+    s.close_shelved(t);
+    if in_note {
+        s.keys_to_note(tx);
+    }
+}
 
 
 /// A tab the pointer can drag to a new place, `i` of `len` (SB-21). Past a few points it lifts

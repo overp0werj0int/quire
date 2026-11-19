@@ -833,7 +833,8 @@ impl App {
         self.focus
     }
 
-    /// Takes `file` off Note mode's Open list. Closing the note shown shows its neighbour.
+    /// Takes `file` off Note mode's Open list. Closing the note shown shows the one above it,
+    /// or the one below when it was first (SB-20).
     pub fn close_note(&mut self, file: &Path) {
         let Some(i) = self.notes.iter().position(|n| n == file) else { return };
         let shown = self.note_path().as_deref() == Some(file);
@@ -844,7 +845,7 @@ impl App {
         if !shown {
             return;
         }
-        while let Some(next) = self.notes.get(i.min(self.notes.len().saturating_sub(1))).cloned() {
+        while let Some(next) = crate::sidebar::next_active(i, self.notes.len()).map(|n| self.notes[n].clone()) {
             if self.open_note(&next) {
                 // Showing the neighbour parked the closed note.
                 self.parked.remove(file);
@@ -1154,7 +1155,7 @@ impl App {
         // A closed note locks again.
         self.unlocked.remove(p);
         if self.active.as_deref() == Some(p) {
-            self.active = self.tabs.get(i.min(self.tabs.len().saturating_sub(1))).cloned();
+            self.active = crate::sidebar::next_active(i, self.tabs.len()).map(|n| self.tabs[n].clone());
             if self.active.is_none() {
                 self.focus = false;
             }
@@ -1182,7 +1183,7 @@ impl App {
         self.active.clone().filter(|a| self.tabs.contains(a)).map(Shelved::Tab)
     }
 
-    /// Closes a tab of the shelf.
+    /// Closes a tab of the shelf (SB-20).
     pub fn close_shelved(&mut self, t: &Shelved) {
         match t {
             Shelved::Tab(p) => self.close_tab(p),
