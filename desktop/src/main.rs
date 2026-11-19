@@ -3992,6 +3992,42 @@ mod layer_matrix_tests {
         settle(rt);
     }
 
+    /// DESIGN §3: search reads every note once, then again only the notes that change. With
+    /// results showing, 100 frames lower nothing more, and typing in the writer lowers the one
+    /// note typed in.
+    #[test]
+    fn an_edit_relowers_only_its_note() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-relower-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        let lowered = |rt: &mut Runtime<App>| {
+            let mut n = 0;
+            rt.update_if(|s, _| {
+                n = s.search.borrow().lowered();
+                false
+            });
+            n
+        };
+        rt.update(|s, _| s.query = rune::TextEdit::new("e"));
+        settle(&mut rt);
+        let first = lowered(&mut rt);
+        assert_eq!(first, 3, "the first search lowers each note once");
+        for _ in 0..100 {
+            rt.frame(DT);
+        }
+        assert_eq!(lowered(&mut rt), first, "frames lower nothing");
+        rt.update(|s, tx| s.focus_editor(tx));
+        settle(&mut rt);
+        for c in ["a", "b", "c"] {
+            text_key(&mut rt, c);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+        }
+        assert_eq!(lowered(&mut rt), first + 3, "each keystroke in the note lowers that note alone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-66, SB-69, SB-122: Enter in the field opens the filled row, the first, in the
     /// current mode with the keyboard in the note; in the drawer it closes the drawer. With no
     /// match Enter does nothing.

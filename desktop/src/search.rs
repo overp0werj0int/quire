@@ -111,6 +111,17 @@ struct Index {
     tags: Vec<(String, usize)>,
     /// How many notes it has lowered, for the tests.
     lowered: usize,
+    /// How many notes it has searched the text of, for the tests.
+    scanned: usize,
+}
+
+/// What a search may take from the last results (`Index::search`).
+enum From<'a> {
+    All,
+    /// The last results, for a query that only added letters to theirs.
+    Within(&'a Results),
+    /// The last results for the same query, and the vault's `writes` when they were found.
+    Since(&'a Results, u64),
 }
 
 impl Index {
@@ -146,9 +157,11 @@ impl Index {
         true
     }
 
-    /// The results for the trimmed query `q`, looking only at the notes of `within` when it
-    /// is given: the last results, for a query that only added letters to theirs.
-    fn search(&self, q: &str, within: Option<&Results>) -> Results {
+    /// The results for the trimmed query `q`. `from` says what the last results can spare:
+    /// for a query that only added letters to theirs, only their notes are looked at; for the
+    /// same query after the notes changed, a note unwritten since keeps its last result and
+    /// only the rest are searched.
+    fn search(&mut self, q: &str, from: From) -> Results {
         let mut out = Results { query: q.to_string(), ..Results::default() };
         if let Some(rest) = q.strip_prefix('#') {
             // Tags only (SB-76): those that hold the rest, and the notes of a whole tag.
@@ -161,27 +174,46 @@ impl Index {
             return out;
         }
         let ql = q.to_lowercase();
-        let mut check = |p: &String, e: &Entry| {
+        // A note's name holding the query makes it a title; else its text is searched.
+        let mut scanned = 0;
+        let mut check = |p: &String, e: &Entry, out: &mut Results| {
             if e.name.contains(&ql) {
                 out.titles.push(p.clone());
-            } else if let Some((count, first)) = e.hits(&ql) {
+                return;
+            }
+            scanned += 1;
+            if let Some((count, first)) = e.hits(&ql) {
                 out.text.push(TextHit { path: p.clone(), count, first });
             }
         };
-        match within {
-            Some(last) => {
+        match from {
+            From::Within(last) => {
                 for p in last.titles.iter().chain(last.text.iter().map(|h| &h.path)) {
                     if let Some(e) = self.notes.get(p) {
-                        check(p, e);
+                        check(p, e, &mut out);
                     }
                 }
             }
-            None => {
+            From::Since(last, then) => {
+                let titles: std::collections::HashSet<&str> = last.titles.iter().map(String::as_str).collect();
+                let text: std::collections::HashMap<&str, &TextHit> = last.text.iter().map(|h| (h.path.as_str(), h)).collect();
                 for (p, e) in &self.notes {
-                    check(p, e);
+                    if e.ver > then {
+                        check(p, e, &mut out);
+                    } else if titles.contains(p.as_str()) {
+                        out.titles.push(p.clone());
+                    } else if let Some(h) = text.get(p.as_str()) {
+                        out.text.push((*h).clone());
+                    }
+                }
+            }
+            From::All => {
+                for (p, e) in &self.notes {
+                    check(p, e, &mut out);
                 }
             }
         }
+        self.scanned += scanned;
         out.titles.sort_by(|a, b| tree_cmp(a, b));
         out.text.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.path.cmp(&b.path)));
         out.tags = self.tags.iter().filter(|(t, _)| t.contains(&ql)).cloned().collect();
@@ -304,17 +336,30 @@ impl Cache {
             return r.clone();
         }
         self.index.sync(vault);
-        // Letters added to the last query, on the same notes, can only find fewer of them.
-        let within = self.last.as_ref().filter(|(at, r)| *at == now && !r.query.starts_with('#') && q.to_lowercase().starts_with(&r.query.to_lowercase())).map(|(_, r)| r.clone());
-        let r = Rc::new(self.index.search(q, within.as_deref()));
+        // Letters added to the last query, on the same notes, can only find fewer of them; the
+        // same query on notes written since needs only those notes searched again.
+        let last = self.last.as_ref().filter(|(at, r)| at.0 == now.0 && !r.query.starts_with('#'));
+        let ql = q.to_lowercase();
+        let from = match last {
+            Some((at, r)) if *at == now && ql.starts_with(&r.query.to_lowercase()) => From::Within(r),
+            Some((at, r)) if ql == r.query.to_lowercase() => From::Since(r, at.1),
+            _ => From::All,
+        };
+        let r = Rc::new(self.index.search(q, from));
         self.last = Some((now, r.clone()));
         r
     }
 
     /// How many notes the index has lowered since it began.
     #[cfg(test)]
-    fn lowered(&self) -> usize {
+    pub(crate) fn lowered(&self) -> usize {
         self.index.lowered
+    }
+
+    /// How many notes' text it has searched since it began.
+    #[cfg(test)]
+    fn scanned(&self) -> usize {
+        self.index.scanned
     }
 }
 
@@ -404,6 +449,24 @@ mod tests {
     /// SB-71: results follow the notes. A note written is lowered again, alone, and an
     /// unchanged query on unchanged notes is the same results with nothing lowered, however
     /// many frames ask.
+    #[test]
+    fn the_same_query_after_an_edit_searches_that_note_alone() {
+        let mut v = vault(&[("a.md", "one apple"), ("b.md", "two apples, apple"), ("c.md", "no fruit"), ("apple pie.md", "x")]);
+        let mut c = Cache::default();
+        let r = c.results(&v, "apple");
+        assert_eq!((titles(&r), text(&r)), (vec!["apple pie.md"], vec![("b.md", 2), ("a.md", 1)]));
+        let before = c.scanned();
+        v.put("c.md".into(), "apple apple apple".into());
+        let r = c.results(&v, "apple");
+        assert_eq!(c.scanned(), before + 1, "only the note written since is searched");
+        assert_eq!((titles(&r), text(&r)), (vec!["apple pie.md"], vec![("c.md", 3), ("b.md", 2), ("a.md", 1)]), "and the results are what a full search finds");
+        v.put("b.md".into(), "pears".into());
+        let r = c.results(&v, "apple");
+        assert_eq!(text(&r), [("c.md", 3), ("a.md", 1)], "a note that lost the query leaves");
+        let mut fresh = Cache::default();
+        assert_eq!(*fresh.results(&v, "apple"), *r, "as a fresh search agrees");
+    }
+
     #[test]
     fn an_edit_relowers_one_note() {
         let mut v = vault(&[("a.md", "alpha"), ("b.md", "beta"), ("c.md", "gamma")]);

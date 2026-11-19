@@ -183,3 +183,140 @@ fn bench_wr_224_typing() {
     }
     assert!(fails.is_empty(), "WR-224 budget: {fails:?}");
 }
+
+/// SB-57 to SB-71's cost (DESIGN §3): a folder of 1,000 notes of about 4 KB, the query typed a
+/// letter at a time and taken back a letter at a time. Each keystroke is timed twice: the
+/// search alone (`search::Cache::results`, as the first frame after it runs it) and the whole
+/// frame that shows the results. Then the frame cost with the results cached: the view run
+/// again with nothing changed, and the cache's answer alone.
+#[test]
+#[ignore]
+fn bench_sb_search() {
+    let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("quire-bench-search-{}", std::process::id()));
+    let (mut rt, _) = open(&dir, "# Note\n", Mode::Source);
+    let root = dir.join("notes");
+    let words = ["paper", "window", "garden", "search", "letter", "number", "silver", "harbor", "season", "market", "planet", "candle"];
+    for i in 0..999 {
+        let mut text = format!("# Note {i}\n\n");
+        let mut k: usize = i;
+        while text.len() < 4096 {
+            k = k.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            text.push_str(words[(k >> 16) % words.len()]);
+            text.push(if k % 13 == 0 { '\n' } else { ' ' });
+        }
+        std::fs::create_dir_all(root.join(format!("d{}", i / 100))).unwrap();
+        std::fs::write(root.join(format!("d{}/n{i:03}.md", i / 100)), text).unwrap();
+    }
+    rt.update(move |s, tx| {
+        s.open_vault(root, tx);
+        s.open_file("note.md", None, tx);
+        s.persist.left_open = true;
+    });
+    for _ in 0..4 {
+        rt.frame(DT);
+    }
+    let (files, bytes) = {
+        let mut out = (0, 0);
+        rt.update_if(|s, _| {
+            out = (s.files().len(), s.files().values().map(String::len).sum::<usize>());
+            false
+        });
+        out
+    };
+    println!("bench_sb_search: {files} notes, {:.1} MB", bytes as f64 / 1e6);
+    // One keystroke: the query set, the search timed alone through a cache of the bench's own
+    // that has seen the same queries as the app's, then the frame that shows it, which runs
+    // the app's cache.
+    let warm = std::cell::RefCell::new(crate::search::Cache::default());
+    let step = |rt: &mut Runtime<App>, q: &str| -> (f64, f64, usize) {
+        let q = q.to_string();
+        let mut search = 0.0;
+        let mut rows = 0;
+        rt.update_if(|s, _| {
+            let v = s.vault.as_ref().unwrap();
+            let t = Instant::now();
+            let r = warm.borrow_mut().results(v, &q);
+            search = ms(t);
+            rows = r.rows().count();
+            false
+        });
+        let q2 = q.clone();
+        rt.update(move |s, _| s.query = rune::TextEdit::new(q2));
+        let t = Instant::now();
+        rt.frame(DT);
+        (search, ms(t), rows)
+    };
+    // The first search lowers every note.
+    let (first, frame, _) = step(&mut rt, "s");
+    println!("  first search, lowering every note: {first:.2} ms; its frame {frame:.2} ms");
+    let _ = step(&mut rt, "x");
+    let query = "season";
+    let report = |label: &str, qs: Vec<&str>, rt: &mut Runtime<App>| {
+        let mut worst = (0.0f64, 0.0f64);
+        let mut sum = (0.0, 0.0);
+        for q in &qs {
+            let (s, f, rows) = step(rt, q);
+            println!("    {q:<8} search {s:6.2} ms, frame {f:6.2} ms, {rows} rows");
+            worst = (worst.0.max(s), worst.1.max(f));
+            sum = (sum.0 + s, sum.1 + f);
+        }
+        let n = qs.len() as f64;
+        println!("  {label}: search mean {:.2} ms, worst {:.2} ms; frame mean {:.2} ms, worst {:.2} ms", sum.0 / n, worst.0, sum.1 / n, worst.1);
+    };
+    rt.update(|s, _| s.query = rune::TextEdit::new(""));
+    rt.frame(DT);
+    println!("  narrowing, a letter at a time:");
+    report("narrowing", (1..=query.len()).map(|i| &query[..i]).collect(), &mut rt);
+    println!("  widening, a letter taken back at a time:");
+    report("widening", (1..query.len()).rev().map(|i| &query[..i]).collect(), &mut rt);
+    // Nothing changed: the cache answers with the last results, and a frame that runs the view
+    // again costs what the rows cost to build.
+    let mut hit = 0.0;
+    rt.update_if(|s, _| {
+        let t = Instant::now();
+        for _ in 0..1000 {
+            std::hint::black_box(s.results());
+        }
+        hit = ms(t);
+        false
+    });
+    let mut view = Vec::new();
+    for _ in 0..20 {
+        rt.update(|_, _| {});
+        let t = Instant::now();
+        rt.frame(DT);
+        view.push(ms(t));
+    }
+    view.sort_by(f64::total_cmp);
+    println!("  cache hit: {:.2} µs per `App::results`; a frame that runs the view with the results cached: median {:.2} ms", hit, view[view.len() / 2]);
+    // A keystroke in the writer while the results show: one note changes, so it is lowered
+    // again and searched with the rest, and the rows are built again.
+    rt.update(|s, tx| s.focus_editor(tx));
+    rt.frame(DT);
+    let mut typing = Vec::new();
+    for _ in 0..20 {
+        let t = Instant::now();
+        rt.key(KeyEvent { key: Key::Text("s".into()), mods: Mods::default() });
+        rt.frame(DT);
+        typing.push(ms(t));
+    }
+    typing.sort_by(f64::total_cmp);
+    println!("  a keystroke in the writer with {query:?} showing: median {:.2} ms, worst {:.2} ms", typing[typing.len() / 2], typing[typing.len() - 1]);
+    // The same with the search cleared and the lists showing, for the floor.
+    rt.update(|s, tx| {
+        s.query = rune::TextEdit::new("");
+        s.focus_editor(tx);
+    });
+    rt.frame(DT);
+    let mut plain = Vec::new();
+    for _ in 0..20 {
+        let t = Instant::now();
+        rt.key(KeyEvent { key: Key::Text("s".into()), mods: Mods::default() });
+        rt.frame(DT);
+        plain.push(ms(t));
+    }
+    plain.sort_by(f64::total_cmp);
+    println!("  a keystroke in the writer with no search: median {:.2} ms, worst {:.2} ms", plain[plain.len() / 2], plain[plain.len() - 1]);
+    let _ = std::fs::remove_dir_all(&dir);
+}

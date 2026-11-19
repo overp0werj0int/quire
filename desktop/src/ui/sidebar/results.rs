@@ -20,8 +20,25 @@ use crate::md;
 use crate::roles::Roles;
 use crate::search::{Results, Row};
 
-/// The results list, one Tab stop that enters at the filled row (SB-81).
+/// The results list, built again only when something it draws from changes: the results,
+/// which follow the query and the notes, the filled row, the tabs, the vault's name, the
+/// theme and the panel font. A frame that changes none of them, a keystroke in the writer
+/// while the results show, reuses the rows, however many there are.
 pub(super) fn results(v: V, r: &Results) -> El {
+    let s = v.s;
+    let version = (
+        s.vault.as_ref().map(|x| (x.id(), x.writes(), &x.name)),
+        &r.query,
+        &s.res_focus,
+        &s.tabs,
+        format!("{:?}", v.p),
+        &s.settings().panel_font,
+    );
+    rune::memo("results", version, || list(v, r))
+}
+
+/// The list itself, one Tab stop that enters at the filled row (SB-81).
+fn list(v: V, r: &Results) -> El {
     let c = Roles::panel(v.p);
     let mut out = lists::list(col().key("results").w_full(), "list");
     let Some(first) = r.first() else {
@@ -32,6 +49,8 @@ pub(super) fn results(v: V, r: &Results) -> El {
     let ql = r.query.to_lowercase();
     let tag_q = ql.strip_prefix('#').map(|t| t.trim().to_string());
     let section = |key: &str, name: &str, n: usize| label_row(v.p, key, None, name, n.to_string()).mt(2.0);
+    let vault = v.s.vault.as_ref();
+    let look = (format!("{:?}", v.p), &v.s.settings().panel_font, vault.map(|x| &x.name), &r.query);
     let mut last = None;
     for row in r.rows() {
         let kind = std::mem::discriminant(&row);
@@ -46,15 +65,27 @@ pub(super) fn results(v: V, r: &Results) -> El {
         }
         let key = row.key();
         let on = key == filled;
-        let el = match row {
-            Row::Title(p) => note_row(v, &key, p, marked(md::base(p), &ql, &c), None, on),
-            Row::Tagged(p) => note_row(v, &key, p, (md::base(p).to_string(), Vec::new()), None, on),
-            Row::Text(h) => note_row(v, &key, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), on),
-            Row::Tag(t, n) => tag_row(v, &key, t, n, tag_q.as_deref().unwrap_or(&ql), on),
-        };
-        let el = if on { el.child(kbd(v, "Enter".into())) } else { el };
         let first = key == first_key;
-        out = out.child(choose(v, el, key, on, first));
+        // Each row is built again only when what it draws changes, so an edit to one note
+        // builds that note's row and no other.
+        let note = row.note();
+        let what = match row {
+            Row::Text(h) => (h.count, h.first.pos),
+            Row::Tag(_, n) => (n, 0),
+            _ => (0, 0),
+        };
+        let version = (&look, on, first, what, note.map(|p| (vault.map_or(0, |x| x.ver(p)), v.s.tabs.iter().any(|t| t == p))));
+        let k = key.clone();
+        out = out.child(rune::memo(key, version, || {
+            let el = match row {
+                Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, on),
+                Row::Tagged(p) => note_row(v, &k, p, (md::base(p).to_string(), Vec::new()), None, on),
+                Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), on),
+                Row::Tag(t, n) => tag_row(v, &k, t, n, tag_q.as_deref().unwrap_or(&ql), on),
+            };
+            let el = if on { el.child(kbd(v, "Enter".into())) } else { el };
+            choose(v, el, k.clone(), on, first)
+        }));
     }
     out
 }
