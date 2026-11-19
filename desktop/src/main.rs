@@ -5184,6 +5184,53 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// FINDSTEP: a find step glides whenever it is pressed, in both modes, with no band. At each
+    /// gap from 0.40 to 0.70 s, as the last glide runs, lands or has just landed, no frame moves
+    /// the page more than a glide's frame does.
+    #[test]
+    fn a_find_step_glides_whenever_it_is_pressed() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findstep-{}", std::process::id()));
+        let text: String = (0..120).map(|i| if i >= 30 && i % 2 == 0 { format!("word at line {i}.\n\n") } else { format!("Line {i} of the note.\n\n") }).collect();
+        let offset = |rt: &mut Runtime<App>| {
+            let mut y = 0.0;
+            rt.update_if(|s, _| {
+                y = s.reader.scroll.get()[0];
+                false
+            });
+            y
+        };
+        for mode in [Mode::Source, Mode::Preview] {
+            let (mut rt, _) = crate::bench::open(&dir, &text, mode);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            rt.update(|s, tx| {
+                s.open_find(tx);
+                s.reader.find.q = rune::TextEdit::new("word");
+                s.find_changed(tx);
+            });
+            glide(&mut rt);
+            let (start, mut moved) = (offset(&mut rt), 0);
+            for gap in 24..=42 {
+                rt.update(|s, tx| s.find_step(true, tx));
+                let (from, mut last, mut most) = (offset(&mut rt), offset(&mut rt), 0.0f32);
+                for _ in 0..gap {
+                    rt.frame(DT);
+                    let y = offset(&mut rt);
+                    most = most.max((y - last).abs());
+                    last = y;
+                }
+                moved += usize::from((last - from).abs() > 30.0);
+                assert!(most < 30.0, "{mode:?}, a step {gap} frames after the last: the page moves {most} pt in one frame");
+            }
+            // The reader holds a match between 20% and 75% of the view (RD-60); the writer
+            // centres each.
+            let least = if mode == Mode::Source { 19 } else { 8 };
+            assert!(moved >= least, "{mode:?}: {moved} of 19 steps moved the page, from {start} to {}", offset(&mut rt));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A focused row's whole ring shows (RING): Home and End in the tree, the search results
     /// and the outline scroll the row's ring, a 3 point gap and a 2 point stroke past the row,
     /// inside the list, and each end of the list leaves room for it.

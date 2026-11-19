@@ -725,9 +725,9 @@ impl App {
     /// its top band reaches, and `band` how tall the toast's band is, 0 with none. A match on
     /// the line the last one was on, in view and clear of both bands, stays where it is. Any
     /// other is centred in the room between the bands, or in the view while no band shows or
-    /// when it cannot fit between them (RD-60, WR-118, RD-104). Between the bands, the first
-    /// report decides where the match goes in the view; later ones, as the rows around it
-    /// measure, keep it going there.
+    /// when it cannot fit between them (RD-60, WR-118, RD-104). The first report decides where
+    /// the match goes in the view; later ones, as the rows around it measure, keep it going
+    /// there.
     pub(crate) fn place_match(&mut self, n: u32, [_, y, _, h]: [f32; 4], view: [f32; 4], roof: f32, band: f32, tx: &mut Tx) {
         let Some(mut p) = self.reader.find.place.filter(|p| p.n == n) else { return };
         if self.now.get() - p.at > PLACE_FOR {
@@ -745,16 +745,9 @@ impl App {
                     self.reader.find.place = None;
                     return;
                 }
-                if band <= 0.0 || room - roof < h {
-                    // As find does with no band: Rune centres the match in the view, and follows
-                    // it while the rows around it measure.
-                    self.reader.find.place = None;
-                    if p.glide {
-                        tx.animated();
-                    }
-                    return tx.scroll_center(FIND_CUR);
-                }
-                let to = roof + (room - roof - h) / 2.0;
+                // Not Rune's `scroll_center`: its reveal outlives its glide and would follow
+                // `FIND_CUR` to the next step's match in one frame.
+                let to = if band <= 0.0 || room - roof < h { ((vh - h) / 2.0).max(0.0) } else { roof + (room - roof - h) / 2.0 };
                 p.to = Some(to);
                 self.reader.find.place = Some(p);
                 to
@@ -803,8 +796,9 @@ impl App {
         if y - (view + roof) >= height {
             tx.scroll_to(SCROLL, 0.0, offset + top + height - y);
         } else {
-            // As find does (RD-60, WR-118).
-            tx.scroll_center(FIND_CUR);
+            // Centred in the view, as find does (RD-60, WR-118). Rune's `scroll_center` would
+            // keep following `FIND_CUR` after its glide and jump to the next step's match.
+            tx.scroll_to(SCROLL, 0.0, offset + top - view - ((vh - height) / 2.0).max(0.0));
         }
     }
 
