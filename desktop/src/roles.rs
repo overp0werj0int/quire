@@ -167,6 +167,11 @@ impl Roles {
     /// title bar's "/" reads at 4.5:1 too.
     pub fn panel(p: &Pal) -> Roles {
         let mut r = Roles::new(p);
+        // The sidebar's four surface steps (shelf, panel, hover, selected) stay clearly apart in
+        // every theme so only the active tab or filled result reads as filled (SB-02, SB-03).
+        r.shelf = if p.dark { mix(p.side, Color::BLACK, 0.32) } else { mix(p.side, p.ink, 0.045) };
+        r.hover = p.ink.alpha(if p.dark { 0.045 } else { 0.04 });
+        r.selected = p.ink.alpha(if p.dark { 0.13 } else { 0.11 });
         let fills = r.panel_fills(p);
         let lift = |c: Color, toward: Color, min: &dyn Fn(Color) -> f32| {
             let mut out = c;
@@ -183,6 +188,8 @@ impl Roles {
         let extreme = if p.dark { Color::WHITE } else { Color::BLACK };
         r.text = lift(r.text, extreme, &|f| contrast(faint, f) * PANEL_STEP * PANEL_TEXT);
         r.dim = lift(r.dim, r.text, &|f| contrast(faint, f) * PANEL_STEP);
+        let dim = r.dim;
+        r.text = lift(r.text, extreme, &|f| contrast(dim, f) * PANEL_TEXT);
         r.accent_text = lift(r.accent, r.text, &|_| PANEL_FAINT);
         r
     }
@@ -371,11 +378,13 @@ mod tests {
         }
     }
 
-    /// SB-02, SB-06: the shelf is darker than the sidebar in every theme, the selected fill
-    /// shows on it, and the accent as text reads at 4.5:1 on every fill the sidebar has.
+    /// SB-02, SB-03, SB-06: the shelf is darker than the sidebar in every theme, hover and
+    /// selected stay clearly separate steps on the shelf so only the selected row reads as filled,
+    /// and the accent as text reads at 4.5:1 on every fill the sidebar has.
     #[test]
     fn the_shelf_reads_in_every_theme() {
         let lum = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+        let over = |under: Color, c: Color| mix(under, Color { a: 1.0, ..c }, c.a);
         let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
         let mut pals: Vec<(&str, &Pal)> = crate::theme::THEMES.iter().map(|t| (t.id, theme_pal(t.id, t.dark))).collect();
         pals.push(("omarchy", &omarchy));
@@ -383,7 +392,9 @@ mod tests {
             let r = Roles::panel(p);
             assert!(lum(r.shelf) < lum(p.side), "{id}: the shelf {} is not darker than the sidebar {}", hx(r.shelf), hx(p.side));
             let [.., shelf, on_shelf, _] = r.panel_fills(p);
+            let hov = over(shelf, r.hover);
             assert!(contrast(shelf, on_shelf) > 1.05, "{id}: the selected fill does not show on the shelf");
+            assert!(distance(hov, on_shelf) > distance(shelf, hov), "{id}: hover {} sits too close to selected {} on shelf {}", hx(hov), hx(on_shelf), hx(shelf));
             for fill in r.panel_fills(p) {
                 let a = contrast(r.accent_text, fill);
                 assert!(a >= PANEL_FAINT, "{id}: the accent as text {a:.2} on {}", hx(fill));

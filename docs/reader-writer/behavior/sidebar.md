@@ -35,10 +35,10 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 
 | Role (spec) | Mock, dark | Quire, dark theme | Quire, light theme |
 | --- | --- | --- | --- |
-| Shelf surface, search field fill | `#14171d` | `Roles::sunken` (black at 22 %) over `Pal::side` | `Roles::sunken` (the text colour at 3.5 %) over `Pal::side` |
+| Shelf surface, search field fill | `#14171d` | `Roles::panel(p).shelf` (black at 32 % over `Pal::side`) | `Roles::panel(p).shelf` (the text colour at 4.5 % over `Pal::side`) |
 | Panel surface: top bar, vault, footer | `#1b1f27` | `Pal::side`, as today | `Pal::side`, as today |
-| Hover | `#222731` | `Roles::hover` (text at 6 %) | the same |
-| Selected: active tab, filled result | `#2b313c` | new role `Roles::selected`: text at 10 % | the same |
+| Hover | `#222731` | `Roles::panel(p).hover` (text at 4.5 %) | `Roles::panel(p).hover` (text at 4 %) |
+| Selected: active tab, filled result | `#2b313c` | `Roles::panel(p).selected` (text at 13 %) | `Roles::panel(p).selected` (text at 11 %) |
 | Line: dividers, guides, field border | `#2d333e` | `Pal::line` | `Pal::line` |
 | Text, strong | `#e4e6eb` | `Roles::panel(p).text` | the same |
 | Text | `#abb0bc` | `Roles::panel(p).dim` | the same |
