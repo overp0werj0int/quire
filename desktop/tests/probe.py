@@ -36,7 +36,12 @@ with the change in doc-y since the one before. That shows a jump, a glide or a b
 one reading cannot. Each sample is a fresh process: a 20-second script sampled 40 times takes
 a few minutes.
 
---note opens a folder holding only that note. Without it the app writes its sample notes.
+--note opens a folder holding only that note. --folder opens a copy of a whole folder of notes,
+and --open names the note in it to open, by its path inside the folder; opening a note opens the
+folders above it. Without either the app writes its sample notes.
+
+--state starts the app with that JSON as its state file, for settings: '{"settings":
+{"panel_font": "mono"}}'. What it leaves out keeps its default.
 
 Every run gets a fresh, empty home folder in the system's temporary folder, so it never reads
 or changes your own notes and settings. Run one probe at a time: each is a whole copy of the
@@ -85,7 +90,7 @@ def parse_events(arg):
     return events
 
 
-def replay(binary, events, at, size, scale, theme, work, snap=None, note=None):
+def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None):
     """One headless run; returns the element tree (a list of dicts) and the home folder."""
     home = os.path.join(work, "home")
     script = os.path.join(work, "events.json")
@@ -104,11 +109,22 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None):
         os.makedirs(home)
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home + "/.config", XDG_DATA_HOME=home + "/.local/share", RUNE_PERF_WARN="0")
         if note:
-            folder = os.path.join(work, "notes")
-            shutil.rmtree(folder, ignore_errors=True)
-            os.makedirs(folder)
-            shutil.copy(note, folder)
-            env.update(QUIRE_FOLDER=folder, QUIRE_NOTE=os.path.basename(note))
+            notes = os.path.join(work, "notes")
+            shutil.rmtree(notes, ignore_errors=True)
+            os.makedirs(notes)
+            shutil.copy(note, notes)
+            env.update(QUIRE_FOLDER=notes, QUIRE_NOTE=os.path.basename(note))
+        elif folder:
+            notes = os.path.join(work, "notes")
+            shutil.rmtree(notes, ignore_errors=True)
+            shutil.copytree(folder, notes)
+            env.update(QUIRE_FOLDER=notes)
+            if open_note:
+                env.update(QUIRE_NOTE=open_note)
+        if state:
+            with open(os.path.join(work, "state.json"), "w") as f:
+                f.write(state)
+            env.update(QUIRE_STATE=os.path.join(work, "state.json"))
         r = subprocess.run(cmd, env=env, capture_output=True, text=True)
         if not r.returncode:
             return json.load(open(tree))["elements"], home
@@ -139,10 +155,12 @@ def answer(what, els, home):
         return "\n".join("%-28s %s" % (e["key"], e.get("rect")) for e in els if e.get("key"))
     if what == "notes":
         out = []
-        for dp, _, fs in os.walk(os.path.join(home, "Documents")):
-            for f in sorted(fs):
-                if f.endswith(".md"):
-                    out.append("%-24s %r" % (f, open(os.path.join(dp, f)).read()[:60]))
+        for top in (os.path.join(home, "Documents"), os.path.join(os.path.dirname(home), "notes")):
+            for dp, ds, fs in sorted(os.walk(top)):
+                ds[:] = [d for d in ds if not d.startswith(".")]
+                for f in sorted(fs):
+                    if f.endswith(".md"):
+                        out.append("%-24s %r" % (os.path.relpath(os.path.join(dp, f), top), open(os.path.join(dp, f)).read()[:60]))
         return "\n".join(out) or "notes: none found"
     raise SystemExit("probe: don't know %r (see --help)" % what)
 
@@ -160,6 +178,9 @@ def main():
     ap.add_argument("--series")
     ap.add_argument("--snap")
     ap.add_argument("--note")
+    ap.add_argument("--folder")
+    ap.add_argument("--open")
+    ap.add_argument("--state")
     a = ap.parse_args()
     a.bin = a.bin or os.path.join(DESKTOP, "target", "fast" if a.fast else "debug", "quire")
     if not os.path.exists(a.bin):
@@ -172,14 +193,14 @@ def main():
             t0, t1, step = [float(v) for v in a.series.split(":")]
             prev, t = None, t0
             while t <= t1 + 1e-9:
-                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note)
+                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note, folder=a.folder, open_note=a.open, state=a.state)
                 y = (rect(els, "doc-col") or [0, None])[1]
                 move = "" if prev is None or y is None else "  moved %+.1f" % (y - prev)
                 rest = "  ".join(answer(w, els, home) for w in whats if w != "doc-y")
                 print("t %.3f  doc-y %s%s  %s" % (t, y, move, rest))
                 prev, t = y, t + step
         else:
-            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note)
+            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note, folder=a.folder, open_note=a.open, state=a.state)
             for w in whats:
                 print(answer(w, els, home))
     finally:
