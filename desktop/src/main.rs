@@ -826,11 +826,14 @@ pub(crate) mod scroll_tests {
         assert!(rt.find("outline").is_some(), "the outline is open");
         let button = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-right") && !e.exiting).expect("the outline button");
         assert!(button.fill.a > 0.0, "the outline button shows as on in source mode");
-        // A section label's name starts on the text edge of the rows it labels.
+        // A collapsible section label's chevron starts on the text edge of the rows it labels,
+        // with the label name 16 pt past it (10 pt chevron + 6 pt gap).
         let els = rt.elements();
+        let chevron = els.iter().find(|e| e.text.is_none() && e.path.contains("/label-vault/") && (e.rect[2] - 10.0).abs() < 0.1).expect("the vault's chevron");
         let label = els.iter().find(|e| e.text.is_some() && e.path.contains("/label-vault/")).expect("the vault's name");
         let row = els.iter().find(|e| e.text.as_deref() == Some("note") && e.path.contains("file:note.md")).expect("the note's row");
-        assert_eq!(label.rect[0], row.rect[0], "the vault's label lines up with the rows");
+        assert_eq!(chevron.rect[0], row.rect[0], "the vault's label chevron lines up with the rows");
+        assert_eq!(label.rect[0], row.rect[0] + 16.0, "the vault's label name sits past its chevron");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -5980,7 +5983,7 @@ mod layer_matrix_tests {
         let (on, off, title) = (name("file:note.md"), name("file:Box|a.md"), name("tab:note.md"));
         assert_eq!(on.text_color, title.text_color, "the active note in strong, as the active tab's title");
         assert_ne!(on.text_color, off.text_color, "another note in Text");
-        let width = |t: &str, bold: bool| rune::text::measure(t, &[], crate::ui::styles::nav(12.0, bold), None).0;
+        let width = |t: &str, bold: bool| rune::text::measure(t, &[], crate::ui::styles::nav(12.5, bold), None).0;
         assert!((on.rect[2] - width("note", true)).abs() < 0.5, "bold: {} for {}", on.rect[2], width("note", true));
         assert!((off.rect[2] - width("a", false)).abs() < 0.5, "another note regular: {} for {}", off.rect[2], width("a", false));
         let _ = std::fs::remove_dir_all(&dir);

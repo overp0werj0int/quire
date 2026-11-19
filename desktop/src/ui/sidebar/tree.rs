@@ -154,7 +154,7 @@ fn folder_row(v: V, f: &Folder, depth: usize, open: bool) -> El {
         .clip_rounded(0.0)
         .child(el().w(lead(depth) - INSET))
         .child(icon(glyph, ICON).key(icon_key).color(p.acc))
-        .child(name(f.name(), &f.path, medium(ROW_TEXT), c.text).ml(ICON_GAP).grow(1.0));
+        .child(name(f.name(), &f.path, medium(ROW_TEXT), c.text).ml(ICON_GAP));
     r.child(head).child(count_or_add(v, f))
 }
 
@@ -197,7 +197,7 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
         .center_y()
         .clip_rounded(0.0)
         .child(el().w(lead(depth) - INSET))
-        .child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }).grow(1.0));
+        .child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }));
     r.child(head)
 }
 
