@@ -71,6 +71,15 @@ fn scene_parity(s: &mut App) {
     s.persist.left_open = false;
     s.persist.right_open = false;
 }
+/// Note mode (decision 0011): the open note, opened again as a file of its own, with the
+/// sidebar Note mode starts without.
+fn scene_note(s: &mut App) {
+    let file = s.vault.as_ref().zip(s.active.as_ref()).map(|(v, a)| v.path.join(a));
+    if let Some(f) = file {
+        s.open_note(&f);
+        s.persist.left_open = true;
+    }
+}
 fn scene_keys(s: &mut App) {
     s.show_layer(layer::Layer::Settings);
     s.set_sec = app::Sec::Keys;
@@ -120,7 +129,7 @@ fn main() {
         on_key: Some(keys::on_key),
         poll: Some(|s: &mut App, t, tx| s.poll(t, tx)),
         setup: Some(|s: &mut App, waker| s.set_waker(waker)),
-        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys), ("parity", scene_parity)],
+        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys), ("parity", scene_parity), ("note", scene_note)],
         ..AppSpec::new("Quire", (1280.0, 800.0), app::init, ui::view)
     };
     rune::App::new(spec)
