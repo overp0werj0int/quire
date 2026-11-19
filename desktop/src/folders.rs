@@ -112,7 +112,7 @@ impl App {
         let p = self.unique_path(&folder, &bn);
         let content = if name.is_some() { format!("# {bn}\n\n") } else { String::new() };
         if let Some(v) = &mut self.vault {
-            v.files.insert(p.clone(), content.clone());
+            v.put(p.clone(), content.clone());
             v.born.insert(p.clone(), crate::app::now_ns());
             let mut d = folder.clone();
             while !d.is_empty() {
@@ -217,8 +217,8 @@ impl App {
         let update = self.settings().update_links;
         let Some(v) = &mut self.vault else { return };
         let root = v.path.clone();
-        let text = v.files.remove(from).unwrap_or_default();
-        v.files.insert(to.clone(), text);
+        let text = v.take(from).unwrap_or_default();
+        v.put(to.clone(), text);
         if let Some(b) = v.born.remove(from) {
             v.born.insert(to.clone(), b);
         }
@@ -228,12 +228,13 @@ impl App {
         if update {
             let (old_full, new_full) = (md::strip_md(from).to_string(), md::strip_md(&to).to_string());
             if let Some(v) = &mut self.vault {
-                for (p, t) in v.files.iter_mut() {
+                let changed: Vec<(String, String)> = v.files().iter().filter_map(|(p, t)| {
                     let nt = md::rewrite_links(t, &old_full, &new_full);
-                    if nt != *t {
-                        *t = nt;
-                        rewritten.push(p.clone());
-                    }
+                    (nt != *t).then(|| (p.clone(), nt))
+                }).collect();
+                for (p, nt) in changed {
+                    rewritten.push(p.clone());
+                    v.put(p, nt);
                 }
             }
         }
@@ -347,9 +348,9 @@ impl App {
         self.flush_notes();
         let Some(v) = &mut self.vault else { return };
         let root = v.path.clone();
-        let gone: Vec<String> = v.files.keys().filter(|p| inside(p)).cloned().collect();
+        let gone: Vec<String> = v.files().keys().filter(|p| inside(p)).cloned().collect();
         for p in &gone {
-            v.files.remove(p);
+            v.take(p);
             v.born.remove(p);
         }
         v.folders.retain(|f| !inside(f));
@@ -377,7 +378,7 @@ impl App {
         let pre = format!("{rel}/");
         let inside = |p: &str| p == rel || (folder && p.starts_with(&pre));
         let (notes, folders) = self.vault.as_ref().map_or_else(Default::default, |v| {
-            let notes = v.files.iter().filter(|(p, _)| inside(p)).map(|(p, t)| (p.clone(), t.clone(), v.born.get(p).copied())).collect();
+            let notes = v.files().iter().filter(|(p, _)| inside(p)).map(|(p, t)| (p.clone(), t.clone(), v.born.get(p).copied())).collect();
             (notes, v.folders.iter().filter(|f| inside(f)).cloned().collect())
         });
         let name = if folder { rel.rsplit('/').next().unwrap_or(rel) } else { md::base(rel) };
@@ -400,7 +401,7 @@ impl App {
     pub fn undo_delete(&mut self, tx: &mut Tx) {
         let Some(d) = self.deleted.take() else { return };
         let Some(v) = &mut self.vault else { return };
-        if d.notes.iter().any(|(p, _, _)| v.files.contains_key(p)) || (d.folder && v.folders.contains(&d.rel)) {
+        if d.notes.iter().any(|(p, _, _)| v.files().contains_key(p)) || (d.folder && v.folders.contains(&d.rel)) {
             self.notice = Some(format!("Could not put back {}: something else has its name", d.name));
             return;
         }
@@ -409,7 +410,7 @@ impl App {
             if let Some(b) = born {
                 v.born.insert(p.clone(), b);
             }
-            v.files.insert(p, text);
+            v.put(p, text);
         }
         for f in d.folders {
             if !v.folders.contains(&f) {

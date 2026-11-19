@@ -157,7 +157,7 @@ impl App {
     fn flush_notes_quiet(&mut self) {
         let Some(v) = &self.vault else { return };
         for rel in std::mem::take(&mut self.dirty) {
-            if let Some(text) = v.files.get(&rel) {
+            if let Some(text) = v.files().get(&rel) {
                 self.writer.send(Op::Write { root: v.path.clone(), rel, text: text.clone() });
             }
         }
@@ -288,7 +288,7 @@ impl App {
                 e.set_selection(a, b);
             }
             if let Some(v) = &mut self.vault {
-                if !v.files.contains_key(&path) {
+                if !v.files().contains_key(&path) {
                     v.born.insert(path.clone(), crate::app::now_ns());
                     let mut d = crate::md::dir(&path).to_string();
                     while !d.is_empty() {
@@ -299,7 +299,7 @@ impl App {
                     }
                     v.folders.sort();
                 }
-                v.files.insert(path, text);
+                v.put(path, text);
             }
             any = true;
         }
@@ -309,7 +309,7 @@ impl App {
                 continue;
             }
             if let Some(v) = &mut self.vault {
-                v.files.remove(&p);
+                v.take(&p);
             }
             self.writer.send(Op::Delete { root: root.clone(), rel: p.clone() });
             if self.tabs.contains(&p) {

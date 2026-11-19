@@ -469,7 +469,7 @@ pub fn fuzzy(q: &str, s: &str) -> Option<(f32, Vec<usize>)> {
     (j == ql.len()).then_some((score, idx))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Hit {
     pub line: usize,
     /// Byte offset of the match in its line.

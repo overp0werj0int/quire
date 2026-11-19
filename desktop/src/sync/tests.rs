@@ -374,7 +374,7 @@ fn two_apps_sync_through_s3() {
 
     // An edit on the phone, saved the way the editor saves, reaches the laptop.
     phone.update(|s, _| {
-        s.vault.as_mut().unwrap().files.insert("Plan.md".into(), "# Plan\n\nfrom the phone".into());
+        s.vault.as_mut().unwrap().put("Plan.md".into(), "# Plan\n\nfrom the phone".into());
         s.dirty.insert("Plan.md".into());
     });
     sync(&mut phone);
@@ -384,7 +384,7 @@ fn two_apps_sync_through_s3() {
     // The laptop gets a newer remote text, but the note changed here after the sync read it:
     // the note keeps the local text and the remote text comes in as a conflict copy.
     laptop.update(|s, _| {
-        s.vault.as_mut().unwrap().files.insert("Plan.md".into(), "typed during the sync".into());
+        s.vault.as_mut().unwrap().put("Plan.md".into(), "typed during the sync".into());
         let out = super::Outcome {
             pulls: vec![super::Pull { path: "Plan.md".into(), text: "remote".into(), seen: Some(sign::sha256_hex(b"# Plan\n\nfrom the phone")), device: "phone".into() }],
             ..Default::default()

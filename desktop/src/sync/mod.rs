@@ -410,13 +410,13 @@ fn run_with(store: &dyn Store, r: &Remote, root: &Path, device: &str, bp: &Optio
     let keys = open_format(store.as_mut(), r, true)?;
     let manifest = read_manifest(store.as_mut(), &keys)?;
     let loaded = crate::vault::load(root).map_err(|e| format!("Could not read the folder: {e}"))?;
-    let local_dirs = loaded.folders.into_iter().collect::<BTreeSet<String>>();
+    let local_dirs = loaded.folders.iter().cloned().collect::<BTreeSet<String>>();
     let bp = bp.clone();
     let Base { files: base, folders: base_dirs, stamps: old_stamps } = load_base(&bp);
     let hash = |t: &[u8]| sign::sha256_hex(t);
     // Notes by their text, images by their bytes. An image keeps its hash while its size and
     // file time stay the same.
-    let mut local: BTreeMap<String, (Local, String)> = loaded.files.into_iter().map(|(p, t)| {
+    let mut local: BTreeMap<String, (Local, String)> = loaded.into_files().into_iter().map(|(p, t)| {
         let h = hash(t.as_bytes());
         (p, (Local::Note(t), h))
     }).collect();

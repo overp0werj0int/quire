@@ -76,7 +76,7 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
         Ok(v) => v,
         Err(e) => return fail(format!("Cannot read the folder: {e}")),
     };
-    let files: std::collections::BTreeMap<String, String> = vault.files.into_iter().filter(|(p, _)| visible(&ctx.mcp, p)).collect();
+    let files: std::collections::BTreeMap<String, String> = vault.files().iter().filter(|(p, _)| visible(&ctx.mcp, p)).map(|(p, t)| (p.clone(), t.clone())).collect();
     let get = |p: &str| -> Result<String, Value> {
         let p = clean_path(p).map_err(fail)?;
         if files.contains_key(&p) { Ok(p) } else { Err(fail(format!("No note at {p}"))) }

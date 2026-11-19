@@ -15,7 +15,7 @@ impl App {
         u.text = text;
         let sealed = lock::seal(&u.key, &u.text);
         if let Some(v) = &mut self.vault {
-            v.files.insert(rel.to_string(), sealed);
+            v.put(rel.to_string(), sealed);
         }
         self.mark_dirty_pub(rel);
     }
@@ -29,7 +29,7 @@ impl App {
             None => return,
         };
         if let Some(v) = &mut self.vault {
-            v.files.insert(rel.to_string(), text.clone());
+            v.put(rel.to_string(), text.clone());
         }
         match opened {
             Ok(Some(plain)) => {
@@ -138,7 +138,7 @@ impl App {
         let Some(a) = self.active.clone() else { return };
         let Some(u) = self.unlocked.remove(&a) else { return };
         if let Some(v) = &mut self.vault {
-            v.files.insert(a.clone(), u.text);
+            v.put(a.clone(), u.text);
         }
         self.mark_dirty_pub(&a);
         self.flush_notes();

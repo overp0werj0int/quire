@@ -54,7 +54,7 @@ pub(super) fn tree(v: V) -> El {
     for f in &vault.folders {
         root.add(f);
     }
-    for f in vault.files.keys() {
+    for f in vault.files().keys() {
         let d = md::dir(f);
         let n = if d.is_empty() { &mut root } else { root.add(d) };
         n.files.push(f.clone());
@@ -67,7 +67,7 @@ pub(super) fn tree(v: V) -> El {
     if root_target {
         c = c.fill(p.soft.alpha(0.5)).radius(3.0);
     }
-    if vault.files.is_empty() && s.new_folder.is_none() {
+    if vault.files().is_empty() && s.new_folder.is_none() {
         c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
     }
     c.children(rows)

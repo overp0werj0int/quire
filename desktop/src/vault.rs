@@ -11,8 +11,16 @@ pub struct Vault {
     pub path: PathBuf,
     /// Folders relative to the root, `/`-separated, including empty ones.
     pub folders: Vec<String>,
-    /// Note path relative to the root (`Drafts/On slow software.md`) to its text.
-    pub files: BTreeMap<String, String>,
+    /// Note path relative to the root (`Drafts/On slow software.md`) to its text. Private, so
+    /// every write goes through `put` or `take`, which count it for search's index.
+    files: BTreeMap<String, String>,
+    /// Counts the writes to `files`: one for each `put` and `take`.
+    writes: u64,
+    /// Tells this vault from any other read in this run, so a cache of its notes is never
+    /// taken for another's.
+    id: u64,
+    /// The `writes` count at the last write to each note.
+    ver: std::collections::HashMap<String, u64>,
     /// Creation order of each note (file birth time, else modification time), for lists the
     /// design keeps in the order notes were made, such as backlinks.
     pub born: std::collections::HashMap<String, u128>,
@@ -75,7 +83,7 @@ pub fn load(root: &Path) -> std::io::Result<Vault> {
     }
     folders.sort();
     let name = root.file_name().map_or_else(|| root.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());
-    Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder })
+    Ok(Vault { name, path: root.to_path_buf(), folders, files, born, scope: Scope::Folder, id: next_id(), writes: 0, ver: Default::default() })
 }
 
 /// Reads one note for Note mode (`Scope::Note`): the vault's root is the note's folder and its
@@ -96,7 +104,63 @@ pub fn load_one(file: &Path) -> std::io::Result<Vault> {
         born: [(rel.clone(), ns)].into(),
         files: [(rel, text)].into(),
         scope: Scope::Note,
+        id: next_id(),
+        writes: 0,
+        ver: Default::default(),
     })
+}
+
+fn next_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+impl Vault {
+    /// The notes, by path relative to the root, with their text.
+    pub fn files(&self) -> &BTreeMap<String, String> {
+        &self.files
+    }
+
+    /// The notes, taken out of the vault.
+    pub fn into_files(self) -> BTreeMap<String, String> {
+        self.files
+    }
+
+    /// Writes the note at `path`.
+    pub fn put(&mut self, path: String, text: String) {
+        self.writes += 1;
+        self.ver.insert(path.clone(), self.writes);
+        self.files.insert(path, text);
+    }
+
+    /// Takes the note at `path` out, with its text.
+    pub fn take(&mut self, path: &str) -> Option<String> {
+        self.writes += 1;
+        self.ver.remove(path);
+        self.files.remove(path)
+    }
+
+    /// This vault's own number: no other vault read in this run has it.
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// Changes with every write to the notes.
+    pub fn writes(&self) -> u64 {
+        self.writes
+    }
+
+    /// The `writes` count at the last write to the note at `path`: 0 for one read from disk and not
+    /// written since.
+    pub fn ver(&self, path: &str) -> u64 {
+        self.ver.get(path).copied().unwrap_or(0)
+    }
+
+    /// A vault of `files` with no folder on disk, for tests.
+    #[cfg(test)]
+    pub fn for_tests(files: BTreeMap<String, String>) -> Vault {
+        Vault { name: "test".into(), path: PathBuf::new(), folders: Vec::new(), files, born: Default::default(), scope: Scope::Folder, id: next_id(), writes: 0, ver: Default::default() }
+    }
 }
 
 pub fn count_notes(root: &Path) -> usize {

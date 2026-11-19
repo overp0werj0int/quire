@@ -28,6 +28,7 @@ mod writer_app;
 mod md;
 mod roles;
 mod sample;
+mod search;
 mod sheet;
 mod sidebar;
 mod store;
@@ -1186,7 +1187,7 @@ pub(crate) mod scroll_tests {
             let mut out = None;
             rt.update(|s, _| {
                 let v = s.vault.as_ref().unwrap();
-                out = Some((s.tabs.clone(), s.active.clone(), v.files.contains_key("Drafts/b.md"), v.folders.iter().any(|f| f == "Drafts")));
+                out = Some((s.tabs.clone(), s.active.clone(), v.files().contains_key("Drafts/b.md"), v.folders.iter().any(|f| f == "Drafts")));
             });
             out.unwrap()
         };

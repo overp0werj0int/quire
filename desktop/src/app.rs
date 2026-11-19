@@ -377,7 +377,7 @@ impl App {
 
     pub fn files(&self) -> &BTreeMap<String, String> {
         static EMPTY: BTreeMap<String, String> = BTreeMap::new();
-        self.vault.as_ref().map_or(&EMPTY, |v| &v.files)
+        self.vault.as_ref().map_or(&EMPTY, |v| v.files())
     }
 
     /// The active note's text. An unlocked note gives its plain text, and a locked note none.
@@ -450,7 +450,7 @@ impl App {
     pub fn folder_list(&self) -> Vec<String> {
         let Some(v) = &self.vault else { return Vec::new() };
         let mut set: BTreeSet<String> = v.folders.iter().cloned().collect();
-        for p in v.files.keys() {
+        for p in v.files().keys() {
             let d = md::dir(p);
             if !d.is_empty() {
                 set.insert(d.to_string());
@@ -550,7 +550,7 @@ impl App {
 
     fn watch_vault(&mut self) {
         self.watcher = self.vault.as_ref().map(|v| {
-            let only = (v.scope == Scope::Note).then(|| v.files.keys().cloned().collect());
+            let only = (v.scope == Scope::Note).then(|| v.files().keys().cloned().collect());
             crate::watch::start(v.path.clone(), only, self.waker.clone(), self.watch_every)
         });
     }
@@ -587,7 +587,7 @@ impl App {
                 if new {
                     v.born.insert(rel.clone(), now_ns());
                 }
-                v.files.insert(rel, text);
+                v.put(rel, text);
             }
             any = true;
         }
@@ -596,7 +596,7 @@ impl App {
                 continue;
             }
             if let Some(v) = &mut self.vault {
-                if v.files.remove(&rel).is_some() {
+                if v.take(&rel).is_some() {
                     any = true;
                 }
             }
@@ -690,7 +690,7 @@ impl App {
         let Some(v) = &self.vault else { return };
         let wrote = !self.dirty.is_empty();
         for rel in std::mem::take(&mut self.dirty) {
-            if let Some(text) = v.files.get(&rel) {
+            if let Some(text) = v.files().get(&rel) {
                 self.writer.send(Op::Write { root: v.path.clone(), rel, text: text.clone() });
             }
         }
@@ -712,7 +712,7 @@ impl App {
         self.writer.wait(Duration::from_secs(5));
         if let Some(v) = &self.vault {
             for rel in std::mem::take(&mut self.dirty) {
-                if let Some(text) = v.files.get(&rel) {
+                if let Some(text) = v.files().get(&rel) {
                     if let Err(e) = vault::write_note(&v.path, &rel, text) {
                         eprintln!("quire: could not save {rel}: {e}");
                     }
@@ -759,7 +759,7 @@ impl App {
             }
         }
         if let Some(v) = &mut self.vault {
-            v.files.insert(rel.to_string(), text);
+            v.put(rel.to_string(), text);
         }
         self.mark_dirty(rel);
     }
@@ -915,13 +915,13 @@ impl App {
         let ses = match v.scope {
             Scope::Folder => self.persist.sessions.get(&*path.to_string_lossy()).cloned().unwrap_or_default(),
             Scope::Note => {
-                let only: Vec<String> = v.files.keys().cloned().collect();
+                let only: Vec<String> = v.files().keys().cloned().collect();
                 Session { active: only.first().cloned(), tabs: only, ..Default::default() }
             }
         };
-        self.tabs = ses.tabs.into_iter().filter(|p| v.files.contains_key(p)).collect();
-        self.active = ses.active.filter(|a| v.files.contains_key(a)).or_else(|| self.tabs.first().cloned());
-        self.recent = ses.recent.into_iter().filter(|p| v.files.contains_key(p)).collect();
+        self.tabs = ses.tabs.into_iter().filter(|p| v.files().contains_key(p)).collect();
+        self.active = ses.active.filter(|a| v.files().contains_key(a)).or_else(|| self.tabs.first().cloned());
+        self.recent = ses.recent.into_iter().filter(|p| v.files().contains_key(p)).collect();
         if self.recent.is_empty() {
             self.recent = self.tabs.clone();
         }
@@ -1095,8 +1095,8 @@ impl App {
             return;
         }
         if let Some(v) = &mut self.vault {
-            if v.files.get(&a) != Some(&text) {
-                v.files.insert(a.clone(), text);
+            if v.files().get(&a) != Some(&text) {
+                v.put(a.clone(), text);
                 self.mark_dirty(&a);
             }
         }
@@ -1269,7 +1269,7 @@ impl App {
         self.deleted = Some(self.record_delete(&p, false));
         self.unlocked.remove(&p);
         let Some(v) = &mut self.vault else { return };
-        v.files.remove(&p);
+        v.take(&p);
         v.born.remove(&p);
         let root = v.path.clone();
         self.writer.send(Op::Delete { root, rel: p.clone() });
@@ -1290,7 +1290,7 @@ impl App {
             None => {
                 let c = format!("# {}\n\n#journal\n\n", long_date(now.year, now.month, now.day));
                 if let Some(v) = &mut self.vault {
-                    v.files.insert(p.clone(), c.clone());
+                    v.put(p.clone(), c.clone());
                     v.born.insert(p.clone(), now_ns());
                     if !v.folders.iter().any(|f| f == "Journal") {
                         v.folders.push("Journal".into());
@@ -1370,19 +1370,20 @@ impl App {
         let update = self.settings().update_links;
         let Some(v) = &mut self.vault else { return };
         let root = v.path.clone();
-        let text = v.files.remove(&old).unwrap_or_default();
-        v.files.insert(np.clone(), text);
+        let text = v.take(&old).unwrap_or_default();
+        v.put(np.clone(), text);
         if let Some(b) = v.born.remove(&old) {
             v.born.insert(np.clone(), b);
         }
         let mut rewritten = Vec::new();
         if update {
-            for (p, t) in v.files.iter_mut() {
+            let changed: Vec<(String, String)> = v.files().iter().filter_map(|(p, t)| {
                 let nt = md::rewrite_links(t, &old_base, &val);
-                if nt != *t {
-                    *t = nt;
-                    rewritten.push(p.clone());
-                }
+                (nt != *t).then(|| (p.clone(), nt))
+            }).collect();
+            for (p, nt) in changed {
+                rewritten.push(p.clone());
+                v.put(p, nt);
             }
         }
         // The rename goes to disk first, then any rewritten notes, the renamed one included.
