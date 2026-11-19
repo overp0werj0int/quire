@@ -28,6 +28,22 @@ const GAP: f32 = 1.0;
 /// The spring the tabs a lifted tab passes step aside on.
 const STEP: Spring = Spring::new(0.18, 0.0);
 
+/// The active note's H1 headings, in order: the outline under its tab (SB-17, SB-27). Setext
+/// headings and headings in code blocks are left out, as the outline panel leaves them out. A
+/// locked note has none (SB-133).
+pub(super) fn sections(v: V) -> Vec<md::Heading> {
+    md::headings(v.s.active_text()).into_iter().filter(|h| h.level == 1).collect()
+}
+
+/// " · N sections", which the active tab's caption adds; nothing for a note with no H1 (SB-17).
+fn count_text(n: usize) -> Option<String> {
+    match n {
+        0 => None,
+        1 => Some(" · 1 section".into()),
+        n => Some(format!(" · {n} sections")),
+    }
+}
+
 /// How many tabs the shelf has.
 pub(super) fn count(v: V) -> usize {
     v.s.shelf().len()
@@ -46,12 +62,14 @@ pub(super) fn rows(v: V, folded: bool) -> El {
     let on = s.shelved();
     // A drag the shelf's tabs changed under is let go of (`App::reorder`).
     let drag = s.reorder.filter(|r| !folded && r.len() == shelf.len());
+    let heads = sections(v);
     let mut list = lists::list(col().key("open-notes").w_full().gap(GAP), "list");
     for (i, t) in shelf.iter().enumerate() {
         if folded && on.as_ref() != Some(t) {
             continue;
         }
-        let tab = tab(v, t, on.as_ref() == Some(t)).position_in_set(i + 1, shelf.len());
+        let active = on.as_ref() == Some(t);
+        let tab = tab(v, t, active, if active { heads.len() } else { 0 }).position_in_set(i + 1, shelf.len());
         list = list.child(if folded { tab } else { reorder(v, tab, i, shelf.len(), drag) });
     }
     list
@@ -59,9 +77,10 @@ pub(super) fn rows(v: V, folded: bool) -> El {
 
 /// A tab's two rows: the note's name, cut at its end, over its folder's path, cut at its start
 /// (SB-15, SB-128). The active tab has the selected fill and its close button always shows;
-/// another shows its button under the pointer (SB-16). A click on another tab switches to it, a
-/// click on the active tab does nothing yet, and a middle click closes either (SB-19).
-fn tab(v: V, t: &Shelved, on: bool) -> El {
+/// another shows its button under the pointer (SB-16). The active tab's caption ends with the
+/// count of its note's `sections`, shown whole (SB-17, SB-128). A click on another tab switches
+/// to it, a click on the active tab does nothing yet, and a middle click closes either (SB-19).
+fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
     let s = v.s;
     let c = Roles::panel(v.p);
     let (title, folder, tip) = match t {
@@ -91,7 +110,8 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         .child(icon(&CLOSE, 8.0).color(c.faint));
     let title_el = text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
-    let mut el = two_rows(t.key(), title_el, folder_el)
+    let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint)));
+    let mut el = two_rows(t.key(), title_el, caption)
         .pr(BUTTON_END)
         .hover_group()
         .role("listitem")

@@ -5314,6 +5314,54 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A note with three H1s, a Setext heading and an H1 in a code block, which neither counts.
+    const SECTIONS: &str = "# One\n\nText.\n\n```\n# Not a heading\n```\n\nSetext\n======\n\n# Two\n\n## Under two\n\nText.\n\n# Three\n\nEnd.\n";
+
+    /// `garden` with Box/many.md (`SECTIONS`) and Box/none.md (no H1) on the shelf after
+    /// note.md (one H1), `active` shown.
+    fn sectioned(dir: &std::path::Path, mode: Mode, active: &'static str) -> Runtime<App> {
+        let mut rt = garden(dir, mode);
+        std::fs::write(dir.join("notes/Box/many.md"), SECTIONS).unwrap();
+        std::fs::write(dir.join("notes/Box/none.md"), "## Only an H2\n\nText.\n").unwrap();
+        rt.update(move |s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.open_file("note.md", None, tx);
+            s.open_file("Box/many.md", None, tx);
+            s.open_file("Box/none.md", None, tx);
+            s.open_file(active, None, tx);
+            s.mode = mode;
+        });
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        rt
+    }
+
+    /// The count a tab's caption ends with, if any.
+    fn sections_of(rt: &Runtime<App>, tab: &str) -> Option<String> {
+        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("sections") && e.path.split('/').any(|s| s == tab)).and_then(|e| e.text)
+    }
+
+    /// SB-17, SB-27: the active tab's caption counts its note's H1s, "1 section" for one and
+    /// nothing for none. A Setext heading and an H1 in a code block do not count, and no other
+    /// tab has the count.
+    #[test]
+    fn the_active_tab_counts_its_sections() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-count-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        assert_eq!(sections_of(&rt, "tab:Box|many.md").as_deref(), Some(" · 3 sections"));
+        assert_eq!((sections_of(&rt, "tab:note.md"), sections_of(&rt, "tab:Box|none.md")), (None, None), "no other tab has a count");
+        rt.update(|s, tx| s.open_file("note.md", None, tx));
+        settle(&mut rt);
+        assert_eq!(sections_of(&rt, "tab:note.md").as_deref(), Some(" · 1 section"));
+        assert_eq!(sections_of(&rt, "tab:Box|many.md"), None);
+        rt.update(|s, tx| s.open_file("Box/none.md", None, tx));
+        settle(&mut rt);
+        assert_eq!(sections_of(&rt, "tab:Box|none.md"), None, "a note with no H1 has no count");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The tree's rows, top to bottom, by key, once rows that moved have come to rest.
     fn tree_rows(rt: &mut Runtime<App>) -> Vec<String> {
         for _ in 0..40 {
