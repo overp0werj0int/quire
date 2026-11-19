@@ -4370,6 +4370,104 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// MODESC2: Esc with Shift, Ctrl or Alt does what plain Esc does wherever Esc does
+    /// something: the Search drawer's field, a backlink, the Tags drawer, the outline, a sidebar
+    /// row, a panel tab, the name and new folder fields, the palette. Each place is set up
+    /// afresh for each key, and what is open, where the keyboard is and what is being named
+    /// after it must match plain Esc's.
+    #[test]
+    fn esc_with_a_modifier_is_esc_everywhere() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-modesc2-{}", std::process::id()));
+        type Setup = fn(&mut Runtime<App>);
+        let places: [(&str, Mode, Setup); 10] = [
+            ("the Search drawer's field", Mode::Source, |rt| {
+                rt.set_viewport((640.0, 480.0), 1.0);
+                settle(rt);
+                rt.update(|s, tx| s.focus_editor(tx));
+                key(rt, Key::Command('g'), ctrl(true));
+                key(rt, Key::Text("text".into()), Mods::default());
+            }),
+            ("a backlink", Mode::Preview, |rt| {
+                rt.update(|_, tx| tx.focus("bl-0", true));
+                settle(rt);
+            }),
+            ("the outline", Mode::Preview, |rt| {
+                rt.update(|_, tx| tx.focus("ol-1", true));
+                settle(rt);
+            }),
+            ("the Tags drawer", Mode::Source, |rt| {
+                rt.set_viewport((640.0, 480.0), 1.0);
+                settle(rt);
+                rt.update(|s, tx| {
+                    s.left_panel = crate::app::Panel::Tags;
+                    s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx);
+                });
+                settle(rt);
+                rt.update(|_, tx| tx.focus("tags", true));
+                settle(rt);
+            }),
+            ("a sidebar row", Mode::Source, |rt| {
+                rt.update(|s, tx| tx.focus(s.sidebar_stop(), true));
+                settle(rt);
+            }),
+            ("a panel tab", Mode::Preview, |rt| {
+                rt.update(|_, tx| tx.focus("panel-search", true));
+                settle(rt);
+            }),
+            ("the Tags tab in the drawer", Mode::Preview, |rt| {
+                rt.set_viewport((640.0, 480.0), 1.0);
+                settle(rt);
+                rt.update(|s, tx| s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx));
+                settle(rt);
+                rt.update(|_, tx| tx.focus("panel-tags", true));
+                settle(rt);
+            }),
+            ("the name field", Mode::Source, |rt| {
+                rt.update(|s, tx| s.start_rename(tx));
+                settle(rt);
+            }),
+            ("the new folder's field", Mode::Source, |rt| {
+                rt.update(|s, tx| s.start_new_folder("", tx));
+                settle(rt);
+            }),
+            ("the palette", Mode::Source, |rt| {
+                rt.update(|s, tx| s.open_palette(crate::app::PalMode::Files, tx));
+                settle(rt);
+            }),
+        ];
+        let state = |rt: &mut Runtime<App>| {
+            let mut seen = String::new();
+            rt.update_if(|s, _| {
+                let layers: Vec<_> = s.open_layers().map(crate::layer::Layer::kind).collect();
+                seen = format!("layers {layers:?}, naming {} {}, find {}, {:?}", s.renaming.is_some(), s.new_folder.is_some(), s.reader.find.open, s.mode);
+                false
+            });
+            (seen, focused(rt))
+        };
+        let shift = Mods { shift: true, ..Mods::default() };
+        let alt = Mods { alt: true, ..Mods::default() };
+        for (place, mode, setup) in places {
+            let mut want = None;
+            for m in [Mods::default(), shift, ctrl(false), alt] {
+                let mut rt = garden(&dir, mode);
+                setup(&mut rt);
+                let before = state(&mut rt);
+                assert!(before.1.as_deref().is_some_and(|k| k != "editor" && k != "note-keys"), "{place}: the setup puts the keyboard there: {before:?}");
+                key(&mut rt, Key::Escape, m);
+                let after = state(&mut rt);
+                match &want {
+                    None => {
+                        assert_ne!(before, after, "{place}: Esc does something there");
+                        want = Some(after);
+                    }
+                    Some(w) => assert_eq!(&after, w, "{place}: Esc with {m:?} does what Esc does"),
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// MODESC: on the note in preview, Esc with Shift, Ctrl or Alt runs the reader's Esc order
     /// as Esc does: a showing notice goes, then find closes, then the writer shows.
     #[test]

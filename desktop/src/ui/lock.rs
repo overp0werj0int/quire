@@ -36,7 +36,8 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
                 .caret(p.ink, p.sel)
                 .label(ph)
                 .on_edit(move |s: &mut App| s.field(key, String::new))
-                .on_submit(submit),
+                .on_submit(submit)
+                .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
         )
 }
 

@@ -154,9 +154,13 @@ or the outline. A test checks that every focusable element in the panes is in it
   Space and Enter. Closing find, Esc in the docked search field and closing the shown
   tab call `App::keys_to_note` themselves, so the writer has the keys after each. In the
   drawer, Esc in the search field is the drawer's, as from a row: the drawer closes and
-  hands focus back. A Rune text field gives up focus on Esc with any modifier, so the
-  note, find's field and the search field take Shift+Esc, Ctrl+Esc and Alt+Esc as Esc. On
-  the reader's note, which is no text field, `keys::page_key` takes them as Esc too.
+  hands focus back. Esc with Shift, Ctrl or Alt is Esc everywhere (MODESC2):
+  `keys::esc_again` sends it round again as plain Esc, from the window's keys
+  (`keys::on_key`, before any layer or stop sees it), the lists' own key handler and the
+  edit sheet's, so every handler sees plain Esc, Rune's modal dismissal and a field's blur
+  included, which act on plain Esc alone. The note, find's field, the search field, the
+  name fields and the palette act on Esc with any modifier themselves. Esc with the logo
+  key stays the system's.
 - F6 and Shift+F6 (`App::step_pane`) move between the panes that show, left to right: the
   sidebar's current list, the note, the outline's current heading. Tab moves inside a pane
   and on to the next, in tree order, so the note's links come between the sidebar and the

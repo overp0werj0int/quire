@@ -133,7 +133,10 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
 /// Keys in the sheet's editor (SHEET-033 to SHEET-037): the sheet's own, then the writer's
 /// editing keys; every other key is the field's.
 fn on_sheet_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if matches!(ev.key, Key::Escape) && !ev.mods.shift {
+    if crate::keys::esc_again(ev, tx) {
+        return true;
+    }
+    if matches!(ev.key, Key::Escape) {
         s.sheet_escape(tx);
         return true;
     }

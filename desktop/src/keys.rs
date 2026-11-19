@@ -19,6 +19,9 @@ pub fn mod_click() -> String {
 /// does not take them. Each context on top of the window gets the key in turn (KEY-02), and
 /// the first action with a handler runs.
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if esc_again(ev, tx) {
+        return true;
+    }
     let stop = tx.focused().and_then(crate::focus::stop);
     page_key(s, ev, tx, stop)
 }
@@ -42,15 +45,6 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
     {
         return done;
     }
-    // On the note, Esc with Shift, Ctrl or Alt is Esc, as it is in the note's text field: no
-    // preset gives it a meaning of its own.
-    let plain;
-    let ev = if stop.is_none() && matches!(ev.key, rune::Key::Escape) && !ev.mods.logo {
-        plain = KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() };
-        &plain
-    } else {
-        ev
-    };
     let stack: &[Ctx] = if stop.is_some() && !crate::focus::chord(ev) { &[Ctx::Global] } else { page_stack(s) };
     let field = tx.focused().is_some_and(crate::focus::field);
     // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
@@ -97,6 +91,20 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         }
     }
     false
+}
+
+/// Esc with Shift, Ctrl or Alt is Esc wherever Esc does something (MODESC2): no preset gives
+/// it a meaning of its own. It goes round again as plain Esc, which then reaches every
+/// handler as Esc would, Rune's included: a modal's dismissal and a field's blur take plain
+/// Esc only. The window's keys call this first, and so does a handler that hears keys before
+/// them and acts on plain Esc alone. With the logo key, Esc stays the system's.
+pub fn esc_again(ev: &KeyEvent, tx: &mut Tx) -> bool {
+    let m = ev.mods;
+    if !matches!(ev.key, rune::Key::Escape) || m.logo || m == rune::Mods::default() {
+        return false;
+    }
+    tx.send_key(KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+    true
 }
 
 /// The Menu key, or Shift+F10: a context menu from the keyboard.

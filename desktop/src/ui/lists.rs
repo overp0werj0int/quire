@@ -24,6 +24,9 @@ use crate::theme::Pal;
 pub(super) fn list(el: El, role: &'static str) -> El {
     el.role(role).focus_group().on_key(|s: &mut App, ev: &KeyEvent, tx| {
         // In the sidebar's drawer, Esc closes the drawer, which hands the keyboard back.
+        if crate::keys::esc_again(ev, tx) {
+            return true;
+        }
         if ev.key != Key::Escape || ev.mods != Mods::default() || s.layer().is_some() {
             return false;
         }

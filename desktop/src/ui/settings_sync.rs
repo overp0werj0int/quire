@@ -432,7 +432,8 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                             .on_input_change(move |s: &mut App, _| {
                                 let t = s.fields.get(&fk2).map(|e| e.text.clone()).unwrap_or_default();
                                 set_cfg(s, key, t);
-                            }),
+                            })
+                            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
                     ),
             );
         }
@@ -479,7 +480,8 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
                 .on_input_change(move |s: &mut App, _| {
                     let t = s.fields.get(&fk_change).map(|e| e.text.clone()).unwrap_or_default();
                     set(s, t);
-                }),
+                })
+                .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
         );
     if max_w.is_finite() {
         b = b.max_w(max_w);

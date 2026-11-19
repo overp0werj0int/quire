@@ -125,12 +125,11 @@ impl App {
     /// A key while the stop keyed `key` has focus, before the window's shortcuts: Some when
     /// the stop's rule decides it, None when the window's shortcuts take it on.
     pub(crate) fn stop_key(&mut self, pane: Pane, ev: &KeyEvent, tx: &mut Tx) -> Option<bool> {
-        let m = ev.mods;
         if chord(ev) {
             return self.edit_chord_to_note(ev, tx).then_some(true);
         }
         Some(match ev.key {
-            Key::Escape if !m.shift => {
+            Key::Escape => {
                 if !self.esc_takes_notice() {
                     self.keys_to_note(tx);
                 }

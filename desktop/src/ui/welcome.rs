@@ -76,7 +76,8 @@ pub fn welcome(v: V) -> El {
                                 .placeholder("My notes", crate::theme::hex("#9a9184"))
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.creating.get_or_insert_with(|| rune::TextEdit::new("")))
-                                .on_submit(|s: &mut App, tx| s.create_vault(tx)),
+                                .on_submit(|s: &mut App, tx| s.create_vault(tx))
+                                .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
                         ),
                 )
                 .child(label(path, literal(11.5), p.mute))
