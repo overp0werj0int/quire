@@ -5375,6 +5375,81 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The rectangle of the element keyed `k` inside the tree row keyed `row`.
+    fn rect_in(rt: &Runtime<App>, row: &str, k: &str) -> Option<[f32; 4]> {
+        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(k) && e.path.split('/').any(|s| s == row)).map(|e| e.rect)
+    }
+
+    /// The rectangles of the guide lines in the tree row keyed `row`, left to right.
+    fn guides_in(rt: &Runtime<App>, row: &str) -> Vec<[f32; 4]> {
+        let mut g: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.starts_with("guide")) && e.path.split('/').any(|s| s == row)).map(|e| e.rect).collect();
+        g.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        g
+    }
+
+    /// `garden` with a second level: Box holds Inner, which holds c.md, both open.
+    fn two_levels(dir: &std::path::Path) -> Runtime<App> {
+        let mut rt = garden(dir, Mode::Preview);
+        std::fs::create_dir_all(dir.join("notes/Box/Inner")).unwrap();
+        std::fs::write(dir.join("notes/Box/Inner/c.md"), "# C\n").unwrap();
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.expanded.extend(["Box".to_string(), "Box/Inner".to_string()]);
+        });
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        rt
+    }
+
+    /// SB-49, SB-50: each level steps in 21 pt from the rows' text edge. A folder's icon is
+    /// 14 pt with its name 7 pt after it; a note's name starts where a folder's icon starts at
+    /// its level. An open folder's guide is 1 pt at its icon's centre and runs from under its
+    /// row to its last row, through the gaps between rows.
+    #[test]
+    fn the_tree_steps_in_a_level_at_a_time() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-steps-{}", std::process::id()));
+        let rt = two_levels(&dir);
+        let x = |row: &str, k: &str| rect_in(&rt, row, k).unwrap_or_else(|| panic!("no {k} in {row}"));
+        let text_x = |row: &str| rt.elements().into_iter().find(|e| e.text.is_some() && e.key.is_none() && e.path.split('/').any(|s| s == row)).unwrap_or_else(|| panic!("no name in {row}")).rect[0];
+        assert_eq!(x("dir:Box", "folder-open"), [22.0, x("dir:Box", "folder-open")[1], 14.0, 14.0], "a root folder's icon at the rows' text edge");
+        assert_eq!(x("dir:Box|Inner", "folder-open")[0], 43.0, "one level in: 21 pt");
+        assert_eq!(text_x("dir:Box"), 43.0, "a folder's name 7 pt after its icon");
+        assert_eq!(text_x("dir:Box|Inner"), 64.0);
+        assert_eq!(text_x("file:note.md"), 22.0, "a note at the root starts at the text edge");
+        assert_eq!(text_x("file:Box|a.md"), 43.0, "a note in Box where Inner's icon starts");
+        assert_eq!(text_x("file:Box|Inner|c.md"), 64.0, "two levels in");
+        let row = |k: &str| rect_of(&rt, k);
+        assert!(guides_in(&rt, "dir:Box").is_empty() && guides_in(&rt, "file:note.md").is_empty(), "root rows have no guide");
+        let inner = guides_in(&rt, "dir:Box|Inner");
+        assert_eq!(inner.len(), 1);
+        assert_eq!(inner[0][0], 28.0, "Box's guide at its icon's centre");
+        assert_eq!((inner[0][1], inner[0][1] + inner[0][3]), (row("dir:Box|Inner")[1], row("file:Box|Inner|c.md")[1]), "through the gap to the next row");
+        let c = guides_in(&rt, "file:Box|Inner|c.md");
+        assert_eq!(c.iter().map(|g| g[0]).collect::<Vec<_>>(), [28.0, 49.0], "a row two levels in has both guides");
+        assert_eq!(c[1][1] + c[1][3], row("file:Box|Inner|c.md")[1] + 28.0, "Inner's guide ends with its last row");
+        let b = guides_in(&rt, "file:Box|b.md");
+        assert_eq!((b.len(), b[0][1] + b[0][3]), (1, row("file:Box|b.md")[1] + 28.0), "Box's guide ends with its last row");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-49: a click on a folder's row opens or closes it, and its icon turns with it.
+    #[test]
+    fn a_click_opens_a_folder_and_turns_its_icon() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-click-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        assert!(rect_in(&rt, "dir:Box", "folder-open").is_some() && tree_rows(&mut rt).contains(&"file:Box|a.md".to_string()), "Box is open");
+        let r = rect_of(&rt, "dir:Box");
+        press(&mut rt, (r[0] + 60.0, r[1] + 14.0), false);
+        assert!(rect_in(&rt, "dir:Box", "folder-shut").is_some(), "a click closes it: the icon is shut");
+        assert_eq!(tree_rows(&mut rt), ["dir:Box", "file:note.md"], "its notes are hidden");
+        press(&mut rt, (r[0] + 60.0, r[1] + 14.0), false);
+        assert!(rect_in(&rt, "dir:Box", "folder-open").is_some(), "and opens it again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
     /// folded vault unfolds it and opens the name field in the tree.

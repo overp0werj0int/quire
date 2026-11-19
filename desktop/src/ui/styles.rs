@@ -74,6 +74,12 @@ pub fn nav(size: f32, bold: bool) -> TextStyle {
     panel(size, if bold { 700.0 } else { 400.0 })
 }
 
+/// Navigation text at weight 500: a folder's name in the tree (SB-55). Quattro has no 500 and
+/// draws it regular; the system monospace draws its medium face.
+pub fn medium(size: f32) -> TextStyle {
+    panel(size, 500.0)
+}
+
 /// A key name, such as Ctrl+N, wherever it shows.
 pub fn keys(size: f32) -> TextStyle {
     panel(size, 400.0)
