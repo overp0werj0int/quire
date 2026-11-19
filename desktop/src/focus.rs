@@ -49,6 +49,7 @@ pub enum Pane {
 /// keys, and a test checks that every focusable element in the panes is here.
 pub const STOPS: &[(&str, Pane)] = &[
     ("tab:", Pane::Sidebar),
+    ("toc:", Pane::Sidebar),
     ("note:", Pane::Sidebar),
     ("label-", Pane::Sidebar),
     ("new-note", Pane::Sidebar),

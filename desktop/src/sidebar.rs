@@ -59,7 +59,8 @@ const SLOP: f32 = 4.0;
 /// A tab held by the pointer, ported from rune-kit's `shell/reorder.rs`. A press, then past
 /// `SLOP` a lift that carries it from its place `from` to `to`, `dy` from the press, tabs
 /// `pitch` apart. `len` is how many tabs the shelf had at the press: a drag over a shelf whose
-/// tabs changed since is stale.
+/// tabs changed since is stale. `lead` is how far its place moved up at the lift, when the
+/// outline above it folded back (SB-22).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Reorder {
     from: usize,
@@ -68,12 +69,13 @@ pub struct Reorder {
     pitch: f32,
     lifted: bool,
     len: usize,
+    lead: f32,
 }
 
 impl Reorder {
     /// The pointer went down on tab `from` of `len`, tabs `pitch` apart.
     pub fn press(from: usize, len: usize, pitch: f32) -> Self {
-        Reorder { from, to: from, dy: 0.0, pitch: pitch.max(1.0), lifted: false, len }
+        Reorder { from, to: from, dy: 0.0, pitch: pitch.max(1.0), lifted: false, len, lead: 0.0 }
     }
 
     /// The pointer moved `dy` since the press. Past the slop the tab lifts, and stays lifted.
@@ -83,8 +85,15 @@ impl Reorder {
             return;
         }
         self.dy = dy;
-        let to = self.from as f32 + (dy / self.pitch).round();
+        let to = self.from as f32 + ((dy + self.lead) / self.pitch).round();
         self.to = to.clamp(0.0, self.len.saturating_sub(1) as f32) as usize;
+    }
+
+    /// The lifted tab's place moved up `by`, as an outline above it folded back: it stays under
+    /// the pointer (SB-22).
+    pub fn lead(&mut self, by: f32) {
+        self.lead = by;
+        self.drag(self.dy);
     }
 
     /// The lifted tab, by its place before the drag.
@@ -100,11 +109,11 @@ impl Reorder {
     /// How far tab `i` sits from its place: the lifted tab with the pointer, and the tabs
     /// between its place and its target a step toward the gap it left.
     pub fn shift(&self, i: usize) -> f32 {
-        let Reorder { from, to, dy, pitch, lifted, .. } = *self;
+        let Reorder { from, to, dy, pitch, lifted, lead, .. } = *self;
         if !lifted {
             0.0
         } else if i == from {
-            dy
+            dy + lead
         } else if from < i && i <= to {
             -pitch
         } else if to <= i && i < from {
@@ -202,6 +211,17 @@ mod tests {
         assert_eq!(tabs, ["b", "c", "a", "d"]);
         move_tab(&mut tabs, 3, 0);
         assert_eq!(tabs, ["d", "b", "c", "a"]);
+    }
+
+    /// SB-22: a tab lifted from under an outline that folds back keeps under the pointer, and
+    /// lands by where the pointer is over the folded shelf.
+    #[test]
+    fn a_lead_keeps_the_lifted_tab_under_the_pointer() {
+        let mut r = Reorder::press(3, 5, 37.0);
+        r.drag(-10.0);
+        r.lead(96.0);
+        assert_eq!(r.shift(3), 86.0, "its place moved up 96: it sits 86 below it, under the pointer");
+        assert_eq!(r.end(), Some((3, 4)), "and lands a place down");
     }
 
     /// SB-21: a press that moves less than the slop is a click: nothing lifts or moves, and a

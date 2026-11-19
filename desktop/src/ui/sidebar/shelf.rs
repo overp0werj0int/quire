@@ -1,10 +1,11 @@
 //! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14 to SB-24). Each tab is two
 //! rows, the note's name over its folder, with a close button on hover and always on the
-//! active tab. A tab dragged up or down moves within the shelf; Alt+Up and Alt+Down move the
-//! focused one, Delete and Backspace close it. In Folder mode a tab per open note, in Note mode
-//! one per note opened as a file.
+//! active tab. A click on the active tab folds its note's outline out under it, its H1s one
+//! entry each, and the next folds it back. A tab dragged up or down moves within the shelf;
+//! Alt+Up and Alt+Down move the focused one, Delete and Backspace close it. In Folder mode a
+//! tab per open note, in Note mode one per note opened as a file.
 
-use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Mods, Phase, PointerButton, Spring, col, icon, row, text};
+use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Mods, Phase, PointerButton, Spring, Tx, col, icon, row, text};
 
 use super::super::V;
 use super::super::lists;
@@ -12,9 +13,9 @@ use super::super::panel;
 use super::super::styles::nav;
 use super::super::widgets::{CLOSE, name_tip};
 use super::BUTTON_END;
-use super::parts::{TWO_ROWS_H, caption_style, two_rows};
+use super::parts::{RADIUS, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
-use crate::app::{App, Shelved};
+use crate::app::{App, Mode, Shelved};
 use crate::md;
 use crate::roles::Roles;
 use crate::sidebar::Reorder;
@@ -27,6 +28,16 @@ const TAB_H: f32 = TWO_ROWS_H;
 const GAP: f32 = 1.0;
 /// The spring the tabs a lifted tab passes step aside on.
 const STEP: Spring = Spring::new(0.18, 0.0);
+/// An outline entry's height: its 11 pt line and the room above and below it. The drawing's
+/// is about 21, but an entry has no fill to show where it ends, so it takes the least pointer
+/// target (SB-08, SB-30).
+const ENTRY_H: f32 = 24.0;
+/// The outline's guide line, in from the tab's edge (SB-30).
+const GUIDE_X: f32 = 16.0;
+/// An entry's edge, where its focus ring sits, in from the guide line, and its text in from
+/// its edge: the drawing's 4 and 8.
+const ENTRY_IN: f32 = 4.0;
+const ENTRY_PAD: f32 = 8.0;
 
 /// The active note's H1 headings, in order: the outline under its tab (SB-17, SB-27). Setext
 /// headings and headings in code blocks are left out, as the outline panel leaves them out. A
@@ -35,14 +46,19 @@ pub(super) fn sections(v: V) -> Vec<md::Heading> {
     md::headings(v.s.active_text()).into_iter().filter(|h| h.level == 1).collect()
 }
 
-/// " · N sections", which the active tab's caption adds; nothing for a note with no H1 (SB-17).
+/// "· N sections", which the active tab's caption adds after its folder; nothing for a note with
+/// no H1 (SB-17).
 fn count_text(n: usize) -> Option<String> {
     match n {
         0 => None,
-        1 => Some(" · 1 section".into()),
-        n => Some(format!(" · {n} sections")),
+        1 => Some("· 1 section".into()),
+        n => Some(format!("· {n} sections")),
     }
 }
+
+/// The room before the caption's count: a space of its face. A text's leading space is not laid
+/// out.
+const COUNT_GAP: f32 = 3.0;
 
 /// How many tabs the shelf has.
 pub(super) fn count(v: V) -> usize {
@@ -54,8 +70,26 @@ pub(super) fn height(n: usize) -> f32 {
     n as f32 * TAB_H + n.saturating_sub(1) as f32 * GAP
 }
 
-/// The shelf's tabs, one Tab stop that enters at the active tab. With no note open there are
-/// none. Folded, the active tab's alone, which has nowhere to move (SB-44).
+/// The height of the shelf's rows: its tabs, and the active tab's outline while it is out
+/// (SB-35).
+pub(super) fn fit(v: V) -> f32 {
+    let n = sections(v).len();
+    height(count(v)) + if is_out(v, n) { outline_h(n) } else { 0.0 }
+}
+
+/// The height an outline of `n` entries adds under its tab.
+fn outline_h(n: usize) -> f32 {
+    GAP + n as f32 * ENTRY_H
+}
+
+/// Whether the active tab's outline, of `n` entries, is out (SB-26, SB-27).
+fn is_out(v: V, n: usize) -> bool {
+    n > 0 && v.s.outline_out.is_some() && v.s.outline_out == v.s.shelved()
+}
+
+/// The shelf's tabs, one Tab stop that enters at the active tab, with its outline's entries
+/// after it while it is out (SB-82). With no note open there are none. Folded, the active tab's
+/// alone, which has nowhere to move, and still folds its outline out (SB-44).
 pub(super) fn rows(v: V, folded: bool) -> El {
     let s = v.s;
     let shelf = s.shelf();
@@ -63,14 +97,21 @@ pub(super) fn rows(v: V, folded: bool) -> El {
     // A drag the shelf's tabs changed under is let go of (`App::reorder`).
     let drag = s.reorder.filter(|r| !folded && r.len() == shelf.len());
     let heads = sections(v);
+    let out = is_out(v, heads.len());
+    let at = shelf.iter().position(|t| on.as_ref() == Some(t));
     let mut list = lists::list(col().key("open-notes").w_full().gap(GAP), "list");
     for (i, t) in shelf.iter().enumerate() {
         if folded && on.as_ref() != Some(t) {
             continue;
         }
         let active = on.as_ref() == Some(t);
-        let tab = tab(v, t, active, if active { heads.len() } else { 0 }).position_in_set(i + 1, shelf.len());
-        list = list.child(if folded { tab } else { reorder(v, tab, i, shelf.len(), drag) });
+        let tab = tab(v, t, active, if active { heads.len() } else { 0 }, active && out).position_in_set(i + 1, shelf.len());
+        // A tab under the outline moves up by it when a lift folds it (SB-22).
+        let lead = if out && at.is_some_and(|a| i > a) { outline_h(heads.len()) } else { 0.0 };
+        list = list.child(if folded { tab } else { reorder(v, tab, i, shelf.len(), drag, lead) });
+        if active && out {
+            list = list.child(outline(v, t, &heads));
+        }
     }
     list
 }
@@ -79,8 +120,10 @@ pub(super) fn rows(v: V, folded: bool) -> El {
 /// (SB-15, SB-128). The active tab has the selected fill and its close button always shows;
 /// another shows its button under the pointer (SB-16). The active tab's caption ends with the
 /// count of its note's `sections`, shown whole (SB-17, SB-128). A click on another tab switches
-/// to it, a click on the active tab does nothing yet, and a middle click closes either (SB-19).
-fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
+/// to it, a click on the active tab folds its outline out or back, `out` while it is, and a
+/// middle click closes either (SB-19, SB-26). A note with no H1 has no outline to fold
+/// (SB-27).
+fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
     let s = v.s;
     let c = Roles::panel(v.p);
     let (title, folder, tip) = match t {
@@ -110,7 +153,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
         .child(icon(&CLOSE, 8.0).color(c.faint));
     let title_el = text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
-    let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint)));
+    let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint).ml(COUNT_GAP)));
     let mut el = two_rows(t.key(), title_el, caption)
         .pr(BUTTON_END)
         .hover_group()
@@ -118,6 +161,9 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
         .checked(on)
         .label(title)
         .pointer_buttons([PointerButton::Primary, PointerButton::Middle]);
+    if sections > 0 {
+        el = el.expanded(out);
+    }
     el = if on { el.fill(c.selected) } else { el.hover(c.hover) };
     let (key_t, press_t) = (t.clone(), t.clone());
     let el = lists::item(el, v.p, on, move |s: &mut App, tx| {
@@ -125,9 +171,16 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
             close_tab(s, &press_t, tx);
             return;
         }
-        // The release of a drag that lifted the tab is no click (SB-21), and a click on the
-        // active tab folds its outline out (SB-26), in a later stage.
-        if (std::mem::take(&mut s.dropped) && !tx.by_keys()) || s.shelved().as_ref() == Some(&press_t) {
+        // The release of a drag that lifted the tab is no click (SB-21).
+        if std::mem::take(&mut s.dropped) && !tx.by_keys() {
+            return;
+        }
+        // On the active tab a click, Enter or Space folds its outline, and the keyboard stays
+        // (SB-26, SB-83).
+        if s.shelved().as_ref() == Some(&press_t) {
+            if sections > 0 {
+                fold(s, &press_t, !out, tx);
+            }
             return;
         }
         match &press_t {
@@ -139,7 +192,69 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize) -> El {
         s.close_drawer();
         s.keys_to_note(tx);
     });
-    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, ev, tx)).child(close)
+    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, sections, ev, tx)).child(close)
+}
+
+/// Folds the active tab `t`'s outline out, or back. Out, the shelf scrolls to show it, and its
+/// tab, should both not fit (SB-24, SB-26).
+fn fold(s: &mut App, t: &Shelved, out: bool, tx: &mut Tx) {
+    s.outline_out = out.then(|| t.clone());
+    if out {
+        tx.scroll_into_view_in("shelf-scroll", "toc");
+        tx.scroll_into_view_in("shelf-scroll", t.key());
+    }
+}
+
+/// The active tab `t`'s outline: its note's H1s, one entry each, indented under the tab beside
+/// a guide line, in faint and never filled; the entry of the section in view in the accent
+/// (SB-27, SB-29, SB-30).
+fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
+    let cur = current(v, heads);
+    let mut out = col().key("toc").ml(panel::INSET + GUIDE_X).mr(panel::INSET).border_sides([0.0, 0.0, 0.0, 1.0], v.p.line).border_layout();
+    for (n, h) in heads.iter().enumerate() {
+        out = out.child(entry(v, t, n, h, cur == Some(n)));
+    }
+    out
+}
+
+/// The entry of the section in view: in the writer the last H1 at or before the caret's line,
+/// none above the first (SB-29).
+fn current(v: V, heads: &[md::Heading]) -> Option<usize> {
+    let s = v.s;
+    if s.mode != Mode::Source {
+        return None;
+    }
+    let doc = s.active_text();
+    let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
+    let line = md::line_col(doc, caret).0;
+    heads.iter().rposition(|h| h.line <= line)
+}
+
+/// Entry `n` of tab `t`'s outline, for heading `h`, `on` while its section is in view. A row of
+/// the shelf's list: a click scrolls the note to its heading, as the outline panel's rows do,
+/// and Enter or Space does too and gives the note the keyboard (SB-28, SB-83). Left moves the
+/// keyboard to its tab (SB-84). Under the pointer its text turns from faint to Text (SB-31).
+fn entry(v: V, t: &Shelved, n: usize, h: &md::Heading, on: bool) -> El {
+    let c = Roles::panel(v.p);
+    let line = h.line;
+    let name = text(h.text.clone()).font(nav(panel::BODY_SMALL, false)).color(if on { c.accent_text } else { c.faint }).group_color(c.dim).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
+    let el = row().key(format!("toc:{n}")).h(ENTRY_H).ml(ENTRY_IN).px(ENTRY_PAD).center_y().radius(RADIUS).hover_group().role("listitem").label(h.text.clone());
+    let tab = t.key();
+    lists::item(el, v.p, false, move |s: &mut App, tx| {
+        s.jump(line, tx);
+        if tx.by_keys() {
+            s.close_drawer();
+            s.keys_to_note(tx);
+        }
+    })
+    .on_key(move |_: &mut App, ev: &KeyEvent, tx| {
+        if ev.key != Key::Left || ev.mods != Mods::default() {
+            return false;
+        }
+        tx.focus(tab.clone(), true);
+        true
+    })
+    .child(name)
 }
 
 /// Closes `t` by its button or a middle click. The note shown goes with its editor, so a
@@ -152,11 +267,20 @@ fn close_tab(s: &mut App, t: &Shelved, tx: &mut rune::Tx) {
     }
 }
 
-/// A focused tab's own keys: Alt+Up and Alt+Down move it a place and the keyboard stays on it
-/// (SB-85); Delete and Backspace close it (SB-86).
-fn tab_key(s: &mut App, t: &Shelved, ev: &KeyEvent, tx: &mut rune::Tx) -> bool {
+/// A focused tab's own keys: on the active tab, with `sections` to list, Right folds its
+/// outline out and Left folds it back, and on another they do nothing (SB-84); Alt+Up and
+/// Alt+Down move it a place and the keyboard stays on it (SB-85); Delete and Backspace close it
+/// (SB-86).
+fn tab_key(s: &mut App, t: &Shelved, sections: usize, ev: &KeyEvent, tx: &mut rune::Tx) -> bool {
     let alt = Mods { alt: true, ..Mods::default() };
     match (&ev.key, ev.mods) {
+        (Key::Right | Key::Left, m) if m == Mods::default() => {
+            let out = ev.key == Key::Right;
+            if sections > 0 && s.shelved().as_ref() == Some(t) && (s.outline_out.as_ref() == Some(t)) != out {
+                fold(s, t, out, tx);
+            }
+            true
+        }
         (Key::Up | Key::Down, m) if m == alt => {
             let shelf = s.shelf();
             if let Some(i) = shelf.iter().position(|x| x == t) {
@@ -178,7 +302,9 @@ fn tab_key(s: &mut App, t: &Shelved, ev: &KeyEvent, tx: &mut rune::Tx) -> bool {
 /// A tab the pointer can drag to a new place, `i` of `len` (SB-21). Past a few points it lifts
 /// and follows the pointer, over the others, and the tabs it passes step aside on springs. The
 /// drop puts it there; Esc, or the window losing focus, puts it back.
-fn reorder(v: V, el: El, i: usize, len: usize, drag: Option<Reorder>) -> El {
+/// A lift folds the active tab's outline back, so every tab is one height while it moves; a tab
+/// under it takes `lead`, how far that moves it up (SB-22).
+fn reorder(v: V, el: El, i: usize, len: usize, drag: Option<Reorder>, lead: f32) -> El {
     let c = Roles::panel(v.p);
     let el = match drag {
         Some(r) if r.lifted() == Some(i) => {
@@ -206,8 +332,12 @@ fn reorder(v: V, el: El, i: usize, len: usize, drag: Option<Reorder>) -> El {
             }
             Phase::Move => {
                 if let Some(r) = &mut s.reorder {
+                    let held = r.lifted().is_none();
                     r.drag(d.dy);
                     if r.lifted().is_some() {
+                        if held && s.outline_out.take().is_some() {
+                            r.lead(lead);
+                        }
                         tx.animated();
                     }
                 }

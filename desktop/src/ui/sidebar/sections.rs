@@ -27,9 +27,9 @@ fn room(v: V) -> f32 {
     (v.vh - super::super::titlebar::BAR_H - bars).max(0.0)
 }
 
-/// The shelf's height for `n` tabs.
-fn shelf_h(n: usize) -> f32 {
-    LABEL_TOP + LABEL_H + panel::RING_ROOM + shelf::height(n) + SHELF_END
+/// The shelf's height for rows `rows` tall.
+fn shelf_h(rows: f32) -> f32 {
+    LABEL_TOP + LABEL_H + panel::RING_ROOM + rows + SHELF_END
 }
 
 /// The vault's least height: its label and two rows (SB-36).
@@ -56,8 +56,9 @@ pub(super) fn lists(v: V) -> El {
         Some(Section::Shelf) => out.child(shelf_el(v, n, None, true)).child(vault_el(v, true, false)),
         None => {
             let room = room(v) - HANDLE;
-            let h = split(s.persist.sidebar.shelf_h, room, shelf_h(n), shelf_h(1), vault_min());
-            let (lo, hi) = (shelf_h(1), (room - vault_min()).max(shelf_h(1)));
+            let least = shelf_h(shelf::height(1));
+            let h = split(s.persist.sidebar.shelf_h, room, shelf_h(shelf::fit(v)), least, vault_min());
+            let (lo, hi) = (least, (room - vault_min()).max(least));
             out.child(shelf_el(v, n, Some(h), true)).child(handle(v, h, lo, hi)).child(vault_el(v, true, false))
         }
     }

@@ -5306,7 +5306,8 @@ mod layer_matrix_tests {
         let tab = rect_of(&rt, &key);
         let x = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("x") && e.path.split('/').any(|s| s == key)).expect("its close button").rect;
         let parts = texts(&rt, &key);
-        assert_eq!(parts.len(), 2, "a name and a folder: {parts:?}");
+        assert_eq!(parts.len(), 3, "a name, a folder and the active tab's count: {parts:?}");
+        assert_eq!(parts[2].0, "· 1 section");
         for (t, r) in &parts {
             assert!(r[0] >= tab[0] && r[0] + r[2] <= x[0] + 0.5, "'{t}' {r:?} stays left of the close button {x:?}");
         }
@@ -5350,15 +5351,178 @@ mod layer_matrix_tests {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-toc-count-{}", std::process::id()));
         let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
-        assert_eq!(sections_of(&rt, "tab:Box|many.md").as_deref(), Some(" · 3 sections"));
+        assert_eq!(sections_of(&rt, "tab:Box|many.md").as_deref(), Some("· 3 sections"));
         assert_eq!((sections_of(&rt, "tab:note.md"), sections_of(&rt, "tab:Box|none.md")), (None, None), "no other tab has a count");
         rt.update(|s, tx| s.open_file("note.md", None, tx));
         settle(&mut rt);
-        assert_eq!(sections_of(&rt, "tab:note.md").as_deref(), Some(" · 1 section"));
+        assert_eq!(sections_of(&rt, "tab:note.md").as_deref(), Some("· 1 section"));
         assert_eq!(sections_of(&rt, "tab:Box|many.md"), None);
         rt.update(|s, tx| s.open_file("Box/none.md", None, tx));
         settle(&mut rt);
         assert_eq!(sections_of(&rt, "tab:Box|none.md"), None, "a note with no H1 has no count");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The outline's entries under the active tab, top to bottom, by their text.
+    fn entries(rt: &Runtime<App>) -> Vec<String> {
+        let all = rt.elements();
+        let mut rows: Vec<_> = all.iter().filter(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.starts_with("toc:"))).collect();
+        rows.sort_by(|a, b| a.rect[1].total_cmp(&b.rect[1]));
+        rows.into_iter().filter_map(|r| all.iter().find(|e| e.text.is_some() && e.path.starts_with(&r.path) && e.path != r.path).and_then(|e| e.text.clone())).collect()
+    }
+
+    /// Clicks the middle of the element keyed `k`, left of any button it holds.
+    fn click(rt: &mut Runtime<App>, k: &str) {
+        let r = rect_of(rt, k);
+        press(rt, (r[0] + 30.0, r[1] + r[3] / 2.0), false);
+    }
+
+    /// SB-25, SB-26, SB-27, SB-30: every tab starts folded; a click on the active tab folds its
+    /// H1s out under it, indented beside a guide line, and the next folds them back. The keyboard
+    /// stays where it was.
+    #[test]
+    fn the_active_tab_folds_its_outline_out() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-fold-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        assert!(entries(&rt).is_empty(), "the outline starts folded");
+        let before = focused(&rt);
+        click(&mut rt, "tab:Box|many.md");
+        assert_eq!(entries(&rt), ["One", "Two", "Three"], "its H1s, in order");
+        assert_eq!(focused(&rt), before, "the keyboard stays where it was");
+        let (tab, toc, first) = (rect_of(&rt, "tab:Box|many.md"), rect_of(&rt, "toc"), rect_of(&rt, "toc:0"));
+        assert!(toc[1] >= tab[1] + tab[3] && toc[1] - (tab[1] + tab[3]) < 2.0, "right under its tab: {toc:?} under {tab:?}");
+        assert!((toc[0] - (tab[0] + 16.0)).abs() < 0.5, "its guide 16 in from the tab: {toc:?}, tab {tab:?}");
+        assert!(first[3] >= 24.0, "an entry is a pointer target: {first:?}");
+        assert!(rt.elements().into_iter().filter(|e| e.key.as_deref().is_some_and(|k| k.starts_with("toc:"))).all(|e| e.fill.a == 0.0), "no entry is filled");
+        let next = rect_of(&rt, "tab:Box|none.md");
+        assert!(next[1] >= toc[1] + toc[3], "the next tab moved down under it");
+        click(&mut rt, "tab:Box|many.md");
+        assert!(entries(&rt).is_empty(), "the next click folds it back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-26: a click on another tab only switches to it and folds the outline that was out;
+    /// back on the first tab it is folded still. Closing the tab folds it too.
+    #[test]
+    fn switching_tabs_folds_the_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-switch-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        click(&mut rt, "tab:Box|many.md");
+        assert_eq!(entries(&rt).len(), 3);
+        click(&mut rt, "tab:note.md");
+        assert!(entries(&rt).is_empty(), "the other tab shows, its outline folded");
+        click(&mut rt, "tab:Box|many.md");
+        assert!(entries(&rt).is_empty(), "a click back only switches: the outline stays folded");
+        click(&mut rt, "tab:Box|many.md");
+        assert_eq!(entries(&rt).len(), 3);
+        rt.update(|s, _| s.close_tab("Box/many.md"));
+        settle(&mut rt);
+        rt.update(|s, tx| s.open_file("Box/many.md", None, tx));
+        settle(&mut rt);
+        assert!(entries(&rt).is_empty(), "closed and opened again: folded");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-22: a drag that lifts a tab folds the outline back, and a tab lifted from under it stays
+    /// under the pointer as the tabs above close up.
+    #[test]
+    fn a_lift_folds_the_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-lift-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/many.md");
+        click(&mut rt, "tab:Box|many.md");
+        assert_eq!(entries(&rt).len(), 3);
+        let b = rect_of(&rt, "tab:Box|none.md");
+        let (x, y) = (b[0] + 40.0, b[1] + b[3] / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        for i in 1..=6 {
+            rt.pointer_move(x, y - 30.0 * i as f32 / 6.0);
+            rt.frame(DT);
+        }
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(entries(&rt).is_empty(), "the lift folded the outline");
+        let held = rect_of(&rt, "tab:Box|none.md");
+        assert!((held[1] - (b[1] - 30.0)).abs() < 0.5, "the lifted tab stays under the pointer: at {} for {}", held[1], b[1] - 30.0);
+        rt.pointer_up(x, y - 30.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|many.md", "tab:Box|none.md"], "30 points up over the folded shelf: its own place");
+        assert!(entries(&rt).is_empty(), "the drop leaves the outline folded");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-27: a note with no H1 has no outline, and a click on its active tab does nothing.
+    #[test]
+    fn a_note_with_no_h1_has_no_outline() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-none-{}", std::process::id()));
+        let mut rt = sectioned(&dir, Mode::Preview, "Box/none.md");
+        let before = state(&mut rt);
+        click(&mut rt, "tab:Box|none.md");
+        assert!(entries(&rt).is_empty(), "no outline");
+        assert_eq!(state(&mut rt), before, "the click changed nothing");
+        click(&mut rt, "tab:note.md");
+        click(&mut rt, "tab:note.md");
+        assert_eq!(entries(&rt), ["Head"], "a note with one H1 has a one-line outline");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-28: a click on an entry scrolls the note to its heading, in both modes: the reader's
+    /// top block is the heading's, and the writer's caret goes to its line.
+    #[test]
+    fn an_entry_jumps_to_its_heading() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-toc-jump-{}", std::process::id()));
+        let long = format!("# One\n\n{}# Two\n\n{}# Three\n\n{}", "Text to scroll by.\n\n".repeat(60), "More.\n\n".repeat(60), "End.\n\n".repeat(60));
+        let mut rt = garden(&dir, Mode::Preview);
+        std::fs::write(dir.join("notes/Box/long.md"), &long).unwrap();
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            s.open_file("Box/long.md", None, tx);
+        });
+        glide(&mut rt);
+        click(&mut rt, "tab:Box|long.md");
+        let line = |t: &str| long.split('\n').position(|l| l == t).unwrap();
+        let offset = |rt: &mut Runtime<App>| {
+            for _ in 0..120 {
+                rt.frame(DT);
+            }
+            let mut y = 0.0;
+            rt.update_if(|s, _| {
+                y = s.reader.scroll.get()[0];
+                false
+            });
+            y
+        };
+        // Each from the top of a page already laid out, so both land by the same map.
+        click(&mut rt, "toc:2");
+        offset(&mut rt);
+        rt.update(|s, tx| s.jump(0, tx));
+        offset(&mut rt);
+        click(&mut rt, "toc:2");
+        let by_entry = offset(&mut rt);
+        rt.update(|s, tx| s.jump(0, tx));
+        offset(&mut rt);
+        let l3 = line("# Three");
+        rt.update(move |s, tx| s.jump(l3, tx));
+        let by_jump = offset(&mut rt);
+        assert!(by_entry > 1000.0 && (by_entry - by_jump).abs() < 1.0, "the reader goes where the outline panel's jump goes: {by_entry} and {by_jump}");
+        rt.update(|s, tx| s.switch_mode(tx));
+        glide(&mut rt);
+        click(&mut rt, "toc:1");
+        let mut caret = (0, 0);
+        rt.update_if(|s, _| {
+            let at = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus);
+            caret = crate::md::line_col(s.active_text(), at);
+            false
+        });
+        assert_eq!(caret.0, line("# Two"), "the writer's caret goes to the heading");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

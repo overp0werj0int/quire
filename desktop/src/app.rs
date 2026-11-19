@@ -188,6 +188,9 @@ pub struct App {
     pub dropped: bool,
     /// The tab the shelf last scrolled to, by its element key (SB-24).
     shelf_shown: Option<String>,
+    /// The tab whose outline is folded out under it. It shows only while that tab is active,
+    /// and goes once another is (SB-25, SB-26). Not kept between sessions.
+    pub outline_out: Option<Shelved>,
     pub new_folder: Option<crate::folders::NewFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
@@ -289,6 +292,7 @@ pub fn init() -> App {
         reorder: None,
         dropped: false,
         shelf_shown: None,
+        outline_out: None,
         new_folder: None,
         sync: Default::default(),
         images: Default::default(),
@@ -1236,10 +1240,15 @@ impl App {
         }
     }
 
-    /// Before each frame: when the active tab changed, by a click, a key or a note opened
-    /// elsewhere, the shelf scrolls just far enough to show it (SB-24).
+    /// Before each frame: when the active tab changed, by a click, a key, a close or a note
+    /// opened elsewhere, the shelf scrolls just far enough to show it (SB-24), and the outline
+    /// that was out stays folded, should its tab be shown again (SB-26).
     fn reveal_tab(&mut self, tx: &mut Tx) {
-        let key = self.shelved().map(|t| t.key());
+        let on = self.shelved();
+        if self.outline_out.is_some() && self.outline_out != on {
+            self.outline_out = None;
+        }
+        let key = on.map(|t| t.key());
         if key != self.shelf_shown {
             if let Some(k) = &key {
                 tx.scroll_into_view_in("shelf-scroll", k.clone());
