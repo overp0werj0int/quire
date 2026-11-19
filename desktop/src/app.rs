@@ -1191,8 +1191,8 @@ impl App {
         }
     }
 
-    /// Moves the shelf's tab at `from` to `to`, both places among the tabs it shows (SB-21).
-    /// The order is kept with the folder's session.
+    /// Moves the shelf's tab at `from` to `to`, both places among the tabs it shows (SB-21,
+    /// SB-85). The order is kept with the folder's session.
     pub fn move_shelved(&mut self, from: usize, to: usize) {
         let shelf = self.shelf();
         let (Some(a), Some(b)) = (shelf.get(from), shelf.get(to)) else { return };
@@ -1209,6 +1209,17 @@ impl App {
         self.persist_later();
     }
 
+    /// Delete or Backspace on a focused tab: closes it, and the keyboard goes to the tab that
+    /// takes its place by SB-20's rule, or to the note with no tab left (SB-86).
+    pub fn close_focused_tab(&mut self, t: &Shelved, tx: &mut Tx) {
+        let Some(i) = self.shelf().iter().position(|x| x == t) else { return };
+        self.close_shelved(t);
+        let shelf = self.shelf();
+        match crate::sidebar::next_active(i, shelf.len()) {
+            Some(n) => tx.focus(shelf[n].key(), true),
+            None => self.keys_to_note(tx),
+        }
+    }
 
 
     pub fn toggle_folder(&mut self, p: &str) {

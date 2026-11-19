@@ -1,9 +1,10 @@
 //! The Open shelf's tabs on the shelf's darker surface (SB-02, SB-14 to SB-21). Each tab is two
 //! rows, the note's name over its folder, with a close button on hover and always on the
-//! active tab. A tab dragged up or down moves within the shelf. In Folder mode a tab per open
-//! note, in Note mode one per note opened as a file.
+//! active tab. A tab dragged up or down moves within the shelf; Alt+Up and Alt+Down move the
+//! focused one, Delete and Backspace close it. In Folder mode a tab per open note, in Note mode
+//! one per note opened as a file.
 
-use rune::{Anim, Color, Cursor, El, Phase, PointerButton, Spring, col, icon, row, text};
+use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Mods, Phase, PointerButton, Spring, col, icon, row, text};
 
 use super::super::V;
 use super::super::lists;
@@ -111,7 +112,7 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         .label(title)
         .pointer_buttons([PointerButton::Primary, PointerButton::Middle]);
     el = if on { el.fill(c.selected) } else { el.hover(c.hover) };
-    let press_t = t.clone();
+    let (key_t, press_t) = (t.clone(), t.clone());
     let el = lists::item(el, v.p, on, move |s: &mut App, tx| {
         if tx.button() == PointerButton::Middle {
             close_tab(s, &press_t, tx);
@@ -131,7 +132,7 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         s.close_drawer();
         s.keys_to_note(tx);
     });
-    el.child(names).child(close)
+    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, ev, tx)).child(names).child(close)
 }
 
 /// Closes `t` by its button or a middle click. The note shown goes with its editor, so a
@@ -144,6 +145,28 @@ fn close_tab(s: &mut App, t: &Shelved, tx: &mut rune::Tx) {
     }
 }
 
+/// A focused tab's own keys: Alt+Up and Alt+Down move it a place and the keyboard stays on it
+/// (SB-85); Delete and Backspace close it (SB-86).
+fn tab_key(s: &mut App, t: &Shelved, ev: &KeyEvent, tx: &mut rune::Tx) -> bool {
+    let alt = Mods { alt: true, ..Mods::default() };
+    match (&ev.key, ev.mods) {
+        (Key::Up | Key::Down, m) if m == alt => {
+            let shelf = s.shelf();
+            if let Some(i) = shelf.iter().position(|x| x == t) {
+                let to = if ev.key == Key::Up { i.checked_sub(1) } else { Some(i + 1).filter(|&n| n < shelf.len()) };
+                if let Some(to) = to {
+                    s.move_shelved(i, to);
+                }
+            }
+            true
+        }
+        (Key::Delete | Key::Backspace, m) if m == Mods::default() => {
+            s.close_focused_tab(t, tx);
+            true
+        }
+        _ => false,
+    }
+}
 
 /// A tab the pointer can drag to a new place, `i` of `len` (SB-21). Past a few points it lifts
 /// and follows the pointer, over the others, and the tabs it passes step aside on springs. The

@@ -4902,7 +4902,51 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-85: Alt+Down and Alt+Up move the focused tab a place, the keyboard stays on it, and
+    /// at an end it stays put.
+    #[test]
+    fn alt_arrows_move_a_tab() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-alt-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "Box/b.md");
+        let alt = Mods { alt: true, ..Mods::default() };
+        rt.update(|_, tx| tx.focus("tab:note.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Down, alt);
+        assert_eq!(tab_order(&mut rt), ["tab:Box|a.md", "tab:note.md", "tab:Box|b.md"], "Alt+Down moves it down a place");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:note.md"), "the keyboard stays on it");
+        key(&mut rt, Key::Up, alt);
+        key(&mut rt, Key::Up, alt);
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|a.md", "tab:Box|b.md"], "Alt+Up moves it back, and stops at the top");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:note.md"));
+        assert_eq!(tabs_and_active(&mut rt).1.as_deref(), Some("Box/b.md"), "the active tab stays");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
+    /// SB-86, SB-20: Delete or Backspace on a focused tab closes it, and the keyboard goes to the
+    /// tab that takes its place: the one above, or below for the first. Closing the active tab
+    /// shows the one above. With no tab left, the note has the keyboard.
+    #[test]
+    fn delete_closes_the_focused_tab() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-delete-{}", std::process::id()));
+        let mut rt = three_tabs(&dir, "Box/b.md");
+        rt.update(|_, tx| tx.focus("tab:Box|a.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Delete, Mods::default());
+        assert_eq!(tab_order(&mut rt), ["tab:note.md", "tab:Box|b.md"]);
+        assert_eq!(focused(&rt).as_deref(), Some("tab:note.md"), "the keyboard goes to the tab above");
+        assert_eq!(tabs_and_active(&mut rt).1.as_deref(), Some("Box/b.md"), "closing another tab leaves the active one");
+        rt.update(|_, tx| tx.focus("tab:Box|b.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Backspace, Mods::default());
+        assert_eq!(tabs_and_active(&mut rt), (vec!["note.md".into()], Some("note.md".into())), "the active tab closed: the one above shows");
+        assert_eq!(focused(&rt).as_deref(), Some("tab:note.md"));
+        key(&mut rt, Key::Delete, Mods::default());
+        assert_eq!(tabs_and_active(&mut rt), (vec![], None), "the last tab closed");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "the note has the keyboard: {:?}", focused(&rt));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// SB-20: closing the active tab by its "×" or a middle click shows the tab above it, or the
     /// one below when it was first. Today's rule showed the one below. A keyboard that was in
