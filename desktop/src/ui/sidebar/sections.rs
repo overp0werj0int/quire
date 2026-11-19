@@ -90,7 +90,12 @@ fn vault_el(v: V, folds: bool, folded: bool) -> El {
     let n = s.files().len();
     let count = if folded { format!("{n} {}", if n == 1 { "note" } else { "notes" }) } else { n.to_string() };
     // A right-click, the Menu key or Shift+F10 on the label opens the vault's menu (SB-110).
-    let head = label(v, Section::Vault, &name, count, folds.then_some(folded)).on_secondary_press(|s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Folder, (at.x, at.y), tx));
+    let mut head = label(v, Section::Vault, &name, count, folds.then_some(folded)).on_secondary_press(|s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Folder, (at.x, at.y), tx));
+    // A note dragged onto the label, or the tree's empty space, goes to the root, which the
+    // label stands for: it wears the drop target's mark, as a folder's row does (SB-116).
+    if s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some("")) {
+        head = head.fill(v.p.soft).border(1.0, v.p.acc.alpha(0.45));
+    }
     let out = col().key("vault").w_full().pt(LABEL_TOP).child(head);
     if folded {
         return out.pb(LABEL_TOP).border_sides([1.0, 0.0, 0.0, 0.0], v.p.line).border_layout();

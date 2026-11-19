@@ -5522,6 +5522,76 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Presses the tree row keyed `row` and moves the pointer to `to` in six steps; lets go
+    /// there when `release`, else holds the note in mid-drag.
+    fn drag_row(rt: &mut Runtime<App>, row: &str, to: (f32, f32), release: bool) {
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let r = rect_of(rt, row);
+        let (x, y) = (r[0] + 40.0, r[1] + r[3] / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        for i in 1..=6 {
+            let f = i as f32 / 6.0;
+            rt.pointer_move(x + (to.0 - x) * f, y + (to.1 - y) * f);
+            rt.frame(DT);
+        }
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        if release {
+            rt.pointer_up(to.0, to.1);
+            for _ in 0..30 {
+                rt.frame(DT);
+            }
+        }
+    }
+
+    /// SB-116: a note dragged onto the vault's label, or onto the tree's empty space under its
+    /// rows, moves to the root. While it is held over the label, the label wears the drop
+    /// target's mark and the ghost says where the note goes. The shelf takes no drop. Onto a
+    /// note of a folder, it goes into that folder, whose row wears the mark.
+    #[test]
+    fn a_note_dropped_on_the_label_goes_to_the_root() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-root-drop-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        let label = rect_of(&rt, "label-vault");
+        let over = (label[0] + 80.0, label[1] + label[3] / 2.0);
+        drag_row(&mut rt, "file:Box|a.md", over, false);
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label-vault")).is_some_and(|e| e.fill.a > 0.0), "the label is marked as the target");
+        let ghost: Vec<String> = rt.elements().into_iter().filter(|e| e.path.split('/').any(|s| s == "drag-ghost")).filter_map(|e| e.text).collect();
+        assert_eq!(ghost, ["a", "to the folder root"], "the ghost names the note and where it goes");
+        rt.pointer_up(over.0, over.1);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(dir.join("notes/a.md").is_file() && !dir.join("notes/Box/a.md").exists(), "a.md moved to the root");
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label-vault")).is_some_and(|e| e.fill.a == 0.0), "the mark goes with the drop");
+
+        let tree = rect_of(&rt, "tree");
+        drag_row(&mut rt, "file:Box|b.md", (tree[0] + 100.0, tree[1] + tree[3] + 40.0), true);
+        assert!(dir.join("notes/b.md").is_file(), "b.md dropped on the empty space under the rows went to the root");
+
+        rt.update(|s, tx| s.move_note("b.md", "Box", tx));
+        settle(&mut rt);
+        let tab = rect_of(&rt, "tab:note.md");
+        drag_row(&mut rt, "file:Box|b.md", (tab[0] + 60.0, tab[1] + 10.0), true);
+        assert!(dir.join("notes/Box/b.md").is_file(), "the shelf takes no drop");
+
+        let b = rect_of(&rt, "file:Box|b.md");
+        drag_row(&mut rt, "file:a.md", (b[0] + 120.0, b[1] + b[3] / 2.0), false);
+        let marked = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(k)).is_some_and(|e| e.fill.a > 0.0);
+        assert!(marked(&rt, "dir:Box") && !marked(&rt, "label-vault"), "over a note of Box, Box's row is the target");
+        rt.pointer_up(b[0] + 120.0, b[1] + b[3] / 2.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(dir.join("notes/Box/a.md").is_file(), "a.md dropped on a note of Box went into Box");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
     /// folded vault unfolds it and opens the name field in the tree.

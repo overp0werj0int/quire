@@ -29,12 +29,8 @@ pub(super) fn tree(v: V) -> El {
     let mut rows = Vec::new();
     walk(v, &root, 0, &mut rows);
     let rows = guides(v, rows);
-    let root_target = s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some(""));
     let mut c = lists::list(col().key("tree").w_full().gap(GAP), "tree")
         .on_secondary_press(|s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Root), (at.x, at.y), tx));
-    if root_target {
-        c = c.fill(p.soft.alpha(0.5)).radius(3.0);
-    }
     if root.count == 0 && s.new_folder.is_none() {
         c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(panel::TEXT_X));
     }
