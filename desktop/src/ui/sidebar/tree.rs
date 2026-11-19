@@ -151,7 +151,7 @@ fn folder_row(v: V, f: &Folder, depth: usize, open: bool) -> El {
         r = r.fill(p.soft).border(1.0, p.acc.alpha(0.45));
     }
     let (glyph, icon_key) = if open { (&FOLDER_OPEN, "folder-open") } else { (&FOLDER, "folder-shut") };
-    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(panel::BODY), c.text)).child(count_or_add(v, f))
+    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(panel::BODY), c.text)).child(el().grow(1.0)).child(count_or_add(v, f))
 }
 
 /// A folder's count, at the row's right in faint, and the "+" that takes its place while the
@@ -176,23 +176,22 @@ fn count_or_add(v: V, f: &Folder) -> El {
     row().min_w(TARGET).h(TARGET).center_y().justify_end().pr(COUNT_END).child(count).child(add)
 }
 
-/// A note's row: its name, where a folder's icon starts at its level, in Text; the active
-/// tab's note in strong.
+/// A note's row: its name, where a folder's icon starts at its level, in Text. The active
+/// tab's note is bold and in strong, with no fill: the tab is the one filled row (SB-03, SB-55).
 fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
-    let p = v.p;
-    let c = Roles::panel(p);
+    let c = Roles::panel(v.p);
     let key = row_key("file", path);
-    let mut r = shade(v, &key, depth).fill(panel::shade_fill(&c, on)).role("treeitem").label(md::base(path).to_string());
+    let mut r = shade(v, &key, depth).role("treeitem").label(md::base(path).to_string());
     if v.s.dragging.as_ref().is_some_and(|d| d.active && d.path == path) {
         r = r.opacity(0.5);
     }
-    r.child(name(md::base(path), path, nav(panel::BODY, false), if on { c.text } else { c.dim }))
+    r.child(name(md::base(path), path, nav(panel::BODY, on), if on { c.text } else { c.dim }))
 }
 
 /// A row's name, cut at its end. One that shows in full needs no tooltip; one cut short offers
 /// it whole, with its folder (C7, SB-117).
 fn name(name: &str, whole: &str, font: rune::TextStyle, color: rune::Color) -> El {
-    text(name).font(font).color(color).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(name_tip(whole))
+    text(name).font(font).color(color).truncate().shrink().min_w(0.0).help_when_truncated(name_tip(whole))
 }
 
 /// The room inside the new folder's field before its text.

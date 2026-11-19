@@ -5498,6 +5498,30 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-03, SB-55, SB-107: the active tab's note is marked in the tree by bold text in
+    /// strong, the active tab's title colour, with no fill. The active tab is the one filled row.
+    #[test]
+    fn the_active_note_is_bold_not_filled() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-active-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.pointer_move(700.0, 400.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let name = |row: &str| els.iter().find(|e| !e.exiting && e.text.is_some() && e.key.is_none() && e.path.split('/').any(|s| s == row)).unwrap_or_else(|| panic!("no name in {row}")).clone();
+        let filled: Vec<&str> = els.iter().filter(|e| !e.exiting && e.fill.a > 0.0 && e.key.as_deref().is_some_and(|k| k.starts_with("tab:") || k.starts_with("file:") || k.starts_with("dir:"))).filter_map(|e| e.key.as_deref()).collect();
+        assert_eq!(filled, ["tab:note.md"], "the active tab is the one filled row");
+        let (on, off, title) = (name("file:note.md"), name("file:Box|a.md"), name("tab:note.md"));
+        assert_eq!(on.text_color, title.text_color, "the active note in strong, as the active tab's title");
+        assert_ne!(on.text_color, off.text_color, "another note in Text");
+        let width = |t: &str, bold: bool| rune::text::measure(t, &[], crate::ui::styles::nav(12.0, bold), None).0;
+        assert!((on.rect[2] - width("note", true)).abs() < 0.5, "bold: {} for {}", on.rect[2], width("note", true));
+        assert!((off.rect[2] - width("a", false)).abs() < 0.5, "another note regular: {} for {}", off.rect[2], width("a", false));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
     /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
     /// folded vault unfolds it and opens the name field in the tree.
