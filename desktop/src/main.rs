@@ -5825,6 +5825,51 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SB-129: past eight levels deep a folder name is cut cleanly and never runs into or pushes
+    /// its count out of the sidebar.
+    #[test]
+    fn a_deep_tree_cuts_names_clear_of_the_count() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tree-deep-{}", std::process::id()));
+        let parts: Vec<String> = (1..=10).map(|i| format!("Level{i}LongName")).collect();
+        let deep_path = format!("{}/Deep note.md", parts.join("/"));
+        let mut rt = garden(&dir, Mode::Preview);
+        let full = dir.join("notes").join(&deep_path);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(&full, "# Deep\n").unwrap();
+        rt.update(|s, tx| {
+            s.open_vault(dir_root(s), tx);
+            let mut rel = String::new();
+            for p in &parts {
+                if !rel.is_empty() {
+                    rel.push('/');
+                }
+                rel.push_str(p);
+                s.expanded.insert(rel.clone());
+            }
+        });
+        settle(&mut rt);
+        let side_right = rect_of(&rt, "sidebar")[2] - 1.0;
+        let mut rel = String::new();
+        for p in &parts {
+            if !rel.is_empty() {
+                rel.push('/');
+            }
+            rel.push_str(p);
+            let k = crate::folders::row_key("dir", &rel);
+            let row_r = rect_of(&rt, &k);
+            let count_r = rect_in(&rt, &k, "count").unwrap_or_else(|| panic!("no count in {k}"));
+            let add_r = rect_in(&rt, &k, "add").unwrap_or_else(|| panic!("no add in {k}"));
+            let head_r = rect_in(&rt, &k, "head").unwrap_or_else(|| panic!("no head in {k}"));
+            assert!(count_r[0] + count_r[2] <= side_right - 8.0 + 0.5, "{k} count {count_r:?} stays inside the sidebar");
+            assert!(add_r[0] + add_r[2] <= row_r[0] + row_r[2] + 0.5, "{k} add {add_r:?} stays inside row {row_r:?}");
+            assert!(head_r[0] + head_r[2] <= add_r[0] + 0.5, "{k} clipped head {head_r:?} stops before count/add {add_r:?}");
+            let name_r = rt.elements().into_iter().find(|e| e.text.as_deref() == Some(p.as_str()) && e.path.split('/').any(|s| s == k)).expect("folder name").rect;
+            assert!(name_r[2] == 0.0 || name_r[0] + name_r[2] <= add_r[0] + 0.5, "{k} name {name_r:?} stops before count/add {add_r:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-49: a click on a folder's row opens or closes it, and its icon turns with it.
     #[test]
     fn a_click_opens_a_folder_and_turns_its_icon() {

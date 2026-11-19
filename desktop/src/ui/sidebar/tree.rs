@@ -105,11 +105,11 @@ fn lead(depth: usize) -> f32 {
     TEXT_X + depth as f32 * STEP
 }
 
-/// A tree row keyed `key`, its content from `lead(depth)`: the hover fill under the pointer,
-/// cut names offering their whole path, and the drag's marks.
-fn shade(v: V, key: &str, depth: usize) -> El {
+/// A tree row keyed `key`: the hover fill under the pointer, cut names offering their whole
+/// path, and the drag's marks.
+fn shade(v: V, key: &str) -> El {
     let c = Roles::panel(v.p);
-    row().key(key.to_string()).h(ROW_H).mx(INSET).pl(lead(depth) - INSET).pr(ROW_PX).center_y().radius(RADIUS).hover(c.hover)
+    row().key(key.to_string()).h(ROW_H).mx(INSET).pr(ROW_PX).center_y().radius(RADIUS).hover(c.hover)
 }
 
 /// Each row's guide lines: one for each folder above it, at the centre of that folder's icon,
@@ -125,25 +125,37 @@ fn guides(v: V, rows: Vec<(usize, El)>) -> Vec<El> {
             r.children((0..depth).map(|k| {
                 // 14 pt in from the parent row's left padding edge, left of the icon's centre.
                 let x = lead(k) + ICON / 2.0 - 1.0 - INSET;
-                el().key("guide").pin(Some(x), Some(0.0), None, Some(if next > k { -GAP } else { 0.0 })).w(1.0).fill(line).inert()
+                el().key(format!("guide-{k}")).pin(Some(x), Some(0.0), None, Some(if next > k { -GAP } else { 0.0 })).w(1.0).fill(line).inert()
             }))
         })
         .collect()
 }
 
 /// A folder's row: its icon in the accent, open or closed, and its name in strong at weight
-/// 500 (SB-49, SB-55).
+/// 500 (SB-49, SB-55). The indented icon and name live in a clipped flex box so deep levels
+/// cut the name cleanly and never push or overlap the count (SB-129).
 fn folder_row(v: V, f: &Folder, depth: usize, open: bool) -> El {
     let p = v.p;
     let c = Roles::panel(p);
     let key = row_key("dir", &f.path);
     let target = v.s.dragging.as_ref().is_some_and(|d| d.active && d.target.as_deref() == Some(f.path.as_str()));
-    let mut r = shade(v, &key, depth).pr(BUTTON_END).gap(ICON_GAP).hover_group().role("treeitem").label(f.name().to_string()).expanded(open);
+    let mut r = shade(v, &key).pr(BUTTON_END).gap(4.0).hover_group().role("treeitem").label(f.name().to_string()).expanded(open);
     if target {
         r = r.fill(p.soft).border(1.0, p.acc.alpha(0.45));
     }
     let (glyph, icon_key) = if open { (&FOLDER_OPEN, "folder-open") } else { (&FOLDER, "folder-shut") };
-    r.child(icon(glyph, ICON).key(icon_key).color(p.acc)).child(name(f.name(), &f.path, medium(ROW_TEXT), c.text)).child(el().grow(1.0)).child(count_or_add(v, f))
+    let head = row()
+        .key("head")
+        .grow(1.0)
+        .shrink()
+        .min_w(0.0)
+        .h_full()
+        .center_y()
+        .clip_rounded(0.0)
+        .child(el().w(lead(depth) - INSET))
+        .child(icon(glyph, ICON).key(icon_key).color(p.acc))
+        .child(name(f.name(), &f.path, medium(ROW_TEXT), c.text).ml(ICON_GAP).grow(1.0));
+    r.child(head).child(count_or_add(v, f))
 }
 
 /// A folder's count, at the row's right in faint, and the "+" that takes its place while the
@@ -173,11 +185,20 @@ fn count_or_add(v: V, f: &Folder) -> El {
 fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
     let c = Roles::panel(v.p);
     let key = row_key("file", path);
-    let mut r = shade(v, &key, depth).role("treeitem").label(md::base(path).to_string());
+    let mut r = shade(v, &key).role("treeitem").label(md::base(path).to_string());
     if v.s.dragging.as_ref().is_some_and(|d| d.active && d.path == path) {
         r = r.opacity(0.5);
     }
-    r.child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }))
+    let head = row()
+        .grow(1.0)
+        .shrink()
+        .min_w(0.0)
+        .h_full()
+        .center_y()
+        .clip_rounded(0.0)
+        .child(el().w(lead(depth) - INSET))
+        .child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }).grow(1.0));
+    r.child(head)
 }
 
 /// A row's name, cut at its end. One that shows in full needs no tooltip; one cut short offers
@@ -194,7 +215,8 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
     let p = v.p;
     let c = Roles::panel(p);
     // The field's text starts where a folder's name starts, after a closed folder's icon.
-    shade(v, "new-folder-row", depth)
+    shade(v, "new-folder-row")
+        .pl(lead(depth) - INSET)
         .gap(ICON_GAP - FIELD_PAD)
         .child(icon(&FOLDER, ICON).color(p.acc))
         .child(
