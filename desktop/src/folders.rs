@@ -146,8 +146,7 @@ impl App {
             self.expanded.insert(parent.to_string());
         }
         self.show_left(tx);
-        // The field shows in the tree: search's results and the tags give way to it.
-        self.show_tags = false;
+        // The field shows in the tree: search's results give way to it.
         self.query = TextEdit::new("");
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
         self.field_opened(crate::layer::Field::FolderName);
@@ -470,7 +469,7 @@ mod tests {
         assert_eq!(folder_at("root/body/sidebar/lists/vault/label-vault"), Some(String::new()), "the vault's label");
         assert_eq!(folder_at("root/body/sidebar/lists/shelf/shelf-scroll/#0/open-notes/tab:a.md"), None, "the shelf takes no drop");
         assert_eq!(folder_at("root/body/sidebar/side-top/search-box"), None, "nor the top bar");
-        assert_eq!(folder_at("root/body/sidebar/results-scroll/#0/search-panel"), None, "nor the results");
+        assert_eq!(folder_at("root/body/sidebar/results-scroll/#0/results"), None, "nor the results");
         assert_eq!(folder_at("root/body/sidebar/side-foot/foot-tags"), None, "nor the footer");
         assert_eq!(folder_at("root/body/sheet/doc-scroll"), None);
     }

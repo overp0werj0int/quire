@@ -357,19 +357,6 @@ pub fn note_tags(text: &str) -> Vec<String> {
     seen
 }
 
-/// Tags across all notes with the number of notes using each, most used first.
-pub fn tags(files: &BTreeMap<String, String>) -> Vec<(String, usize)> {
-    let mut m: BTreeMap<String, usize> = BTreeMap::new();
-    for t in files.values() {
-        for tag in note_tags(t) {
-            *m.entry(tag).or_default() += 1;
-        }
-    }
-    let mut v: Vec<(String, usize)> = m.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    v
-}
-
 /// The `[[...]]` links in a text, as inner text.
 pub fn wiki_links(text: &str) -> Vec<&str> {
     let mut out = Vec::new();

@@ -54,9 +54,7 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("file:", Pane::Sidebar),
     ("dir:", Pane::Sidebar),
     ("search", Pane::Sidebar),
-    ("res:", Pane::Sidebar),
-    ("hit:", Pane::Sidebar),
-    ("tag-row:", Pane::Sidebar),
+    ("res-", Pane::Sidebar),
     ("foot-", Pane::Sidebar),
     ("fmt-", Pane::Note),
     ("ol-", Pane::Outline),
@@ -225,13 +223,8 @@ impl App {
             let shown = self.shelved().or_else(|| self.shelf().into_iter().next());
             return shown.map_or_else(|| "open-notes".into(), |t| t.key());
         }
-        let q = self.query.text.trim();
-        if !q.is_empty() {
-            let first = crate::md::search(self.files(), q).into_iter().next();
-            return first.map_or_else(|| "search".into(), |r| format!("res:{}", r.path));
-        }
-        if self.show_tags {
-            return if crate::md::tags(self.files()).is_empty() { "foot-tags".into() } else { "tags".into() };
+        if let Some(r) = self.results() {
+            return r.first().map_or_else(|| "search".into(), |row| row.key());
         }
         let tab = self.shelved().map(|t| t.key());
         // A folded vault shows no tree: the active tab, else the vault's label.

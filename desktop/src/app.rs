@@ -115,9 +115,12 @@ pub struct App {
     pub recent: Vec<String>,
     pub expanded: BTreeSet<String>,
     pub mode: Mode,
-    /// The tags list shows in the sidebar in place of the Open shelf and the vault (SB-74).
-    pub show_tags: bool,
     pub query: TextEdit,
+    /// Search's results for `query`, kept until the query or the notes change (`results`).
+    pub search: std::cell::RefCell<crate::search::Cache>,
+    /// The result row that has the keyboard, by its key, as the last frame saw it: the row
+    /// the list fills (SB-65).
+    pub res_focus: Option<String>,
     /// The layers open over the page, bottom first (`crate::layer`).
     pub(crate) layers: Vec<crate::layer::Open>,
     /// Where focus goes back to, from a layer that closed in this change, for a layer that
@@ -240,8 +243,9 @@ pub fn init() -> App {
         recent: Vec::new(),
         expanded: BTreeSet::new(),
         mode: Mode::Source,
-        show_tags: false,
         query: TextEdit::new(""),
+        search: Default::default(),
+        res_focus: None,
         layers: Vec::new(),
         handed: None,
         layer_swap: false,
@@ -528,6 +532,11 @@ impl App {
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
         changed |= self.search_due(t, tx);
+        let res = tx.focused().filter(|k| k.starts_with("res-")).map(str::to_string);
+        if res != self.res_focus {
+            self.res_focus = res;
+            changed = true;
+        }
         if self.theme_changed.as_ref().is_some_and(|f| f.swap(false, std::sync::atomic::Ordering::SeqCst)) {
             changed |= crate::theme::reload_omarchy();
         }
@@ -945,7 +954,6 @@ impl App {
         self.screen = Screen::Vault;
         self.creating = None;
         self.query = TextEdit::new("");
-        self.show_tags = false;
         self.layers.clear();
         self.renaming = None;
         self.ensure_edit();
@@ -1541,12 +1549,56 @@ impl App {
         tx.focus("search", false);
     }
 
+    /// Search's results for the field's query, or None while it holds only spaces, when the
+    /// lists show instead (SB-57). Note mode has no search.
+    pub fn results(&self) -> Option<std::rc::Rc<crate::search::Results>> {
+        let q = self.query.text.trim();
+        let v = self.vault.as_ref().filter(|_| !q.is_empty() && !self.note_mode())?;
+        Some(self.search.borrow_mut().results(v, q))
+    }
+
+    /// Opens a search result's note, or switches to its tab, in the current mode (SB-63,
+    /// SB-64). A text result `at` its first match, as a byte offset and a line: in the writer
+    /// the caret goes to the match's start with nothing selected; in preview the page goes to
+    /// it and find marks it with the query, so Enter, `n` and `N` step through the others and
+    /// Esc clears the mark.
+    pub fn open_result(&mut self, path: &str, at: Option<(usize, usize)>, tx: &mut Tx) {
+        let Some((pos, line)) = at else { return self.open_file(path, None, tx) };
+        if self.mode == Mode::Source {
+            return self.open_file(path, Some(Sel { start: pos, end: pos, line: Some(line), force_source: false }), tx);
+        }
+        self.open_file(path, None, tx);
+        let q = self.query.text.trim().to_string();
+        let f = &mut self.reader.find;
+        f.open = true;
+        f.q = TextEdit::new(q.clone());
+        f.searched = q;
+        f.due = None;
+        f.cur = 0;
+        self.center_match(false, tx);
+    }
+
+    /// The footer's tags button (SB-74, SB-75): every tag, as the search for "#", with the
+    /// keyboard in the field and the caret after it, so typing narrows them. While the tags
+    /// show it clears the field instead, and a keyboard on a result goes to the field.
+    pub fn toggle_tags(&mut self, tx: &mut Tx) {
+        if self.query.text.trim_start().starts_with('#') {
+            self.query = TextEdit::new("");
+            if tx.focused().is_some_and(|k| k.starts_with("res-")) {
+                tx.focus("search", true);
+            }
+            return;
+        }
+        self.query = TextEdit::new("#");
+        self.query.set_selection(1, 1);
+        tx.focus("search", false);
+    }
+
     pub fn search_tag(&mut self, tag: &str, tx: &mut Tx) {
         if self.note_mode() {
             return;
         }
         self.show_left(tx);
-        self.show_tags = false;
         self.query = TextEdit::new(format!("#{tag}"));
         let n = self.query.text.len();
         self.query.set_selection(n, n);

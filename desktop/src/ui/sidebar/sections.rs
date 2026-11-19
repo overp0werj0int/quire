@@ -2,19 +2,17 @@
 //! them (SB-14, SB-33 to SB-48). A label folds its section; the handle moves the split. Both
 //! are kept once for the app in `state.json` (`crate::sidebar::Layout`).
 
-use rune::{El, Phase, ScrollSpec, col, el, icon, row, text};
+use rune::{El, Phase, ScrollSpec, col, el, icon};
 
 use super::super::V;
 use super::super::panel;
-use super::super::styles::{caption, sans};
 use super::super::widgets::{CHEVRON_DOWN, Control};
+use super::parts::{LABEL_H, label_row};
 use super::{BAR_PAD, BUTTON, shelf, tree};
 use crate::app::App;
 use crate::roles::Roles;
 use crate::sidebar::{Section, split};
 
-/// A section label's row (SB-05).
-const LABEL_H: f32 = 26.0;
 /// The room above a label.
 const LABEL_TOP: f32 = 2.0;
 /// The handle: 9 pt, its two lines inside (SB-33).
@@ -111,27 +109,23 @@ fn label(v: V, of: Section, name: &str, count: String, folded: Option<bool>) -> 
         Section::Shelf => "label-shelf",
         Section::Vault => "label-vault",
     };
-    // The chevron at 8 pt and the name at the rows' text edge.
-    let mut out = row().key(key).h(LABEL_H).mx(6.0).pl(2.0).pr(panel::RIGHT - 6.0).gap(4.0).center_y().radius(4.0);
-    if let Some(folded) = folded {
-        let (rw, rg, rc) = super::super::focus_ring(p);
-        let turn = if folded { -std::f32::consts::FRAC_PI_2 } else { 0.0 };
-        out = super::super::focus::stop(out)
-            .hover(c.hover)
-            .role("button")
-            .expanded(!folded)
-            .label(name.to_string())
-            .focus_ring(rw, rg, rc)
-            .keeps_text_selection()
-            .control(move |s: &mut App, _| {
-                s.persist.sidebar.toggle(of);
-                s.persist_later();
-            })
-            .child(icon(&CHEVRON_DOWN, 10.0).color(c.faint).rotate(turn).rotate_motion(rune::Spring::new(0.12, 0.0)));
-    } else {
-        out = out.pl(panel::TEXT_X - 6.0);
-    }
-    out.child(caption(name, false, p).truncate().shrink().min_w(0.0)).child(el().grow(1.0)).child(text(count).font(sans(10.0, 500.0)).color(c.faint))
+    let Some(folded) = folded else {
+        return label_row(p, key, None, name, count);
+    };
+    let (rw, rg, rc) = super::super::focus_ring(p);
+    let turn = if folded { -std::f32::consts::FRAC_PI_2 } else { 0.0 };
+    let chevron = icon(&CHEVRON_DOWN, 10.0).color(c.faint).rotate(turn).rotate_motion(rune::Spring::new(0.12, 0.0));
+    super::super::focus::stop(label_row(p, key, Some(chevron), name, count))
+        .hover(c.hover)
+        .role("button")
+        .expanded(!folded)
+        .label(name.to_string())
+        .focus_ring(rw, rg, rc)
+        .keeps_text_selection()
+        .control(move |s: &mut App, _| {
+            s.persist.sidebar.toggle(of);
+            s.persist_later();
+        })
 }
 
 /// The handle between the shelf and the vault, under a shelf `h` tall: a drag moves the split

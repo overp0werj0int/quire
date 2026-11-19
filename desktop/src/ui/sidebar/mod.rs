@@ -4,6 +4,7 @@
 //! a footer with the settings button alone (SB-119). One builder serves the docked sidebar and
 //! the drawer.
 
+mod parts;
 mod results;
 mod sections;
 mod shelf;
@@ -37,27 +38,6 @@ const ICON: f32 = 14.0;
 /// The longest key hint the search field shows, in characters, as `Ctrl+/` (SB-10).
 const HINT_CHARS: usize = 6;
 
-/// What fills the room between the top bar and the footer.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Body {
-    /// The Open shelf over the vault.
-    Lists,
-    /// Search's results, while the field holds text other than spaces (SB-57).
-    Results,
-    /// Every tag, while the tags button is pressed (SB-74).
-    Tags,
-}
-
-fn body(s: &App) -> Body {
-    if !s.query.text.trim().is_empty() {
-        Body::Results
-    } else if s.show_tags {
-        Body::Tags
-    } else {
-        Body::Lists
-    }
-}
-
 pub fn sidebar(v: V) -> El {
     let p = v.p;
     let s = v.s;
@@ -74,10 +54,11 @@ pub fn sidebar(v: V) -> El {
         // Note mode has no folder: no search, "+", vault or tags.
         return side.child(sections::lists(v)).child(foot(v));
     }
-    let middle = match body(s) {
-        Body::Lists => sections::lists(v),
-        Body::Results => scroll("results-scroll", results::results(v)),
-        Body::Tags => scroll("results-scroll", results::tags(v)),
+    // While the field holds text other than spaces, the results take the room of both lists
+    // (SB-57). The lists' folds, split, scroll and open folders wait as they were.
+    let middle = match s.results() {
+        Some(r) => scroll("results-scroll", results::results(v, &r)),
+        None => sections::lists(v),
     };
     side.child(top_bar(v)).child(middle).child(foot(v))
 }
@@ -128,7 +109,7 @@ fn search_field(v: V) -> El {
     let p = v.p;
     let c = Roles::panel(p);
     let s = v.s;
-    let first = results::first_result(v);
+    let first = s.results().and_then(|r| r.first().map(|row| row.key()));
     let (rw, rg, rc) = super::focus_ring(p);
     let field = super::focus::stop(text_input(&s.query, nav(panel::BODY, false)))
         .key("search")
@@ -204,8 +185,8 @@ fn search_field(v: V) -> El {
         .children(end)
 }
 
-/// A key's name in a chip, as the field's hint (SB-10).
-fn kbd(v: V, k: String) -> El {
+/// A key's name in a chip, as the field's hint (SB-10) and the filled result's (SB-65).
+pub(super) fn kbd(v: V, k: String) -> El {
     let p = v.p;
     let c = Roles::panel(p);
     el().key("kbd").mr(4.0).px(4.0).py(2.0).radius(4.0).border(1.0, p.line).border_layout().child(text(k).font(keys(super::styles::CAPTION)).color(c.faint))
@@ -216,14 +197,10 @@ fn kbd(v: V, k: String) -> El {
 fn foot(v: V) -> El {
     let p = v.p;
     let s = v.s;
+    // The tags show as the search for "#" (SB-74, SB-75).
     let tags = (!s.note_mode()).then(|| {
-        let on = s.show_tags;
-        foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, _| {
-            s.show_tags = !s.show_tags;
-            s.query = rune::TextEdit::new("");
-        })
-        .role("switch")
-        .checked(on)
+        let on = s.query.text.trim_start().starts_with('#');
+        foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, tx| s.toggle_tags(tx)).role("switch").checked(on)
     });
     let settings = foot_button(v, "foot-settings", &GEAR, keymap::tip(s.preset(), "Settings", "app.settings"), false, |s: &mut App, tx| s.open_settings(tx)).role("button");
     row()

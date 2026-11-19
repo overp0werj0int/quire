@@ -9,9 +9,10 @@ use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Mods, Phase, PointerButton, S
 use super::super::V;
 use super::super::lists;
 use super::super::panel;
-use super::super::styles::{nav, sans};
+use super::super::styles::nav;
 use super::super::widgets::{CLOSE, name_tip};
 use super::BUTTON_END;
+use super::parts::{TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
 use crate::app::{App, Shelved};
 use crate::md;
@@ -20,12 +21,10 @@ use crate::sidebar::Reorder;
 
 /// The size of a tab's close button: the smallest pointer target. The drawn icon stays small.
 const TARGET: f32 = 24.0;
-/// A tab's height: its two rows and 4 pt above and below (SB-07).
-const TAB_H: f32 = 36.0;
+/// A tab's height.
+const TAB_H: f32 = TWO_ROWS_H;
 /// The room between two tabs.
 const GAP: f32 = 1.0;
-/// A tab's corners.
-const RADIUS: f32 = 6.0;
 /// The spring the tabs a lifted tab passes step aside on.
 const STEP: Spring = Spring::new(0.18, 0.0);
 
@@ -77,7 +76,7 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
             (md::base(&name).to_string(), folder, crate::store::tilde(f))
         }
     };
-    let small = sans(10.5, 400.0);
+    let small = caption_style();
     let close_t = t.clone();
     let close = row()
         .key("x")
@@ -90,22 +89,10 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
         .child(icon(&CLOSE, 8.0).color(c.faint));
-    let names = col()
-        .grow(1.0)
-        .shrink()
-        .min_w(0.0)
-        .gap(1.0)
-        .child(text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip)))
-        .child(row().w_full().child(text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small))));
-    let mut el = row()
-        .key(t.key())
-        .h(TAB_H)
-        .mx(panel::INSET)
-        .pl(panel::TEXT_X - panel::INSET)
+    let title_el = text(title.clone()).font(nav(panel::BODY, false)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
+    let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
+    let mut el = two_rows(t.key(), title_el, folder_el)
         .pr(BUTTON_END)
-        .gap(2.0)
-        .center_y()
-        .radius(RADIUS)
         .hover_group()
         .role("listitem")
         .checked(on)
@@ -132,7 +119,7 @@ fn tab(v: V, t: &Shelved, on: bool) -> El {
         s.close_drawer();
         s.keys_to_note(tx);
     });
-    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, ev, tx)).child(names).child(close)
+    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, ev, tx)).child(close)
 }
 
 /// Closes `t` by its button or a middle click. The note shown goes with its editor, so a

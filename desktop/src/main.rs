@@ -3941,6 +3941,31 @@ mod layer_matrix_tests {
     /// it at its current row, the arrows move, Enter acts, Shift+F10 opens a row's menu and
     /// Esc gives the keyboard back to the note. A click on a row leaves the keyboard where it
     /// was.
+    /// SB-71: the results follow the notes. A note that gains the query while it shows comes
+    /// into them, and leaves them when it loses it, with no new search.
+    #[test]
+    fn the_results_follow_a_saved_note() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-follow-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Note\n\nalpha\n", Mode::Source);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, _| s.query = rune::TextEdit::new("zebra"));
+        settle(&mut rt);
+        let rows = |rt: &Runtime<App>| rt.elements().into_iter().filter_map(|e| e.key).filter(|k| k.starts_with("res-")).collect::<Vec<_>>();
+        assert!(rows(&rt).is_empty(), "nothing matches yet: {:?}", rows(&rt));
+        rt.update(|s, _| s.set_text("note.md", "# Note\n\nalpha zebra\n".into()));
+        settle(&mut rt);
+        assert_eq!(rows(&rt), ["res-text:note.md"], "the edited note comes into the results");
+        rt.update(|s, _| s.set_text("note.md", "# Note\n\nalpha\n".into()));
+        settle(&mut rt);
+        // The row that leaves goes with the list's leave motion, a few frames later.
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        assert!(rows(&rt).is_empty(), "and leaves them: {:?}", rows(&rt));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_sidebar_lists_work_from_the_keyboard() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -3978,7 +4003,7 @@ mod layer_matrix_tests {
         let state = |rt: &mut Runtime<App>| {
             let mut out = None;
             rt.update_if(|s, _| {
-                out = Some((s.active.clone().unwrap_or_default(), s.mode, s.expanded.contains("Box"), s.show_tags, s.query.text.clone(), s.open_layers().count()));
+                out = Some((s.active.clone().unwrap_or_default(), s.mode, s.expanded.contains("Box"), s.query.text.clone(), s.open_layers().count()));
                 false
             });
             out.unwrap()
@@ -4044,23 +4069,21 @@ mod layer_matrix_tests {
         down(&mut rt, Key::Enter);
         assert_eq!(state(&mut rt).0, "Box/a.md", "Enter on a backlink opens its note");
 
-        // The tags: Enter shows the tag's notes, and the keyboard follows to them.
-        rt.update(|s, _| s.show_tags = true);
+        // The tags: Enter on a tag lists its notes, the keyboard follows to the first, and Enter
+        // on one opens it in the current mode with the keyboard in the note.
+        rt.update(|s, _| s.query = rune::TextEdit::new("#kep"));
         settle(&mut rt);
-        assert_eq!(tab_to(&mut rt, |k| k.starts_with("tag-row:")), "tag-row:kept");
+        assert_eq!(tab_to(&mut rt, |k| k.starts_with("res-tag:")), "res-tag:kept");
         down(&mut rt, Key::Enter);
-        let (.., tags, query, _) = state(&mut rt);
-        assert_eq!((tags, query.as_str()), (false, "#kept"), "Enter on a tag searches for it");
-        let first = focused(&rt).unwrap_or_default();
-        assert!(first.starts_with("res:"), "the keyboard goes to the results: {first}");
-
-        // The search results: Down reaches a match, and Enter opens the note at it.
+        let (.., query, _) = state(&mut rt);
+        assert_eq!(query, "#kept", "Enter on a tag searches for it");
+        assert_eq!(focused(&rt).as_deref(), Some("res-tagged:Box|a.md"), "the keyboard goes to its first note");
         down(&mut rt, Key::Down);
-        assert_eq!(focused(&rt), Some(format!("hit:{}:0", &first["res:".len()..])), "Down moves to a match");
+        assert_eq!(focused(&rt).as_deref(), Some("res-tagged:c.md"), "Down moves through its notes");
         down(&mut rt, Key::Enter);
-        let (_, mode, ..) = state(&mut rt);
-        assert_eq!(mode, Mode::Source, "a match opens in the writer");
-        assert!(seen(&mut rt).editor_focused, "with the keyboard in the editor");
+        let (active, mode, ..) = state(&mut rt);
+        assert_eq!((active.as_str(), mode), ("c.md", Mode::Preview), "a result opens in the current mode");
+        assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "with the keyboard in the reader: {:?}", focused(&rt));
 
         // A list with no menu leaves Shift+F10 alone: no block menu opens under it. The shelf
         // shows again once the search is cleared.
@@ -4071,7 +4094,7 @@ mod layer_matrix_tests {
         settle(&mut rt);
         tab_to(&mut rt, |k| k.starts_with("tab:"));
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
-        assert_eq!(state(&mut rt).5, 0, "Shift+F10 on an Open row opens nothing");
+        assert_eq!(state(&mut rt).4, 0, "Shift+F10 on an Open row opens nothing");
 
         // A click on a row leaves the keyboard where it was: with the editor in the writer,
         // with the reader in preview.
@@ -4454,7 +4477,7 @@ mod layer_matrix_tests {
     }
 
     /// MODESC2: Esc with Shift, Ctrl or Alt does what plain Esc does wherever Esc does
-    /// something: the Search drawer's field, a backlink, the Tags drawer, the outline, a sidebar
+    /// something: the Search drawer's field, a backlink, a result in the drawer, the outline, a sidebar
     /// row, a panel tab, the name and new folder fields, the palette. Each place is set up
     /// afresh for each key, and what is open, where the keyboard is and what is being named
     /// after it must match plain Esc's.
@@ -4479,15 +4502,15 @@ mod layer_matrix_tests {
                 rt.update(|_, tx| tx.focus("ol-1", true));
                 settle(rt);
             }),
-            ("the Tags drawer", Mode::Source, |rt| {
+            ("a result in the drawer", Mode::Source, |rt| {
                 rt.set_viewport((640.0, 480.0), 1.0);
                 settle(rt);
                 rt.update(|s, tx| {
-                    s.show_tags = true;
+                    s.query = rune::TextEdit::new("#");
                     s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx);
                 });
                 settle(rt);
-                rt.update(|_, tx| tx.focus("tags", true));
+                rt.update(|_, tx| tx.focus("res-tag:kept", true));
                 settle(rt);
             }),
             ("a sidebar row", Mode::Source, |rt| {
@@ -6007,7 +6030,7 @@ mod layer_matrix_tests {
         rt.update(|s, tx| s.search_tag("many", tx));
         settle(&mut rt);
         key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
-        assert!(focused(&rt).is_some_and(|k| k.starts_with("res:")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
+        assert!(focused(&rt).is_some_and(|k| k.starts_with("res-")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
         look(&mut rt, Key::End, "results-scroll", "the last result");
         look(&mut rt, Key::Home, "results-scroll", "the first result");
         key(&mut rt, Key::Escape, Mods::default());
@@ -6128,25 +6151,36 @@ mod layer_matrix_tests {
                 fails.push(format!("Tab never reaches {want}"));
             }
         }
-        // The tags button shows the tags, and Tab reaches them; the keyboard stays on it.
+        // The tags button puts "#" in the field with the keyboard there, and Tab reaches the
+        // tags. Pressed again it clears the field.
         rt.update(|_, tx| tx.focus("foot-tags", true));
         settle(&mut rt);
         key(&mut rt, Key::Enter, Mods::default());
         settle(&mut rt);
-        if focused(&rt).as_deref() != Some("foot-tags") || rt.find("tags").is_none() {
-            fails.push(format!("Enter on the tags button: focus on {:?}, tags shown: {}", focused(&rt), rt.find("tags").is_some()));
+        let query = |rt: &mut Runtime<App>| {
+            let mut q = String::new();
+            rt.update_if(|s, _| {
+                q = s.query.text.clone();
+                false
+            });
+            q
+        };
+        if focused(&rt).as_deref() != Some("search") || query(&mut rt) != "#" {
+            fails.push(format!("Enter on the tags button: focus on {:?}, query {:?}", focused(&rt), query(&mut rt)));
         }
-        rt.update(|_, tx| tx.focus("search", true));
-        settle(&mut rt);
         if !(0..4).any(|_| {
             key(&mut rt, Key::Tab, Mods::default());
-            focused(&rt).is_some_and(|f| f.starts_with("tag-row:"))
+            focused(&rt).is_some_and(|f| f.starts_with("res-tag:"))
         }) {
             fails.push(format!("Tab from the field never reaches a tag: focus on {:?}", focused(&rt)));
         }
         rt.update(|_, tx| tx.focus("foot-tags", true));
         settle(&mut rt);
         key(&mut rt, Key::Enter, Mods::default());
+        settle(&mut rt);
+        if !query(&mut rt).is_empty() {
+            fails.push(format!("the tags button again leaves {:?} in the field", query(&mut rt)));
+        }
         rt.update(|_, tx| tx.focus("search", true));
         settle(&mut rt);
         for c in ["k", "e", "p", "t"] {
@@ -6154,14 +6188,14 @@ mod layer_matrix_tests {
         }
         key(&mut rt, Key::Down, Mods::default());
         let first = focused(&rt).unwrap_or_default();
-        if !first.starts_with("res:") {
+        if !first.starts_with("res-") {
             fails.push(format!("Down in the search field: focus on {first}"));
         }
         key(&mut rt, Key::Up, Mods::default());
         if focused(&rt).as_deref() != Some("search") {
             fails.push(format!("Up from the first result: focus on {:?}", focused(&rt)));
         }
-        let keys: Vec<String> = rt.elements().into_iter().filter_map(|e| e.key).filter(|k| k.starts_with("res:") || k.starts_with("hit:")).collect();
+        let keys: Vec<String> = rt.elements().into_iter().filter_map(|e| e.key).filter(|k| k.starts_with("res-")).collect();
         let unique: std::collections::HashSet<&String> = keys.iter().collect();
         if keys.len() < 2 || unique.len() != keys.len() {
             fails.push(format!("the results' rows share keys: {keys:?}"));
@@ -6507,31 +6541,33 @@ mod layer_matrix_tests {
             }
         }
 
-        // A search result or one of its matches, opened from preview, opens the writer with the
-        // caret at the match and nothing selected, as find leaves it: the next key types there.
-        for row in ["res:", "hit:"] {
-            let mut rt = garden(&dir, Mode::Preview);
-            rt.update(|s, tx| s.search_tag("kept", tx));
+        // A text result opens in the current mode (SB-64). In the writer the caret is at the
+        // match's start with nothing selected, as find leaves it: the next key types there. In
+        // preview the reader's find marks the match, and the reader has the keyboard.
+        for mode in [Mode::Source, Mode::Preview] {
+            let mut rt = garden(&dir, mode);
+            rt.update(|s, _| s.query = rune::TextEdit::new("kept"));
             settle(&mut rt);
-            let Some(k) = rt.elements().into_iter().filter_map(|e| e.key).find(|k| k.starts_with(row)) else {
-                fails.push(format!("no {row} row for #kept"));
-                continue;
-            };
-            rt.update(move |_, tx| tx.focus(k, true));
+            rt.update(|_, tx| tx.focus("res-text:Box|a.md", true));
             settle(&mut rt);
             key(&mut rt, Key::Enter, Mods::default());
             glide(&mut rt);
-            let mut sel = (0, 0, 0);
+            let mut got = (0, 0, 0, false, String::new());
             rt.update_if(|s, _| {
                 let e = s.cur_edit();
-                sel = (e.anchor, e.focus, e.text.find("#kept").unwrap_or(usize::MAX));
+                got = (e.anchor, e.focus, e.text.find("kept").unwrap_or(usize::MAX), s.reader.find.open, s.reader.find.searched.clone());
                 false
             });
+            let (anchor, caret, at, find, searched) = got;
             let before = seen(&mut rt);
-            text_key(&mut rt, "Q");
-            let after = seen(&mut rt);
-            if before.mode != Mode::Source || !before.editor_focused || sel.0 != sel.1 || sel.0 != sel.2 || after.text.matches("#kept").count() != before.text.matches("#kept").count() {
-                fails.push(format!("Enter on a {row} row from preview: mode {:?}, editor focused {}, selection {sel:?} (anchor, caret, match), the next key kept the match: {}", before.mode, before.editor_focused, after.text.contains("#kept")));
+            if mode == Mode::Source {
+                text_key(&mut rt, "Q");
+                let after = seen(&mut rt);
+                if before.mode != mode || !before.editor_focused || anchor != caret || caret != at || !after.text.contains("Qkept") {
+                    fails.push(format!("a text result in the writer: mode {:?}, editor focused {}, selection {anchor}..{caret}, match at {at}", before.mode, before.editor_focused));
+                }
+            } else if before.mode != mode || !find || searched != "kept" || !matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)) {
+                fails.push(format!("a text result in preview: mode {:?}, find open {find} for {searched:?}, focus {:?}", before.mode, focused(&rt)));
             }
         }
 
