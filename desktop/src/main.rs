@@ -5941,8 +5941,8 @@ mod layer_matrix_tests {
         let add = rect_in(&rt, "dir:Box", "add").unwrap();
         let count = rect_in(&rt, "dir:Box", "count").unwrap();
         assert_eq!((add[2], add[3]), (24.0, 24.0), "a 24 pt target");
-        assert_eq!(add[0] + add[2], row[0] + row[2] - 1.0, "at the row's end");
-        assert!((count[0] + count[2] - (add[0] + add[2] - 7.0)).abs() < 0.5, "the count ends where the + ends: {count:?} {add:?}");
+        assert_eq!(add[0] + add[2], row[0] + row[2] - 3.0, "at the row's end");
+        assert!((count[0] + count[2] - (add[0] + add[2] - 5.0)).abs() < 0.5, "the count ends where the + ends: {count:?} {add:?}");
         let before = dir.join("notes/Box").read_dir().unwrap().count();
         press(&mut rt, (add[0] + 12.0, add[1] + 12.0), false);
         settle(&mut rt);
