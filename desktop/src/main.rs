@@ -4695,8 +4695,8 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The pointer anywhere in a Settings switch's 28 pt target, not only over its 20 pt track,
-    /// gives the track its hover fill, on and off, and leaving the target takes it back.
+    /// The pointer anywhere in a Settings switch's target, up to its edge, gives the track its
+    /// hover fill, on and off, and leaving the target takes it back.
     #[test]
     fn a_switch_shows_its_whole_target_on_hover() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -4708,7 +4708,7 @@ mod layer_matrix_tests {
         let el = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("no {k}"));
         let sw = el(&rt, "toolbar-switch");
         let track = |rt: &Runtime<App>| rt.elements().into_iter().find(|e| e.path == format!("{}/track", sw.path)).expect("the switch's track");
-        assert_eq!((sw.rect[3], track(&rt).rect[3]), (28.0, 20.0), "a 20 pt track in a 28 pt target");
+        assert_eq!(track(&rt).rect, sw.rect, "the track is the whole target");
         let (x, top) = (sw.rect[0] + sw.rect[2] / 2.0, sw.rect[1]);
         for state in ["on", "off"] {
             rt.pointer_move(x - 200.0, top - 100.0);
@@ -4721,6 +4721,58 @@ mod layer_matrix_tests {
             glide(&mut rt);
             assert_eq!(track(&rt).fill, rest, "{state}: leaving the target takes the hover fill back");
             press_key(&mut rt, "toolbar-switch", false);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every switch in Settings is drawn as tall as the 28 pt target it takes a press over, 50
+    /// across, with a 24 pt knob 2 pt inside the track that travels 22 pt when it flips.
+    #[test]
+    fn every_switch_is_drawn_as_big_as_its_target() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-switch-fill-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, _| {
+            s.settings_mut().mcp.enabled = true;
+            s.settings_mut().mcp.access = "write".into();
+            s.settings_mut().sync.provider = "s3".into();
+        });
+        key(&mut rt, Key::Command(','), ctrl(false));
+        glide(&mut rt);
+        let find = |rt: &Runtime<App>, path: &str| rt.elements().into_iter().find(|e| e.path == path && !e.exiting).unwrap_or_else(|| panic!("no {path}"));
+        let find_key = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("no {k}"));
+        let mut seen = Vec::new();
+        for lbl in ["Editor", "Files & links", "Sync & backup", "MCP"] {
+            press_key(&mut rt, &format!("nav-{lbl}"), false);
+            glide(&mut rt);
+            let switches: Vec<_> = rt.elements().into_iter().filter(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.ends_with("-switch"))).collect();
+            assert!(!switches.is_empty(), "{lbl} shows a switch");
+            for k in switches.into_iter().filter_map(|e| e.key) {
+                // Tab's way there scrolls the switch into view; Space flips it.
+                rt.update(|_, tx| tx.focus(&k, true));
+                glide(&mut rt);
+                let sw = find_key(&rt, &k);
+                let track = find(&rt, &format!("{}/track", sw.path));
+                let knob_of = |rt: &Runtime<App>| find(rt, &format!("{}/track/knob", sw.path));
+                let knob = knob_of(&rt);
+                assert_eq!(sw.rect[2..], [50.0, 28.0], "{k}: a 50 by 28 target");
+                assert_eq!(track.rect, sw.rect, "{k}: the track is the whole target");
+                assert_eq!(knob.rect[2..], [24.0, 24.0], "{k}: a 24 pt knob");
+                assert_eq!(knob.rect[1] - track.rect[1], 2.0, "{k}: the knob sits 2 pt inside the track");
+                let at = |rt: &Runtime<App>| knob_of(rt).rect[0] - find(rt, &format!("{}/track", sw.path)).rect[0];
+                let before = at(&rt);
+                assert!(before == 2.0 || before == 24.0, "{k}: the knob rests 2 pt from an end, not {before}");
+                key(&mut rt, Key::Text(" ".into()), Mods::default());
+                glide(&mut rt);
+                assert_eq!(at(&rt), 26.0 - before, "{k}: the knob travels to the other end");
+                key(&mut rt, Key::Text(" ".into()), Mods::default());
+                glide(&mut rt);
+                assert_eq!(at(&rt), before, "{k}: and back");
+                seen.push(k);
+            }
+        }
+        for k in ["toolbar-switch", "links-switch", "enc-switch", "mcp-switch", "confirm-switch"] {
+            assert!(seen.iter().any(|s| s == k), "{k} was measured: {seen:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

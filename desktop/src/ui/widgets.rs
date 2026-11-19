@@ -283,9 +283,9 @@ pub fn name_tip(path: &str) -> String {
     }
 }
 
-/// A switch drawn 36 by 20 that takes a press over 36 by 28. The pointer anywhere in that
-/// target gives the track its hover fill, which lands at once and fades over 100 ms as a
-/// hover does; Tab rings the track, as every ring sits around what is drawn.
+/// A switch drawn 50 by 28, as big as the target it takes a press over, its knob 24 across.
+/// The pointer anywhere on it gives the track its hover fill, which lands at once and fades
+/// over 100 ms as a hover does; Tab rings the track, as every ring sits around what is drawn.
 pub fn switch(v: V, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     let p = v.p;
     let hovered = v.s.hover_switch.as_deref() == Some(key);
@@ -298,13 +298,13 @@ pub fn switch(v: V, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App
     let (rw, rg, rc) = super::focus_ring(p);
     let track = el()
         .key("track")
-        .size(36.0, 20.0)
-        .radius(10.0)
+        .size(SWITCH_W, SWITCH_H)
+        .radius(SWITCH_H / 2.0)
         .fill(fill)
         .focus_ring(rw, rg, rc)
-        .child(el().key("knob").size(16.0, 16.0).radius(8.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { 18.0 } else { 2.0 }, 2.0));
+        .child(el().key("knob").size(KNOB, KNOB).radius(KNOB / 2.0).fill(Color::WHITE).box_shadow(theme::knob_shadow()).absolute(if on { SWITCH_W - KNOB - KNOB_INSET } else { KNOB_INSET }, KNOB_INSET));
     let own = key.to_string();
-    let e = row().key(key).size(36.0, 28.0).center_y().role("switch").checked(on).label(label_text).on_hover_change(move |s: &mut App, inside, tx| {
+    let e = row().key(key).size(SWITCH_W, SWITCH_H).center_y().role("switch").checked(on).label(label_text).on_hover_change(move |s: &mut App, inside, tx| {
         if inside {
             s.hover_switch = Some(own.clone());
             tx.instant();
@@ -318,6 +318,13 @@ pub fn switch(v: V, key: &str, on: bool, label_text: &str, run: impl Fn(&mut App
 
 /// How far an off switch's track moves toward the ink under the pointer.
 const SWITCH_HOVER: f32 = 0.2;
+/// A switch's track, which is its whole target: as tall as a row's control, wide enough that
+/// the knob travels most of its own width.
+const SWITCH_W: f32 = 50.0;
+const SWITCH_H: f32 = 28.0;
+/// The knob, and the track it shows round it.
+const KNOB_INSET: f32 = 2.0;
+const KNOB: f32 = SWITCH_H - 2.0 * KNOB_INSET;
 
 /// A bordered button such as "Switch folder…" or "Restore".
 pub fn outline_button(p: &Pal, key: &str, text_: &str, h: f32, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
