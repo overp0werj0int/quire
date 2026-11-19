@@ -40,13 +40,6 @@ pub enum Mode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Panel {
-    Files,
-    Search,
-    Tags,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PalMode {
     Files,
     Commands,
@@ -104,7 +97,8 @@ pub struct App {
     pub recent: Vec<String>,
     pub expanded: BTreeSet<String>,
     pub mode: Mode,
-    pub left_panel: Panel,
+    /// The tags list shows in the sidebar in place of the Open shelf and the vault (SB-74).
+    pub show_tags: bool,
     pub query: TextEdit,
     /// The layers open over the page, bottom first (`crate::layer`).
     pub(crate) layers: Vec<crate::layer::Open>,
@@ -160,6 +154,9 @@ pub struct App {
     /// Set by the theme watcher when Omarchy switches themes.
     theme_changed: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub dragging: Option<crate::folders::DragNote>,
+    /// While the sidebar's handle is dragged, the shelf's stored height before the drag, which
+    /// a drag called off puts back.
+    pub handle: Option<Option<f32>>,
     pub new_folder: Option<crate::folders::NewFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
@@ -216,7 +213,7 @@ pub fn init() -> App {
         recent: Vec::new(),
         expanded: BTreeSet::new(),
         mode: Mode::Source,
-        left_panel: Panel::Files,
+        show_tags: false,
         query: TextEdit::new(""),
         layers: Vec::new(),
         handed: None,
@@ -254,6 +251,7 @@ pub fn init() -> App {
         names_gen: 0,
         theme_changed: None,
         dragging: None,
+        handle: None,
         new_folder: None,
         sync: Default::default(),
         images: Default::default(),
@@ -914,7 +912,7 @@ impl App {
         self.screen = Screen::Vault;
         self.creating = None;
         self.query = TextEdit::new("");
-        self.left_panel = Panel::Files;
+        self.show_tags = false;
         self.layers.clear();
         self.renaming = None;
         self.ensure_edit();
@@ -1435,7 +1433,6 @@ impl App {
             return;
         }
         self.show_left(tx);
-        self.left_panel = Panel::Search;
         let n = self.query.text.len();
         self.query.set_selection(0, n);
         tx.focus("search", false);
@@ -1446,7 +1443,7 @@ impl App {
             return;
         }
         self.show_left(tx);
-        self.left_panel = Panel::Search;
+        self.show_tags = false;
         self.query = TextEdit::new(format!("#{tag}"));
         let n = self.query.text.len();
         self.query.set_selection(n, n);

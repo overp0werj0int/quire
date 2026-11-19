@@ -78,7 +78,7 @@ struct Tone {
 pub fn column(v: V) -> page::Column {
     let set = v.s.settings();
     let prose = theme::pick(&theme::PROSE_FONTS, &set.preview_font);
-    let left = if v.left_visible() { 249.0 } else { 0.0 };
+    let left = if v.left_visible() { super::sidebar::DOCKED_W } else { 0.0 };
     let right = if v.right_visible() { 236.0 } else { 0.0 };
     page::column(v.vw - left - right, set.size as f32, page::avg_char(prose.family), v.s.wide(), left - right)
 }

@@ -1,5 +1,5 @@
 //! The vault window's top band: window dots, sidebar toggle, the note's name and view toggles.
-//! The open notes are listed at the top of the sidebar (`sidebar::open_notes`).
+//! The open notes are listed on the sidebar's Open shelf (`sidebar::shelf`).
 
 use rune::{El, Tx, el, row};
 

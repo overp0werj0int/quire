@@ -602,7 +602,7 @@ pub fn source_column(v: V) -> crate::page::Column {
 
 /// The widths of the docked sidebar and outline, 0 for one that is not docked.
 pub(super) fn docked(v: V) -> (f32, f32) {
-    (if v.left_visible() { 249.0 } else { 0.0 }, if v.right_visible() { 236.0 } else { 0.0 })
+    (if v.left_visible() { super::sidebar::DOCKED_W } else { 0.0 }, if v.right_visible() { 236.0 } else { 0.0 })
 }
 
 /// The writer (`behavior/writer.md`): one field, painted with the formatting spans of

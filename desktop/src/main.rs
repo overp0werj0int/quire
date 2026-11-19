@@ -29,6 +29,7 @@ mod md;
 mod roles;
 mod sample;
 mod sheet;
+mod sidebar;
 mod store;
 mod sync;
 mod theme;
@@ -243,44 +244,43 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The sidebar's panel tabs read as tabs, not as section labels: the open one carries a mark
-    /// and the others are a step brighter than a label. With no note open, the Open label goes
-    /// with its list.
+    /// SB-05, SB-14, SB-48, SB-125: both section labels have one style, a chevron, the name in
+    /// small capitals and a count: Open with its tabs, the vault's name with its notes. With no
+    /// note open the Open label goes with its list.
     #[test]
-    fn panel_tabs_differ_from_section_labels() {
+    fn section_labels_share_one_style() {
         use crate::bench::DT;
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("quire-paneltabs-{}", std::process::id()));
-        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        let dir = std::env::temp_dir().join(format!("quire-labels-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n"), ("b.md", "# B\n")], crate::watch::EVERY);
         rt.set_viewport((1280.0, 800.0), 1.0);
         rt.update(|s, tx| s.open_file("note.md", None, tx));
         for _ in 0..20 {
             rt.frame(DT);
         }
         let els = rt.elements();
-        let text = |t: &str| els.iter().find(|e| e.text.as_deref() == Some(t)).unwrap_or_else(|| panic!("{t}")).text_color;
-        assert_ne!(text("OPEN"), text("SEARCH"), "an inactive tab is not set as a label");
-        let path = |key: &str| els.iter().find(|e| e.key.as_deref() == Some(key)).unwrap_or_else(|| panic!("{key}")).path.clone();
-        let marks: Vec<String> = els.iter().filter(|e| e.key.as_deref() == Some("tab-mark") && !e.exiting).map(|e| e.path.clone()).collect();
-        assert_eq!(marks.len(), 1, "one tab is marked");
-        assert!(marks[0].starts_with(&path("panel-files")), "the open one");
-        // The three tabs are one segmented control: a faint track behind all three, the open
-        // tab's pill inside it with the same radius, the New folder button outside it.
-        let rect = |key: &str| els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("{key}"));
-        let track = rect("panel-seg");
-        let within = |a: [f32; 4], b: [f32; 4]| a[0] >= b[0] && a[1] >= b[1] && a[0] + a[2] <= b[0] + b[2] && a[1] + a[3] <= b[1] + b[3];
-        assert!(track.fill.a > 0.0, "the track has a fill");
-        for tab in ["panel-files", "panel-search", "panel-tags", "tab-mark"] {
-            assert!(within(rect(tab).rect, track.rect), "{tab} {:?} sits on the track {:?}", rect(tab).rect, track.rect);
+        let under = |key: &str| -> Vec<rune::ElementInfo> { els.iter().filter(|e| !e.exiting && e.path.split('/').any(|seg| seg == key)).cloned().collect() };
+        let mut looks = Vec::new();
+        for (key, title, count) in [("label-shelf", "OPEN", "1"), ("label-vault", "", "2")] {
+            let parts = under(key);
+            let texts: Vec<&rune::ElementInfo> = parts.iter().filter(|e| e.text.is_some()).collect();
+            assert_eq!(texts.len(), 2, "{key}: a name and a count: {:?}", texts.iter().map(|e| e.text.clone()).collect::<Vec<_>>());
+            let (t, n) = (texts[0], texts[1]);
+            if !title.is_empty() {
+                assert_eq!(t.text.as_deref(), Some(title), "{key}'s name");
+            }
+            assert_eq!(t.text.clone().map(|x| x.to_uppercase()), t.text.clone(), "{key}: the name is in capitals");
+            assert_eq!(n.text.as_deref(), Some(count), "{key}'s count");
+            assert!(parts.iter().any(|e| e.role == "icon"), "{key} has a chevron");
+            looks.push((t.rect[3], t.text_color, n.text_color, parts[0].rect[3]));
         }
-        assert_eq!(rect("tab-mark").radius, track.radius, "the pill and the track share a radius");
-        let folder = rect("new-folder-button").rect;
-        assert!(folder[0] >= track.rect[0] + track.rect[2], "the New folder button {folder:?} is outside the track {:?}", track.rect);
+        assert_eq!(looks[0], looks[1], "both labels look the same");
         rt.update(|s, _| s.close_tab("note.md"));
         for _ in 0..20 {
             rt.frame(DT);
         }
-        assert!(!rt.elements().iter().any(|e| e.text.as_deref() == Some("OPEN")), "no Open label over an empty list");
+        assert!(!rt.elements().iter().any(|e| !e.exiting && e.text.as_deref() == Some("OPEN")), "no Open label over an empty shelf");
+        assert!(rt.find("handle").is_none(), "nor a handle");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -388,7 +388,8 @@ pub(crate) mod scroll_tests {
 
     /// EL: a long name stays in its room and ends in an ellipsis. In the title bar it ends
     /// before the bar's buttons; in the quick switcher a long folder never squeezes the name;
-    /// the search panel's hint wraps inside the sidebar.
+    /// the search field's key hint ends inside the field, and a tab's long name is cut in its
+    /// row (SB-10, SB-128).
     #[test]
     fn long_names_stay_in_their_room() {
         use crate::bench::DT;
@@ -414,14 +415,15 @@ pub(crate) mod scroll_tests {
         }
         rt.update(|s, tx| s.open_search(tx));
         settle(&mut rt);
+        let (field, new) = (rect(&rt, "search-box"), rect(&rt, "new-note"));
+        if let Some(kbd) = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("kbd")).map(|e| e.rect) {
+            assert!(kbd[0] > field[0] && kbd[0] + kbd[2] <= field[0] + field[2] - 2.0, "the key hint {kbd:?} ends inside the field {field:?}");
+        }
+        assert!(field[0] + field[2] + 6.0 <= new[0] + 0.5, "the field {field:?} ends 6 pt before \"+\" {new:?}");
+        assert!(rect(&rt, "search")[2] >= 80.0, "the field keeps room to type: {:?}", rect(&rt, "search"));
         let side = rect(&rt, "sidebar-over");
-        // The hint is 11 pt in the panel family, 0.6 em a character, inside 12 pt each side,
-        // 10 pt above and 4 below: its lines hold every character, and it ends in the sidebar.
-        let line = crate::ui::styles::panel_line(11.0);
-        for (t, r) in texts(&rt, "search-top") {
-            assert!(r[0] + r[2] <= side[0] + side[2] + 0.5, "the search hint '{t}' ends at {} past the sidebar at {}", r[0] + r[2], side[0] + side[2]);
-            let (lines, per_line) = (((r[3] - 14.0) / line).round(), ((r[2] - 24.0) / (0.6 * 11.0)).floor());
-            assert!(lines * per_line >= t.chars().count() as f32, "the search hint '{t}' runs past its {lines} line(s) of {per_line} characters");
+        for (t, r) in texts(&rt, "open-notes") {
+            assert!(r[0] + r[2] <= side[0] + side[2] - 12.0, "the tab's '{t}' ends at {} in the sidebar at {}", r[0] + r[2], side[0] + side[2]);
         }
         rt.update(|s, tx| s.close_layers(tx));
         rt.set_viewport((1280.0, 800.0), 1.0);
@@ -435,8 +437,9 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The sidebar's small buttons and the panel tabs take a pointer over at least 24 by 24
-    /// points, and the rows they sit in keep their height.
+    /// The sidebar's small buttons, its section labels and its top bar's and footer's buttons
+    /// take a pointer over at least 24 by 24 points, and the rows they sit in keep their height
+    /// (SB-08).
     #[test]
     fn sidebar_targets_are_large_enough() {
         use crate::bench::DT;
@@ -450,7 +453,7 @@ pub(crate) mod scroll_tests {
         let mut seen = std::collections::BTreeSet::new();
         for e in &els {
             let Some(k) = e.key.as_deref() else { continue };
-            if matches!(k, "x" | "add" | "new-folder-button" | "panel-files" | "panel-search" | "panel-tags") {
+            if matches!(k, "x" | "add" | "new-note" | "label-shelf" | "label-vault" | "foot-tags" | "foot-settings") {
                 assert!(e.rect[2] >= 24.0 && e.rect[3] >= 24.0, "{k} is {:?}", e.rect);
                 seen.insert(k.to_string());
             }
@@ -458,7 +461,7 @@ pub(crate) mod scroll_tests {
                 assert_eq!(e.rect[3], 28.0, "{k} keeps its height");
             }
         }
-        assert_eq!(seen.len(), 6, "every kind was measured: {seen:?}");
+        assert_eq!(seen.len(), 7, "every kind was measured: {seen:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -757,11 +760,11 @@ pub(crate) mod scroll_tests {
         assert!(rt.find("outline").is_some(), "the outline is open");
         let button = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-right") && !e.exiting).expect("the outline button");
         assert!(button.fill.a > 0.0, "the outline button shows as on in source mode");
-        // The panel switch's captions start on the text edge of the rows they label.
+        // A section label's name starts on the text edge of the rows it labels.
         let els = rt.elements();
-        let files = els.iter().find(|e| e.key.as_deref() == Some("panel-files")).expect("the Files caption");
+        let label = els.iter().find(|e| e.text.is_some() && e.path.contains("/label-vault/")).expect("the vault's name");
         let row = els.iter().find(|e| e.text.as_deref() == Some("note") && e.path.contains("file:note.md")).expect("the note's row");
-        assert_eq!(files.rect[0], row.rect[0], "the Files caption lines up with the rows");
+        assert_eq!(label.rect[0], row.rect[0], "the vault's label lines up with the rows");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1316,7 +1319,7 @@ pub(crate) mod scroll_tests {
         toggle(&mut rt);
         settle(&mut rt);
         assert!(rect(&rt, "sidebar-over").is_some(), "the button opens the drawer");
-        for key in ["foot-new", "foot-settings"] {
+        for key in ["new-note", "foot-tags", "foot-settings"] {
             let r = rect(&rt, key).unwrap_or_else(|| panic!("{key} shows"));
             assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[0] + r[2] <= 640.0 && r[1] + r[3] <= 480.0, "{key} inside the window: {r:?}");
         }
@@ -2869,12 +2872,15 @@ mod edit_menu_tests {
             }
         };
         let marked = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key.unwrap_or_default(), e.focus_visible));
-        rt.update(|_, tx| tx.focus("vault-button", true));
+        rt.update(|_, tx| tx.focus("label-vault", true));
         rt.frame(DT);
-        key(&mut rt, Key::Enter);
-        assert_eq!(marked(&rt), Some(("menu-switch".into(), true)), "Enter opened the folder menu, first item marked");
+        rt.key(KeyEvent { key: Key::Function(10), mods: Mods { shift: true, ..Mods::default() } });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        assert_eq!(marked(&rt), Some(("menu-switch".into(), true)), "Shift+F10 opened the vault's menu, first item marked");
         key(&mut rt, Key::Down);
-        assert_eq!(marked(&rt), Some(("menu-settings".into(), true)));
+        assert_eq!(marked(&rt), Some(("menu-new-folder".into(), true)));
         key(&mut rt, Key::Down);
         assert_eq!(marked(&rt), Some(("menu-switch".into(), true)), "Down wraps");
         key(&mut rt, Key::Escape);
@@ -2884,7 +2890,7 @@ mod edit_menu_tests {
             false
         });
         assert!(!open, "Esc closed it");
-        assert_eq!(marked(&rt).map(|m| m.0), Some("vault-button".into()), "and the folder's name has the keyboard");
+        assert_eq!(marked(&rt).map(|m| m.0), Some("label-vault".into()), "and the vault's label has the keyboard");
 
         // Shift+F10 in the editor opens its menu below the caret, on Paste: with nothing
         // selected Cut and Copy are off. Esc gives the editor the keyboard back.
@@ -3137,9 +3143,14 @@ mod note_mode_tests {
         }
         let row = format!("note:{}", loose.join("a.md").display());
         assert!(shown(&rt, "open-notes") && shown(&rt, &row), "the Open list holds the note");
-        for key in ["vault-head", "panel-tabs", "side-scroll", "foot-new"] {
+        // SB-119: the shelf and a footer with the settings button alone; the Open label does
+        // not fold.
+        for key in ["vault", "side-top", "search", "new-note", "handle", "foot-tags", "side-scroll"] {
             assert!(!shown(&rt, key), "no {key} in Note mode");
         }
+        assert!(shown(&rt, "foot-settings") && shown(&rt, "label-shelf"), "the settings button and the Open label show");
+        let folds = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("label-shelf")).is_some_and(|e| e.focusable || e.expanded.is_some());
+        assert!(!folds, "the Open label does not fold in Note mode");
 
         // Edits save to the file; nothing is added to, renamed in, or deleted from its folder.
         rt.update(|s, tx| {
@@ -3417,7 +3428,7 @@ mod layer_matrix_tests {
             },
             Overlay { name: "row menu by keys", preview: false, size: wide, light: true, back: Some("file:note.md"), open: |rt| row_menu_by_keys(rt) },
             Overlay { name: "row menu by keys in preview", preview: true, size: wide, light: true, back: Some("file:note.md"), open: |rt| row_menu_by_keys(rt) },
-            Overlay { name: "folder menu", preview: false, size: wide, light: true, back: None, open: |rt| press_key(rt, "vault-button", false) },
+            Overlay { name: "folder menu", preview: false, size: wide, light: true, back: None, open: |rt| press_key(rt, "label-vault", true) },
         ]
     }
 
@@ -3602,12 +3613,12 @@ mod layer_matrix_tests {
             }),
             ("Ctrl+P, the folder menu by a click, Esc", |rt| {
                 key(rt, Key::Command('p'), ctrl(false));
-                press_key(rt, "vault-button", false);
+                press_key(rt, "label-vault", true);
                 key(rt, Key::Escape, Mods::default());
             }),
             ("Ctrl+P, the folder menu by a click, a press outside", |rt| {
                 key(rt, Key::Command('p'), ctrl(false));
-                press_key(rt, "vault-button", false);
+                press_key(rt, "label-vault", true);
                 press(rt, (700.0, 300.0), false);
             }),
         ];
@@ -3863,7 +3874,6 @@ mod layer_matrix_tests {
     /// was.
     #[test]
     fn the_sidebar_lists_work_from_the_keyboard() {
-        use crate::app::Panel;
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-lists-{}", std::process::id()));
         let garden = |mode: Mode| {
@@ -3888,7 +3898,7 @@ mod layer_matrix_tests {
         let down = |rt: &mut Runtime<App>, k: Key| key(rt, k, Mods::default());
         // Tab from where focus is until a row of the list `of` has it.
         let tab_to = |rt: &mut Runtime<App>, of: fn(&str) -> bool| {
-            for _ in 0..12 {
+            for _ in 0..20 {
                 down(rt, Key::Tab);
                 if let Some(k) = focused(rt).filter(|k| of(k)) {
                     return k;
@@ -3899,7 +3909,7 @@ mod layer_matrix_tests {
         let state = |rt: &mut Runtime<App>| {
             let mut out = None;
             rt.update_if(|s, _| {
-                out = Some((s.active.clone().unwrap_or_default(), s.mode, s.expanded.contains("Box"), s.left_panel, s.query.text.clone(), s.open_layers().count()));
+                out = Some((s.active.clone().unwrap_or_default(), s.mode, s.expanded.contains("Box"), s.show_tags, s.query.text.clone(), s.open_layers().count()));
                 false
             });
             out.unwrap()
@@ -3966,12 +3976,12 @@ mod layer_matrix_tests {
         assert_eq!(state(&mut rt).0, "Box/a.md", "Enter on a backlink opens its note");
 
         // The tags: Enter shows the tag's notes, and the keyboard follows to them.
-        rt.update(|s, _| s.left_panel = Panel::Tags);
+        rt.update(|s, _| s.show_tags = true);
         settle(&mut rt);
         assert_eq!(tab_to(&mut rt, |k| k.starts_with("tag-row:")), "tag-row:kept");
         down(&mut rt, Key::Enter);
-        let (.., panel, query, _) = state(&mut rt);
-        assert_eq!((panel, query.as_str()), (Panel::Search, "#kept"), "Enter on a tag searches for it");
+        let (.., tags, query, _) = state(&mut rt);
+        assert_eq!((tags, query.as_str()), (false, "#kept"), "Enter on a tag searches for it");
         let first = focused(&rt).unwrap_or_default();
         assert!(first.starts_with("res:"), "the keyboard goes to the results: {first}");
 
@@ -3983,8 +3993,12 @@ mod layer_matrix_tests {
         assert_eq!(mode, Mode::Source, "a match opens in the writer");
         assert!(seen(&mut rt).editor_focused, "with the keyboard in the editor");
 
-        // A list with no menu leaves Shift+F10 alone: no block menu opens under it.
-        rt.update(|s, _| s.mode = Mode::Preview);
+        // A list with no menu leaves Shift+F10 alone: no block menu opens under it. The shelf
+        // shows again once the search is cleared.
+        rt.update(|s, _| {
+            s.mode = Mode::Preview;
+            s.query = rune::TextEdit::new("");
+        });
         settle(&mut rt);
         tab_to(&mut rt, |k| k.starts_with("tab:"));
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
@@ -4269,7 +4283,7 @@ mod layer_matrix_tests {
             ("the note's name", |rt| rt.update(|s, tx| s.start_rename(tx))),
             ("a new folder's name", |rt| rt.update(|s, tx| s.start_new_folder("", tx))),
             ("a tree row", |rt| rt.update(|_, tx| tx.focus("file:note.md", true))),
-            ("a panel tab", |rt| rt.update(|_, tx| tx.focus("panel-files", true))),
+            ("a section label", |rt| rt.update(|_, tx| tx.focus("label-shelf", true))),
         ];
         for (place, go) in places {
             let mut rt = garden(&dir, Mode::Source);
@@ -4400,7 +4414,7 @@ mod layer_matrix_tests {
                 rt.set_viewport((640.0, 480.0), 1.0);
                 settle(rt);
                 rt.update(|s, tx| {
-                    s.left_panel = crate::app::Panel::Tags;
+                    s.show_tags = true;
                     s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx);
                 });
                 settle(rt);
@@ -4411,16 +4425,16 @@ mod layer_matrix_tests {
                 rt.update(|s, tx| tx.focus(s.sidebar_stop(), true));
                 settle(rt);
             }),
-            ("a panel tab", Mode::Preview, |rt| {
-                rt.update(|_, tx| tx.focus("panel-search", true));
+            ("a section label", Mode::Preview, |rt| {
+                rt.update(|_, tx| tx.focus("label-shelf", true));
                 settle(rt);
             }),
-            ("the Tags tab in the drawer", Mode::Preview, |rt| {
+            ("the tags button in the drawer", Mode::Preview, |rt| {
                 rt.set_viewport((640.0, 480.0), 1.0);
                 settle(rt);
                 rt.update(|s, tx| s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx));
                 settle(rt);
-                rt.update(|_, tx| tx.focus("panel-tags", true));
+                rt.update(|_, tx| tx.focus("foot-tags", true));
                 settle(rt);
             }),
             ("the name field", Mode::Source, |rt| {
@@ -4488,7 +4502,7 @@ mod layer_matrix_tests {
         let places: [(&str, Drawer, Option<&str>); 6] = [
             ("a row", Drawer::Sidebar, Some("file:note.md")),
             ("a button", Drawer::Sidebar, Some("foot-settings")),
-            ("a panel tab", Drawer::Sidebar, Some("panel-tags")),
+            ("a section label", Drawer::Sidebar, Some("label-vault")),
             ("the Search field", Drawer::Sidebar, Some("search")),
             ("the drawer itself", Drawer::Sidebar, None),
             ("the outline's drawer", Drawer::Outline, Some("ol-1")),
@@ -4500,12 +4514,7 @@ mod layer_matrix_tests {
             let mut rt = garden(&dir, Mode::Source);
             rt.set_viewport((640.0, 800.0), 1.0);
             settle(&mut rt);
-            rt.update(|s, tx| {
-                if at == Some("search") {
-                    s.left_panel = crate::app::Panel::Search;
-                }
-                s.open_layer(crate::layer::Layer::Drawer(drawer), tx);
-            });
+            rt.update(|s, tx| s.open_layer(crate::layer::Layer::Drawer(drawer), tx));
             settle(&mut rt);
             if let Some(k) = at {
                 rt.update(|_, tx| tx.focus(k, true));
@@ -4603,99 +4612,146 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The panel tabs are one Tab stop, as the toolbar is (TABSTOP): Tab lands on the open tab,
-    /// whichever it is, and Tab or Shift+Tab leaves the control. A focused tab's ring follows
-    /// its pill and stays inside the track (TABRING), and a closed tab's stands off the open
-    /// pill beside it (RINGOV, RINGGAP).
+    /// SB-39, SB-41: a section label is a button that says whether its section shows. Enter or
+    /// Space folds and unfolds its section with the keyboard staying on it, a click does the
+    /// same and leaves the keyboard where it was, and a layer that closes gives the label its
+    /// focus back.
     #[test]
-    fn the_panel_tabs_are_one_tab_stop() {
-        use crate::app::Panel;
+    fn a_label_folds_on_enter() {
+        use crate::sidebar::Section;
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("quire-panel-stop-{}", std::process::id()));
-        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
-        for (panel, open) in [(Panel::Files, "panel-files"), (Panel::Search, "panel-search"), (Panel::Tags, "panel-tags")] {
-            let mut rt = garden(&dir, Mode::Preview);
-            rt.update(move |s, _| s.left_panel = panel);
-            settle(&mut rt);
-            let mut tabs = Vec::new();
-            let mut next = None;
-            for _ in 0..12 {
-                key(&mut rt, Key::Tab, Mods::default());
-                let f = focused(&rt).unwrap_or_default();
-                if let Some(prev) = tabs.last()
-                    && next.is_none()
-                    && f != *prev
-                {
-                    next = Some(f.clone());
-                }
-                if f.starts_with("panel-") {
-                    tabs.push(f);
-                }
-            }
-            assert!(!tabs.is_empty() && tabs.iter().all(|k| k == open), "{panel:?}: Tab lands only on the open tab: {tabs:?}");
-            assert!(next.is_some_and(|k| !k.starts_with("panel-")), "{panel:?}: Tab leaves the tabs");
-            rt.update(move |_, tx| tx.focus(open, true));
-            settle(&mut rt);
-            key(&mut rt, Key::Tab, Mods { shift: true, ..Mods::default() });
-            assert!(!focused(&rt).unwrap_or_default().starts_with("panel-"), "{panel:?}: Shift+Tab leaves the tabs: {:?}", focused(&rt));
-            key(&mut rt, Key::Tab, Mods::default());
-            assert_eq!(focused(&rt).as_deref(), Some(open), "{panel:?}: Tab comes back to the open tab");
-            // The ring is drawn inside the open tab's pill, its 2 pt stroke ending at the pill's
-            // edge, so it stays in the track and off the pills beside it (RINGOV).
-            let seg = rect(&rt, "panel-seg").expect("the track");
-            let ring = |rt: &Runtime<App>, tab: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-ring") && e.path.contains(tab)).expect("the tab's ring").rect;
-            let (r, mark) = (ring(&rt, open), rect(&rt, "tab-mark").expect("the open tab's pill"));
-            let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
-            assert!(outer.iter().zip(mark).all(|(a, b)| (a - b).abs() < 0.01), "{panel:?}: the ring {outer:?} is the open tab's pill {mark:?}");
-            assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: the ring {outer:?} stays clear of the track's edge {seg:?}");
-            // On a tab beside the open one, at least 1 pt of the track parts the ring from the
-            // open tab's pill (RINGGAP).
-            key(&mut rt, Key::Right, Mods::default());
-            let side = focused(&rt).expect("a tab beside");
-            let r = ring(&rt, &side);
-            let outer = [r[0] - 2.0, r[1] - 2.0, r[2] + 4.0, r[3] + 4.0];
-            assert!(side != open && (outer[0] + outer[2] <= mark[0] - 1.0 + 0.01 || outer[0] >= mark[0] + mark[2] + 1.0 - 0.01), "{panel:?}: {side}'s ring {outer:?} stands 1 pt off the open pill {mark:?}");
-            assert!(outer[1] > seg[1] && outer[1] + outer[3] < seg[1] + seg[3] && outer[0] > seg[0] && outer[0] + outer[2] < seg[0] + seg[2], "{panel:?}: {side}'s ring {outer:?} stays clear of the track's edge {seg:?}");
-        }
-        // Home and End go to the first and the last tab, and Up and Down do nothing: none of
-        // them opens a panel or takes the keyboard out of the tabs.
-        // Each case names the open panel too, one the key does not move to, so a key that
-        // opened the tab it lands on would show.
-        let cases = [
-            (Key::Home, "Home", Panel::Search, "panel-tags", "panel-files"),
-            (Key::End, "End", Panel::Files, "panel-files", "panel-tags"),
-            (Key::End, "End", Panel::Search, "panel-files", "panel-tags"),
-            (Key::Up, "Up", Panel::Files, "panel-files", "panel-files"),
-            (Key::Down, "Down", Panel::Files, "panel-files", "panel-files"),
-            (Key::Down, "Down", Panel::Tags, "panel-search", "panel-search"),
-            (Key::Up, "Up", Panel::Search, "panel-tags", "panel-tags"),
-        ];
-        for (k, name, open, from, to) in cases {
-            let mut rt = garden(&dir, Mode::Preview);
-            rt.update(move |s, _| s.left_panel = open);
-            settle(&mut rt);
-            rt.update(move |_, tx| tx.focus(from, true));
-            settle(&mut rt);
-            key(&mut rt, k, Mods::default());
-            settle(&mut rt);
-            let mut panel = None;
+        let dir = std::env::temp_dir().join(format!("quire-label-fold-{}", std::process::id()));
+        let folded = |rt: &mut Runtime<App>| {
+            let mut f = None;
             rt.update_if(|s, _| {
-                panel = Some(s.left_panel);
+                f = Some(s.persist.sidebar.folded);
                 false
             });
-            assert_eq!(focused(&rt).as_deref(), Some(to), "{name} from {from} with {open:?} open");
-            assert_eq!(panel, Some(open), "{name} from {from} opens no panel");
-        }
-        // A layer that closes gives focus back to the tab it came from, open or not.
+            f.unwrap()
+        };
+        let expanded = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).and_then(|e| e.expanded);
         let mut rt = garden(&dir, Mode::Preview);
-        rt.update(|_, tx| tx.focus("panel-search", true));
+        assert_eq!((expanded(&rt, "label-shelf"), expanded(&rt, "label-vault")), (Some(true), Some(true)), "both sections show");
+        rt.update(|_, tx| tx.focus("label-vault", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Enter, Mods::default());
+        settle(&mut rt);
+        assert_eq!(folded(&mut rt), Some(Section::Vault), "Enter folds the vault");
+        assert_eq!(expanded(&rt, "label-vault"), Some(false));
+        assert_eq!(focused(&rt).as_deref(), Some("label-vault"), "the keyboard stays on the label");
+        assert!(rt.find("tree").is_none(), "the folded vault hides its tree");
+        key(&mut rt, Key::Text(" ".into()), Mods::default());
+        settle(&mut rt);
+        assert_eq!(folded(&mut rt), None, "Space unfolds it");
+        assert_eq!(focused(&rt).as_deref(), Some("label-vault"));
+        // A click folds the shelf and leaves the keyboard on the vault's label.
+        let (x, y) = rt.find("label-shelf").expect("the Open label");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        settle(&mut rt);
+        assert_eq!(folded(&mut rt), Some(Section::Shelf), "a click folds the shelf");
+        assert_eq!(focused(&rt).as_deref(), Some("label-vault"), "a click leaves the keyboard where it was");
+        // A layer that closes gives the label its focus back.
+        rt.update(|_, tx| tx.focus("label-shelf", true));
         settle(&mut rt);
         key(&mut rt, Key::Command('k'), ctrl(true));
         settle(&mut rt);
         assert!(rt.find("pal-input").is_some(), "the palette opened");
         key(&mut rt, Key::Escape, Mods::default());
         settle(&mut rt);
-        assert_eq!(focused(&rt).as_deref(), Some("panel-search"), "closing the palette gives the tab its focus back");
+        assert_eq!(focused(&rt).as_deref(), Some("label-shelf"), "closing the palette gives the label its focus back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-33, SB-34, SB-36, SB-38: dragging the handle moves the split, a drag stops at the
+    /// limits, and the place is kept for the app. The handle hides while a section is folded.
+    #[test]
+    fn the_handle_moves_the_split() {
+        use crate::sidebar::Section;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-handle-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        // The sample folder's tabs leave the shelf first.
+        for _ in 0..60 {
+            rt.frame(DT);
+        }
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let handle = rect(&rt, "handle").expect("the handle");
+        let shelf = rect(&rt, "shelf").expect("the shelf");
+        assert_eq!(handle[3], 9.0, "the handle is 9 pt tall");
+        assert!((handle[1] - (shelf[1] + shelf[3])).abs() < 0.5, "the handle sits under the shelf: {handle:?} {shelf:?}");
+        let drag = |rt: &mut Runtime<App>, dy: f32| {
+            let h = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("handle")).unwrap().rect;
+            let (x, y) = (h[0] + h[2] / 2.0, h[1] + h[3] / 2.0);
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            for i in 1..=4 {
+                rt.pointer_move(x, y + dy * i as f32 / 4.0);
+                rt.frame(DT);
+            }
+            rt.pointer_up(x, y + dy);
+            settle(rt);
+        };
+        drag(&mut rt, 80.0);
+        let moved = rect(&rt, "shelf").unwrap();
+        assert!((moved[3] - (shelf[3] + 80.0)).abs() < 0.5, "the shelf grows by the drag: {} to {}", shelf[3], moved[3]);
+        let mut kept = None;
+        rt.update_if(|s, _| {
+            kept = Some(s.persist.sidebar.shelf_h);
+            false
+        });
+        assert_eq!(kept.flatten(), Some(moved[3]), "state.json keeps the place");
+        // Far down, the vault keeps its label and two rows; far up, the shelf its label and a tab.
+        drag(&mut rt, 2000.0);
+        let vault = rect(&rt, "vault").unwrap();
+        assert!(vault[3] >= 26.0 + 2.0 * 28.0, "the vault keeps its least height: {vault:?}");
+        drag(&mut rt, -2000.0);
+        let up = rect(&rt, "shelf").unwrap();
+        assert!(up[3] >= 26.0 + 28.0 && up[3] < 80.0, "the shelf keeps its label and a tab: {up:?}");
+        rt.update(|s, _| s.persist.sidebar.folded = Some(Section::Shelf));
+        settle(&mut rt);
+        assert!(rect(&rt, "handle").is_none(), "no handle while a section is folded");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SB-110, SB-111: a right-click on the vault's label, or Shift+F10 on it, opens its menu
+    /// where it was opened: the folder's path, Switch folder and New folder. New folder on a
+    /// folded vault unfolds it and opens the name field in the tree.
+    #[test]
+    fn the_vault_menu_opens_from_its_label() {
+        use crate::sidebar::Section;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-vault-menu-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Preview);
+        let (x, y) = rt.find("label-vault").expect("the vault's label");
+        rt.pointer_move(x, y);
+        rt.secondary_down(x, y);
+        rt.secondary_up(x, y);
+        settle(&mut rt);
+        let ([mx, my, _, _], _) = rt.presented("vault-menu").expect("a right-click opens the menu");
+        assert!((mx - x).abs() < 1.0 && (my - y).abs() < 1.0, "at the pointer: {mx},{my} for {x},{y}");
+        let items: Vec<String> = rt.elements().into_iter().filter(|e| e.path.contains("vault-menu") && e.key.as_deref().is_some_and(|k| k.starts_with("menu-"))).filter_map(|e| e.key).collect();
+        assert_eq!(items, ["menu-switch", "menu-new-folder"], "Switch folder and New folder, no Settings");
+        key(&mut rt, Key::Escape, Mods::default());
+        settle(&mut rt);
+        rt.update(|s, _| s.persist.sidebar.folded = Some(Section::Vault));
+        settle(&mut rt);
+        rt.update(|_, tx| tx.focus("label-vault", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        settle(&mut rt);
+        assert!(rt.presented("vault-menu").is_some(), "Shift+F10 opens it too");
+        rt.update(|_, tx| tx.focus("menu-new-folder", true));
+        key(&mut rt, Key::Enter, Mods::default());
+        settle(&mut rt);
+        let mut folded = Some(Section::Vault);
+        rt.update_if(|s, _| {
+            folded = s.persist.sidebar.folded;
+            false
+        });
+        assert_eq!(folded, None, "New folder unfolds the vault");
+        assert_eq!(focused(&rt).as_deref(), Some("new-folder"), "and the name field has the keyboard");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -5584,8 +5640,8 @@ mod layer_matrix_tests {
         settle(&mut rt);
         key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
         assert!(focused(&rt).is_some_and(|k| k.starts_with("res:")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
-        look(&mut rt, Key::End, "side-scroll", "the last result");
-        look(&mut rt, Key::Home, "side-scroll", "the first result");
+        look(&mut rt, Key::End, "results-scroll", "the last result");
+        look(&mut rt, Key::Home, "results-scroll", "the first result");
         key(&mut rt, Key::Escape, Mods::default());
         key(&mut rt, Key::Function(6), Mods::default());
         look(&mut rt, Key::End, "outline-scroll", "the outline's last row");
@@ -5698,54 +5754,33 @@ mod layer_matrix_tests {
             key(&mut rt, Key::Tab, Mods::default());
             reached.extend(focused(&rt));
         }
-        let wants = ["tab:", "vault-button", "panel-files", "new-folder-button", "file:", "foot-new", "foot-settings", "ol-", "bl-"];
+        let wants = ["search", "new-note", "label-shelf", "tab:", "label-vault", "file:", "foot-tags", "foot-settings", "ol-", "bl-"];
         for want in wants {
             if !reached.iter().any(|k| k.starts_with(want)) {
                 fails.push(format!("Tab never reaches {want}"));
             }
         }
-        // The panel tabs are one Tab stop, the open tab (KEY-98).
-        if let Some(k) = reached.iter().find(|k| *k == "panel-search" || *k == "panel-tags") {
-            fails.push(format!("Tab reaches {k}, which is not the open tab"));
-        }
-        rt.update(|_, tx| tx.focus("panel-files", true));
-        settle(&mut rt);
-        key(&mut rt, Key::Right, Mods::default());
-        if focused(&rt).as_deref() != Some("panel-search") {
-            fails.push(format!("Right on FILES moves to {:?}", focused(&rt)));
-        }
-        key(&mut rt, Key::Tab, Mods::default());
-        if focused(&rt).is_some_and(|k| k.starts_with("panel-")) {
-            fails.push(format!("Tab from SEARCH stays in the tabs: {:?}", focused(&rt)));
-        }
-        rt.update(|_, tx| tx.focus("panel-files", true));
-        settle(&mut rt);
-        key(&mut rt, Key::Left, Mods::default());
-        let mut panel = None;
-        rt.update_if(|s, _| {
-            panel = Some(s.left_panel);
-            false
-        });
-        if focused(&rt).as_deref() != Some("panel-tags") || panel != Some(crate::app::Panel::Files) {
-            fails.push(format!("Left on FILES moves to {:?} and opens {panel:?}", focused(&rt)));
-        }
-        // Enter or Space on a panel tab opens the panel and puts the keyboard in it (SRCH): the
-        // search field, the tree's current row, the first tag.
-        for (tab, k, want) in [("panel-files", Key::Text(" ".into()), "file:note.md"), ("panel-tags", Key::Enter, "tag-row:"), ("panel-files", Key::Enter, "file:note.md"), ("panel-search", Key::Text(" ".into()), "search")] {
-            let k2 = tab.to_string();
-            rt.update(move |_, tx| tx.focus(k2, true));
-            settle(&mut rt);
-            key(&mut rt, k.clone(), Mods::default());
-            if !focused(&rt).is_some_and(|f| f.starts_with(want)) {
-                fails.push(format!("{k:?} on {tab}: focus on {:?}, not {want}", focused(&rt)));
-            }
-        }
-        rt.update(|_, tx| tx.focus("panel-search", true));
+        // The tags button shows the tags, and Tab reaches them; the keyboard stays on it.
+        rt.update(|_, tx| tx.focus("foot-tags", true));
         settle(&mut rt);
         key(&mut rt, Key::Enter, Mods::default());
-        if focused(&rt).as_deref() != Some("search") {
-            fails.push(format!("Enter on SEARCH: focus on {:?}", focused(&rt)));
+        settle(&mut rt);
+        if focused(&rt).as_deref() != Some("foot-tags") || rt.find("tags").is_none() {
+            fails.push(format!("Enter on the tags button: focus on {:?}, tags shown: {}", focused(&rt), rt.find("tags").is_some()));
         }
+        rt.update(|_, tx| tx.focus("search", true));
+        settle(&mut rt);
+        if !(0..4).any(|_| {
+            key(&mut rt, Key::Tab, Mods::default());
+            focused(&rt).is_some_and(|f| f.starts_with("tag-row:"))
+        }) {
+            fails.push(format!("Tab from the field never reaches a tag: focus on {:?}", focused(&rt)));
+        }
+        rt.update(|_, tx| tx.focus("foot-tags", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Enter, Mods::default());
+        rt.update(|_, tx| tx.focus("search", true));
+        settle(&mut rt);
         for c in ["k", "e", "p", "t"] {
             text_key(&mut rt, c);
         }
@@ -5788,7 +5823,7 @@ mod layer_matrix_tests {
         // Every shortcut with Ctrl or Alt acts from a stop as it does with the keyboard on the
         // note (CHORD), in both modes. Quit and Insert an image are left out: they reach the
         // platform, not the app's state.
-        for (mode, stops) in [(Mode::Preview, ["file:Box|a.md", "vault-button", "ol-0"]), (Mode::Source, ["file:Box|a.md", "vault-button", "fmt-bold"])] {
+        for (mode, stops) in [(Mode::Preview, ["file:Box|a.md", "label-vault", "ol-0"]), (Mode::Source, ["file:Box|a.md", "label-vault", "fmt-bold"])] {
             let mut rt = garden(&dir, mode);
             let mut now = None;
             rt.update_if(|s, _| {
@@ -5855,7 +5890,11 @@ mod layer_matrix_tests {
                         }
                     }
                     if stop && width < 1000.0 {
+                        // The drawer opens on the search field, a text field that keeps the
+                        // chords (CTRLZ): the case moves to a row in it.
                         key(&mut rt, Key::Command('b'), ctrl(true));
+                        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+                        settle(&mut rt);
                     } else if stop {
                         rt.update(|_, tx| tx.focus("file:Box|a.md", true));
                         settle(&mut rt);
@@ -5961,14 +6000,14 @@ mod layer_matrix_tests {
         let outline: Vec<Away> = vec![("o", outline_key), ("zen", zen), ("Esc", esc)];
         let stops: [(&str, &Vec<Away>); 11] = [
             ("tab:note.md", &side),
-            ("vault-button", &side),
-            ("panel-files", &side),
-            ("panel-tags", &side),
-            ("new-folder-button", &side),
+            ("new-note", &side),
+            ("label-shelf", &side),
+            ("label-vault", &side),
             ("dir:Box", &side),
             ("file:Box|a.md", &side),
-            ("foot-new", &side),
+            ("foot-tags", &side),
             ("foot-settings", &side),
+            ("search", &side),
             ("ol-0", &outline),
             ("bl-0", &outline),
         ];
@@ -6357,14 +6396,14 @@ mod layer_matrix_tests {
             }
         }
 
-        // The drawer's New note button opens the note's name behind the drawer: the drawer
-        // closes and the typed name goes into the field, not into the new note.
+        // The drawer's "+" opens the note's name behind the drawer: the drawer closes and the
+        // typed name goes into the field, not into the new note.
         let mut rt = garden(&dir, Mode::Source);
         rt.set_viewport((640.0, 480.0), 1.0);
         settle(&mut rt);
         rt.update(|s, tx| s.toggle_left(tx));
         settle(&mut rt);
-        rt.update(|_, tx| tx.focus("foot-new", true));
+        rt.update(|_, tx| tx.focus("new-note", true));
         settle(&mut rt);
         key(&mut rt, Key::Enter, Mods::default());
         for c in ["Q", "Q"] {

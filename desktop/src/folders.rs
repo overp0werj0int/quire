@@ -59,7 +59,8 @@ pub fn row_key(kind: &str, path: &str) -> String {
 }
 
 /// The folder an element path points into: a folder row is that folder, a note row is its
-/// note's folder, and the tree's empty space or the folder name is the root.
+/// note's folder, and the tree's empty space or the vault's label is the root. The shelf, the
+/// top bar, the footer and the results take no drop (SB-116).
 pub fn folder_at(path: &str) -> Option<String> {
     for seg in path.split('/').rev() {
         if let Some(p) = seg.strip_prefix("dir:") {
@@ -69,8 +70,7 @@ pub fn folder_at(path: &str) -> Option<String> {
             return Some(md::dir(&p.replace('|', "/")).to_string());
         }
     }
-    let segs = || path.split('/');
-    (segs().any(|s| matches!(s, "sidebar" | "side-scroll" | "vault-head")) && !segs().any(|s| s == "open-notes")).then(String::new)
+    path.split('/').any(|s| s == "vault").then(String::new)
 }
 
 /// Splits `Drafts/Ideas/Name` into a clean folder path and a clean note name.
@@ -148,7 +148,9 @@ impl App {
             self.expanded.insert(parent.to_string());
         }
         self.show_left(tx);
-        self.left_panel = crate::app::Panel::Files;
+        // The field shows in the tree: search's results and the tags give way to it.
+        self.show_tags = false;
+        self.query = TextEdit::new("");
         self.new_folder = Some(NewFolder { parent: parent.to_string(), edit });
         self.field_opened(crate::layer::Field::FolderName);
         tx.focus("new-folder", false);
@@ -463,9 +465,14 @@ mod tests {
 
     #[test]
     fn element_paths_name_their_folder() {
-        assert_eq!(folder_at("root/body/sidebar/side-scroll/side-list/tree/dir:Docs|Specs/#2"), Some("Docs/Specs".into()));
-        assert_eq!(folder_at("root/body/sidebar/side-scroll/side-list/tree/file:Journal|2026.md/#1"), Some("Journal".into()));
-        assert_eq!(folder_at("root/body/sidebar/side-scroll/side-list"), Some(String::new()));
+        assert_eq!(folder_at("root/body/sidebar/lists/vault/side-scroll/#0/tree/dir:Docs|Specs/#2"), Some("Docs/Specs".into()));
+        assert_eq!(folder_at("root/body/sidebar/lists/vault/side-scroll/#0/tree/file:Journal|2026.md/#1"), Some("Journal".into()));
+        assert_eq!(folder_at("root/body/sidebar/lists/vault/side-scroll/#0"), Some(String::new()), "the tree's empty space");
+        assert_eq!(folder_at("root/body/sidebar/lists/vault/label-vault"), Some(String::new()), "the vault's label");
+        assert_eq!(folder_at("root/body/sidebar/lists/shelf/shelf-scroll/#0/open-notes/tab:a.md"), None, "the shelf takes no drop");
+        assert_eq!(folder_at("root/body/sidebar/side-top/search-box"), None, "nor the top bar");
+        assert_eq!(folder_at("root/body/sidebar/results-scroll/#0/search-panel"), None, "nor the results");
+        assert_eq!(folder_at("root/body/sidebar/side-foot/foot-tags"), None, "nor the footer");
         assert_eq!(folder_at("root/body/sheet/doc-scroll"), None);
     }
 

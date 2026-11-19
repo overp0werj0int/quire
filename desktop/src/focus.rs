@@ -29,7 +29,7 @@
 
 use rune::{Key, KeyEvent, Tx};
 
-use crate::app::{App, Mode, Panel, Screen};
+use crate::app::{App, Mode, Screen};
 
 /// The key of the element the keyboard goes back to: the editor's box in the writer, else the
 /// reader's keyboard anchor (`ui::focus::note_anchor`).
@@ -48,8 +48,8 @@ pub enum Pane {
 pub const STOPS: &[(&str, Pane)] = &[
     ("tab:", Pane::Sidebar),
     ("note:", Pane::Sidebar),
-    ("vault-button", Pane::Sidebar),
-    ("panel-", Pane::Sidebar),
+    ("label-", Pane::Sidebar),
+    ("new-note", Pane::Sidebar),
     ("new-folder", Pane::Sidebar),
     ("file:", Pane::Sidebar),
     ("dir:", Pane::Sidebar),
@@ -217,37 +217,41 @@ impl App {
         (left, right)
     }
 
-    /// Where F6, or Enter on a panel tab, puts the keyboard in the sidebar: the current row of
-    /// the open panel's list, else its first, else the panel's tab.
+    /// Where F6 puts the keyboard in the sidebar: the first result while search shows, the
+    /// tags while they show, else the tree's current row, else the tree, else the active tab,
+    /// else the search field.
     pub(crate) fn sidebar_stop(&self) -> String {
         if self.note_mode() {
             let shown = self.note_path().or_else(|| self.notes.first().cloned());
             return shown.map_or_else(|| "open-notes".into(), |f| format!("note:{}", f.display()));
         }
-        match self.left_panel {
-            Panel::Files => {
-                let shows = |path: &str| {
-                    let dir = crate::md::dir(path);
-                    dir.is_empty() || dir.split('/').scan(String::new(), |at, part| {
-                        if !at.is_empty() {
-                            at.push('/');
-                        }
-                        at.push_str(part);
-                        Some(at.clone())
-                    }).all(|d| self.expanded.contains(&d))
-                };
-                match self.active.as_deref() {
-                    Some(a) if shows(a) => crate::folders::row_key("file", a),
-                    _ if self.files().is_empty() && self.vault.as_ref().is_none_or(|v| v.folders.is_empty()) => "panel-files".into(),
-                    _ => "tree".into(),
+        let q = self.query.text.trim();
+        if !q.is_empty() {
+            let first = crate::md::search(self.files(), q).into_iter().next();
+            return first.map_or_else(|| "search".into(), |r| format!("res:{}", r.path));
+        }
+        if self.show_tags {
+            return if crate::md::tags(self.files()).is_empty() { "foot-tags".into() } else { "tags".into() };
+        }
+        let tab = self.active.as_ref().filter(|a| self.tabs.contains(a));
+        // A folded vault shows no tree: the active tab, else the vault's label.
+        if tab.is_some() && self.persist.sidebar.folded == Some(crate::sidebar::Section::Vault) {
+            return tab.map_or_else(|| "label-vault".into(), |a| format!("tab:{a}"));
+        }
+        let shows = |path: &str| {
+            let dir = crate::md::dir(path);
+            dir.is_empty() || dir.split('/').scan(String::new(), |at, part| {
+                if !at.is_empty() {
+                    at.push('/');
                 }
-            }
-            Panel::Search => {
-                let q = self.query.text.trim();
-                let first = if q.is_empty() { None } else { crate::md::search(self.files(), q).into_iter().next() };
-                first.map_or_else(|| "search".into(), |r| format!("res:{}", r.path))
-            }
-            Panel::Tags => if crate::md::tags(self.files()).is_empty() { "panel-tags".into() } else { "tags".into() },
+                at.push_str(part);
+                Some(at.clone())
+            }).all(|d| self.expanded.contains(&d))
+        };
+        match self.active.as_deref() {
+            Some(a) if shows(a) => crate::folders::row_key("file", a),
+            _ if !self.files().is_empty() || self.vault.as_ref().is_some_and(|v| !v.folders.is_empty()) => "tree".into(),
+            _ => tab.map_or_else(|| "search".into(), |a| format!("tab:{a}")),
         }
     }
 

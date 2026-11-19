@@ -43,7 +43,7 @@ fn item(label: &'static str, run: Run) -> Item {
 /// The open menu's card.
 pub(super) fn menu(v: V, m: &Menu) -> Card {
     let el = match &m.of {
-        MenuOf::Folder => folder(v),
+        MenuOf::Folder => folder(v, m.at),
         MenuOf::Tree(on) => list(v, "tree-menu", m.at, 200.0, None, tree(on, m.at)),
         MenuOf::DeleteFolder(f) => confirm_delete_folder(v, f, m.at),
         MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, edit(v)),
@@ -80,17 +80,26 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Ve
     panel
 }
 
-/// The folder's menu, under its name below the window corner and the Open list: the folder's
-/// path, then Switch folder and Settings.
-fn folder(v: V) -> El {
+/// The vault label's menu, where it was opened: the folder's path, then Switch folder and New
+/// folder, which names a folder at the root and unfolds a folded vault first (SB-110, SB-111).
+fn folder(v: V, at: (f32, f32)) -> El {
     let p = v.p;
     let path = v.s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
     let head = text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0);
     let items = vec![
         Item { key: Some("menu-switch"), ..item("Switch folder…", Box::new(|s, tx| s.go_welcome(tx))) },
-        Item { key: Some("menu-settings"), ..item("Settings", Box::new(|s, tx| s.open_settings(tx))) },
+        Item {
+            key: Some("menu-new-folder"),
+            ..item(
+                "New folder",
+                Box::new(|s, tx| {
+                    s.persist.sidebar.unfold(crate::sidebar::Section::Vault);
+                    s.start_new_folder("", tx);
+                }),
+            )
+        },
     ];
-    list(v, "vault-menu", (10.0, super::sidebar::folder_menu_y(v)), 228.0, Some(head), items)
+    list(v, "vault-menu", at, 228.0, Some(head), items)
 }
 
 /// The tree's menu: new notes and folders, rename, move or delete for a note, and delete for a

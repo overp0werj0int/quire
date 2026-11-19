@@ -40,7 +40,7 @@ pub struct Menu {
 
 /// What a menu was opened on.
 pub enum MenuOf {
-    /// The folder's name at the sidebar's top: switch folder, Settings.
+    /// The vault's label in the sidebar: switch folder, new folder.
     Folder,
     /// A note, a folder or the tree's empty space (`folders::MenuOn`).
     Tree(MenuOn),

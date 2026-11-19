@@ -197,6 +197,8 @@ pub struct Persist {
     pub settings: Settings,
     /// Set once the sample folder exists, so deleting it does not bring it back.
     pub seeded: bool,
+    /// The sidebar's fold and handle, once for every folder (SB-46, SB-47).
+    pub sidebar: crate::sidebar::Layout,
 }
 
 impl Default for Persist {
@@ -211,6 +213,7 @@ impl Default for Persist {
             right_open: false,
             settings: Settings::default(),
             seeded: false,
+            sidebar: crate::sidebar::Layout::default(),
         }
     }
 }
@@ -314,6 +317,31 @@ mod tests {
             assert_eq!(st.settings.font, "plex");
             assert_eq!(st.settings.code_font, "ia-mono", "a missing code font takes the default");
         }
+        unsafe { std::env::remove_var("QUIRE_STATE") };
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// SB-46, SB-47, SB-135: a state written before the sidebar's two lists opens them split,
+    /// with the shelf at its fitted height, and the fold and the handle's place are kept once
+    /// for the app.
+    #[test]
+    fn an_old_state_opens_split() {
+        use crate::sidebar::{Layout, Section};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let path = std::env::temp_dir().join(format!("quire-old-split-{}.json", std::process::id()));
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe { std::env::set_var("QUIRE_STATE", &path) };
+        std::fs::write(&path, r#"{"mode":"preview","left_open":true,"settings":{"font":"plex"}}"#).unwrap();
+        let st = super::load();
+        assert_eq!(st.sidebar, Layout::default(), "no fold and no stored height");
+        assert_eq!(st.settings.font, "plex", "the rest still loads");
+        let mut st = st;
+        st.sidebar = Layout { folded: Some(Section::Vault), shelf_h: Some(212.0) };
+        std::fs::write(&path, serde_json::to_vec(&st).unwrap()).unwrap();
+        let back = super::load();
+        assert_eq!(back.sidebar, st.sidebar, "the fold and the handle come back");
+        let json = std::fs::read_to_string(&path).unwrap();
+        assert!(json.contains(r#""sidebar":{"folded":"vault","shelf_h":212.0}"#), "kept once for the app: {json}");
         unsafe { std::env::remove_var("QUIRE_STATE") };
         let _ = std::fs::remove_file(&path);
     }
