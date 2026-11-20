@@ -523,9 +523,10 @@ pub(super) fn crumb(v: V) -> El {
     let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);
     let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
     name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
+    let (rw, rg, rc) = super::focus_ring(p);
     let r = match &s.renaming {
         None => r.child(
-            row()
+            super::focus::stop(row())
                 .key("crumb-file")
                 .h(24.0)
                 .center_y()
@@ -540,7 +541,9 @@ pub(super) fn crumb(v: V) -> El {
                 .label("Rename note")
                 .help("Rename note")
                 .cursor(rune::Cursor::Text)
-                .on_press_tx(super::titlebar::act(|s, tx| s.start_rename(tx)))
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(super::titlebar::act(|s, tx| s.start_rename(tx)))
                 .child(name_el)
                 .child(label(".md", style, quiet.faint).ml(if cut { CUT_GAP } else { 0.0 })),
         ),
@@ -556,12 +559,17 @@ pub(super) fn crumb(v: V) -> El {
                     .min_w(0.0)
                     .center_y()
                     .child(
-                        el().key("rename-box").no_window_drag().w(w).shrink().min_w(least).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft).child(
+                        super::widgets::input_focus_ring(
+                            el().key("rename-box").no_window_drag().w(w).shrink().min_w(least).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft),
+                            p,
+                        )
+                        .child(
                             super::focus::stop(text_input(edit, style))
                                 .key("rename")
                                 .single_line()
                                 .w_full()
                                 .color(p.ink)
+                                .label("Note name")
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.renaming.get_or_insert_with(|| TextEdit::new("")))
                                 .on_submit(|s: &mut App, tx| s.commit_rename(tx))
@@ -813,18 +821,22 @@ pub fn group(n: usize) -> String {
 
 fn no_tab(v: V) -> El {
     let p = v.p;
+    let (rw, rg, rc) = super::focus_ring(p);
     let hints = [("Open a note", "app.quick-switcher"), ("New note", "app.new-note"), ("All commands", "app.command-palette"), ("Search", "app.search-notes")];
     let mut c = col().key("hints").w(260.0).gap(12.0);
     for (i, (l, id)) in hints.into_iter().enumerate() {
         let Some(run) = crate::keys::handler(id) else { continue };
         c = c.child(
-            row()
+            super::focus::stop(row())
                 .key(format!("hint-{i}"))
                 .gap(24.0)
+                .radius(6.0)
                 .justify_between()
                 .hover_group()
                 .role("button")
-                .on_press_tx(move |s: &mut App, tx| run(s, tx))
+                .label(l)
+                .focus_ring(rw, rg, rc)
+                .control(move |s: &mut App, tx| run(s, tx))
                 .child(label(l, sans(13.5, 400.0), p.ink2).group_color(p.acc))
                 .child(label(crate::keymap::label(v.s.preset(), id), keys(12.0), p.mute)),
         );
@@ -834,6 +846,7 @@ fn no_tab(v: V) -> El {
 
 fn empty_vault(v: V) -> El {
     let p = v.p;
+    let (rw, rg, rc) = super::focus_ring(p);
     let path = v.s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
     col()
         .key("empty-vault")
@@ -843,7 +856,7 @@ fn empty_vault(v: V) -> El {
         .child(label("Nothing here yet.", sans(32.0, 500.0).lh(32.0 * 1.15).tracking(-0.02 * 32.0), p.ink))
         .child(text(md::pretty(&format!("Notes you write here are saved as plain .md files in {path}."))).font(sans(14.0, 400.0).lh(14.0 * 1.6)).color(p.ink2).wrap())
         .child(
-            row()
+            super::focus::stop(row())
                 .key("first-note")
                 .h(34.0)
                 .mt(6.0)
@@ -854,7 +867,9 @@ fn empty_vault(v: V) -> El {
                 .fill(p.button)
                 .hover(p.button_hover)
                 .role("button")
-                .on_press_tx(|s: &mut App, tx| s.new_note(None, tx))
+                .label("New note")
+                .focus_ring(rw, rg, rc)
+                .control(|s: &mut App, tx| s.new_note(None, tx))
                 .child(label("Create your first note", sans(13.5, 500.0), p.on_acc))
                 .child(label(crate::keymap::label(v.s.preset(), "app.new-note"), keys(11.0), p.on_acc.alpha(0.8))),
         )

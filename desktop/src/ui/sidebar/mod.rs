@@ -171,21 +171,23 @@ fn search_field(v: V) -> El {
                 .child(icon(&CLOSE, ICON).color(c.faint)),
         )
     };
-    row()
-        .key("search-box")
-        .grow(1.0)
-        .min_w(0.0)
-        .h(BUTTON)
-        .pl(8.0)
-        .pr(2.0)
-        .gap(7.0)
-        .center_y()
-        .radius(7.0)
-        .fill(c.shelf)
-        .border(1.0, p.line)
-        .border_layout()
-        .focus_within_ring(1.0, -1.0, c.faint)
-        .child(icon(&SEARCH, ICON).color(c.faint))
+    super::widgets::input_focus_ring(
+        row()
+            .key("search-box")
+            .grow(1.0)
+            .min_w(0.0)
+            .h(BUTTON)
+            .pl(8.0)
+            .pr(2.0)
+            .gap(7.0)
+            .center_y()
+            .radius(7.0)
+            .fill(c.shelf)
+            .border(1.0, p.line)
+            .border_layout(),
+        p,
+    )
+    .child(icon(&SEARCH, ICON).color(c.faint))
         .child(field)
         .children(end)
 }

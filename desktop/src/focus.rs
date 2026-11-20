@@ -60,8 +60,31 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("res-", Pane::Sidebar),
     ("foot-", Pane::Sidebar),
     ("fmt-", Pane::Note),
+    ("hint-", Pane::Note),
     ("ol-", Pane::Outline),
     ("bl-", Pane::Outline),
+];
+
+/// Exact keys of focusable titlebar, Find bar, and empty-state buttons that follow the Note
+/// pane's stop rule (never prefix-matching text fields like `find-input` or dialog controls
+/// like `help-close`, `KBDA11Y`).
+const NOTE_BUTTONS: &[&str] = &[
+    "toggle-left",
+    "crumb-file",
+    "find",
+    "copy-all",
+    "wide",
+    "help",
+    "paragraph-focus",
+    "typewriter",
+    "next-font",
+    "mode",
+    "focus",
+    "toggle-right",
+    "find-prev",
+    "find-next",
+    "find-close",
+    "first-note",
 ];
 
 /// The text fields on the page, outside the note: the search field, find's, the note's name
@@ -84,6 +107,9 @@ pub fn at_caret(a: &crate::keymap::Action) -> bool {
 /// The pane of the stop keyed `key`, or None when `key` is not a stop (the editor, a link in
 /// the reader, a layer's control).
 pub fn stop(key: &str) -> Option<Pane> {
+    if NOTE_BUTTONS.contains(&key) {
+        return Some(Pane::Note);
+    }
     STOPS.iter().find(|(start, _)| key.starts_with(start)).map(|&(_, pane)| pane)
 }
 

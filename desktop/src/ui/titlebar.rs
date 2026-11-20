@@ -5,7 +5,7 @@ use rune::{El, Tx, el, row};
 
 use super::V;
 use super::icons::{CODE, COPY, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN};
-use super::widgets::{dots, icon_button, label, toggle_button};
+use super::widgets::{Control, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
 use super::styles::sans;
@@ -18,13 +18,23 @@ const BUTTON: f32 = 24.0;
 /// its neighbours is fixed in its own drawing, not by a size of its own.
 const ICON: f32 = 15.0;
 
-/// An icon button sized for the bar.
-fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str) -> El {
-    icon_button(p, key, glyph, ICON, help).size(BUTTON, BUTTON)
+/// An icon button sized for the bar, keyboard-focusable with a focus ring while preserving
+/// editor/preview focus on pointer clicks via the bar's `preserve_focus_on_press(true)` (`KBDA11Y`).
+fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
+    let (rw, rg, rc) = super::focus_ring(p);
+    super::focus::stop(icon_button(p, key, glyph, ICON, help).size(BUTTON, BUTTON))
+        .role("button")
+        .focus_ring(rw, rg, rc)
+        .keeps_text_selection()
+        .control(run)
 }
 
-fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, on: bool) -> El {
-    toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON)
+fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, on: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
+    let (rw, rg, rc) = super::focus_ring(p);
+    super::focus::stop(toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON))
+        .focus_ring(rw, rg, rc)
+        .keeps_text_selection()
+        .control(run)
 }
 
 fn bar_button_disabled(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str) -> El {
@@ -33,7 +43,7 @@ fn bar_button_disabled(p: &crate::theme::Pal, key: &str, glyph: &'static rune::I
         .size(BUTTON, BUTTON)
         .center()
         .radius(6.0)
-        .role("button")
+        .disabled(true)
         .label(help)
         .help(help)
         .child(rune::icon(glyph, ICON).color(p.mute.alpha(0.38)))
@@ -73,7 +83,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .children((super::widgets::DOTS_W > 0.0).then(|| dots(p)))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), crate::commands::sidebar_name(v.s), "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), crate::commands::sidebar_name(v.s), "app.toggle-sidebar"), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.
@@ -132,40 +142,40 @@ fn actions(v: V, mut r: El) -> El {
             r = r.child(bar_button_disabled(p, "copy-all", &COPY, "Unlock note to copy"));
         } else {
             let find = tip("Find in note", "reader.find");
-            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
+            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
             let all = tip("Copy the whole note", "reader.copy-all");
-            r = r.child(bar_button(p, "copy-all", &COPY, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
+            r = r.child(bar_button(p, "copy-all", &COPY, &all, act(|s, tx| s.copy_all(tx))));
         }
         let wide = s.wide();
         let (glyph, name) = if wide { (&NARROW, "Use readable width") } else { (&WIDEN, "Use full width") };
         let help = tip(name, "reader.toggle-wide");
-        r = r.child(bar_toggle(p, "wide", glyph, &help, wide).on_press_tx(act(|s, _| s.toggle_wide())));
+        r = r.child(bar_toggle(p, "wide", glyph, &help, wide, act(|s, _| s.toggle_wide())));
         let help = tip("Show shortcuts", "reader.help");
-        r = r.child(bar_button(p, "help", &HELP, &help).role("button").on_press_tx(act(|s, tx| s.toggle_help(tx))));
+        r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();
         let name = if set.paragraph_focus { "Turn off paragraph focus" } else { "Turn on paragraph focus" };
         let help = tip(name, "writer.paragraph-focus");
-        r = r.child(bar_toggle(p, "paragraph-focus", &PARAGRAPH, &help, set.paragraph_focus).on_press_tx(act(|s, tx| s.toggle_paragraph_focus(tx))));
+        r = r.child(bar_toggle(p, "paragraph-focus", &PARAGRAPH, &help, set.paragraph_focus, act(|s, tx| s.toggle_paragraph_focus(tx))));
         let name = if set.typewriter_scroll { "Turn off typewriter scrolling" } else { "Turn on typewriter scrolling" };
         let help = tip(name, "writer.typewriter");
-        r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, &help, set.typewriter_scroll).on_press_tx(act(|s, tx| s.toggle_typewriter(tx))));
+        r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, &help, set.typewriter_scroll, act(|s, tx| s.toggle_typewriter(tx))));
         let help = tip("Use next font", "writer.next-font");
-        r = r.child(bar_button(p, "next-font", &FONT, &help).role("button").on_press_tx(act(|s, tx| s.next_font(tx))));
+        r = r.child(bar_button(p, "next-font", &FONT, &help, act(|s, tx| s.next_font(tx))));
     }
     if v.has_doc() {
         r = r.child(el().key("bar-sep").w(1.0).h(16.0).fill(p.line));
         // One button flips between source and preview. Its icon shows where it goes.
         let glyph = if s.mode == Mode::Source { &EYE } else { &CODE };
         let help = tip(crate::commands::mode_name(s), "app.toggle-mode");
-        r = r.child(bar_button(p, "mode", glyph, &help).role("switch").checked(s.mode == Mode::Preview).on_press_tx(act(|s, tx| s.toggle_mode(tx))));
+        r = r.child(bar_button(p, "mode", glyph, &help, act(|s, tx| s.toggle_mode(tx))).role("switch").checked(s.mode == Mode::Preview));
         let help = tip(crate::commands::zen_name(s), if zen { "app.escape" } else { "app.focus-mode" });
-        r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen).on_press_tx(act(|s, tx| s.toggle_focus(tx))));
+        r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen, act(|s, tx| s.toggle_focus(tx))));
     }
     if !zen {
         let outline = tip(crate::commands::outline_name(s), if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
-        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over()).on_press_tx(|s: &mut App, tx| s.toggle_right(tx)));
+        r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
     }
     r
 }

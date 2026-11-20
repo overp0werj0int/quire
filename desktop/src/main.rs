@@ -2222,6 +2222,40 @@ mod a11y_tests {
         assert_eq!(runs.concat(), "# Title\n\n#draft\n\nThe text", "runs: {runs:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// KBDA11Y: titlebar and Find buttons are keyboard-focusable, `find-input` exposes an
+    /// accessible label, and locked Preview `find`/`copy-all` controls do not expose active
+    /// button roles.
+    #[test]
+    fn kbda11y_focusable_chrome_labelled_find_and_disabled_locked_buttons() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-kbda11y-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Hello\n\nBody text.\n", crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, tx| s.writer_find(tx));
+        for _ in 0..8 {
+            rt.frame(1.0 / 60.0);
+        }
+        let els = rt.elements();
+        for key in ["toggle-left", "crumb-file", "paragraph-focus", "typewriter", "next-font", "mode", "focus", "toggle-right", "find-prev", "find-next", "find-close"] {
+            let el = els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("missing {key}"));
+            assert!(el.focusable, "{key} must be keyboard-focusable");
+        }
+        let fi = els.iter().find(|e| e.key.as_deref() == Some("find-input") && !e.exiting).expect("find-input");
+        assert_eq!(fi.label.as_deref(), Some("Find in note"), "find-input must have an accessible label");
+        // Locked Preview note: find & copy-all must not advertise active button role.
+        let sealed = format!("{} v1 pbkdf2-sha256 600000 AAAAAAAAAAAAAAAAAAAAAA==\n\nLocked.\n\nAAAA\n", crate::lock::MAGIC);
+        let (mut rt_l, _) = crate::bench::open(&dir, &sealed, crate::app::Mode::Preview);
+        for _ in 0..8 {
+            rt_l.frame(1.0 / 60.0);
+        }
+        for key in ["find", "copy-all"] {
+            let el = rt_l.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("missing locked {key}"));
+            assert_ne!(el.role, "button", "locked {key} must not expose active button role");
+            assert!(!el.focusable, "locked {key} must not be focusable");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

@@ -77,6 +77,13 @@ pub fn faded_h(name: &str, bg: Color, height: f32, page: El) -> El {
 /// share a row. omarky's find bar has it (RD-53, WR-122).
 pub const BAR_RADIUS: f32 = 6.0;
 
+/// Consistent focus-within ring for single-line text inputs (`SB-95`, `KBDA11Y`): a 1.5 pt
+/// inset ring in `Roles::panel(p).faint` (>= 4.5:1 on every panel/page surface) when the inner
+/// `text_input` has focus.
+pub fn input_focus_ring(e: El, p: &Pal) -> El {
+    e.focus_within_ring(1.5, -1.0, Roles::panel(p).faint)
+}
+
 /// A floating bar's corner and edge, one for the formatting toolbar and the find bar: the
 /// radius and a 1 point hairline.
 pub fn bar_edge(e: El, c: &Roles) -> El {

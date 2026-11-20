@@ -15,17 +15,20 @@ use crate::theme;
 fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mut App, &mut Tx)) -> El {
     let p = v.p;
     let edit = v.s.fields.get(key).cloned().unwrap_or_else(|| TextEdit::new("")).secure();
-    row()
-        .key(format!("box-{key}"))
-        .w_full()
-        .h(32.0)
-        .center_y()
-        .radius(7.0)
-        .fill(p.bg)
-        .border(1.0, if bad { p.err } else { p.line })
-        .border_layout()
-        .clip_rounded(7.0)
-        .child(
+    super::widgets::input_focus_ring(
+        row()
+            .key(format!("box-{key}"))
+            .w_full()
+            .h(32.0)
+            .center_y()
+            .radius(7.0)
+            .fill(p.bg)
+            .border(1.0, if bad { p.err } else { p.line })
+            .border_layout()
+            .clip_rounded(7.0),
+        p,
+    )
+    .child(
             text_input(&edit, sans(13.0, 400.0))
                 .key(key)
                 .single_line()

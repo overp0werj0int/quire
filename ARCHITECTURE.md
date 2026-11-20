@@ -135,7 +135,7 @@ showed when it opened.
 
 Where the keyboard rests follows one model, in `desktop/src/focus.rs`, with its view half in
 `ui::focus`. The keyboard is on the note (the editor in the writer, the reader in preview) or
-on a stop: a side list's row, a sidebar or toolbar button, a section label, the search field.
+on a stop: a side list's row, a sidebar, title bar, find bar, empty-state or toolbar button, a section label, the search field.
 `focus::STOPS` lists every stop by its key and its pane: the sidebar, the note (the toolbar)
 or the outline. A test checks that every focusable element in the panes is in it.
 

@@ -47,6 +47,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
                 .grow(1.0)
                 .min_w(0.0)
                 .color(p.ink)
+                .label(if cmds { "Command palette" } else { "Quick switcher" })
                 .placeholder(if cmds { "Type a command…" } else { "Find a note by name…" }, super::styles::placeholder_ink(p))
                 .caret(p.ink, p.sel)
                 .on_edit(pal_field)
