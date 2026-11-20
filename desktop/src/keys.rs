@@ -174,6 +174,9 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         run(s, tx);
         return true;
     }
+    if kind == Kind::Help && !crate::focus::chord(ev) && !ev.mods.shift && s.scroll_help(ev.key.clone(), tx) {
+        return true;
+    }
     // Help and the edit sheet swallow every other key (RD-80, SHEET-014).
     matches!(kind, Kind::Help | Kind::Sheet)
 }

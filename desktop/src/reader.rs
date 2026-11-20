@@ -14,6 +14,8 @@ use crate::page::r;
 
 /// The note's scroll viewport, shared by source and preview.
 pub const SCROLL: &str = "doc-scroll";
+/// The help sheet's scroll viewport.
+pub const HELP_SCROLL: &str = "help-scroll";
 /// The current find match's highlight, which scrolling centres.
 pub const FIND_CUR: &str = "find-cur";
 /// The key of the current match's second highlight while it waits to be placed above a band.
@@ -53,6 +55,9 @@ pub struct Reader {
     pub map: Rc<RefCell<PageMap>>,
     /// The viewport's offset, scroll range, height and width, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
+    /// The help sheet's scroll viewport [offset, max, height, width], from its scroll handler.
+    pub help_scroll: Live<[f32; 4]>,
+    help_glide: Option<(f32, f64)>,
     /// When a hand last moved the page, on the clock: the wheel and its glide, a swipe and its
     /// momentum, a drag, the keys. Set by its scroll handler.
     pub hand: Rc<std::cell::Cell<f64>>,
@@ -92,6 +97,8 @@ impl Default for Reader {
             hover: None,
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
+            help_scroll: Live::new([0.0; 4]),
+            help_glide: None,
             hand: Rc::new(std::cell::Cell::new(f64::NEG_INFINITY)),
             bar: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
@@ -1223,8 +1230,33 @@ impl App {
         if self.layer_is(crate::layer::Kind::Help) {
             self.close_layer(tx);
         } else {
+            self.reader.help_scroll.set([0.0; 4]);
+            self.reader.help_glide = None;
             self.open_layer(crate::layer::Layer::Help, tx);
         }
+    }
+
+    /// Scrolls the help sheet with navigation keys while `Layer::Help` is open.
+    pub fn scroll_help(&mut self, key: rune::Key, tx: &mut Tx) -> bool {
+        use rune::Key;
+        let [offset, max, vh, _] = self.reader.help_scroll.get();
+        let now = self.now.get();
+        let from = glide_from(offset, self.reader.help_glide, now);
+        let page = if vh > 0.0 { (vh - 48.0).max(80.0) } else { 240.0 };
+        let line = 48.0;
+        let raw = match key {
+            Key::Down => from + line,
+            Key::Up => (from - line).max(0.0),
+            Key::PageDown => from + page,
+            Key::PageUp => (from - page).max(0.0),
+            Key::Home => 0.0,
+            Key::End => if max > 0.0 { max } else { 10_000.0 },
+            _ => return false,
+        };
+        let to = if max > 0.0 { raw.clamp(0.0, max) } else { raw.max(0.0) };
+        self.reader.help_glide = Some((to, now));
+        tx.scroll_to_with(HELP_SCROLL, 0.0, to, Spring::new(0.16, 0.0));
+        true
     }
 
     /// Esc in the reader (RD-85): dismiss the notice, else close find, else clear the

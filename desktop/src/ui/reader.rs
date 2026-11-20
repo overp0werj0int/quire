@@ -9,6 +9,7 @@ use super::chip::Chip;
 use super::panel::{BODY, CAPTION};
 use super::styles::{self, caption, keys, sans};
 use super::icons::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
+use super::widgets::Control;
 use crate::app::App;
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
@@ -134,6 +135,7 @@ const HELP: &[(&str, &[HelpRow])] = &[
     (
         "Edit",
         &[
+            h("Edit the whole note", &["app.toggle-mode"]),
             h("Edit the block under the mouse", &["reader.edit-block"]),
             h("Edit its section", &["reader.edit-section"]),
             h("Save to the file / cancel", &["sheet.save", "sheet.cancel"]),
@@ -199,14 +201,41 @@ pub(super) fn help_sheet(v: V) -> Card {
     let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let mut card = col().key("help-body").w(w).px(24.0).py(22.0).gap(18.0);
-    card = card.child(
-        text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
-            .key("help-version")
-            .font(sans(11.0, 400.0))
-            .color(super::styles::caption_ink(v.p))
-            .pin(None, Some(22.0), Some(24.0), None),
-    );
+    let header_h = 40.0;
+    let header = row()
+        .key("help-header")
+        .w(w)
+        .h(header_h)
+        .pl(24.0)
+        .pr(14.0)
+        .gap(8.0)
+        .center_y()
+        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
+        .border_layout()
+        .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
+        .child(
+            text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
+                .key("help-version")
+                .font(sans(11.0, 400.0))
+                .color(super::styles::caption_ink(v.p)),
+        )
+        .child(el().grow(1.0))
+        .child(cap(keymap::label_of("Esc"), &c))
+        .child(
+            row()
+                .key("help-close")
+                .size(24.0, 24.0)
+                .center()
+                .radius(6.0)
+                .hover(v.p.hover)
+                .hover_group()
+                .role("button")
+                .label("Close help")
+                .help(keymap::tip(preset, "Close help", "help.close"))
+                .control(|s: &mut App, tx| s.close_layer(tx))
+                .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink)),
+        );
+    let card = col().key("help-body").w(w).px(24.0).py(18.0).gap(18.0);
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
     for (gi, (title, rows)) in groups.iter().enumerate() {
         let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
@@ -215,9 +244,12 @@ pub(super) fn help_sheet(v: V) -> Card {
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();
             for id in r.ids {
-                let first = keymap::action(id).and_then(|a| a.chords(preset).first().copied());
-                if let Some(k) = first {
-                    keys = keys.child(cap(keymap::label_of(k), &c));
+                if let Some(a) = keymap::action(id) {
+                    let chords = a.chords(preset);
+                    let show = if *id == "reader.help" { chords } else { &chords[..chords.len().min(1)] };
+                    for k in show {
+                        keys = keys.child(cap(keymap::label_of(k), &c));
+                    }
                 }
             }
             g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text)));
@@ -231,17 +263,25 @@ pub(super) fn help_sheet(v: V) -> Card {
     for column in columns {
         body = body.child(column);
     }
+    let live = v.s.reader.help_scroll.clone();
     // The card fits the window, 24 px clear of each edge, and its rows scroll inside it, fading
     // at the card's edges as Settings' page does.
     let scroll = col()
-        .key("help-scroll")
-        .max_h(v.vh - 48.0)
-        .radius(6.0)
-        .clip_rounded(6.0)
+        .key(crate::reader::HELP_SCROLL)
+        .w(w)
+        .max_h((v.vh - 48.0 - header_h).max(80.0))
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)
+        .on_scroll_offset(move |at| {
+            live.set([at.offset[1], at.max[1], at.viewport[1], at.viewport[0]]);
+        })
         .child(super::widgets::faded("help", c.bg, card.child(body)));
-    let card = popup(&c).key("help-card").role("dialog").label("Keyboard help").child(scroll);
+    let card = popup(&c)
+        .key("help-card")
+        .role("dialog")
+        .label("Keyboard help")
+        .clip_rounded(6.0)
+        .child(col().w(w).child(header).child(scroll));
     Card { el: card, plane: Some(col().center()) }
 }
 

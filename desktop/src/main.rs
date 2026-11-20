@@ -919,6 +919,59 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn help_sheet_scrolls_by_keyboard_and_lists_mode_and_f1() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-helpkbd-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n\nBody.\n")], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((520.0, 400.0), 1.0);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..40 {
+                rt.frame(DT);
+            }
+        };
+        let rect = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).map(|e| e.rect);
+        rt.update(|s, tx| s.keys_to_note(tx));
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Function(1), mods: Mods::default() });
+        settle(&mut rt);
+        let y0 = rect(&rt, "help-body").expect("help-body")[1];
+        let close = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("help-close") && !e.exiting).expect("help-close");
+        assert!(close.focusable, "help-close is keyboard-focusable");
+        let all_text: String = rt.elements().into_iter().filter_map(|e| e.text).collect::<Vec<_>>().join(" ");
+        assert!(all_text.contains(&crate::keymap::label_of("Ctrl+P")), "lists Ctrl+P: {all_text}");
+        assert!(all_text.contains("F1"), "lists F1: {all_text}");
+        for _ in 0..3 {
+            rt.key(KeyEvent { key: Key::PageDown, mods: Mods::default() });
+            settle(&mut rt);
+        }
+        let y_down = rect(&rt, "help-body").unwrap()[1];
+        assert!(y_down < y0 - 80.0, "PageDown scrolls help-body: {y0} -> {y_down}");
+        rt.key(KeyEvent { key: Key::Home, mods: Mods::default() });
+        settle(&mut rt);
+        let y_home = rect(&rt, "help-body").unwrap()[1];
+        assert!((y_home - y0).abs() < 2.0, "Home returns to top: {y_home} vs {y0}");
+        rt.key(KeyEvent { key: Key::End, mods: Mods::default() });
+        settle(&mut rt);
+        let y_end = rect(&rt, "help-body").unwrap()[1];
+        assert!(y_end < y0 - 80.0, "End scrolls to bottom: {y0} -> {y_end}");
+        let (cx, cy) = rt.find("help-close").unwrap();
+        rt.pointer_move(cx, cy);
+        rt.pointer_down(cx, cy);
+        rt.pointer_up(cx, cy);
+        settle(&mut rt);
+        let mut open = true;
+        rt.update_if(|s, _| {
+            open = s.layer_is(crate::layer::Kind::Help);
+            false
+        });
+        assert!(!open, "help-close dismisses help");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-122: in the source the find bar sits on the formatting toolbar's row when it fits
     /// beside it, and otherwise takes its own row under it, with the text starting below that
     /// row. The two never overlap, from the smallest window up.
