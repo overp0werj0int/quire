@@ -109,6 +109,21 @@ impl Roles {
         mix(self.bg, Color { a: 1.0, ..c }, c.a)
     }
 
+    /// `self.dim`, nudged toward `self.text` only when needed so small markers on the page
+    /// (such as ordered-list numerals on Solarized Light) reach 4.5:1 contrast.
+    pub fn readable_dim(&self) -> Color {
+        if contrast(self.dim, self.bg) >= PANEL_FAINT {
+            return self.dim;
+        }
+        let mut out = self.dim;
+        let mut t = 0.0;
+        while contrast(out, self.bg) < PANEL_FAINT && t < 1.0 {
+            t += 0.02;
+            out = mix(self.dim, self.text, t);
+        }
+        out
+    }
+
     pub fn new(p: &Pal) -> Roles {
         let (fg, bg, accent, dark, n) = (p.ink, p.bg, p.acc, p.dark, p.named);
         let ld = |light: f32, dark_v: f32| if dark { dark_v } else { light };
@@ -438,6 +453,7 @@ mod tests {
                 assert!(contrast(ph, fill) >= 4.5, "{id}: placeholder_ink {:.2}:1 on {}", contrast(ph, fill), hx(fill));
             }
             assert!(contrast(page.dim, page.bg) >= 3.0, "{id}: ordered-list numeral (dim) {:.2}:1 on {}", contrast(page.dim, page.bg), hx(page.bg));
+            assert!(contrast(page.readable_dim(), page.bg) >= 4.5, "{id}: readable_dim {:.2}:1 on {}", contrast(page.readable_dim(), page.bg), hx(page.bg));
         }
         let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui");
         let mut stack = vec![ui];

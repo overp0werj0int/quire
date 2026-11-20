@@ -35,9 +35,24 @@ fn expand_tabs(s: &str) -> String {
     out
 }
 
-/// The language badge: lower case, mono at 10 px, faint (BLK-50).
+/// Scaled font size for the Copy chip (12 pt at default 14 pt body -> 24 pt chip height),
+/// scaling proportionally with preview body size `b / 14.0`, clamped for extreme zoom levels.
+pub(super) fn chip_size(b: f32) -> f32 {
+    r((12.0 * (b / 14.0)).clamp(10.0, 20.0))
+}
+
+/// Scaled font size for code/diff metadata labels (language badge, diff counts), proportional
+/// to preview body size `b / 14.0` (11 pt at default 14 pt body), clamped sensibly.
+pub(super) fn badge_size(b: f32) -> f32 {
+    r((11.0 * (b / 14.0)).clamp(9.0, 18.0))
+}
+
+/// The language badge: lower case, mono scaled with preview body size, faint (BLK-50).
 fn badge(cx: &Cx, lang: &str) -> El {
-    text(lang.to_lowercase()).key("badge").font(TextStyle::new(10.0, 400.0).family(cx.look.mono).lh(20.0).tracking(0.4)).color(cx.look.c.faint)
+    let b = cx.look.b;
+    let sz = badge_size(b);
+    let lh = r(chip_size(b) * 2.0);
+    text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 400.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.faint)
 }
 
 pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
@@ -77,12 +92,14 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     let fade = rune::ScrollFade::strength(r(b * 2.4)).full_at(1.0).linear().end_only();
     body = body.child(el().key("scroll").grow(1.0).min_w(0.0).scroll_x().scroll_fade(fade).child(code));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let top = 2f32.max(r((r(b * 1.25) - 20.0) / 2.0) - 1.0);
+    let chip_sz = chip_size(b);
+    let chip_h = r(chip_sz * 2.0);
+    let top = 4f32.max(r((r(b * 1.25) - chip_h) / 2.0));
     // Over the block the badge gives way to a Copy chip, which says Copied in green for a
     // moment after a click, with or without the pointer (BLK-51).
     let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
     let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.green) } else { (&icons::COPY, "Copy", c.dim) };
-    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: 10.0, icon: 12.0, label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
+    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: chip_sz, icon: r(chip_sz * 1.1), label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
         .el(c)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
         .label("Copy the code")
@@ -102,11 +119,12 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
     let size = crate::page::code_size(b);
     let style = look.mono_at(size, 1.5);
     let pad_x = r(b * 1.1);
-    let count = TextStyle::new(10.0, 700.0).family(look.mono).lh(line(10.0, 1.3));
+    let bs = badge_size(b);
+    let count = TextStyle::new(bs, 700.0).family(look.mono).lh(line(bs, 1.3));
     let head = row()
         .key("head")
         .w_full()
-        .h(r(b * 2.1))
+        .h(r(b * 2.1).max(r(chip_size(b) * 2.0) + 4.0))
         .px(pad_x)
         .gap(r(b * 0.6))
         .center_y()
@@ -147,5 +165,14 @@ mod tests {
     #[test]
     fn blk_49_tab_stops() {
         assert_eq!(super::expand_tabs("\tx\n ab\ty"), "    x\n ab y");
+    }
+
+    #[test]
+    fn targets24_code_meta_scales_with_zoom() {
+        assert_eq!(super::chip_size(14.0), 12.0, "default Copy chip is 24 pt tall");
+        assert!(super::chip_size(17.0) > super::chip_size(14.0), "Copy chip grows with zoom");
+        assert!(super::badge_size(17.0) > super::badge_size(14.0), "language badge grows with zoom");
+        assert_eq!(super::chip_size(6.0), 10.0, "lower clamp");
+        assert_eq!(super::chip_size(40.0), 20.0, "upper clamp");
     }
 }

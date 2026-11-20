@@ -124,6 +124,7 @@ pub fn outline(v: V) -> El {
 fn counts(v: V) -> El {
     let p = v.p;
     let s = v.s;
+    let c = Roles::panel(p);
     let doc = s.active_text();
     let style = styles::nav(panel::BODY_SMALL, false);
     let sel = (s.mode == Mode::Source)
@@ -137,15 +138,22 @@ fn counts(v: V) -> El {
     } else {
         format!("{} of {} words", group(crate::writer::count_words(sel)), group(wc))
     };
-    row()
+    let mut r = row()
         .key("counts")
         .w_full()
-        .py(10.0)
         .px(PANEL_X)
         .center_y()
-        .child(label(words, style, p.mute).key("word-count").help(format!("{} characters", group(count.chars))))
-        .child(label("·", style, p.mark).mx(6.0))
-        .child(label(format!("{} min read", count.minutes), style, p.mute).key("read-time"))
+        .child(label(words, style, c.faint).key("word-count").help(format!("{} characters", group(count.chars))))
+        .child(label("·", style, c.faint).mx(6.0))
+        .child(label(format!("{} min read", count.minutes), style, c.faint).key("read-time"));
+    if s.mode == Mode::Source {
+        r = r.py(10.0);
+    } else {
+        // In preview there is no status footer beneath counts; match side-foot's 41 pt height
+        // and top hairline so the left and right panels align across the window's foot.
+        r = r.h(41.0).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
+    }
+    r
 }
 
 /// The writer's footer, one line of fixed height: the caret's line and column, or how many
@@ -156,6 +164,7 @@ fn footer(v: V) -> Option<El> {
     if s.mode != Mode::Source {
         return None;
     }
+    let c = Roles::panel(p);
     let doc = s.active_text();
     let style = styles::nav(panel::BODY_SMALL, false);
     let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
@@ -177,10 +186,10 @@ fn footer(v: V) -> Option<El> {
         .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
         .border_layout()
         .clip_rounded(0.0)
-        .child(label(at, style, p.mute).key("caret-pos"));
+        .child(label(at, style, c.faint).key("caret-pos"));
     if let Some(t) = link_at_caret(doc, pos) {
         let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
-        r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(p.acc).truncate().shrink().min_w(0.0));
+        r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
     }
     if let Some((lbl, busy, failed)) = s.sync_label() {
         let dot = if failed { p.err } else if busy { p.acc } else { p.mark };
@@ -194,7 +203,7 @@ fn footer(v: V) -> Option<El> {
             .gap(6.0)
             .center_y()
             .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
-            .child(label(lbl, style, if failed { p.err } else { p.mute }));
+            .child(label(lbl, style, if failed { p.err } else { c.faint }));
         if let Some(e) = &s.sync.error {
             sync = sync.help(e.clone());
         }

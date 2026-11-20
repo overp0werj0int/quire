@@ -2401,7 +2401,45 @@ mod writer_chrome_tests {
         assert!(info(&rt, "caret-pos").is_none());
         let outline = rt.presented("outline").unwrap().0;
         counts_end_at(&rt, outline[1] + outline[3]);
+        let counts = rt.presented("counts").expect("the counts show").0;
+        let side_foot = rt.presented("side-foot").expect("the sidebar footer shows").0;
+        assert!((counts[3] - 41.0).abs() < 0.5 && (counts[1] - side_foot[1]).abs() <= 1.0, "preview counts {counts:?} aligns with side-foot {side_foot:?}");
         assert!(!rt.elements().iter().any(|e| e.text.as_deref() == Some("preview")), "nothing says preview");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// TARGETS24: preview task checkboxes are >= 24×24 pt at default 14 pt body size, the code
+    /// block's Copy chip is >= 24 pt tall, and both the chip and language badge scale with zoom.
+    #[test]
+    fn targets24_preview_targets_and_zoom_scaling() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-targets24-{}", std::process::id()));
+        let md = "# Check\n\n```rust\nfn main() {}\n```\n\n- [ ] Open task\n- [x] Done task\n";
+        let (mut rt, _) = open(&dir, md, crate::app::Mode::Preview);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let markers: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("marker") && e.rect[2] > 10.0).map(|e| e.rect).collect();
+        assert_eq!(markers.len(), 2, "two task checkboxes laid out: {markers:?}");
+        for m in &markers {
+            assert!(m[2] >= 24.0 && m[3] >= 24.0, "task checkbox target >= 24×24 pt: {m:?}");
+        }
+        let copy0 = info(&rt, "copy").expect("copy chip").rect;
+        let badge0 = info(&rt, "badge").expect("language badge").rect;
+        assert!(copy0[3] >= 24.0, "default Copy chip height >= 24 pt: {copy0:?}");
+        rt.update(|s, _| {
+            for _ in 0..3 {
+                s.zoom(Some(true));
+            }
+        });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let copy1 = info(&rt, "copy").expect("zoomed copy chip").rect;
+        let badge1 = info(&rt, "badge").expect("zoomed language badge").rect;
+        assert!(copy1[3] > copy0[3] + 2.0, "Copy chip scales with zoom: {copy0:?} -> {copy1:?}");
+        assert!(badge1[2] > badge0[2] + 3.0, "language badge scales with zoom: {badge0:?} -> {badge1:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

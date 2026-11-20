@@ -34,7 +34,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     for it in &l.items {
         let done = it.task == Task::Done;
         let marker = match it.task {
-            Task::None if l.ordered => text(format!("{}.", it.number)).font(numbers).color(c.dim).align(rune::Align::End).w(mw).pin(Some(mx), Some(0.0), None, None),
+            Task::None if l.ordered => text(format!("{}.", it.number)).font(numbers).color(c.readable_dim()).align(rune::Align::End).w(mw).pin(Some(mx), Some(0.0), None, None),
             Task::None => match l.depth % 3 {
                 0 => {
                     let d = r(t * 0.3);
@@ -50,8 +50,10 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                 }
             },
             _ => {
-                // The box, inside a hit area round(T × 0.5) larger (BLK-29, BLK-30, BLK-32).
-                let pad = r(t * 0.5) / 2.0;
+                // The drawn box keeps BLK-29's size, centred inside a >= 24×24 pt hit target
+                // (at least round(T × 0.5) beyond the box at larger zooms, BLK-32).
+                let hit = (bx + r(t * 0.5)).max(24.0);
+                let pad = (hit - bx) / 2.0;
                 let (rad, edge) = (2f32.max(r(bx * 0.24)), 1f32.max(r(t / 12.0)));
                 let mut b = el().size(bx, bx).radius(rad);
                 b = if done {
@@ -62,7 +64,8 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                     b.border(edge, c.faint).child(hot)
                 };
                 let line_no = it.line;
-                el().padding(pad)
+                el().size(hit, hit)
+                    .center()
                     .hover_group()
                     .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
                     .role("checkbox")
