@@ -44,18 +44,18 @@ pub(super) fn sections(v: V) -> Vec<md::Heading> {
     md::headings(v.s.active_text()).into_iter().filter(|h| h.level == 1).collect()
 }
 
-/// "· N sections", which the active tab's caption adds after its folder; nothing for a note with
-/// no H1 (SB-17).
+/// "N sections", which the active tab's caption adds after its folder and a middle dot; nothing
+/// for a note with no H1 (SB-17).
 fn count_text(n: usize) -> Option<String> {
     match n {
         0 => None,
-        1 => Some("· 1 section".into()),
-        n => Some(format!("· {n} sections")),
+        1 => Some("1 section".into()),
+        n => Some(format!("{n} sections")),
     }
 }
 
-/// The room before the caption's count: balances the breathing room around `·` in Instrument Sans 10.5 pt.
-const COUNT_GAP: f32 = 4.5;
+/// Symmetric horizontal gap on each side of the caption's middle dot `·`.
+const DOT_GAP: f32 = 4.0;
 
 /// How many tabs the shelf has.
 pub(super) fn count(v: V) -> usize {
@@ -150,7 +150,15 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .child(icon(&CLOSE, ICON).color(if on { c.dim } else { c.faint }));
     let title_el = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small)).help_when_truncated(folder);
-    let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint).ml(COUNT_GAP)));
+    let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| {
+        row()
+            .key("sections")
+            .ml(DOT_GAP)
+            .gap(DOT_GAP)
+            .center_y()
+            .child(text("·").key("sections-dot").font(small).color(c.faint))
+            .child(text(n).key("sections-count").font(small).color(c.faint))
+    }));
     let mut el = two_rows(t.key(), title_el, caption)
         .pr(BUTTON_END)
         .hover_group()

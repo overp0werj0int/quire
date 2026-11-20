@@ -5697,7 +5697,14 @@ mod layer_matrix_tests {
 
     /// The count a tab's caption ends with, if any.
     fn sections_of(rt: &Runtime<App>, tab: &str) -> Option<String> {
-        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("sections") && e.path.split('/').any(|s| s == tab)).and_then(|e| e.text)
+        let all = rt.elements();
+        let sec = all.iter().find(|e| !e.exiting && e.key.as_deref() == Some("sections") && e.path.split('/').any(|s| s == tab))?;
+        if let Some(t) = &sec.text {
+            return Some(t.clone());
+        }
+        let mut parts: Vec<_> = all.iter().filter(|e| !e.exiting && e.text.is_some() && e.path.starts_with(&sec.path) && e.path != sec.path).collect();
+        parts.sort_by(|a, b| a.rect[0].total_cmp(&b.rect[0]));
+        Some(parts.into_iter().filter_map(|e| e.text.clone()).collect::<Vec<_>>().join(" "))
     }
 
     /// SB-17, SB-27: the active tab's caption counts its note's H1s, "1 section" for one and
@@ -6369,11 +6376,15 @@ mod layer_matrix_tests {
         // 1. crumb-file height >= 24pt
         let cf = rect_of(&rt, "crumb-file");
         assert!(cf[3] >= 24.0, "crumb-file height >= 24pt: {cf:?}");
-        // 2. Shelf caption dot gap >= 4pt
+        // 2. Shelf caption dot gap >= 4pt and symmetric around the middle dot
         let sec = rect_of(&rt, "sections");
+        let dot = rect_of(&rt, "sections-dot");
+        let cnt = rect_of(&rt, "sections-count");
         let folder = rt.elements().into_iter().find(|e| e.text.as_deref() == Some("Box") && e.rect[0] < 248.0 && (e.rect[1] - sec[1]).abs() < 4.0).expect("shelf folder");
-        let gap = sec[0] - (folder.rect[0] + folder.rect[2]);
-        assert!(gap >= 4.0, "shelf dot gap >= 4pt: {gap:.2}");
+        let left_gap = dot[0] - (folder.rect[0] + folder.rect[2]);
+        let right_gap = cnt[0] - (dot[0] + dot[2]);
+        assert!(left_gap >= 4.0 && right_gap >= 4.0, "shelf dot gaps >= 4pt: left={left_gap:.2}, right={right_gap:.2}");
+        assert!((left_gap - right_gap).abs() <= 1.0, "shelf dot gaps symmetric: left={left_gap:.2}, right={right_gap:.2}");
         // 3. Tag row counts align vertically on right edge (selected vs unselected)
         rt.update(|s, tx| s.toggle_tags(tx));
         settle(&mut rt);
