@@ -40,23 +40,11 @@ pub fn body(v: V) -> El {
     let reading = super::reading(v.s);
     let writer = v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a));
     let has_find_slot = (reading || writer) && v.s.reader.find.open && !shows_toolbar(v);
-    let find_slot_h = if has_find_slot { super::reader::find_backing_h(v) } else { 0.0 };
-    let mut area = col()
-        .key("doc-area")
-        .grow(1.0)
-        .min_w(0.0)
-        .min_h(0.0)
-        .h_full()
-        .children((!writer).then(super::focus::note_anchor))
-        .children(has_find_slot.then(|| super::reader::find_backing(v)))
-        .child(doc_scroll(v));
-    // In zen mode the progress bar runs along the window's top edge (`ui::view`).
-    let progress = if focus { None } else { progress(v) };
     // Text fades under the title bar and into the sheet's foot (WR-177). The bands let presses
     // through to the text.
     let c = Roles::new(v.p);
     let fade_top = || {
-        el().pin(Some(0.0), Some(find_slot_h), Some(0.0), None)
+        el().pin(Some(0.0), Some(0.0), Some(0.0), None)
             .inert()
             .key("fade-top")
             .h(28.0)
@@ -71,31 +59,49 @@ pub fn body(v: V) -> El {
             .linear_gradient(std::f32::consts::PI, foot)
     };
     let scroll_thumb = || {
-        // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
-        // (PAGE-84). Shared by both Preview and Source (`PREVFADE`).
-        let shown = &v.s.reader.thumb_shown;
-        let shown = if crate::motion::reduced() { shown.into() } else { shown.smooth(rune::Spring::new(0.3, 0.0)) };
+        // The thumb fades over 300 ms (WR-93), and snaps immediately on/off while keeping its
+        // 700 ms hold under reduced motion (`Spring::NONE`, PAGE-84, `THUMBFIX`). Shared by
+        // Preview and Source (`PREVFADE`).
+        let spring = if crate::motion::reduced() { rune::Spring::NONE } else { rune::Spring::new(0.3, 0.0) };
+        let shown = v.s.reader.thumb_shown.smooth(spring);
         el().key("thumb")
-            .pin(Some(0.0), Some(find_slot_h), None, None)
+            .pin(Some(0.0), Some(0.0), None, None)
             .radius(1.5)
             .fill(c.faint)
             .paint_order(30)
             .live_rect(&v.s.reader.thumb)
             .live_opacity(shown)
     };
+    // Wrap `doc-scroll` and its viewport-aligned overlays (`fade-top`, `fade-foot`, `thumb`) in
+    // one container strictly below `find_backing` so `thumb`'s `live_rect` shares `doc-scroll`'s
+    // `[0, 0]` origin whether or not Find is open (`THUMBFIX`).
+    let mut view = col().key("doc-view").grow(1.0).min_w(0.0).min_h(0.0).w_full().child(doc_scroll(v));
     if reading {
         // The reader has the writer's fades in zen mode, where no bar sits over the page.
         if focus {
-            area = area.child(fade_top()).child(fade_foot());
+            view = view.child(fade_top()).child(fade_foot());
         }
-        area = area.children(progress).child(scroll_thumb()).child(super::reader::find_bar(v));
+        view = view.child(scroll_thumb());
     } else if writer {
         // While the toolbar shows, its own fade does the top.
         if !shows_toolbar(v) {
-            area = area.child(fade_top());
+            view = view.child(fade_top());
         }
-        area = area.child(fade_foot());
-        area = area.children(progress).child(scroll_thumb()).child(super::reader::find_bar(v));
+        view = view.child(fade_foot()).child(scroll_thumb());
+    }
+    // In zen mode the progress bar runs along the window's top edge (`ui::view`).
+    let progress = if focus { None } else { progress(v) };
+    let mut area = col()
+        .key("doc-area")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .h_full()
+        .children((!writer).then(super::focus::note_anchor))
+        .children(has_find_slot.then(|| super::reader::find_backing(v)))
+        .child(view);
+    if reading || writer {
+        area = area.children(progress).child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))

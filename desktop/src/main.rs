@@ -2987,6 +2987,75 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// THUMBFIX: scroll thumb shares `doc-scroll`'s coordinate origin under open Find (top &
+    /// bottom aligned in both Preview and toolbar-hidden Source) and snaps immediately to 0.5
+    /// for 700 ms then 0.0 under reduced motion.
+    #[test]
+    fn thumbfix_aligns_under_find_and_shows_under_reduced_motion() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-thumbfix-{}", std::process::id()));
+        let md = format!("# Scroll Thumb\n\n{}", "Paragraph of steady reading text to test scroll thumb placement.\n\n".repeat(45));
+        let shown = |rt: &rune::Runtime<crate::app::App>| rt.presented("thumb").map_or(0.0, |p| p.1);
+
+        // 1. Open Find alignment in Preview and toolbar-hidden Source at narrow & wide widths.
+        for (mode, size) in [(crate::app::Mode::Preview, (760.0, 480.0)), (crate::app::Mode::Source, (520.0, 400.0))] {
+            let (mut rt, _) = open(&dir, &md, mode);
+            rt.set_viewport(size, 1.0);
+            rt.update(|s, tx| {
+                s.persist.settings.toolbar = false;
+                s.open_find(tx);
+            });
+            for _ in 0..20 {
+                rt.frame(DT);
+            }
+            let (x, y) = rt.find("doc-scroll").unwrap();
+            rt.pointer_move(x, y);
+            rt.wheel(x, y, -20.0);
+            for _ in 0..12 {
+                rt.frame(DT);
+            }
+            let ds = rt.presented("doc-scroll").unwrap().0;
+            let th_top = rt.presented("thumb").unwrap().0;
+            assert!(th_top[3] > 0.0 && th_top[1] >= ds[1] - 0.5, "{mode:?} {size:?}: thumb top {} above doc-scroll top {}", th_top[1], ds[1]);
+
+            rt.wheel(x, y, -9000.0);
+            for _ in 0..18 {
+                rt.frame(DT);
+            }
+            let ds = rt.presented("doc-scroll").unwrap().0;
+            let th_bot = rt.presented("thumb").unwrap().0;
+            let gap = (ds[1] + ds[3]) - (th_bot[1] + th_bot[3]);
+            assert!(th_bot[3] > 0.0 && gap.abs() <= 2.5, "{mode:?} {size:?}: thumb bottom gap {gap:.1}pt (thumb={th_bot:?}, ds={ds:?})");
+        }
+
+        // 2. Reduced motion snaps thumb immediately to 0.5, holds 700 ms, snaps back to 0.0.
+        for mode in [crate::app::Mode::Preview, crate::app::Mode::Source] {
+            let (mut rt, _) = open(&dir, &md, mode);
+            rt.set_system_reduced_motion(true);
+            rt.set_viewport((760.0, 480.0), 1.0);
+            for _ in 0..20 {
+                rt.frame(DT);
+            }
+            assert!(shown(&rt) < 0.01, "{mode:?}: reduced-motion thumb rests hidden: {}", shown(&rt));
+            let (x, y) = rt.find("doc-scroll").unwrap();
+            rt.pointer_move(x, y);
+            rt.wheel(x, y, -240.0);
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            assert!(shown(&rt) >= 0.49, "{mode:?}: reduced-motion thumb snaps to 0.5 at 50 ms: {}", shown(&rt));
+            for _ in 0..13 {
+                rt.frame(DT);
+            }
+            assert!(shown(&rt) >= 0.49, "{mode:?}: reduced-motion thumb holds 0.5 at 270 ms: {}", shown(&rt));
+            for _ in 0..35 {
+                rt.frame(DT);
+            }
+            assert!(shown(&rt) < 0.01, "{mode:?}: reduced-motion thumb snaps to 0.0 after 700 ms: {}", shown(&rt));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// TYPOPOLISH: menu.rs delegates Cut/Copy/Paste chord labels to keymap, Lock dialog heading
     /// uses 17 pt/600 scale (>= 20 pt box height), Settings White swatch card has a visible border
     /// on Paper, and sidebar folder rows request 600 weight for distinct hierarchy.
