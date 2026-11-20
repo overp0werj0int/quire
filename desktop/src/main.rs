@@ -1092,10 +1092,16 @@ pub(crate) mod scroll_tests {
         rt.secondary_up(rx, ry);
         settle(&mut rt);
         assert!(rt.find("recent-menu").is_some(), "secondary click opens recent-menu");
+        // REVEALWEL: pointer-opened recent-menu visibly highlights menu-forget immediately.
+        let mf = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("menu-forget") && !e.exiting).expect("menu-forget");
+        assert!(mf.focused && mf.focus_visible, "pointer-opened recent-menu visibly marks menu-forget: focused={} visible={}", mf.focused, mf.focus_visible);
         rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
         settle(&mut rt);
         assert!(rt.find("recent-menu").is_none(), "Enter closes recent-menu");
         assert!(rt.find("recent-0").is_none(), "Enter removes recent-0");
+        // REVEALWEL: removing the last recent vault returns focus to `create`.
+        let foc = rt.elements().into_iter().find(|e| e.focused && !e.exiting).expect("focused after removing last recent");
+        assert_eq!(foc.key.as_deref(), Some("create"), "removing last recent returns focus to create: {:?}", foc.key);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7952,6 +7958,40 @@ mod layer_matrix_tests {
         let band = rect(&rt, "toast-band").expect("post-type Save: toast band shows");
         let caret = rect(&rt, "caret-at").expect("post-type Save: caret shows");
         assert!(caret[1] + caret[3] <= band[1] + 2.0, "post-type Save: caret {caret:?} stayed under band {band:?}");
+
+        // REVEALWEL: rapid deferred typing burst settles within <= 1.5 pt of reduced motion.
+        let run_burst = |reduced: bool| -> f32 {
+            // SAFETY: held under ENV lock.
+            unsafe {
+                std::env::set_var("QUIRE_REDUCED_MOTION", if reduced { "1" } else { "0" });
+            }
+            let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((1280.0, 800.0), 1.0);
+            rt.update(|s, tx| s.focus_editor(tx));
+            rt.key(KeyEvent { key: Key::End, mods: ctrl(false) });
+            glide(&mut rt);
+            rt.wheel_event(rune::WheelEvent::new(0.0, 60.0).at(640.0, 400.0).precise(false).notch(true));
+            for _ in 0..2 {
+                rt.frame(DT);
+            }
+            rt.key(KeyEvent { key: Key::Command('s'), mods: ctrl(false) });
+            glide(&mut rt);
+            for ch in "hello world".chars() {
+                rt.key(KeyEvent { key: Key::Text(ch.to_string()), mods: Mods::default() });
+                rt.frame(DT);
+            }
+            glide(&mut rt);
+            let caret = rect(&rt, "caret-at").expect("burst caret");
+            // SAFETY: held under ENV lock.
+            unsafe {
+                std::env::remove_var("QUIRE_REDUCED_MOTION");
+            }
+            caret[1] + caret[3]
+        };
+        let norm_bot = run_burst(false);
+        let red_bot = run_burst(true);
+        assert!((norm_bot - red_bot).abs() <= 1.5, "REVEALWEL: burst settle norm={norm_bot:.2} vs reduced={red_bot:.2} (diff {:.2} pt)", (norm_bot - red_bot).abs());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

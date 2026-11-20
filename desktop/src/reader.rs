@@ -796,10 +796,11 @@ impl App {
     /// Reveals the writer's caret smoothly above a visible foot band once layout reports its rect.
     pub(crate) fn reveal_caret(&mut self, seq: u32, caret: [f32; 4], view: [f32; 4], band: f32, tx: &mut Tx) {
         let scroll = self.reader.scroll.get();
+        let now = self.now.get();
         let typewriter = self.settings().typewriter_scroll;
         let reduced = crate::motion::reduced();
         tx.live_only();
-        match self.reader.reveal.on_caret_layout(seq, caret, view, band, scroll, typewriter, reduced) {
+        match self.reader.reveal.on_caret_layout(seq, caret, view, band, scroll, now, typewriter, reduced) {
             crate::reveal::RevealAction::None | crate::reveal::RevealAction::Wake => {}
             crate::reveal::RevealAction::Glide(to) => {
                 tx.animated();
@@ -810,13 +811,14 @@ impl App {
     }
 
     /// Runs once per frame before view commits: advances the unified reveal controller (pending
-    /// band lifts, deferred caret-measure wakes, and gradual end-room release).
+    /// band lifts, deferred caret-measure wakes, active glide settles, and gradual end-room release).
     pub(crate) fn poll_reveal(&mut self, tx: &mut Tx) -> bool {
         let foot = self.foot_shows();
         let now = self.now.get();
         let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
+        let scroll_offset = self.reader.scroll.get()[0];
         let reduced = crate::motion::reduced();
-        let (action, rebuild, wake) = self.reader.reveal.poll(foot, now, base, reduced);
+        let (action, rebuild, wake) = self.reader.reveal.poll(foot, now, base, scroll_offset, reduced);
         match action {
             crate::reveal::RevealAction::None | crate::reveal::RevealAction::Wake => {}
             crate::reveal::RevealAction::Glide(to) => {

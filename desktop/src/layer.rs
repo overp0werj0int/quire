@@ -276,9 +276,14 @@ impl App {
         self.layers.push(Open { layer, back, over: self.context(), size: self.window_size() });
     }
 
-    /// Opens a menu of `of` at `at`.
+    /// Opens a menu of `of` at `at`. Single-action pointer menus that arm Enter immediately
+    /// (`RecentVault`) show visible focus on their item right away (`REVEALWEL`).
     pub fn open_menu(&mut self, of: MenuOf, at: (f32, f32), tx: &mut Tx) {
+        let arm = matches!(of, MenuOf::RecentVault(_));
         self.open_layer(Layer::Menu(Menu { at, of }), tx);
+        if arm {
+            tx.focus("recent-menu", true);
+        }
     }
 
     /// Opens a layer outside any event (a scene, a test): focus goes back where Rune's modal

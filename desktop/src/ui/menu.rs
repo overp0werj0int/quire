@@ -84,7 +84,7 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, head_h: f
                 .focus_highlight(p.hover)
                 .on_press_tx(move |s: &mut App, tx| s.pick(&*run, tx))
                 .on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
-                    if ev.key == rune::Key::Enter && ev.mods == rune::Mods::default() {
+                    if ev.key == rune::Key::Enter && ev.mods == rune::Mods::default() && tx.focus_visible() {
                         s.pick(&*on_enter, tx);
                         return true;
                     }
@@ -127,7 +127,7 @@ fn folder(v: V, at: (f32, f32)) -> El {
 /// A recent folder row's context menu on the welcome screen.
 fn recent_vault(path: &std::path::Path) -> Vec<Item> {
     let p = path.to_path_buf();
-    vec![Item { key: Some("menu-forget"), ..item("Remove from recent", Box::new(move |s, _| s.forget_vault(&p))) }]
+    vec![Item { key: Some("menu-forget"), ..item("Remove from recent", Box::new(move |s, tx| s.forget_vault(&p, tx))) }]
 }
 
 /// The tree's menu: new notes and folders, rename, move or delete for a note, and delete for a

@@ -85,6 +85,11 @@ pub enum BandState {
     /// An editor key/edit ran while a foot band is visible; waiting for layout to report the
     /// fresh caret rect (`seq`) so we can glide it above the band if it sits underneath.
     AwaitCaret { seq: u32, armed_gen: u64, woken: bool },
+    /// A `REVEAL_SPRING` glide toward `target` is in flight. Further editor keys during the glide
+    /// do not re-sample the mid-glide caret (which lags `scroll.offset` by one spring tick and
+    /// would overshoot); once the glide settles, `recheck` triggers one steady check so newly
+    /// added lines (e.g. `Enter` or wrap) are also lifted (`REVEALWEL`).
+    Gliding { target: f32, armed_gen: u64, started: f64, recheck: bool },
 }
 
 /// Scroll action emitted by the band/caret state machine.
@@ -184,6 +189,10 @@ impl Reveal {
         if !writing_with_foot || typewriter {
             return false;
         }
+        if let BandState::Gliding { recheck, .. } = &mut self.state {
+            *recheck = true;
+            return false;
+        }
         self.caret_seq = self.caret_seq.wrapping_add(1);
         self.state = BandState::AwaitCaret { seq: self.caret_seq, armed_gen: sig.hand_gen, woken: false };
         true
@@ -194,7 +203,14 @@ impl Reveal {
         let mut sig = self.signal.get();
         sig.editor_key_frame = true;
         self.signal.set(sig);
-        if writing_with_foot && !typewriter && !matches!(self.state, BandState::AwaitCaret { .. }) {
+        if !writing_with_foot || typewriter {
+            return;
+        }
+        if let BandState::Gliding { recheck, .. } = &mut self.state {
+            *recheck = true;
+            return;
+        }
+        if !matches!(self.state, BandState::AwaitCaret { .. }) {
             self.caret_seq = self.caret_seq.wrapping_add(1);
             // `after_edit()` already runs inside a committing event, so no extra poll wake is needed.
             self.state = BandState::AwaitCaret { seq: self.caret_seq, armed_gen: sig.hand_gen, woken: true };
@@ -229,6 +245,10 @@ impl Reveal {
         if matches!(self.state, BandState::Deferred) {
             return false;
         }
+        if let BandState::Gliding { recheck, .. } = &mut self.state {
+            *recheck = true;
+            return false;
+        }
         let [offset, _, vh, _] = scroll;
         let view = y + h - vh;
         let under = |top: f32, height: f32| top < y + h && top + height > view && top + height > y;
@@ -254,6 +274,7 @@ impl Reveal {
     }
 
     /// Called when `caret-reveal-{seq}` reports the fresh caret rect after an editor key/edit.
+    #[allow(clippy::too_many_arguments)]
     pub fn on_caret_layout(
         &mut self,
         seq: u32,
@@ -261,6 +282,7 @@ impl Reveal {
         [_, vy, _, vh]: [f32; 4],
         band: f32,
         [offset, max, ..]: [f32; 4],
+        now: f64,
         typewriter: bool,
         reduced: bool,
     ) -> RevealAction {
@@ -289,17 +311,23 @@ impl Reveal {
         if (target - offset).abs() <= 0.5 {
             return RevealAction::None;
         }
-        if reduced { RevealAction::Instant(target) } else { RevealAction::Glide(target) }
+        if reduced {
+            RevealAction::Instant(target)
+        } else {
+            self.state = BandState::Gliding { target, armed_gen, started: now, recheck: false };
+            RevealAction::Glide(target)
+        }
     }
 
     /// Advances the reveal controller once per frame in `App::poll`:
     /// - clears the previous frame's `editor_key_frame` flag,
     /// - ticks `PendingLift` (immediately cancelling on any hand scroll),
-    /// - wakes `view()` once if `AwaitCaret` has not yet been measured, and
+    /// - wakes `view()` once if `AwaitCaret` has not yet been measured,
+    /// - watches active `Gliding` settles (re-checking once after settle if edits arrived mid-glide), and
     /// - gradually releases the band's extra end room when the band shrinks or disappears.
     ///
     /// Returns `(action, needs_view_rebuild, wake_next_frame)`.
-    pub fn poll(&mut self, foot_shows: bool, now: f64, base_room: f32, reduced: bool) -> (RevealAction, bool, bool) {
+    pub fn poll(&mut self, foot_shows: bool, now: f64, base_room: f32, scroll_offset: f32, reduced: bool) -> (RevealAction, bool, bool) {
         let mut sig = self.signal.get();
         sig.editor_key_frame = false;
         self.signal.set(sig);
@@ -321,9 +349,12 @@ impl Reveal {
                     self.state = BandState::PendingLift { target, armed_gen, settle_frames: settle_frames - 1 };
                     action = RevealAction::Wake;
                     wake = true;
-                } else {
+                } else if reduced {
                     self.state = BandState::Idle;
-                    action = if reduced { RevealAction::Instant(target) } else { RevealAction::Glide(target) };
+                    action = RevealAction::Instant(target);
+                } else {
+                    self.state = BandState::Gliding { target, armed_gen, started: now, recheck: false };
+                    action = RevealAction::Glide(target);
                 }
             }
             BandState::AwaitCaret { seq, armed_gen, woken } => {
@@ -332,6 +363,21 @@ impl Reveal {
                 } else if !woken {
                     self.state = BandState::AwaitCaret { seq, armed_gen, woken: true };
                     rebuild = true;
+                }
+            }
+            BandState::Gliding { target, armed_gen, started, recheck } => {
+                if sig.hand_gen != armed_gen || now - sig.hand_at < HAND_STILL {
+                    self.state = BandState::Deferred;
+                } else if (scroll_offset - target).abs() <= 0.25 || now - started >= 0.45 {
+                    if recheck {
+                        self.caret_seq = self.caret_seq.wrapping_add(1);
+                        self.state = BandState::AwaitCaret { seq: self.caret_seq, armed_gen, woken: true };
+                        rebuild = true;
+                    } else {
+                        self.state = BandState::Idle;
+                    }
+                } else if recheck {
+                    wake = true;
                 }
             }
             BandState::Idle | BandState::Deferred => {}
@@ -435,7 +481,7 @@ mod tests {
         assert!(matches!(r.state, BandState::PendingLift { settle_frames: LIFT_SETTLE_FRAMES, .. }));
 
         // Frame 1 (816.7ms): poll waits one settle frame before firing.
-        let (act1, _, wake1) = r.poll(true, 0.8167, 400.0, false);
+        let (act1, _, wake1) = r.poll(true, 0.8167, 400.0, scroll[0], false);
         assert_eq!(act1, RevealAction::Wake);
         assert!(wake1);
 
@@ -445,7 +491,7 @@ mod tests {
         r.signal.set(sig);
 
         // Frame 2 (833.3ms): poll sees bumped hand_gen and cancels lift to Deferred.
-        let (act2, _, _) = r.poll(true, 0.8333, 400.0, false);
+        let (act2, _, _) = r.poll(true, 0.8333, 400.0, scroll[0], false);
         assert_eq!(act2, RevealAction::None);
         assert_eq!(r.state, BandState::Deferred);
     }
@@ -469,15 +515,48 @@ mod tests {
             // Later at t=2.0s, Right key runs in editor.
             assert!(r.on_editor_key(true, false));
             let seq = r.awaiting_caret().expect("awaiting caret measurement");
-            let (_, rebuild, _) = r.poll(true, 2.0167, 400.0, reduced);
+            let (_, rebuild, _) = r.poll(true, 2.0167, 400.0, scroll[0], reduced);
             assert!(rebuild, "first poll forces view rebuild even for no-op Right at EOF");
 
             // Layout reports caret at y=767..798 (104 pt below band top 694).
-            let act = r.on_caret_layout(seq, [300.0, 767.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, scroll, false, reduced);
+            let act = r.on_caret_layout(seq, [300.0, 767.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, scroll, 2.0167, false, reduced);
             let want = if reduced { RevealAction::Instant(608.0) } else { RevealAction::Glide(608.0) };
             assert_eq!(act, want);
-            assert_eq!(r.state, BandState::Idle);
+            if reduced {
+                assert_eq!(r.state, BandState::Idle);
+            } else {
+                assert!(matches!(r.state, BandState::Gliding { target, recheck: false, .. } if (target - 608.0).abs() < 0.01));
+            }
         }
+    }
+
+    /// REVEALWEL: rapid keystrokes arriving mid-glide do not re-trigger AwaitCaret against a
+    /// stale caret rect (preventing the 4.72 pt overshoot), and re-check cleanly once settled.
+    #[test]
+    fn rapid_typing_burst_during_glide_never_overshoots() {
+        let mut r = Reveal::default();
+        let scroll = [504.0, 1200.0, 759.0, 1032.0];
+        assert!(r.on_editor_key(true, false));
+        let seq = r.awaiting_caret().unwrap();
+        let act = r.on_caret_layout(seq, [300.0, 767.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, scroll, 1.30, false, false);
+        assert_eq!(act, RevealAction::Glide(608.0));
+
+        // 1 frame later, spring moved scroll by 4.72 pt while further characters arrive.
+        assert!(!r.on_editor_key(true, false), "mid-glide key must not re-arm AwaitCaret");
+        assert!(r.awaiting_caret().is_none());
+        let (act2, rebuild2, wake2) = r.poll(true, 1.3167, 400.0, 508.72, false);
+        assert_eq!(act2, RevealAction::None);
+        assert!(!rebuild2 && wake2);
+
+        // Once scroll settles at exact 608.0, poll schedules one steady recheck.
+        let (act3, rebuild3, _) = r.poll(true, 1.60, 400.0, 608.0, false);
+        assert_eq!(act3, RevealAction::None);
+        assert!(rebuild3);
+        let seq2 = r.awaiting_caret().expect("steady post-glide recheck");
+        // Same-line caret is now at 663..694 (right at band_top 694) -> no extra movement.
+        let act4 = r.on_caret_layout(seq2, [300.0, 663.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, [608.0, 1200.0, 759.0, 1032.0], 1.60, false, false);
+        assert_eq!(act4, RevealAction::None);
+        assert_eq!(r.state, BandState::Idle);
     }
 
     /// Post-typing Save: `Enter` at the bottom triggers `follow_caret()`, which must NOT be
@@ -500,7 +579,7 @@ mod tests {
         // After LIFT_SETTLE_FRAMES polls with no hand scroll, glide fires to 608.0.
         let mut fired = RevealAction::None;
         for i in 1..=4 {
-            let (act, _, _) = r.poll(true, 0.627 + i as f64 * 0.0167, 400.0, false);
+            let (act, _, _) = r.poll(true, 0.627 + i as f64 * 0.0167, 400.0, scroll[0], false);
             if matches!(act, RevealAction::Glide(_)) {
                 fired = act;
                 break;
@@ -522,7 +601,7 @@ mod tests {
         // Typing while caret is above band produces RevealAction::None.
         assert!(r.on_editor_key(true, false));
         let seq = r.awaiting_caret().unwrap();
-        let act = r.on_caret_layout(seq, [300.0, 300.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, scroll, false, false);
+        let act = r.on_caret_layout(seq, [300.0, 300.0, 1.5, 31.0], [248.0, 41.0, 1032.0, 759.0], 106.0, scroll, 1.0, false, false);
         assert_eq!(act, RevealAction::None);
 
         // Caret out of view below (y=850..881) produces no band lift either.

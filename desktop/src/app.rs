@@ -1061,9 +1061,17 @@ impl App {
         self.open_vault(path, tx);
     }
 
-    pub fn forget_vault(&mut self, path: &Path) {
+    pub fn forget_vault(&mut self, path: &Path, tx: &mut Tx) {
+        let idx = self.persist.vaults.iter().position(|v| v.path == path);
         self.persist.vaults.retain(|v| v.path != path);
         self.persist_later();
+        if self.screen == Screen::Welcome {
+            let target = match (idx, self.persist.vaults.len()) {
+                (Some(i), n) if n > 0 => format!("recent-{}", i.min(n - 1)),
+                _ => "create".to_string(),
+            };
+            tx.focus(&target, tx.by_keys());
+        }
     }
 
     pub fn reset_sample(&mut self, tx: &mut Tx) {
