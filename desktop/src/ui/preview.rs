@@ -264,7 +264,7 @@ pub fn preview(v: V) -> El {
     let doc = s.doc();
     let find = s.find_query().map(|q| {
         let cur = s.find_matches().get(s.reader.find.cur).map(|m| (m.pid, m.k));
-        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur, place: s.reader.find.place.map(|p| p.n) }
+        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur, place: s.reader.reveal.place_n() }
     });
     // A row is built again only when something it draws from changes.
     let set = s.settings();
@@ -303,7 +303,7 @@ pub fn preview(v: V) -> El {
             estimate,
             move |_: &App, i| Cow::Owned(doc.blocks.get(i).map_or_else(String::new, crate::reader::block_key)),
             move |s: &App, i| {
-                let v = V { s, p, dark, vw, vh, trailing, caret: None, find_at: None, place_at: None };
+                let v = V { s, p, dark, vw, vh, trailing, caret: None, caret_view: None, find_at: None, place_at: None };
                 let doc = rows.clone();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
                 let gap = gaps.get(i).copied().unwrap_or(0.0);

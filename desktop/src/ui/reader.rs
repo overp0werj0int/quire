@@ -352,6 +352,20 @@ pub(super) fn band_h(v: V) -> Option<f32> {
     Some(TOAST_LIFT + stack + BAND_CLEAR + BAND_FADE)
 }
 
+/// Reports the fresh caret rect to the unified reveal controller after an editor key/edit while a
+/// foot band is visible, so a deferred caret reveal glides smoothly above the band (`REVEALMOD`).
+pub fn caret_reveal(v: V) -> Option<El> {
+    let seq = v.s.reader.reveal.awaiting_caret()?;
+    let caret = v.caret?;
+    let view = v.caret_view?;
+    let band = band_h(v)?;
+    if caret[1] >= view[1] + view[3] || caret[1] + caret[3] <= view[1] {
+        return None;
+    }
+    let key = format!("caret-reveal-{seq}-{}", (caret[1] * 2.0).round() as i64);
+    Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.reveal_caret(seq, caret, view, band, tx)))
+}
+
 /// Reports where the match find brings into view was laid out, with the bands it goes
 /// between (`App::place_match`): an empty point at the window's root, keyed by where the match
 /// lies, so a new one reports each time the match moves, and the band going meanwhile does not

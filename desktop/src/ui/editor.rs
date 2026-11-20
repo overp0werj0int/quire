@@ -144,7 +144,7 @@ fn doc_scroll(v: V) -> El {
         // (PAGE-29), and at least the toast band's height, given back a little each frame (RD-104).
         let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { crate::page::TOP_ROOM };
         let pad_b = if reader || writer {
-            let band = super::reader::band_h(v).unwrap_or(0.0).max(s.reader.room);
+            let band = super::reader::band_h(v).unwrap_or(0.0).max(s.reader.reveal.room);
             crate::page::end_room(writer, v.vh, band)
         } else if focus {
             v.vh * 0.48
@@ -200,7 +200,7 @@ fn doc_scroll(v: V) -> El {
     // A scroll viewport is a column: in a row its content would stretch to the viewport's
     // height and leave nothing to scroll.
     let live = s.reader.scroll.clone();
-    let hand = s.reader.hand.clone();
+    let signal = s.reader.reveal.signal.clone();
     let bar = s.reader.bar.clone();
     let map = s.reader.map.clone();
     let (thumb, shown) = (s.reader.thumb.clone(), s.reader.thumb_shown.clone());
@@ -213,13 +213,14 @@ fn doc_scroll(v: V) -> El {
         .scroll(ScrollSpec { stick_bottom: false })
         .on_scroll_offset(move |at| {
             let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];
-            let moved = live.get()[0] != now[0];
+            let moved = (live.get()[0] - now[0]).abs() > 0.01;
             live.set(now);
-            // A hand moved it this frame (the wheel, a swipe, their glide or momentum, a drag,
-            // the keys), on the clock `App::poll` reads (`App::band_laid_out`).
-            if let (true, _, t) = rune::scroll_watch_state() {
-                hand.set(t);
-            }
+            // Classify hand scrolling vs synchronous editor `follow_caret()` in the unified
+            // document reveal controller (`crate::reveal`).
+            let (by_hand, _, t) = rune::scroll_watch_state();
+            let mut sig = signal.get();
+            sig.on_scroll_offset(moved, by_hand, t);
+            signal.set(sig);
             // The progress line (RD-38, WR-178).
             map.borrow_mut().follow(now, &bar);
             thumb.set(thumb_rect(now));
@@ -232,8 +233,10 @@ fn doc_scroll(v: V) -> El {
         // The page holds its top block in place when text above it changes (RD-11, RD-13).
         scroll = scroll.scroll_anchor();
     }
-    // The room the caret keeps from the view's edges while you type. Rune keeps the same room
-    // at both edges.
+    // The room the caret keeps from the view's edges while you type. Rune applies one margin
+    // symmetrically at both edges and snaps instantly in `follow_caret()`. While a foot band shows
+    // and the caret sits in the lower half, omit the bottom margin so the unified reveal
+    // controller glides the caret smoothly above the band instead of snapping (`REVEALMOD`).
     let mut margin: f32 = 0.0;
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
@@ -242,15 +245,11 @@ fn doc_scroll(v: V) -> El {
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
         margin = top_band(v);
     }
-    // While a toast or the notice shows, the line being typed stays above its band, fade
-    // included (`reader::toast_band`). Rune keeps one margin at both edges, so the band's room
-    // applies only while the caret is in the view's lower half, where the top edge is not in
-    // play.
-    if s.writing()
+    let lower_with_band = s.writing()
         && v.caret.is_some_and(|c| c[1] + c[3] / 2.0 > v.vh / 2.0)
-        && let Some(band) = super::reader::band_h(v)
-    {
-        margin = margin.max(band);
+        && super::reader::band_h(v).is_some();
+    if lower_with_band {
+        margin = 0.0;
     }
     if margin > 0.0 {
         scroll = scroll.scroll_margin(margin);
@@ -646,8 +645,8 @@ fn source(v: V, width: f32, room: f32) -> El {
     if s.find_query().is_some() {
         let cur = s.reader.find.cur;
         for (k, r) in s.source_matches().into_iter().enumerate() {
-            if k == cur && let Some(p) = s.reader.find.place {
-                marks.push(TextHighlight::new(r.clone(), Color::TRANSPARENT).key(crate::reader::place_key(p.n)));
+            if k == cur && let Some(n) = s.reader.reveal.place_n() {
+                marks.push(TextHighlight::new(r.clone(), Color::TRANSPARENT).key(crate::reader::place_key(n)));
             }
             marks.push(if k == cur { TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR) } else { TextHighlight::new(r, c.find) });
         }
@@ -727,6 +726,15 @@ pub fn follow_link_at_caret(s: &mut App, tx: &mut Tx) {
     }
 }
 
+fn is_editor_motion_or_edit_key(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    match ev.key {
+        Key::Text(_) => !m.ctrl && !m.cmd && !m.alt && !m.logo,
+        Key::Enter | Key::Backspace | Key::Delete | Key::Tab | Key::Left | Key::Right | Key::Up | Key::Down | Key::Home | Key::End | Key::PageUp | Key::PageDown => true,
+        _ => false,
+    }
+}
+
 fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // A caret move that follows a key is not a click (see `App::check_link_click`).
     s.key_moved = true;
@@ -734,6 +742,9 @@ fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // a modifier too: the field gives up the keyboard on any Esc.
     if matches!(ev.key, Key::Escape) {
         return s.writer_escape(tx);
+    }
+    if is_editor_motion_or_edit_key(ev) {
+        s.note_editor_key(tx);
     }
     // The writer's editing keys come from the keymap, so a preset changes them here too.
     match keymap::lookup(s.preset(), Ctx::Writer, ev).iter().find_map(|a| crate::keys::handler(a.id)) {

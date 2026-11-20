@@ -531,10 +531,9 @@ impl App {
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
-        self.lift_over_band(tx);
         self.reveal_tab(tx);
         self.reveal_tree(tx);
-        changed |= self.release_room(tx);
+        changed |= self.poll_reveal(tx);
         changed |= self.expire_sheet(t);
         changed |= self.drop_stale_layers(tx);
         changed |= self.expire_deleted(t, tx);
@@ -1116,6 +1115,9 @@ impl App {
 
     /// The editor's text changed: keep the folder copy in step and save soon.
     pub fn after_edit(&mut self) {
+        let writing_with_foot = self.writing() && self.foot_shows();
+        let typewriter = self.settings().typewriter_scroll;
+        self.reader.reveal.on_editor_edit(writing_with_foot, typewriter);
         let Some(a) = self.active.clone() else { return };
         let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) else { return };
         if self.unlocked.contains_key(&a) {

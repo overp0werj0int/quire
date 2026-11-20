@@ -28,10 +28,6 @@ const KEY_GLIDE: f64 = 0.11;
 const SEQ: f64 = 0.9;
 /// A toast shows this long (RD-98).
 pub const TOAST: f64 = 1.6;
-/// The page's extra end room closes in on this time constant, in seconds (RD-104)...
-const ROOM_EASE: f32 = 0.08;
-/// ...and never faster than this, in points a second.
-const ROOM_SPEED: f32 = 240.0;
 /// How long a code block's chip says Copied (BLK-51).
 pub const COPIED: f64 = 1.4;
 /// The "reloaded" mark: fade in, hold, fade out (RD-33).
@@ -58,24 +54,14 @@ pub struct Reader {
     /// The help sheet's scroll viewport state, synchronized between wheel/touchpad scrolling
     /// (`on_scroll_offset`) and keyboard scrolling (`App::scroll_help`).
     pub help_scroll: Rc<std::cell::Cell<HelpScroll>>,
-    /// When a hand last moved the page, on the clock: the wheel and its glide, a swipe and its
-    /// momentum, a drag, the keys. Set by its scroll handler.
-    pub hand: Rc<std::cell::Cell<f64>>,
+    /// Unified document reveal controller: toast/notice band lifts, hand-control tracking,
+    /// deferred caret reveals, end-room release, and find-match placement (`crate::reveal`).
+    pub reveal: crate::reveal::Reveal,
     /// The progress line, [x, y, w, h], set with the scroll in the frame it draws (RD-38, WR-178).
     pub bar: Live<[f32; 4]>,
     /// The writer's scroll thumb, [x, y, w, h], and its opacity, pulsed by each scroll (WR-93).
     pub thumb: Live<[f32; 4]>,
     pub thumb_shown: Live<f32>,
-    /// How tall the toast band last laid out, 0 while no pill shows (RD-104).
-    pub(crate) band: f32,
-    /// The room after the page's last line that the band has asked for (RD-104). When the
-    /// band shrinks or goes, it follows down frame by frame (`App::release_room`).
-    pub(crate) room: f32,
-    /// Where a band that appeared asks the page to go, and when it appeared: it goes there at
-    /// the next frame unless a hand moved the page in the band's own frame (`App::lift_over_band`).
-    lift: Option<(f32, f64)>,
-    /// The clock at the last frame's `App::release_room`.
-    room_at: f64,
     /// The first key of a two-key chord and when it came.
     pub(crate) pending: Option<(KeyEvent, f64)>,
     /// Where the last key glide is heading and when it started.
@@ -90,7 +76,7 @@ impl Default for Reader {
     fn default() -> Self {
         Reader {
             wide: None,
-            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0, place: None, placed: 0, line: None },
+            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0 },
             toast: None,
             copied: None,
             reloaded: None,
@@ -98,14 +84,10 @@ impl Default for Reader {
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
             help_scroll: Rc::new(std::cell::Cell::new(HelpScroll::default())),
-            hand: Rc::new(std::cell::Cell::new(f64::NEG_INFINITY)),
+            reveal: crate::reveal::Reveal::default(),
             bar: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
             thumb_shown: Live::new(0.0),
-            band: 0.0,
-            room: 0.0,
-            room_at: 0.0,
-            lift: None,
             pending: None,
             glide: None,
             positions: HashMap::new(),
@@ -449,38 +431,6 @@ impl PageMap {
     }
 }
 
-/// Where a find match `h` tall goes, its top this far under the view's top, in a view `vh`
-/// tall whose top band reaches `roof` down and whose toast band is `band` tall: the middle of
-/// the room between them, or of the view with no band or when it cannot fit there (RD-60,
-/// WR-118, RD-104). Not Rune's `scroll_center`: its reveal outlives its glide and would follow
-/// `FIND_CUR` to the next step's match in one frame.
-fn match_to(vh: f32, h: f32, roof: f32, band: f32) -> f32 {
-    let room = vh - band;
-    if band <= 0.0 || room - roof < h { ((vh - h) / 2.0).max(0.0) } else { roof + (room - roof - h) / 2.0 }
-}
-
-/// A match find brings into view (`App::reveal_match`). Nothing moves until its highlight,
-/// keyed `place_key(n)` meanwhile, has laid out and the view reports where (`App::place_match`).
-#[derive(Clone, Copy)]
-pub(crate) struct Place {
-    pub n: u32,
-    /// When find asked.
-    at: f64,
-    /// A step glides there; a search as you type, and a match a long trip waited for, jump.
-    glide: bool,
-    /// Where its top goes, from the view's top, once its first layout has decided.
-    to: Option<f32>,
-    /// Rune's anchor put it there (`App::center_match`): its layout's report moves nothing.
-    anchored: bool,
-}
-
-/// How long after a hand last moved the page it still counts as moving: a wheel's glide moves it
-/// every frame.
-const HAND_STILL: f64 = 0.1;
-
-/// How long a placement follows its match while the rows around it measure.
-const PLACE_FOR: f64 = 0.6;
-
 pub struct Find {
     pub open: bool,
     pub q: TextEdit,
@@ -490,13 +440,6 @@ pub struct Find {
     pub due: Option<f64>,
     /// The current match, an index into `blocks::find_all`.
     pub cur: usize,
-    /// A match find is bringing into view, placed once it lays out.
-    pub(crate) place: Option<Place>,
-    /// The last `place` number handed out.
-    placed: u32,
-    /// Where the current match's line last laid out, from the page's top: a match on that line
-    /// that shows clear of the bands stays where it is.
-    line: Option<f32>,
 }
 
 // ---------- The numbers ----------
@@ -775,10 +718,11 @@ impl App {
     pub(crate) fn center_match(&mut self, glide: bool, tx: &mut Tx) {
         let m = self.find_matches();
         let doc = self.doc();
-        let Some(i) = m.get(self.reader.find.cur).map(|m| m.block) else { return };
+        let Some(hit) = m.get(self.reader.find.cur).copied() else { return };
+        let i = hit.block;
         let Some(b) = doc.blocks.get(i) else { return };
         let [offset, _, vh, _] = self.reader.scroll.get();
-        let band = if self.foot_shows() { self.reader.band } else { 0.0 };
+        let band = if self.foot_shows() { self.reader.reveal.band } else { 0.0 };
         let map = self.reader.map.borrow();
         let Some(top) = map.block_top(i).filter(|_| map.covers(doc.blocks.len())) else {
             drop(map);
@@ -787,7 +731,7 @@ impl App {
         let (y0, y1) = (top - offset, top - offset + map.height(i));
         if y0 >= 0.2 * vh && y1 <= 0.75 * vh && y1 <= vh - band {
             // Its line is not reported, so the next match is not held by it.
-            self.reader.find.line = None;
+            self.reader.reveal.find_line = None;
             return;
         }
         if top > offset - vh && top < offset + 2.0 * vh {
@@ -795,150 +739,96 @@ impl App {
             return self.reveal_match(glide);
         }
         // Rune's anchor goes where the list's estimates put the row, which mounts it, and places
-        // the match's highlight again from its layout before the frame draws, centred by its
-        // block's line. Its report then moves nothing: a correction aimed from that report would
-        // land on rows that measure meanwhile and bounce back.
+        // the match's highlight again from its layout before the frame draws, centred by the
+        // matched sub-block's rendered line height (including headings inside quotes).
         drop(map);
-        self.reveal_match(false);
         let roof = if self.reader.find.open { crate::ui::editor::FIND_FOOT } else { 0.0 };
-        let to = match_to(vh, crate::page::text_line(self.b(), &b.kind), roof, band);
-        let f = &mut self.reader.find;
-        if let Some(p) = f.place.as_mut() {
-            p.anchored = true;
-        }
-        tx.scroll_key_to(format!("{}/{}", block_key(b), place_key(f.placed)), to);
+        let line_h = crate::page::match_line(self.b(), b, hit.pid);
+        let to = crate::reveal::match_to(vh, line_h, roof, band);
+        let n = self.reader.reveal.begin_match(self.now.get(), false, true, line_h);
+        tx.scroll_key_to(format!("{}/{}", block_key(b), place_key(n)), to);
     }
 
     /// Brings the current match into view once it has laid out (`App::place_match`). Nothing
     /// scrolls before then, so the page makes one move, to one place.
     pub(crate) fn reveal_match(&mut self, glide: bool) {
-        let at = self.now.get();
-        let f = &mut self.reader.find;
-        f.placed = f.placed.wrapping_add(1);
-        f.place = Some(Place { n: f.placed, at, glide, to: None, anchored: false });
+        self.reader.reveal.begin_match(self.now.get(), glide, false, 0.0);
     }
 
-    /// The current match, waiting as `place` number `n`, laid out at `[x, y, w, h]` in window
-    /// points before scrolling, in the view laid out at `view`. `roof` is how far down the view
-    /// its top band reaches, and `band` how tall the toast's band is, 0 with none. A match on
-    /// the line the last one was on, in view and clear of both bands, stays where it is. Any
-    /// other is centred in the room between the bands, or in the view while no band shows or
-    /// when it cannot fit between them (RD-60, WR-118, RD-104). The first report decides where
-    /// the match goes in the view; later ones, as the rows around it measure, keep it going
-    /// there.
-    pub(crate) fn place_match(&mut self, n: u32, [_, y, _, h]: [f32; 4], view: [f32; 4], roof: f32, band: f32, tx: &mut Tx) {
-        let Some(mut p) = self.reader.find.place.filter(|p| p.n == n) else { return };
-        if self.now.get() - p.at > PLACE_FOR {
-            self.reader.find.place = None;
-            return;
-        }
-        let (y, vh) = (y - view[1], view[3]);
-        let line = self.reader.find.line.replace(y);
-        if p.anchored {
-            self.reader.find.place = None;
-            return;
-        }
-        let to = match p.to {
-            Some(to) => to,
-            None => {
-                let shown = y - self.reader.scroll.get()[0];
-                let room = vh - band;
-                if line.is_some_and(|l| (l - y).abs() < 0.5) && shown >= roof && shown + h <= room {
-                    self.reader.find.place = None;
-                    return;
-                }
-                let to = match_to(vh, h, roof, band);
-                p.to = Some(to);
-                self.reader.find.place = Some(p);
-                to
-            }
-        };
-        if p.glide {
-            // The step asked for a glide, though the layout's report comes in a commit of its own.
-            tx.animated();
-            tx.scroll_to(SCROLL, 0.0, y - to);
-        } else {
-            tx.scroll_to_instant(SCROLL, 0.0, y - to);
-        }
-    }
-
-    /// The toast band laid out at window rect `[x, y, w, h]` (RD-104). As it appears or grows,
-    /// what the user is on comes above it on the next frame (`lift_over_band`), by the least
-    /// scroll: the caret's line in the
-    /// writer (`caret`, as last drawn), else the current find match's own highlight (`find_at`,
-    /// where the page laid it out, before scrolling). A match that cannot fit between the view's
-    /// top band (`roof` down from the view's top) and this one is centred instead. Nothing
-    /// scrolls when the band shrinks, when typewriter scrolling holds the caret, when what the
-    /// user is on is out of view or clear of the band, or while the user is scrolling the page:
-    /// their scroll goes on whole, and the caret's line stays where it went until the next key.
-    pub(crate) fn band_laid_out(&mut self, [_, y, _, h]: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, roof: f32, tx: &mut Tx) {
-        let grew = h > self.reader.band + 0.5;
-        self.reader.band = h;
-        self.reader.room = self.reader.room.max(h);
-        tx.live_only();
-        if !grew || self.now.get() - self.reader.hand.get() < HAND_STILL {
-            return;
-        }
-        let [offset, _, vh, _] = self.reader.scroll.get();
-        let view = y + h - vh;
-        // A line from window y `top`, `height` tall, in the view and under the band, comes up.
-        let under = |top: f32, height: f32| top < y + h && top + height > view && top + height > y;
-        let to = if let Some([_, top, _, height]) = caret {
-            if self.settings().typewriter_scroll || !under(top, height) {
-                return;
-            }
-            offset + top + height - y
-        } else {
-            // Find's field has the keyboard, so the editor has no caret to go by.
-            let Some([_, top, _, height]) = find_at.filter(|_| self.find_query().is_some()) else { return };
-            let top = top - offset;
-            if !under(top, height) {
-                return;
-            }
-            if y - (view + roof) >= height {
-                offset + top + height - y
-            } else {
-                // Centred in the view, as find does (RD-60, WR-118). Rune's `scroll_center` would
-                // keep following `FIND_CUR` after its glide and jump to the next step's match.
-                offset + top - view - ((vh - height) / 2.0).max(0.0)
-            }
-        };
-        self.reader.lift = Some((to, self.now.get()));
-        tx.wake_after(std::time::Duration::ZERO);
-    }
-
-    /// Runs before each frame: the page goes where a band that appeared last frame asked
-    /// (`App::band_laid_out`), unless a hand moved it in that frame. A wheel's notch that came
-    /// with the key that showed the band would otherwise be lost under the lift's glide.
-    pub(crate) fn lift_over_band(&mut self, tx: &mut Tx) {
-        if let Some((to, at)) = self.reader.lift.take()
-            && self.reader.hand.get() < at
-        {
-            tx.scroll_to(SCROLL, 0.0, to);
-        }
-    }
-
-    /// Runs before each frame: the page's end room follows the band down when it shrinks or
-    /// goes (RD-104), a little each frame, so a view at the page's end rides down with it and
-    /// never steps. It closes in as a glide lands, but never faster than `ROOM_SPEED`. A view
-    /// above the room it gives up does not move. True when the room changed.
-    pub(crate) fn release_room(&mut self, tx: &mut Tx) -> bool {
-        if !self.foot_shows() {
-            self.reader.band = 0.0;
-        }
+    /// Places the current match once its highlight lays out (`crate::reveal::Reveal`).
+    pub(crate) fn place_match(&mut self, n: u32, rect: [f32; 4], view: [f32; 4], roof: f32, band: f32, tx: &mut Tx) {
+        let scroll_offset = self.reader.scroll.get()[0];
         let now = self.now.get();
-        let dt = (now - std::mem::replace(&mut self.reader.room_at, now)).clamp(0.0, 0.05) as f32;
-        // Only room past the page's own end room (PAGE-29, WR-86) shows.
-        let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
-        let (room, want) = (self.reader.room.max(base), self.reader.band.max(base));
-        if room <= want + 0.25 || crate::motion::reduced() {
-            self.reader.room = self.reader.band;
-            return room > want;
+        match self.reader.reveal.on_match_layout(n, rect, view, roof, band, scroll_offset, now) {
+            crate::reveal::MatchAction::None => {}
+            crate::reveal::MatchAction::Glide(to) => {
+                // The step asked for a glide, though the layout's report comes in a commit of its own.
+                tx.animated();
+                tx.scroll_to(SCROLL, 0.0, to);
+            }
+            crate::reveal::MatchAction::Jump(to) => tx.scroll_to_instant(SCROLL, 0.0, to),
         }
-        let step = ((room - want) * (1.0 - (-dt / ROOM_EASE).exp())).min(ROOM_SPEED * dt);
-        self.reader.room = room - step;
-        tx.wake_after(std::time::Duration::ZERO);
-        true
+    }
+
+    /// The toast band laid out at window rect `[x, y, w, h]` (RD-104), routed into the unified
+    /// reveal controller (`crate::reveal::Reveal`).
+    pub(crate) fn band_laid_out(&mut self, rect: [f32; 4], caret: Option<[f32; 4]>, find_at: Option<[f32; 4]>, roof: f32, tx: &mut Tx) {
+        let scroll = self.reader.scroll.get();
+        let now = self.now.get();
+        let typewriter = self.settings().typewriter_scroll;
+        let has_find = self.find_query().is_some();
+        tx.live_only();
+        if self.reader.reveal.on_band_layout(rect, scroll, caret, find_at, roof, now, typewriter, has_find) {
+            tx.wake_after(std::time::Duration::ZERO);
+        }
+    }
+
+    /// Records an editor typing/caret key in the unified reveal controller so `follow_caret()` is
+    /// not mistaken for a hand swipe and any deferred caret reveal glides smoothly above the band.
+    pub(crate) fn note_editor_key(&mut self, tx: &mut Tx) {
+        let writing_with_foot = self.writing() && self.foot_shows();
+        let typewriter = self.settings().typewriter_scroll;
+        if self.reader.reveal.on_editor_key(writing_with_foot, typewriter) {
+            tx.wake_after(std::time::Duration::ZERO);
+        }
+    }
+
+    /// Reveals the writer's caret smoothly above a visible foot band once layout reports its rect.
+    pub(crate) fn reveal_caret(&mut self, seq: u32, caret: [f32; 4], view: [f32; 4], band: f32, tx: &mut Tx) {
+        let scroll = self.reader.scroll.get();
+        let typewriter = self.settings().typewriter_scroll;
+        let reduced = crate::motion::reduced();
+        tx.live_only();
+        match self.reader.reveal.on_caret_layout(seq, caret, view, band, scroll, typewriter, reduced) {
+            crate::reveal::RevealAction::None | crate::reveal::RevealAction::Wake => {}
+            crate::reveal::RevealAction::Glide(to) => {
+                tx.animated();
+                tx.scroll_to_with(SCROLL, 0.0, to, crate::reveal::REVEAL_SPRING);
+            }
+            crate::reveal::RevealAction::Instant(to) => tx.scroll_to_instant(SCROLL, 0.0, to),
+        }
+    }
+
+    /// Runs once per frame before view commits: advances the unified reveal controller (pending
+    /// band lifts, deferred caret-measure wakes, and gradual end-room release).
+    pub(crate) fn poll_reveal(&mut self, tx: &mut Tx) -> bool {
+        let foot = self.foot_shows();
+        let now = self.now.get();
+        let base = crate::page::end_room(self.mode == Mode::Source, self.view_h.get(), 0.0);
+        let reduced = crate::motion::reduced();
+        let (action, rebuild, wake) = self.reader.reveal.poll(foot, now, base, reduced);
+        match action {
+            crate::reveal::RevealAction::None | crate::reveal::RevealAction::Wake => {}
+            crate::reveal::RevealAction::Glide(to) => {
+                tx.animated();
+                tx.scroll_to_with(SCROLL, 0.0, to, crate::reveal::REVEAL_SPRING);
+            }
+            crate::reveal::RevealAction::Instant(to) => tx.scroll_to_instant(SCROLL, 0.0, to),
+        }
+        if wake {
+            tx.wake_after(std::time::Duration::ZERO);
+        }
+        rebuild
     }
 
     /// The writer's text field laid out at window rect `[x, y, w, h]`: the progress line takes
@@ -1202,8 +1092,7 @@ impl App {
         f.searched.clear();
         f.due = None;
         f.cur = 0;
-        f.place = None;
-        f.line = None;
+        self.reader.reveal.clear_find();
     }
 
     pub fn find_query(&self) -> Option<&str> {

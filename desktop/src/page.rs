@@ -36,8 +36,7 @@ pub fn quote_size(b: f32) -> f32 {
 }
 
 /// How tall a line of a top-level block's own text is, at body size `b`, as the reader draws
-/// it: a heading's, a code block's or a quote's, else a body line. Find centres a far match by
-/// it before its row is built (`App::center_match`).
+/// it: a heading's, a code block's or a quote's, else a body line.
 pub fn text_line(b: f32, kind: &crate::blocks::Kind) -> f32 {
     use crate::blocks::Kind;
     match kind {
@@ -48,6 +47,46 @@ pub fn text_line(b: f32, kind: &crate::blocks::Kind) -> f32 {
         Kind::Code { .. } | Kind::Diff { .. } => line(code_size(b), 1.5),
         Kind::Quote { .. } => line(quote_size(b), 1.6),
         _ => line(b, 1.6),
+    }
+}
+
+/// How tall the line containing find piece `pid` inside top-level `block` is at body size `b`.
+/// Walks nested containers (quotes, alerts, lists, footnotes, tables) so a heading or code block
+/// inside a quote centres by its own rendered line box rather than the outer quote's body line.
+pub fn match_line(b: f32, block: &crate::blocks::Block, pid: usize) -> f32 {
+    match_line_in(b, block, pid, 0).unwrap_or_else(|| text_line(b, &block.kind))
+}
+
+fn match_line_in(b: f32, block: &crate::blocks::Block, pid: usize, container: u8) -> Option<f32> {
+    use crate::blocks::Kind;
+    // container: 0 = body/alert, 1 = quote, 2 = footnote
+    if block.pid == Some(pid) {
+        return Some(match &block.kind {
+            Kind::Heading { level, .. } => {
+                let (size, lead) = heading_type(b, *level);
+                line(size, lead)
+            }
+            Kind::Code { .. } | Kind::Diff { .. } => line(code_size(b), 1.5),
+            _ if container == 2 => line(r(b * 0.88), 1.6),
+            _ if container == 1 => line(quote_size(b), 1.6),
+            _ => line(b, 1.6),
+        });
+    }
+    match &block.kind {
+        Kind::Quote { blocks } => blocks.iter().find_map(|c| match_line_in(b, c, pid, 1)),
+        Kind::Alert { blocks, .. } => blocks.iter().find_map(|c| match_line_in(b, c, pid, 0)),
+        Kind::List(l) => l.items.iter().flat_map(|it| &it.blocks).find_map(|c| match_line_in(b, c, pid, container)),
+        Kind::Footnotes { items } => items.iter().flat_map(|it| &it.blocks).find_map(|c| match_line_in(b, c, pid, 2)),
+        Kind::Table(t) => {
+            if t.header_pids.contains(&pid) {
+                Some(line(r(b * 0.72), 1.35))
+            } else if t.row_pids.iter().any(|rw| rw.contains(&pid)) {
+                Some(line(r(b * 0.94), 1.45))
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 

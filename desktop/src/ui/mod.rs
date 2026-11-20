@@ -43,6 +43,9 @@ pub struct V<'a> {
     /// The writer's caret line in window points, as last drawn, read only while a toast shows
     /// (`editor::doc_scroll`): reading it runs the view again at each caret move.
     pub caret: Option<[f32; 4]>,
+    /// The document viewport's rect in window points, read alongside `caret` while an editor key
+    /// awaits a smooth reveal over a visible foot band (`reader::caret_reveal`).
+    pub caret_view: Option<[f32; 4]>,
     /// The current find match's highlight where the page lays it out, unscrolled, in either
     /// mode, read only while a toast shows with find open (`App::band_laid_out`).
     pub find_at: Option<[f32; 4]>,
@@ -133,9 +136,10 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     s.view_w.set(vw);
     map_page(s);
     let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
+    let caret_view = (caret.is_some() && s.reader.reveal.awaiting_caret().is_some()).then(|| cx.layout(crate::reader::SCROLL)).flatten();
     let find_at = (s.foot_shows() && s.find_query().is_some()).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
-    let place_at = s.reader.find.place.and_then(|p| Some((p.n, cx.layout(&crate::reader::place_key(p.n))?, cx.layout(crate::reader::SCROLL)?)));
-    let v = V { s, p, dark, vw, vh, trailing, caret, find_at, place_at };
+    let place_at = s.reader.reveal.place_n().and_then(|n| Some((n, cx.layout(&crate::reader::place_key(n))?, cx.layout(crate::reader::SCROLL)?)));
+    let v = V { s, p, dark, vw, vh, trailing, caret, caret_view, find_at, place_at };
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);
@@ -174,7 +178,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     if let Some(n) = s.notice.as_deref().filter(|_| !v.is_vault()) {
         root = root.child(reader::notice(v, n));
     }
-    root = root.children(reader::find_placed(v));
+    root = root.children(reader::find_placed(v)).children(reader::caret_reveal(v));
     root = root.children(layer::layers(v));
     if s.layer_swap {
         // The palette giving way to Settings: the two cards never show together.

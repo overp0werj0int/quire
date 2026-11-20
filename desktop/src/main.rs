@@ -23,6 +23,7 @@ mod highlight;
 mod motion;
 mod page;
 mod reader;
+mod reveal;
 mod writer;
 mod writer_app;
 mod md;
@@ -7574,6 +7575,136 @@ mod layer_matrix_tests {
                 assert!((last - mid).abs() < 1.0, "{w}: step {i} rests the match at {last}, the view's middle is {mid}");
             }
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// REVEALMOD: quoted-heading far find matches at 520×480 centre by their actual heading line
+    /// box (<= 1 pt off centre) in one move, with no post-arrival correction.
+    #[test]
+    fn a_far_quoted_heading_find_match_centres_in_one_move() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-farquote-{}", std::process::id()));
+        let text: String = (0..240)
+            .map(|i| match i {
+                5 => "needle at start.\n\n".to_string(),
+                120 => "> # Quoted needle heading\n\n".to_string(),
+                210 => "> ## Another needle subhead\n\n".to_string(),
+                _ => format!("Line {i} of the note.\n\n"),
+            })
+            .collect();
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((520.0, 480.0), 1.0);
+        rt.update(|s, tx| {
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("needle");
+            s.find_changed(tx);
+        });
+        glide(&mut rt);
+        glide(&mut rt);
+        for (i, forward) in [true, true, false].into_iter().enumerate() {
+            rt.update(|s, tx| s.find_step(forward, tx));
+            let mut seen = vec![];
+            for _ in 0..40 {
+                rt.frame(DT);
+                if let Some((_, y)) = rt.find(crate::reader::FIND_CUR) {
+                    seen.push(y);
+                }
+            }
+            let page = rt.presented(crate::reader::SCROLL).unwrap().0;
+            let mid = page[1] + page[3] / 2.0;
+            let last = *seen.last().expect("the match is drawn");
+            assert!(seen.iter().all(|y| (y - last).abs() < 0.5), "step {i} drew quoted heading match at {seen:?}, not in one place");
+            assert!((last - mid).abs() <= 1.0, "step {i} rested quoted heading match at {last}, view middle is {mid}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// REVEALMOD: M2 (toast just before wheel notches never reverses or drops swipe distance),
+    /// M3 (deferred caret lift after swipe + toast glides smoothly at <= 24 pt/frame on next key),
+    /// and post-typing Save (Enter then Ctrl+S 0.05 s later lifts the caret cleanly above band).
+    #[test]
+    fn reveal_controller_handles_m2_m3_and_post_typing_save() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-revealmod-{}", std::process::id()));
+        let rect = |rt: &Runtime<App>, k: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).map(|e| e.rect);
+        let offset = |rt: &mut Runtime<App>| {
+            let mut at = 0.0;
+            rt.update_if(|s, _| {
+                at = s.reader.scroll.get()[0];
+                false
+            });
+            at
+        };
+        let text: String = (0..200).map(|i| format!("Line {i} of the note.\n\n")).collect();
+
+        // M2: Ctrl+End, Ctrl+S, then two notched +120 wheel events starting 1 frame later.
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        rt.key(KeyEvent { key: Key::End, mods: ctrl(false) });
+        glide(&mut rt);
+        let notch = || rune::WheelEvent::new(0.0, 120.0).at(1024.0, 350.0).precise(false).notch(true);
+        let start = offset(&mut rt);
+        let mut at = vec![start];
+        for i in 0..60 {
+            match i {
+                0 => rt.key(KeyEvent { key: Key::Command('s'), mods: ctrl(false) }),
+                1 | 4 => rt.wheel_event(notch()),
+                _ => {}
+            }
+            rt.frame(DT);
+            at.push(offset(&mut rt));
+        }
+        let back = at.windows(2).map(|w| w[1] - w[0]).fold(0.0f32, f32::max);
+        let net = start - at[at.len() - 1];
+        assert!(back < 3.0, "M2: toast reversed swipe by {back} pt");
+        assert!(net >= 225.0, "M2: full swipe distance lost: {net} pt of 240");
+
+        // M3: Ctrl+End, +60 wheel, Ctrl+S, then Right glides smoothly (<= 24 pt/frame).
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        rt.key(KeyEvent { key: Key::End, mods: ctrl(false) });
+        glide(&mut rt);
+        rt.wheel_event(rune::WheelEvent::new(0.0, 60.0).at(700.0, 400.0).precise(false).notch(true));
+        for _ in 0..2 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Command('s'), mods: ctrl(false) });
+        glide(&mut rt);
+        let mut last = offset(&mut rt);
+        let mut max_step = 0.0f32;
+        rt.key(KeyEvent { key: Key::Right, mods: Mods::default() });
+        for _ in 0..40 {
+            rt.frame(DT);
+            let now = offset(&mut rt);
+            max_step = max_step.max((now - last).abs());
+            last = now;
+        }
+        assert!(max_step <= 24.0, "M3: deferred caret reveal jumped {max_step} pt in one frame");
+        let band = rect(&rt, "toast-band").expect("M3: toast band shows");
+        let caret = rect(&rt, "caret-at").expect("M3: caret shows");
+        assert!(caret[1] + caret[3] <= band[1] + 2.0, "M3: caret {caret:?} stayed under band {band:?}");
+
+        // Post-typing Save: Enter at EOF then Ctrl+S 3 frames (~0.05 s) later lifts caret above band.
+        let (mut rt, _) = crate::bench::open(&dir, &text, Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.focus_editor(tx));
+        rt.key(KeyEvent { key: Key::End, mods: ctrl(false) });
+        glide(&mut rt);
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Command('s'), mods: ctrl(false) });
+        glide(&mut rt);
+        let band = rect(&rt, "toast-band").expect("post-type Save: toast band shows");
+        let caret = rect(&rt, "caret-at").expect("post-type Save: caret shows");
+        assert!(caret[1] + caret[3] <= band[1] + 2.0, "post-type Save: caret {caret:?} stayed under band {band:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
