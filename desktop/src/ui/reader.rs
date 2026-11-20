@@ -27,9 +27,31 @@ pub const FIND_RIGHT: f32 = 16.0;
 /// Bottom cushion below the find bar inside the top Find band when no toolbar shows.
 pub(super) const FIND_BACKING_PAD: f32 = 8.0;
 
+/// Total height of the top Find header slot for a given note-area width when Find is open
+/// without a formatting toolbar (`FINDMODEL`, `FINDSTATE`).
+pub(crate) fn find_slot_h_for_width(doc_w: f32) -> f32 {
+    let narrow = doc_w <= super::editor::NARROW_FIND_MAX;
+    let top = if narrow { 8.0 } else { super::editor::TOOLBAR_TOP };
+    let h = if narrow { super::editor::FIND_NARROW_H } else { FIND_H };
+    top + h + FIND_BACKING_PAD
+}
+
+/// Total height of the top Find header slot for `s`'s current note-area width, used by
+/// scroll-anchor compensation when toggling Find open or closed (`FINDSTATE`).
+pub(crate) fn find_slot_h_for_app(s: &App) -> f32 {
+    let width = s.reader.scroll.get()[3];
+    let doc_w = if width > 0.0 {
+        width
+    } else {
+        let (left, right) = s.docked();
+        s.view_w.get() - if left { super::sidebar::DOCKED_W } else { 0.0 } - if right { super::outline::PANEL_W } else { 0.0 }
+    };
+    find_slot_h_for_width(doc_w)
+}
+
 /// Total height of the top Find header slot when Find is open without a formatting toolbar.
 pub(super) fn find_backing_h(v: V) -> f32 {
-    super::editor::find_top(v) + super::editor::find_h(v) + FIND_BACKING_PAD
+    find_slot_h_for_width(super::editor::doc_width(v))
 }
 
 /// Full-width page-coloured top slot placed in flow above `doc-scroll` whenever Find is open
@@ -60,17 +82,17 @@ pub fn find_bar(v: V) -> El {
     if !f.open {
         return el();
     }
-    let n = s.find_count();
-    let (count, tone) = match (f.q.text.is_empty(), n) {
-        (true, _) => (String::new(), quiet.faint),
-        (false, 0) => ("No matches".to_string(), c.red),
-        (false, n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint),
+    let state = s.find_state();
+    let (count, tone, steppers_enabled) = match state {
+        crate::reader::FindState::Empty => (String::new(), quiet.faint, false),
+        crate::reader::FindState::Pending => (String::new(), quiet.faint, true),
+        crate::reader::FindState::NoMatches => ("No matches".to_string(), c.red, false),
+        crate::reader::FindState::Matches(n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint, true),
     };
     let preset = s.preset();
     let tip = |name: &str, id: &str| keymap::tip(preset, name, id);
     let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
     let (_, _, rc) = super::focus_ring(v.p);
-    let no_matches = !f.q.text.is_empty() && n == 0;
     let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, enabled: bool, run: fn(&mut App, &mut Tx)| {
         if !enabled {
             return row()
@@ -139,8 +161,8 @@ pub fn find_bar(v: V) -> El {
                     .gap(8.0)
                     .center_y()
                     .preserve_focus_on_press(true)
-                    .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), !no_matches, |s, tx| s.find_step(false, tx)))
-                    .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), !no_matches, |s, tx| s.find_step(true, tx)))
+                    .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), steppers_enabled, |s, tx| s.find_step(false, tx)))
+                    .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), steppers_enabled, |s, tx| s.find_step(true, tx)))
                     .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), true, |s, tx| s.close_find(tx))),
             ),
     )

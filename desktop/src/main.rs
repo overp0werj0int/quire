@@ -2326,7 +2326,12 @@ mod a11y_tests {
         let dir = std::env::temp_dir().join(format!("quire-kbda11y-{}", std::process::id()));
         let (mut rt, _) = crate::bench::open(&dir, "# Hello\n\nBody text.\n", crate::app::Mode::Source);
         rt.on_key = Some(crate::keys::on_key);
-        rt.update(|s, tx| s.writer_find(tx));
+        rt.update(|s, tx| {
+            s.writer_find(tx);
+            s.reader.find.q = rune::TextEdit::new("Hello");
+            s.reader.find.q.focused = true;
+            s.find_changed(tx);
+        });
         for _ in 0..8 {
             rt.frame(1.0 / 60.0);
         }
@@ -3053,6 +3058,159 @@ mod writer_chrome_tests {
             }
             assert!(shown(&rt) < 0.01, "{mode:?}: reduced-motion thumb snaps to 0.0 after 700 ms: {}", shown(&rt));
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// FINDSTATE: empty Find disables steppers (Tab -> find-close), pending Preview debounce
+    /// keeps steppers enabled (fast Tab -> find-prev, flushing on step), Ctrl+F preserves scroll
+    /// anchor when scrolled in Preview/toolbar-hidden Source (and keeps offset 0 unscrolled), and
+    /// Preview offscreen toast-Find centers on the free-room midpoint (`RD-104`).
+    #[test]
+    fn findstate_pending_empty_anchor_and_toast_centering() {
+        use rune::{Key, KeyEvent, Mods};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findstate-{}", std::process::id()));
+        let mut md = String::from("# Anchor Heading\n\n");
+        for i in 1..36 {
+            md.push_str(&format!("Paragraph {i:02} has ordinary prose lines for scroll stability testing.\n\n"));
+        }
+        md.push_str("Special target needle sits well below the initial viewport.\n\n");
+        for i in 36..55 {
+            md.push_str(&format!("Trailing paragraph {i:02} keeps plenty of scroll room below.\n\n"));
+        }
+        let focused_key = |rt: &rune::Runtime<crate::app::App>| {
+            rt.elements().into_iter().find(|e| !e.exiting && e.focused).and_then(|e| e.key)
+        };
+        let tab = KeyEvent { key: Key::Tab, mods: Mods::default() };
+
+        // 1. Empty Find disables find-prev/find-next in both Preview and Source (Tab -> find-close).
+        for mode in [crate::app::Mode::Preview, crate::app::Mode::Source] {
+            let (mut rt, _) = open(&dir, &md, mode);
+            rt.on_key = Some(crate::keys::on_key);
+            rt.set_viewport((520.0, 400.0), 1.0);
+            rt.update(|s, tx| s.open_find(tx));
+            for _ in 0..6 {
+                rt.frame(DT);
+            }
+            let els = rt.elements();
+            for k in ["find-prev", "find-next"] {
+                let e = els.iter().find(|e| !e.exiting && e.key.as_deref() == Some(k)).unwrap();
+                assert!(!e.focusable, "{mode:?}: empty Find {k} must be disabled/non-focusable");
+            }
+            rt.key(tab.clone());
+            for _ in 0..6 {
+                rt.frame(DT);
+            }
+            assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "{mode:?}: empty Find Tab jumps to find-close");
+        }
+
+        // 2. Fast Tab during Preview's 40 ms debounce lands on find-prev, never shows "No matches",
+        //    and stepping while pending flushes immediately.
+        let (mut rt, _) = open(&dir, &md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((520.0, 400.0), 1.0);
+        rt.update(|s, tx| s.open_find(tx));
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Text("n".into()), mods: Mods::default() });
+        rt.frame(DT); // ~16.7 ms < 40 ms debounce
+        let fc_pending = rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("find-count")).and_then(|e| e.text).unwrap_or_default();
+        assert!(fc_pending.is_empty(), "pending Preview query must not show premature No matches: {fc_pending:?}");
+        rt.key(tab.clone());
+        rt.frame(DT);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-prev"), "fast Tab during debounce must land on find-prev");
+        // Pressing Enter while still pending flushes search immediately and stays on find-prev.
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        let mut flushed = false;
+        rt.update_if(|s, _| {
+            flushed = s.reader.find.searched == "n" && s.reader.find.due.is_none();
+            false
+        });
+        assert!(flushed, "stepping while pending flushes searched query immediately");
+
+        // 3. Ctrl+F open & close while scrolled preserves visible paragraph screen y; offset 0 stays 0.
+        let (mut rt, _) = open(&dir, &md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        // Unscrolled: offset remains 0 when Find opens.
+        rt.update(|s, tx| s.open_find(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let mut off0 = 999.0;
+        rt.update_if(|s, _| {
+            off0 = s.reader.scroll.get()[0];
+            false
+        });
+        assert!(off0 <= 0.5, "unscrolled Ctrl+F keeps offset 0: {off0}");
+        rt.update(|s, tx| s.close_find(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        // Scrolled: opening and closing Find keeps visible paragraph stationary.
+        let (x, y) = rt.find("doc-scroll").unwrap();
+        rt.pointer_move(x, y);
+        rt.wheel(x, y, -320.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let p_before = rt
+            .elements()
+            .into_iter()
+            .find(|e| !e.exiting && e.text.as_deref().is_some_and(|t| t.starts_with("Paragraph ")) && e.rect[1] >= 220.0 && e.rect[1] <= 500.0)
+            .expect("visible paragraph before Ctrl+F");
+        rt.update(|s, tx| s.open_find(tx));
+        for _ in 0..12 {
+            rt.frame(DT);
+        }
+        let p_open = rt.elements().into_iter().find(|e| !e.exiting && e.text == p_before.text).expect("paragraph after Ctrl+F");
+        let dy_open = (p_open.rect[1] - p_before.rect[1]).abs();
+        assert!(dy_open <= 2.0, "opening Ctrl+F shifted visible paragraph by {dy_open:.1}pt");
+        rt.update(|s, tx| s.close_find(tx));
+        for _ in 0..12 {
+            rt.frame(DT);
+        }
+        let p_close = rt.elements().into_iter().find(|e| !e.exiting && e.text == p_before.text).expect("paragraph after close_find");
+        let dy_close = (p_close.rect[1] - p_before.rect[1]).abs();
+        assert!(dy_close <= 2.0, "closing Find shifted visible paragraph by {dy_close:.1}pt");
+
+        // 4. Offscreen Preview Find with an active toast centers on the RD-104 free-room midpoint.
+        let (mut rt, _) = open(&dir, &md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((520.0, 400.0), 1.0);
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        rt.update(|s, tx| {
+            s.open_find(tx);
+            s.copy_all(tx);
+        });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update(|s, tx| {
+            s.reader.find.q = rune::TextEdit::new("needle");
+            s.find_changed(tx);
+        });
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let ds = els.iter().find(|e| !e.exiting && e.key.as_deref() == Some("doc-scroll")).expect("doc-scroll");
+        let tb = els.iter().find(|e| !e.exiting && e.key.as_deref() == Some("toast-band")).expect("toast-band");
+        let hit = els.iter().find(|e| !e.exiting && e.text.as_deref().is_some_and(|t| t.contains("Special target needle"))).expect("needle match");
+        let free_mid = (ds.rect[1] + tb.rect[1]) / 2.0;
+        let hit_mid = hit.rect[1] + hit.rect[3] / 2.0;
+        let err = (hit_mid - free_mid).abs();
+        assert!(err <= 6.0, "toast+Find match mid {hit_mid:.1} vs free mid {free_mid:.1} (err={err:.1}pt)");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

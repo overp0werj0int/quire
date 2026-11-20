@@ -13,7 +13,7 @@ mod panel;
 pub(crate) mod styles;
 mod palette;
 mod preview;
-mod reader;
+pub(crate) mod reader;
 mod settings;
 mod sheet;
 mod settings_mcp;

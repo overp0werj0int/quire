@@ -482,6 +482,16 @@ pub struct Find {
     pub cur: usize,
 }
 
+/// Find bar result state, separating empty, debounced-pending, settled zero-match, and matched
+/// queries so fast Tab never skips valid Preview matches during debounce (`FINDSTATE`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindState {
+    Empty,
+    Pending,
+    NoMatches,
+    Matches(usize),
+}
+
 // ---------- The numbers ----------
 
 /// Three body lines (RD-20): round(B × 1.6 × 3), 67 px at 14 px.
@@ -772,9 +782,11 @@ impl App {
         }
         // Rune's anchor goes where the list's estimates put the row, which mounts it, and places
         // the match's highlight again from its layout before the frame draws, centred by the
-        // matched sub-block's rendered line height (including headings inside quotes).
+        // matched sub-block's rendered line height (including headings inside quotes). Preview's
+        // `doc-scroll` starts strictly below `find_backing` whenever Find is open, so the match
+        // roof inside `doc-scroll` is 0 (`FINDSTATE`, RD-104).
         drop(map);
-        let roof = if self.reader.find.open { crate::ui::editor::FIND_FOOT } else { 0.0 };
+        let roof = 0.0;
         let line_h = crate::page::match_line(self.b(), b, hit.pid);
         let to = crate::reveal::match_to(vh, line_h, roof, band);
         let n = self.reader.reveal.begin_match(self.now.get(), false, true, line_h);
@@ -1066,6 +1078,34 @@ impl App {
 
     // ---------- Find ----------
 
+    /// Whether opening Find inserts an in-flow `find_backing` header slot above `doc-scroll`
+    /// (Preview at any width, or toolbar-hidden Source / zen mode).
+    fn has_find_slot(&self) -> bool {
+        let has_doc = self.screen == crate::app::Screen::Vault && self.active.as_ref().is_some_and(|a| self.files().contains_key(a));
+        if !has_doc || self.active_locked() {
+            return false;
+        }
+        let shows_toolbar = !self.focus && self.mode == Mode::Source && self.settings().toolbar;
+        !shows_toolbar
+    }
+
+    /// Compensates `doc-scroll` by the in-flow `find_backing` height when Find opens or closes
+    /// while scrolled, keeping the visible reading line stationary (`FINDSTATE`). Leaves
+    /// unscrolled `offset == 0` untouched so the top heading stays cleanly below Find.
+    fn compensate_find_slot(&mut self, opening: bool, tx: &mut Tx) {
+        if !self.has_find_slot() {
+            return;
+        }
+        let offset = self.reader.scroll.get()[0];
+        if offset <= 0.5 {
+            return;
+        }
+        let h = crate::ui::reader::find_slot_h_for_app(self);
+        let to = if opening { offset + h } else { (offset - h).max(0.0) };
+        self.reader.glide = None;
+        tx.scroll_to_instant(SCROLL, 0.0, to);
+    }
+
     /// Ctrl+F or `/` (RD-52): open the bar, or select its text when it is open.
     pub fn open_find(&mut self, tx: &mut Tx) {
         if self.active.is_none() || self.active_locked() {
@@ -1073,12 +1113,20 @@ impl App {
         }
         // Find and a drawer never share the page.
         self.close_layers(tx);
+        let was_open = self.reader.find.open;
         let f = &mut self.reader.find;
         f.open = true;
         let n = f.q.text.len();
         f.q.set_selection(0, n);
         f.q.focused = true;
+        let needs_search = !f.q.text.is_empty() && f.q.text != f.searched;
         tx.focus("find-input", false);
+        if !was_open {
+            self.compensate_find_slot(true, tx);
+        }
+        if needs_search {
+            self.find_changed(tx);
+        }
     }
 
     /// The title bar's Find button (RD-34): omarky's header chip toggles the bar.
@@ -1094,6 +1142,7 @@ impl App {
     pub fn close_find(&mut self, tx: &mut Tx) {
         if self.reader.find.open {
             self.drop_find();
+            self.compensate_find_slot(false, tx);
             self.keys_to_note(tx);
         }
     }
@@ -1101,7 +1150,7 @@ impl App {
     /// A layer opens over find: the bar closes and keeps its query for Ctrl+F. In the writer a
     /// selected match gives way to a caret at its start, so typing after the layer closes does
     /// not replace it. Whether find was open.
-    pub(crate) fn hide_find(&mut self) -> bool {
+    pub(crate) fn hide_find(&mut self, tx: &mut Tx) -> bool {
         if !self.reader.find.open {
             return false;
         }
@@ -1117,6 +1166,7 @@ impl App {
         f.open = false;
         f.q.focused = false;
         f.due = None;
+        self.compensate_find_slot(false, tx);
         true
     }
 
@@ -1136,6 +1186,27 @@ impl App {
         Some(f.searched.as_str()).filter(|q| f.open && !q.is_empty())
     }
 
+    /// Whether a non-empty Find query is awaiting Preview debounce settlement (`FINDSTATE`).
+    pub fn find_pending(&self) -> bool {
+        let f = &self.reader.find;
+        !f.q.text.is_empty() && (f.due.is_some() || f.q.text != f.searched)
+    }
+
+    /// Current Find bar result state (`FINDSTATE`).
+    pub fn find_state(&self) -> FindState {
+        let f = &self.reader.find;
+        if f.q.text.is_empty() {
+            FindState::Empty
+        } else if self.find_pending() {
+            FindState::Pending
+        } else {
+            match self.find_count() {
+                0 => FindState::NoMatches,
+                n => FindState::Matches(n),
+            }
+        }
+    }
+
     /// How many matches the find bar counts, in either mode.
     pub fn find_count(&self) -> usize {
         if self.mode == crate::app::Mode::Source { self.source_matches().len() } else { self.find_matches().len() }
@@ -1151,7 +1222,15 @@ impl App {
     pub fn find_changed(&mut self, tx: &mut Tx) {
         if self.mode == crate::app::Mode::Source {
             self.reader.find.searched = self.reader.find.q.text.clone();
+            self.reader.find.due = None;
             return self.source_found();
+        }
+        if self.reader.find.q.text.is_empty() {
+            self.reader.find.searched.clear();
+            self.reader.find.due = None;
+            self.reader.find.cur = 0;
+            self.reader.reveal.clear_find();
+            return;
         }
         let wait = if self.doc().blocks.len() > 400 { 0.12 } else { 0.04 };
         let due = tx.clock() + wait;
@@ -1179,10 +1258,25 @@ impl App {
         true
     }
 
-    /// Enter / n and Shift+Enter / N (RD-58).
+    /// Enter / n and Shift+Enter / N (RD-58). Flushes any pending Preview debounce immediately
+    /// before stepping (`FINDSTATE`).
     pub fn find_step(&mut self, forward: bool, tx: &mut Tx) {
         if self.mode == crate::app::Mode::Source {
             return self.source_step(forward, tx);
+        }
+        if self.reader.find.q.text.is_empty() {
+            return;
+        }
+        if self.find_pending() {
+            let f = &mut self.reader.find;
+            f.searched = f.q.text.clone();
+            f.due = None;
+            let m = self.find_matches();
+            let top = self.top();
+            let first = first_match(&m, top);
+            self.reader.find.cur = if forward { first } else { step(first, m.len(), false) };
+            self.center_match(true, tx);
+            return;
         }
         let n = self.find_matches().len();
         let f = &mut self.reader.find;

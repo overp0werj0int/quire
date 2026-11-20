@@ -232,7 +232,7 @@ impl App {
     /// only a menu, and a field's menu gives focus back to its field. Find closes too, keeping
     /// its query, and the layer gives the keyboard back to the note, not to find's field.
     pub fn open_layer(&mut self, layer: Layer, tx: &mut Tx) {
-        let found = self.hide_find();
+        let found = self.hide_find(tx);
         if found && !self.writing_note() {
             // Find's field had the keyboard; the reader's page takes it back as the layer closes.
             tx.blur();

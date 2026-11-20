@@ -378,9 +378,7 @@ const FIND_FADE_IN: f32 = 12.0;
 const FIND_FADE_OUT: f32 = 40.0;
 
 /// The space above the floating toolbar, at rest and while it sticks.
-const TOOLBAR_TOP: f32 = 10.0;
-/// How far down the view the find bar reaches where no toolbar shows (`match_roof`).
-pub(crate) const FIND_FOOT: f32 = TOOLBAR_TOP + super::reader::FIND_H;
+pub(super) const TOOLBAR_TOP: f32 = 10.0;
 /// From the toolbar to the text.
 const TOOLBAR_GAP: f32 = 24.0;
 /// The height of the floating toolbar: the find bar's, so the two share one row edge to edge.

@@ -753,6 +753,10 @@ impl App {
     /// the line at the preview's top goes to the editor's top (WR-112).
     pub fn switch_mode(&mut self, tx: &mut Tx) {
         tx.clear_text_selection();
+        if self.reader.find.open && self.find_pending() {
+            self.reader.find.searched = self.reader.find.q.text.clone();
+            self.reader.find.due = None;
+        }
         if self.mode == Mode::Source {
             let text = self.active_text();
             let caret = self.edits.get(self.active.as_deref().unwrap_or_default()).map_or(0, |e| e.focus.min(text.len()));
