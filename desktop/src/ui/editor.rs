@@ -284,9 +284,10 @@ pub(super) fn doc_width(v: V) -> f32 {
     v.vw - left - right
 }
 
-/// Below this note-area width (e.g. 520×400), the find bar spans the full usable width so no
-/// line of the page slices beside it, and stacked Source chrome tightens vertically (`NARROWFIND`).
-pub(super) const NARROW_FIND_MAX: f32 = 560.0;
+/// Below this note-area width (`<= 680 pt`, matching `SIDEBAR_DOCK_W`), the find bar spans the
+/// full usable width so no line of the page slices beside it, and stacked Source chrome tightens
+/// vertically (`NARROWFIND`, `FINDPOLISH`).
+pub(super) const NARROW_FIND_MAX: f32 = crate::app::SIDEBAR_DOCK_W;
 pub(super) const FIND_NARROW_H: f32 = 36.0;
 pub(super) const FIND_NARROW_X: f32 = 12.0;
 
@@ -335,7 +336,7 @@ pub(super) fn find_row(v: V) -> bool {
         return false;
     }
     let toolbar_right = source_column(v).gutter + TOOLBAR_X + TOOLBAR_W;
-    toolbar_right + FIND_CLEAR > doc_width(v) - FIND_RIGHT - FIND_W
+    narrow_find(v) || toolbar_right + FIND_CLEAR > doc_width(v) - FIND_RIGHT - FIND_W
 }
 
 /// The least room between the toolbar and a find bar on its row.
@@ -420,6 +421,9 @@ fn toolbar(v: V) -> El {
         .stuck_reveal(8.0);
     let tb_top = toolbar_top(v);
     let tb_h = toolbar_h(v);
+    // Align the narrow Source toolbar's left edge with the full-width Find bar (`FIND_NARROW_X`)
+    // when both stack, eliminating asymmetric stair-stepping (`FINDPOLISH`).
+    let tb_ml = if compact_toolbar(v) { FIND_NARROW_X - source_column(v).gutter } else { TOOLBAR_X };
     // With the find bar on its own row, the stuck toolbar hangs a band of the page's colour
     // from the view's top edge to that row's foot, the width of the note area, which eases out
     // across the row's foot. Text scrolling up goes under the band, never beside the bar.
@@ -434,7 +438,7 @@ fn toolbar(v: V) -> El {
             (y / h, p.bg.alpha(1.0 - t * t * (3.0 - 2.0 * t)))
         }));
         el().key("find-band")
-            .pin(Some(-(source_column(v).gutter + TOOLBAR_X)), Some(-tb_top), None, None)
+            .pin(Some(-(source_column(v).gutter + tb_ml)), Some(-tb_top), None, None)
             .size(doc_width(v), h)
             .linear_gradient(std::f32::consts::PI, stops)
             .inert()
@@ -446,8 +450,8 @@ fn toolbar(v: V) -> El {
         .h(tb_h)
         .mb(if compact_toolbar(v) { 12.0 } else { 64.0 - TOOLBAR_TOP - TOOLBAR_H })
         // The first icon lines up with the text: 4 points of padding, then the 6 points from
-        // a button's edge to its icon.
-        .ml(TOOLBAR_X)
+        // a button's edge to its icon (or with `FIND_NARROW_X` while stacked above narrow Find).
+        .ml(tb_ml)
         .px(4.0)
         .gap(2.0)
         .center_y()

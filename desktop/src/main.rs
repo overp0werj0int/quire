@@ -1187,6 +1187,81 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// FINDPOLISH: reading progress stays painted above `find-narrow-band`, 561×400 and 640×480
+    /// Preview Find span full width without peeking text, Find steppers sit on a 24×24 pt grid,
+    /// and narrow Source toolbar aligns its left edge with `find-bar`.
+    #[test]
+    fn findpolish_progress_breakpoint_steppers_and_aligned_toolbar() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findpolish-{}", std::process::id()));
+        let md = format!("# Title\n\n{}", "Paragraph of readable prose for Find polish checks.\n\n".repeat(45));
+        let mut rt = vault(&dir, &[("note.md", md.as_str())], crate::watch::EVERY);
+        // 1. 520×400 scrolled Preview: progress quad paints after find-narrow-band; steppers are 24×24.
+        rt.set_viewport((520.0, 400.0), 1.0);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Preview;
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("prose");
+            s.find_changed(tx);
+        });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.wheel(260.0, 200.0, -240.0);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let get = |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("{k}")).rect;
+        let prog = get("progress");
+        let band = get("find-narrow-band");
+        assert!(prog[2] > 10.0 && prog[3] >= 1.5, "scrolled progress bar has width: {prog:?}");
+        let mut acc = rune::Color::BLACK;
+        rt.update_if(|s, _| {
+            acc = crate::roles::Roles::new(s.palette(false)).accent;
+            false
+        });
+        let near = |a: [f32; 4], b: [f32; 4]| (0..4).all(|i| (a[i] - b[i]).abs() < 0.02);
+        let prog_idx = rt.instances.iter().rposition(|q| near(q.fill, [acc.r, acc.g, acc.b, acc.a]) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
+        let band_idx = rt.instances.iter().rposition(|q| (q.rect[1] - band[1]).abs() < 1.0 && (q.rect[3] - band[3]).abs() < 1.0);
+        assert!(prog_idx.is_some() && band_idx.is_some() && prog_idx.unwrap() > band_idx.unwrap(), "progress ({prog_idx:?}) must paint above find-narrow-band ({band_idx:?})");
+        for k in ["find-prev", "find-next", "find-close"] {
+            let r = get(k);
+            assert!((r[2] - 24.0).abs() <= 0.5 && (r[3] - 24.0).abs() <= 0.5, "{k} must be 24×24 pt: {r:?}");
+        }
+        // 2. 561×400 and 640×480 scrolled Preview: full-width Find with zero peeking text left of bar.
+        for (w, h) in [(561.0, 400.0), (640.0, 480.0)] {
+            rt.set_viewport((w, h), 1.0);
+            for _ in 0..15 {
+                rt.frame(DT);
+            }
+            let els = rt.elements();
+            let fb = els.iter().find(|e| e.key.as_deref() == Some("find-bar") && !e.exiting).unwrap().rect;
+            assert!(fb[0] <= 14.0 && fb[2] >= w - 28.0, "at {w}x{h} narrow find spans width: {fb:?}");
+            for e in &els {
+                if !e.exiting && e.text.is_some() && e.path.contains("/preview/") {
+                    let r = e.rect;
+                    assert!(!(r[1] < fb[1] + fb[3] - 1.0 && r[1] + r[3] > fb[1] + 1.0 && r[0] < fb[0] - 2.0), "at {w}x{h} no peeking text left of find-bar: {:?} {r:?} vs {fb:?}", e.text);
+                }
+            }
+        }
+        // 3. 520×400 Source mode: toolbar left edge aligns with find-bar within <= 2 pt.
+        rt.set_viewport((520.0, 400.0), 1.0);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            s.writer_find(tx);
+        });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let tb = els.iter().find(|e| e.key.as_deref() == Some("toolbar") && !e.exiting).unwrap().rect;
+        let fb = els.iter().find(|e| e.key.as_deref() == Some("find-bar") && !e.exiting).unwrap().rect;
+        assert!((tb[0] - fb[0]).abs() <= 2.0, "narrow Source toolbar ({tb:?}) aligns left edge with find-bar ({fb:?})");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-122: with the find bar on its own row, the band over the text eases out across the
     /// bar's foot to 40 pt under it, and the caret moving up stays below the fade.
     #[test]

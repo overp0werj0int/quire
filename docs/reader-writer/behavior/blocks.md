@@ -157,7 +157,7 @@ or footnote. (`components/blocks/ListBlock.qml:16`)
 ## 15. Shared small parts
 
 - **BLK-99** [in] [verify: geometry, golden] A pill is mono at round(B × 0.76) [11], 2 × size [22] tall, fully rounded, and as wide as its content plus round(size × 1.3). Neutral pills have raised fill, a hairline border, dim text and a faint icon. Toned pills have fill alpha(tone, light 0.12 / dark 0.14), border alpha(tone, light 0.4 / dark 0.35), text mix(tone, text, light 0.25 / dark 0.1) and the icon in the tone. (`components/Pill.qml:5-39`)
-- **BLK-100** [in] [verify: geometry, script] A chip button is 2 × its size tall, and as wide as its content plus round(size × 1.3) with a label or round(size × 1.1) without. Its corner radius is 3 px, fixed (omarky's max(3, min(shell rounding, height / 3)) with no shell rounding). It is transparent at rest. On hover or when active it gets the hover fill and a 1 px hairline border, and its icon and label turn from their tint to text. Colour changes take 120 ms. (`components/ChipButton.qml:13-37`)
+- **BLK-100** [adapted: 0005] [verify: geometry, script] A chip button is 2 × its size tall; an icon-only chip is square (`2 × size`), and a labelled chip is as wide as its content plus round(size × 1.3). Its corner radius is 3 px, fixed (omarky's max(3, min(shell rounding, height / 3)) with no shell rounding). It is transparent at rest. On hover or when active it gets the hover fill and a 1 px hairline border, and its icon and label turn from their tint to text. Colour changes take 120 ms. omarky pads icon-only chips by round(size × 1.1). (`components/ChipButton.qml:13-37`)
 
 ## Open questions
 

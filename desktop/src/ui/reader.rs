@@ -48,8 +48,8 @@ pub fn find_backing(v: V) -> Option<El> {
 
 /// The find bar (RD-52 to RD-61): 380 by 40, 16 px from the note area's right edge, 10 px
 /// under its top, or on its own row under the formatting toolbar when it does not fit beside
-/// it (`editor::find_top`). At narrow note-area widths (`<= 560 px`), spans the full usable
-/// width with 12 px side margins (`NARROWFIND`).
+/// it (`editor::find_top`). At narrow note-area widths (`<= 680 px`), spans the full usable
+/// width with 12 px side margins (`FINDPOLISH`).
 pub fn find_bar(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
@@ -534,10 +534,11 @@ pub(super) fn notice(v: V, msg: &str) -> El {
 }
 
 /// The progress line (RD-37, RD-38, WR-178): 2 px of accent along the top of the note area,
-/// one line for both modes.
+/// one line for both modes. Paint order sits above `find-narrow-band` (35) so reading progress
+/// stays visible when narrow Find is open (`FINDPOLISH`).
 pub fn progress(v: V) -> El {
     let c = Roles::new(v.p);
-    el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).paint_order(30).live_rect(&v.s.reader.bar)
+    el().key("progress").pin(Some(0.0), Some(0.0), None, None).h(2.0).w(0.0).fill(c.accent).paint_order(38).live_rect(&v.s.reader.bar)
 }
 
 /// The width the "reloaded" mark takes, its 8 px of margin included.

@@ -32,7 +32,7 @@ impl Chip<'_> {
     pub fn el(self, c: &Roles) -> El {
         let s = self.size;
         let h = r(s * 2.0);
-        let pad = r(s * if self.label.is_empty() { 1.1 } else { 1.3 });
+        let pad = if self.label.is_empty() { 0.0 } else { r(s * 1.3) };
         let ink = if self.active { c.text } else { self.tint };
         let mut out = row()
             .key(self.key)
@@ -47,7 +47,7 @@ impl Chip<'_> {
             .role("button")
             .child(icon(self.glyph, self.icon).color(ink).group_color(c.text));
         if self.label.is_empty() {
-            out = out.w(s + pad);
+            out = out.w(h);
         } else {
             let style = TextStyle::new(s, 400.0).family(self.mono).lh(h);
             out = out.child(text(self.label.to_string()).font(style).color(ink).group_color(c.text));
