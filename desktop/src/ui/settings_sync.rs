@@ -8,7 +8,6 @@ use super::settings::{block, body_width, desc_text, row_};
 use super::widgets::{Control, label, primary_button, seg, settings_seg, switch};
 use crate::app::{App, SyncStatus};
 use super::styles::{literal, sans};
-use crate::theme;
 
 pub struct Provider {
     pub id: &'static str,
@@ -423,7 +422,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                             .key(fk.clone())
                             .w_full()
                             .color(p.ink)
-                            .placeholder(fd.ph, theme::hex("#9a9184"))
+                            .placeholder(fd.ph, super::styles::placeholder_ink(p))
                             .caret(p.ink, p.sel)
                             .on_edit(move |s: &mut App| s.field(&fk, || init.clone()))
                             .on_submit(|s: &mut App, _| {
@@ -474,7 +473,7 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
                 .min_w(0.0)
                 .px(10.0)
                 .color(p.ink)
-                .placeholder(ph, theme::hex("#9a9184"))
+                .placeholder(ph, super::styles::placeholder_ink(p))
                 .caret(p.ink, p.sel)
                 .on_edit(move |s: &mut App| s.field(&fk_edit, || init.clone()))
                 .on_input_change(move |s: &mut App, _| {

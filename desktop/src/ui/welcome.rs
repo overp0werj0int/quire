@@ -73,7 +73,7 @@ pub fn welcome(v: V) -> El {
                                 .single_line()
                                 .grow(1.0)
                                 .color(p.ink)
-                                .placeholder("My notes", crate::theme::hex("#9a9184"))
+                                .placeholder("My notes", super::styles::placeholder_ink(p))
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.creating.get_or_insert_with(|| rune::TextEdit::new("")))
                                 .on_submit(|s: &mut App, tx| s.create_vault(tx))

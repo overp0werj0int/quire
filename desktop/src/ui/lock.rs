@@ -33,7 +33,7 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
                 .min_w(0.0)
                 .px(10.0)
                 .color(p.ink)
-                .placeholder(ph, theme::hex("#9a9184"))
+                .placeholder(ph, super::styles::placeholder_ink(p))
                 .caret(p.ink, p.sel)
                 .label(ph)
                 .on_edit(move |s: &mut App| s.field(key, String::new))

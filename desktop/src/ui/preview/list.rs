@@ -34,7 +34,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     for it in &l.items {
         let done = it.task == Task::Done;
         let marker = match it.task {
-            Task::None if l.ordered => text(format!("{}.", it.number)).font(numbers).color(c.faint).align(rune::Align::End).w(mw).pin(Some(mx), Some(0.0), None, None),
+            Task::None if l.ordered => text(format!("{}.", it.number)).font(numbers).color(c.dim).align(rune::Align::End).w(mw).pin(Some(mx), Some(0.0), None, None),
             Task::None => match l.depth % 3 {
                 0 => {
                     let d = r(t * 0.3);

@@ -469,11 +469,11 @@ pub(super) fn crumb(v: V) -> El {
     let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y();
     if !dir.is_empty() {
         let folder = match &fit {
-            Some((folder, _)) => text(folder.clone()).font(style).color(p.mute).truncate_head().shrink().min_w(0.0),
+            Some((folder, _)) => text(folder.clone()).font(style).color(quiet.faint).truncate_head().shrink().min_w(0.0),
             None => {
                 let whole = rune::text::measure(&dir, &[], style, None).0;
                 let least = rune::text::measure("…", &[], style, None).0.min(whole);
-                text(dir.clone()).font(style).color(p.mute).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)
+                text(dir.clone()).font(style).color(quiet.faint).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)
             }
         };
         r = r.child(folder).child(label("/", style, quiet.faint));

@@ -16,7 +16,6 @@ use crate::folders::{Folder, MenuOn, row_key};
 use crate::layer::MenuOf;
 use crate::md;
 use crate::roles::Roles;
-use crate::theme;
 
 /// The size of a folder's "+": the smallest pointer target. The drawn icon stays 14 pt.
 const TARGET: f32 = 24.0;
@@ -227,7 +226,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                     .single_line()
                     .w_full()
                     .color(p.ink)
-                    .placeholder("Folder name", theme::hex("#9a9184"))
+                    .placeholder("Folder name", c.faint)
                     .caret(p.ink, p.sel)
                     .label("New folder name")
                     .on_edit(|s: &mut App| &mut s.new_folder.get_or_insert_with(|| crate::folders::NewFolder { parent: String::new(), edit: rune::TextEdit::new("") }).edit)

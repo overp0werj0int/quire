@@ -30,21 +30,22 @@ pub const FIND_RIGHT: f32 = 16.0;
 pub fn find_bar(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
+    let quiet = Roles::panel(v.p);
     let f = &s.reader.find;
     if !f.open {
         return el();
     }
     let n = s.find_count();
     let (count, tone) = match (f.q.text.is_empty(), n) {
-        (true, _) => (String::new(), c.faint),
+        (true, _) => (String::new(), quiet.faint),
         (false, 0) => ("No matches".to_string(), c.red),
-        (false, n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), c.faint),
+        (false, n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint),
     };
     let preset = s.preset();
     let tip = |name: &str, id: &str| keymap::tip(preset, name, id);
     let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
     let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, run: fn(&mut App, &mut Tx)| {
-        Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: c.faint, active: false, fill: None }.el(&c).label(help.clone()).help(help).on_press_tx(run)
+        Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: quiet.faint, active: false, fill: None }.el(&c).label(help.clone()).help(help).on_press_tx(run)
     };
     let field = text_input(&f.q, sans(13.0, 400.0))
         .key("find-input")
@@ -52,7 +53,7 @@ pub fn find_bar(v: V) -> El {
         .grow(1.0)
         .min_w(0.0)
         .color(c.text)
-        .placeholder("Find in note", c.ghost)
+        .placeholder("Find in note", quiet.faint)
         .caret(c.text, c.selection)
         .on_edit(|s: &mut App| &mut s.reader.find.q)
         .on_input_change(|s: &mut App, tx| s.find_changed(tx))
@@ -70,7 +71,7 @@ pub fn find_bar(v: V) -> El {
                 .pr(6.0)
                 .gap(8.0)
                 .center_y()
-                .child(icon(&SEARCH, 14.0).color(c.faint))
+                .child(icon(&SEARCH, 14.0).color(quiet.faint))
                 .child(field)
                 .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
                 .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))

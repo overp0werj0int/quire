@@ -128,6 +128,12 @@ pub fn caption_ink(p: &Pal) -> Color {
     Roles::panel(p).faint
 }
 
+/// The ink of text field placeholders across panels, bars and dialogs: reaches 4.5:1 on the
+/// window, sidebar and card surfaces in every theme.
+pub fn placeholder_ink(p: &Pal) -> Color {
+    Roles::panel(p).faint
+}
+
 /// The note's own type in `family`, not chrome: the editor's field and Settings' font samples.
 pub fn note(family: Family, size: f32, lh: f32) -> TextStyle {
     TextStyle::new(size, 400.0).family(family).lh(lh)

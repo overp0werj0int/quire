@@ -420,4 +420,42 @@ mod tests {
         assert_eq!(hx(r.code_dim), hx(mix(r.text, r.bg, 0.3)));
         assert_eq!(hx(r.code_faint), hx(mix(r.text, r.bg, 0.52)));
     }
+
+    /// CONTRAST: titlebar crumb, find placeholder/count, lock/dialog placeholders (>=4.5:1)
+    /// and preview ordered-list numerals (>=3.0:1) read across every built-in theme, and no
+    /// hardcoded `#9a9184` placeholder remains in `desktop/src/ui/`.
+    #[test]
+    fn secondary_ui_and_list_numeral_contrast() {
+        let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
+        let mut pals: Vec<(&str, &Pal)> = crate::theme::THEMES.iter().map(|t| (t.id, theme_pal(t.id, t.dark))).collect();
+        pals.push(("omarchy", &omarchy));
+        for (id, p) in pals {
+            let panel = Roles::panel(p);
+            let page = Roles::new(p);
+            let ph = crate::ui::styles::placeholder_ink(p);
+            for fill in [p.bg, p.side, page.bg] {
+                assert!(contrast(panel.faint, fill) >= 4.5, "{id}: panel.faint {:.2}:1 on {}", contrast(panel.faint, fill), hx(fill));
+                assert!(contrast(ph, fill) >= 4.5, "{id}: placeholder_ink {:.2}:1 on {}", contrast(ph, fill), hx(fill));
+            }
+            assert!(contrast(page.dim, page.bg) >= 3.0, "{id}: ordered-list numeral (dim) {:.2}:1 on {}", contrast(page.dim, page.bg), hx(page.bg));
+        }
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui");
+        let mut stack = vec![ui];
+        let mut found = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) == Some("rs")
+                    && std::fs::read_to_string(&path).unwrap().to_ascii_lowercase().contains("9a9184")
+                {
+                    found.push(path.display().to_string());
+                }
+            }
+        }
+        assert!(found.is_empty(), "hardcoded #9a9184 found in: {found:?}");
+    }
 }
