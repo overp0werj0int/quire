@@ -1022,6 +1022,9 @@ impl App {
     }
 
     pub fn copy_all(&mut self, tx: &mut Tx) {
+        if self.active.is_none() || self.active_locked() {
+            return;
+        }
         tx.copy(self.active_text().to_string());
         self.toast("Copied the whole note", tx);
     }
@@ -1093,6 +1096,9 @@ impl App {
 
     /// Ctrl+F or `/` (RD-52): open the bar, or select its text when it is open.
     pub fn open_find(&mut self, tx: &mut Tx) {
+        if self.active.is_none() || self.active_locked() {
+            return;
+        }
         // Find and a drawer never share the page.
         self.close_layers(tx);
         let f = &mut self.reader.find;
@@ -1104,7 +1110,11 @@ impl App {
 
     /// The title bar's Find button (RD-34): omarky's header chip toggles the bar.
     pub fn toggle_find(&mut self, tx: &mut Tx) {
-        if self.reader.find.open { self.close_find(tx) } else { self.open_find(tx) }
+        if self.reader.find.open {
+            self.close_find(tx);
+        } else if self.active.is_some() && !self.active_locked() {
+            self.open_find(tx);
+        }
     }
 
     /// Closes find and clears its query. Its field goes away, so the note gets the keys.

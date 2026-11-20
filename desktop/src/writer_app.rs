@@ -304,6 +304,9 @@ impl App {
 
     /// Ctrl+F in the writer: the editor's selection becomes the query (WR-115).
     pub fn writer_find(&mut self, tx: &mut Tx) {
+        if self.active.is_none() || self.active_locked() {
+            return;
+        }
         if let Some(e) = self.cur_edit_opt() {
             let (a, b) = (e.anchor.min(e.focus), e.anchor.max(e.focus));
             let sel = e.text[a..b].to_string();

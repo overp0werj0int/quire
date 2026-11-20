@@ -107,6 +107,7 @@ impl App {
         self.flush_notes();
         self.unlocked.remove(&a);
         self.edits.remove(&a);
+        self.drop_find();
         self.unlock_error = None;
         self.fields.remove("unlock-pass");
     }

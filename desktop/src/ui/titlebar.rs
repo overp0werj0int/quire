@@ -27,6 +27,18 @@ fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help
     toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON)
 }
 
+fn bar_button_disabled(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str) -> El {
+    row()
+        .key(key)
+        .size(BUTTON, BUTTON)
+        .center()
+        .radius(6.0)
+        .role("button")
+        .label(help)
+        .help(help)
+        .child(rune::icon(glyph, ICON).color(p.mute.alpha(0.38)))
+}
+
 /// A title bar button's press, which stays live over a drawer: the drawer closes, then the
 /// button acts, as a window shortcut does over it (`keys::on_key`). The sidebar and outline
 /// toggles answer a drawer through `App::toggle_drawer`.
@@ -115,10 +127,15 @@ fn actions(v: V, mut r: El) -> El {
     // Each shows as on while its feature is (RD-35).
     let preview = v.has_doc() && s.mode == Mode::Preview;
     if preview {
-        let find = tip("Find in note", "reader.find");
-        r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
-        let all = tip("Copy the whole note", "reader.copy-all");
-        r = r.child(bar_button(p, "copy-all", &COPY, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
+        if s.active_locked() {
+            r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
+            r = r.child(bar_button_disabled(p, "copy-all", &COPY, "Unlock note to copy"));
+        } else {
+            let find = tip("Find in note", "reader.find");
+            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
+            let all = tip("Copy the whole note", "reader.copy-all");
+            r = r.child(bar_button(p, "copy-all", &COPY, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
+        }
         let wide = s.wide();
         let (glyph, name) = if wide { (&NARROW, "Use readable width") } else { (&WIDEN, "Use full width") };
         let help = tip(name, "reader.toggle-wide");

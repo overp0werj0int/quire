@@ -1822,6 +1822,44 @@ mod lock_tests {
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn locked_note_gates_find_and_copy_all() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-lockact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (520.0, 400.0), Env { system_dark: false, scale: 1.0 });
+        rt.frame(1.0 / 60.0);
+        let set = |s: &mut crate::app::App, key: &str, v: &str| s.field(key, String::new).replace_text(v.to_string());
+        rt.update(|s, tx| {
+            s.ask_lock(tx);
+            set(s, "lock-pass", "tiger lily");
+            set(s, "lock-repeat", "tiger lily");
+            s.lock_note(tx);
+            s.open_find(tx);
+            assert!(s.reader.find.open, "find opens while unlocked");
+            s.relock();
+            assert!(!s.reader.find.open, "relock closes open find bar");
+            s.mode = crate::app::Mode::Preview;
+            assert!(s.active_locked());
+            s.toggle_find(tx);
+            s.open_find(tx);
+            s.writer_find(tx);
+            s.copy_all(tx);
+            assert!(!s.reader.find.open, "find stays closed while active note is locked");
+            assert!(s.reader.toast.is_none(), "copy_all does not toast while active note is locked");
+        });
+        rt.frame(1.0 / 60.0);
+        let find = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("find")).expect("find button");
+        assert_eq!(find.fill.a, 0.0, "find button stays inactive while locked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

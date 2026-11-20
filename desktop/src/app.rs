@@ -405,6 +405,11 @@ impl App {
         !self.unlocked.contains_key(p) && self.files().get(p).is_some_and(|t| crate::lock::is_locked(t))
     }
 
+    /// The active note is locked and needs its password before it can be read or edited.
+    pub fn active_locked(&self) -> bool {
+        self.active.as_deref().is_some_and(|a| self.note_locked(a))
+    }
+
     /// The note at `p` is locked and open now.
     pub fn note_unlocked(&self, p: &str) -> bool {
         self.unlocked.contains_key(p)
