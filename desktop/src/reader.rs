@@ -55,9 +55,9 @@ pub struct Reader {
     pub map: Rc<RefCell<PageMap>>,
     /// The viewport's offset, scroll range, height and width, from its scroll handler.
     pub scroll: Live<[f32; 4]>,
-    /// The help sheet's scroll viewport [offset, max, height, width], from its scroll handler.
-    pub help_scroll: Live<[f32; 4]>,
-    help_glide: Option<(f32, f64)>,
+    /// The help sheet's scroll viewport state, synchronized between wheel/touchpad scrolling
+    /// (`on_scroll_offset`) and keyboard scrolling (`App::scroll_help`).
+    pub help_scroll: Rc<std::cell::Cell<HelpScroll>>,
     /// When a hand last moved the page, on the clock: the wheel and its glide, a swipe and its
     /// momentum, a drag, the keys. Set by its scroll handler.
     pub hand: Rc<std::cell::Cell<f64>>,
@@ -97,8 +97,7 @@ impl Default for Reader {
             hover: None,
             map: Rc::default(),
             scroll: Live::new([0.0; 4]),
-            help_scroll: Live::new([0.0; 4]),
-            help_glide: None,
+            help_scroll: Rc::new(std::cell::Cell::new(HelpScroll::default())),
             hand: Rc::new(std::cell::Cell::new(f64::NEG_INFINITY)),
             bar: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
@@ -112,6 +111,48 @@ impl Default for Reader {
             positions: HashMap::new(),
             doc: RefCell::new(None),
         }
+    }
+}
+
+/// Live scroll state of the help sheet's viewport (`HELP_SCROLL`), shared between its
+/// `on_scroll_offset` callback and `App::scroll_help` so wheel/touchpad scrolling and keyboard
+/// navigation stay in sync.
+#[derive(Clone, Copy, Default)]
+pub struct HelpScroll {
+    /// `[offset, max, viewport_h, viewport_w]` as last reported by `help-scroll`.
+    pub pos: [f32; 4],
+    /// Active keyboard glide target and clock time; cleared whenever a hand scrolls the sheet.
+    pub glide: Option<(f32, f64)>,
+    /// Clock time and velocity (pt/s) of the most recent hand-driven scroll frame.
+    pub hand_at: f64,
+    pub hand_vel: f32,
+}
+
+impl HelpScroll {
+    pub fn on_offset(&mut self, next: [f32; 4], by_hand: bool, t: f64) {
+        let dy = next[0] - self.pos[0];
+        self.pos = next;
+        if by_hand && dy.abs() > 0.01 {
+            self.glide = None;
+            let dt = (t - self.hand_at) as f32;
+            self.hand_vel = if dt > 0.001 && dt < 0.12 { dy / dt } else { dy * 60.0 };
+            self.hand_at = t;
+        }
+    }
+
+    /// Starting offset for a relative keyboard step `delta` at clock time `now`.
+    pub fn step_from(&self, delta: f32, now: f64) -> f32 {
+        let offset = self.pos[0];
+        let from = glide_from(offset, self.glide, now);
+        if self.glide.is_some() && from != offset {
+            return from;
+        }
+        // Preserve in-flight wheel momentum when stepping in the same direction so a rapid
+        // wheel + key sequence never truncates the wheel ease and settles deeper.
+        if now - self.hand_at < 0.08 && self.hand_vel * delta > 0.0 {
+            return offset + (self.hand_vel * 0.06).clamp(-120.0, 120.0);
+        }
+        offset
     }
 }
 
@@ -1230,8 +1271,7 @@ impl App {
         if self.layer_is(crate::layer::Kind::Help) {
             self.close_layer(tx);
         } else {
-            self.reader.help_scroll.set([0.0; 4]);
-            self.reader.help_glide = None;
+            self.reader.help_scroll.set(HelpScroll::default());
             self.open_layer(crate::layer::Layer::Help, tx);
         }
     }
@@ -1239,22 +1279,23 @@ impl App {
     /// Scrolls the help sheet with navigation keys while `Layer::Help` is open.
     pub fn scroll_help(&mut self, key: rune::Key, tx: &mut Tx) -> bool {
         use rune::Key;
-        let [offset, max, vh, _] = self.reader.help_scroll.get();
-        let now = self.now.get();
-        let from = glide_from(offset, self.reader.help_glide, now);
+        let mut st = self.reader.help_scroll.get();
+        let [_, max, vh, _] = st.pos;
+        let now = tx.clock();
         let page = if vh > 0.0 { (vh - 48.0).max(80.0) } else { 240.0 };
         let line = 48.0;
         let raw = match key {
-            Key::Down => from + line,
-            Key::Up => (from - line).max(0.0),
-            Key::PageDown => from + page,
-            Key::PageUp => (from - page).max(0.0),
+            Key::Down => st.step_from(line, now) + line,
+            Key::Up => (st.step_from(-line, now) - line).max(0.0),
+            Key::PageDown => st.step_from(page, now) + page,
+            Key::PageUp => (st.step_from(-page, now) - page).max(0.0),
             Key::Home => 0.0,
             Key::End => if max > 0.0 { max } else { 10_000.0 },
             _ => return false,
         };
         let to = if max > 0.0 { raw.clamp(0.0, max) } else { raw.max(0.0) };
-        self.reader.help_glide = Some((to, now));
+        st.glide = Some((to, now));
+        self.reader.help_scroll.set(st);
         tx.scroll_to_with(HELP_SCROLL, 0.0, to, Spring::new(0.16, 0.0));
         true
     }
@@ -1426,5 +1467,20 @@ mod tests {
     #[test]
     fn rd_68_source_lines() {
         assert_eq!(source_lines("a\nb\nc\nd", 1..3), "b\nc");
+    }
+
+    #[test]
+    fn help_scroll_hand_clears_stale_glide_and_preserves_momentum() {
+        let mut hs = HelpScroll::default();
+        hs.on_offset([0.0, 300.0, 300.0, 472.0], false, 0.1);
+        hs.glide = Some((300.0, 0.40));
+        // Wheel up arrives within KEY_GLIDE: clears stale End glide target immediately.
+        hs.on_offset([270.0, 300.0, 300.0, 472.0], true, 0.44);
+        assert!(hs.glide.is_none(), "hand scroll clears stale key glide");
+        hs.on_offset([230.0, 300.0, 300.0, 472.0], true, 0.46);
+        let from_up = hs.step_from(-48.0, 0.48);
+        assert!(from_up < 230.0, "same-direction key preserves wheel momentum: {from_up}");
+        let from_down = hs.step_from(48.0, 0.48);
+        assert_eq!(from_down, 230.0, "opposite-direction key starts from current offset");
     }
 }

@@ -202,7 +202,7 @@ pub(super) fn help_sheet(v: V) -> Card {
     let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let header_h = 40.0;
+    let header_h = 44.0;
     let header = row()
         .key("help-header")
         .w(w)
@@ -274,15 +274,19 @@ pub(super) fn help_sheet(v: V) -> Card {
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)
         .on_scroll_offset(move |at| {
-            live.set([at.offset[1], at.max[1], at.viewport[1], at.viewport[0]]);
+            let (by_hand, _, t) = rune::scroll_watch_state();
+            let mut st = live.get();
+            st.on_offset([at.offset[1], at.max[1], at.viewport[1], at.viewport[0]], by_hand, t);
+            live.set(st);
         })
         .child(super::widgets::faded("help", c.bg, card.child(body)));
+    // Keep clip_rounded on the inner wrapper so popup(&c)'s outer drop shadow renders outside
+    // the card bounds, matching Settings and the Command Palette.
     let card = popup(&c)
         .key("help-card")
         .role("dialog")
         .label("Keyboard help")
-        .clip_rounded(6.0)
-        .child(col().w(w).child(header).child(scroll));
+        .child(col().w(w).radius(6.0).clip_rounded(6.0).child(header).child(scroll));
     Card { el: card, plane: Some(col().center()) }
 }
 

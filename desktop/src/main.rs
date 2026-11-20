@@ -958,6 +958,34 @@ pub(crate) mod scroll_tests {
         settle(&mut rt);
         let y_end = rect(&rt, "help-body").unwrap()[1];
         assert!(y_end < y0 - 80.0, "End scrolls to bottom: {y0} -> {y_end}");
+        // HELPSHADOW: close button focus ring clearance >= 3.5pt from top and header divider.
+        let hhead = rect(&rt, "help-header").expect("help-header");
+        let hclose = rect(&rt, "help-close").expect("help-close");
+        let top_c = hclose[1] - hhead[1];
+        let bot_c = (hhead[1] + hhead[3]) - (hclose[1] + hclose[3]);
+        assert!(top_c.min(bot_c) - 5.0 >= 3.5, "help-close ring clearance >= 3.5pt: top={top_c}, bot={bot_c}");
+        // HELPSHADOW: rapid End -> wheel up -> Up stays in sync and moves further up, never deeper.
+        rt.set_viewport((520.0, 400.0), 1.5);
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::End, mods: Mods::default() });
+        for _ in 0..9 {
+            rt.frame(DT);
+        }
+        rt.wheel(260.0, 200.0, 120.0);
+        settle(&mut rt);
+        let y_wheel_only = rect(&rt, "help-body").unwrap()[1];
+        rt.key(KeyEvent { key: Key::End, mods: Mods::default() });
+        for _ in 0..9 {
+            rt.frame(DT);
+        }
+        rt.wheel(260.0, 200.0, 120.0);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Up, mods: Mods::default() });
+        settle(&mut rt);
+        let y_wheel_up = rect(&rt, "help-body").unwrap()[1];
+        assert!(y_wheel_up > y_wheel_only + 10.0, "rapid wheel up + Up moves further up: wheel_only={y_wheel_only:.1}, wheel+Up={y_wheel_up:.1}");
         let (cx, cy) = rt.find("help-close").unwrap();
         rt.pointer_move(cx, cy);
         rt.pointer_down(cx, cy);
