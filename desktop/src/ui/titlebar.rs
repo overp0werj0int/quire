@@ -102,7 +102,9 @@ fn bar(v: V) -> El {
     // The note's folder and name start where the page does: after the sidebar, or after the
     // window corner's buttons when it is closed.
     let mut title = row().key("title").grow(1.0).min_w(0.0).h(BAR_H).pl(if left_visible { 20.0 } else { 6.0 }).pr(8.0).center_y().clip_rounded(0.0);
-    if v.has_doc() {
+    // Hide the crumb while the narrow overlay sidebar drawer covers the left half of the bar
+    // (`FINDMODEL`), so the drawer edge never slices the note path mid-character.
+    if v.has_doc() && !v.left_over() {
         title = title.child(super::editor::crumb(v));
     }
 

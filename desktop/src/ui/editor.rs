@@ -37,23 +37,45 @@ pub fn body(v: V) -> El {
         sheet = sheet.border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
     }
     // Where no editor shows, the reader's keyboard anchor takes focus that lost its element.
+    let reading = super::reading(v.s);
     let writer = v.has_doc() && v.s.mode == Mode::Source && v.s.active.as_deref().is_some_and(|a| !v.s.note_locked(a));
-    let mut area = col().key("doc-area").grow(1.0).min_w(0.0).min_h(0.0).h_full().children((!writer).then(super::focus::note_anchor)).child(doc_scroll(v));
+    let has_find_slot = (reading || writer) && v.s.reader.find.open && !shows_toolbar(v);
+    let find_slot_h = if has_find_slot { super::reader::find_backing_h(v) } else { 0.0 };
+    let mut area = col()
+        .key("doc-area")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .h_full()
+        .children((!writer).then(super::focus::note_anchor))
+        .children(has_find_slot.then(|| super::reader::find_backing(v)))
+        .child(doc_scroll(v));
     // In zen mode the progress bar runs along the window's top edge (`ui::view`).
     let progress = if focus { None } else { progress(v) };
     // Text fades under the title bar and into the sheet's foot (WR-177). The bands let presses
     // through to the text.
     let c = Roles::new(v.p);
-    let pin = |top: bool| el().pin(Some(0.0), top.then_some(0.0), Some(0.0), (!top).then_some(0.0)).inert();
-    let fade_top = || pin(true).key("fade-top").h(28.0).gradient(c.bg, c.bg.alpha(0.0));
+    let fade_top = || {
+        el().pin(Some(0.0), Some(find_slot_h), Some(0.0), None)
+            .inert()
+            .key("fade-top")
+            .h(28.0)
+            .gradient(c.bg, c.bg.alpha(0.0))
+    };
     let foot = [(0.0, c.bg.alpha(0.0)), (0.6, c.bg), (1.0, c.bg)];
-    let fade_foot = || pin(false).key("fade-foot").h(64.0).linear_gradient(std::f32::consts::PI, foot);
-    if super::reading(v.s) {
+    let fade_foot = || {
+        el().pin(Some(0.0), None, Some(0.0), Some(0.0))
+            .inert()
+            .key("fade-foot")
+            .h(64.0)
+            .linear_gradient(std::f32::consts::PI, foot)
+    };
+    if reading {
         // The reader has the writer's fades in zen mode, where no bar sits over the page.
         if focus {
             area = area.child(fade_top()).child(fade_foot());
         }
-        area = area.children(progress).children(super::reader::find_backing(v)).child(super::reader::find_bar(v));
+        area = area.children(progress).child(super::reader::find_bar(v));
     } else if writer {
         // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
         // (PAGE-84).
@@ -61,7 +83,7 @@ pub fn body(v: V) -> El {
         let shown = if crate::motion::reduced() { shown.into() } else { shown.smooth(rune::Spring::new(0.3, 0.0)) };
         let thumb = el()
             .key("thumb")
-            .pin(Some(0.0), Some(0.0), None, None)
+            .pin(Some(0.0), Some(find_slot_h), None, None)
             .radius(1.5)
             .fill(c.faint)
             .paint_order(30)
@@ -72,7 +94,7 @@ pub fn body(v: V) -> El {
             area = area.child(fade_top());
         }
         area = area.child(fade_foot());
-        area = area.children(progress).child(thumb).children(super::reader::find_backing(v)).child(super::reader::find_bar(v));
+        area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))
@@ -270,16 +292,11 @@ pub(super) fn top_band(v: V) -> f32 {
     if find_row(v) { find_top(v) + find_h(v) + FIND_FADE_OUT } else { toolbar_top(v) + toolbar_h(v) + 12.0 }
 }
 
-/// How far down the view a find match is covered from above: the toolbar's band, else the
-/// find bar's foot while find is open. A toast's band lifts a match only into the room under it.
+/// How far down the view a find match is covered from above: the toolbar's band while the
+/// toolbar shows, and 0 otherwise (when Find is open without a toolbar, `find_backing` holds an
+/// in-flow top slot so `doc-scroll` itself starts strictly below `find-bar`).
 pub(super) fn match_roof(v: V) -> f32 {
-    if shows_toolbar(v) {
-        top_band(v)
-    } else if v.s.reader.find.open {
-        find_top(v) + find_h(v)
-    } else {
-        0.0
-    }
+    if shows_toolbar(v) { top_band(v) } else { 0.0 }
 }
 
 /// Width of the note area (excluding docked side panels).
@@ -370,7 +387,7 @@ pub(crate) const TOOLBAR_X: f32 = -10.0;
 
 /// Whether the formatting toolbar shows: source mode, the setting on, a note open and not
 /// locked, and not in focus mode.
-fn shows_toolbar(v: V) -> bool {
+pub(super) fn shows_toolbar(v: V) -> bool {
     let s = v.s;
     let locked = s.active.as_deref().is_some_and(|a| s.note_locked(a));
     v.has_doc() && !v.focus() && s.mode == Mode::Source && s.settings().toolbar && !locked

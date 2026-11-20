@@ -1268,6 +1268,100 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// FINDMODEL: full-width page-coloured Find backing covers Preview and toolbar-hidden Source
+    /// across 520, 680, 760 and 1280 pt widths with smoothstep clearance below find-bar, progress
+    /// stays painted above the backing, and 520×400 sidebar-over drawer never slices the crumb.
+    #[test]
+    fn findmodel_wide_narrow_backing_progress_and_drawer_crumb() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-findmodel-{}", std::process::id()));
+        let md = format!("# Rendering probes\n\n| Col A | Col B |\n| --- | --- |\n| one | two |\n\n{}", "A paragraph with the word the for Find backing tests.\n\n".repeat(40));
+        let mut rt = vault(&dir, &[("d01/d02/d03/d04/d05/d06/Leaf.md", md.as_str())], crate::watch::EVERY);
+        // 1. Preview across 520×400, 680×480, 760×480, 1280×800 (closed sidebar):
+        // full-width backing band extends smoothly past find-bar foot and paints below progress.
+        rt.update(|s, tx| {
+            s.persist.left_open = false;
+            s.mode = crate::app::Mode::Preview;
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("the");
+            s.find_changed(tx);
+        });
+        for (w, h, want_key) in [(520.0, 400.0, "find-narrow-band"), (680.0, 480.0, "find-narrow-band"), (760.0, 480.0, "find-band"), (1280.0, 800.0, "find-band")] {
+            rt.set_viewport((w, h), 1.0);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+            rt.wheel(w / 2.0, h / 2.0, -200.0);
+            for _ in 0..20 {
+                rt.frame(DT);
+            }
+            let els = rt.elements();
+            let get = |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("{w}x{h}: missing {k}")).rect;
+            let fb = get("find-bar");
+            let band = get(want_key);
+            let scroll = get("doc-scroll");
+            let prog = get("progress");
+            assert!(band[2] >= w - 2.0, "{w}x{h} {want_key} must span note area width: {band:?}");
+            assert!(band[1] + band[3] >= fb[1] + fb[3] + 6.0, "{w}x{h} {want_key} must clear find-bar foot: band={band:?}, fb={fb:?}");
+            assert!(scroll[1] >= fb[1] + fb[3] + 6.0, "{w}x{h} doc-scroll must start strictly below find-bar: scroll={scroll:?}, fb={fb:?}");
+            let mut acc = rune::Color::BLACK;
+            rt.update_if(|s, _| {
+                acc = crate::roles::Roles::new(s.palette(false)).accent;
+                false
+            });
+            let near = |a: [f32; 4], b: [f32; 4]| (0..4).all(|i| (a[i] - b[i]).abs() < 0.02);
+            let prog_idx = rt.instances.iter().rposition(|q| near(q.fill, [acc.r, acc.g, acc.b, acc.a]) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
+            let band_idx = rt.instances.iter().rposition(|q| (q.rect[1] - band[1]).abs() < 1.0 && (q.rect[3] - band[3]).abs() < 1.0);
+            assert!(prog_idx.is_some() && band_idx.is_some() && prog_idx.unwrap() > band_idx.unwrap(), "{w}x{h}: progress ({prog_idx:?}) must paint above {want_key} ({band_idx:?})");
+        }
+        // 1b. 760×480 Preview with docked sidebar: doc-scroll starts below find-bar and zero preview text overlaps find-bar.
+        rt.update(|s, _| s.persist.left_open = true);
+        rt.set_viewport((760.0, 480.0), 1.0);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let fb = els.iter().find(|e| e.key.as_deref() == Some("find-bar") && !e.exiting).unwrap().rect;
+        let scroll = els.iter().find(|e| e.key.as_deref() == Some("doc-scroll") && !e.exiting).unwrap().rect;
+        assert!(scroll[1] >= fb[1] + fb[3] + 6.0, "760×480 docked-sidebar doc-scroll clears find-bar: scroll={scroll:?}, fb={fb:?}");
+        rt.update(|s, _| s.persist.left_open = false);
+        // 2. Toolbar-hidden Source at 760×480 also renders full-width find-band above doc-scroll.
+        rt.set_viewport((760.0, 480.0), 1.0);
+        rt.update(|s, tx| {
+            s.settings_mut().toolbar = false;
+            s.mode = crate::app::Mode::Source;
+            s.writer_find(tx);
+        });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let fb = els.iter().find(|e| e.key.as_deref() == Some("find-bar") && !e.exiting).unwrap().rect;
+        let band = els.iter().find(|e| e.key.as_deref() == Some("find-band") && !e.exiting).expect("toolbar-hidden Source renders find-band").rect;
+        let scroll = els.iter().find(|e| e.key.as_deref() == Some("doc-scroll") && !e.exiting).unwrap().rect;
+        assert!(band[2] >= 758.0 && band[1] + band[3] >= fb[1] + fb[3] + 6.0 && scroll[1] >= fb[1] + fb[3] + 6.0, "toolbar-hidden Source find-band clears find-bar: {band:?} vs {fb:?}, scroll={scroll:?}");
+        // 3. 520×400 sidebar-over drawer hides titlebar crumb so drawer edge never slices text.
+        rt.set_viewport((520.0, 400.0), 1.0);
+        rt.frame(DT);
+        rt.update(|s, tx| {
+            s.close_find(tx);
+            s.toggle_left(tx);
+        });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        assert!(els.iter().any(|e| e.key.as_deref() == Some("sidebar-over") && !e.exiting), "sidebar-over drawer opens at 520×400");
+        assert!(els.iter().all(|e| e.key.as_deref() != Some("crumb") || e.exiting), "titlebar crumb hides while sidebar-over drawer is open");
+        rt.update(|s, tx| s.toggle_left(tx));
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("crumb") && !e.exiting), "titlebar crumb returns once drawer closes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-122: with the find bar on its own row, the band over the text eases out across the
     /// bar's foot to 40 pt under it, and the caret moving up stays below the fade.
     #[test]

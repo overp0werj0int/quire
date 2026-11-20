@@ -24,26 +24,28 @@ pub const FIND_H: f32 = 40.0;
 pub const FIND_W: f32 = 380.0;
 pub const FIND_RIGHT: f32 = 16.0;
 
-/// Top page-coloured backing behind the narrow Find bar when no toolbar `find-band` owns the
-/// top edge (Preview mode, or Source with the toolbar hidden), so scrolled lines never slice
-/// above or beside the bar (`NARROWFIND`).
-pub fn find_backing(v: V) -> Option<El> {
-    if !v.s.reader.find.open || !super::editor::narrow_find(v) || super::editor::find_row(v) {
-        return None;
-    }
-    let below = super::editor::find_top(v) + super::editor::find_h(v);
-    let fade = 6.0;
-    let h = below + fade;
+/// Bottom cushion below the find bar inside the top Find band when no toolbar shows.
+pub(super) const FIND_BACKING_PAD: f32 = 8.0;
+
+/// Total height of the top Find header slot when Find is open without a formatting toolbar.
+pub(super) fn find_backing_h(v: V) -> f32 {
+    super::editor::find_top(v) + super::editor::find_h(v) + FIND_BACKING_PAD
+}
+
+/// Full-width page-coloured top slot placed in flow above `doc-scroll` whenever Find is open
+/// without a formatting toolbar (Preview at any width, or toolbar-hidden Source / zen mode).
+/// Keeps `doc-scroll` clipped strictly below `find-bar` so scrolled headings, prose, and table
+/// headers never collide with or peek beneath `find-bar` at any width, while painting beneath the
+/// reading progress line (`paint_order(38)`) (`FINDMODEL`).
+pub fn find_backing(v: V) -> El {
     let bg = Roles::new(v.p).bg;
-    let stops = [(0.0, bg), (below / h, bg), (1.0, bg.alpha(0.0))];
-    Some(
-        el().key("find-narrow-band")
-            .pin(Some(0.0), Some(0.0), Some(0.0), None)
-            .h(h)
-            .linear_gradient(std::f32::consts::PI, stops)
-            .inert()
-            .paint_order(35),
-    )
+    let key = if super::editor::narrow_find(v) { "find-narrow-band" } else { "find-band" };
+    el().key(key)
+        .w_full()
+        .h(find_backing_h(v))
+        .fill(bg)
+        .inert()
+        .paint_order(35)
 }
 
 /// The find bar (RD-52 to RD-61): 380 by 40, 16 px from the note area's right edge, 10 px
