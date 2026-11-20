@@ -5,9 +5,10 @@ use rune::{El, TextStyle, col, el, icon, text};
 
 use super::{Cx, Tone};
 use crate::app::App;
-use crate::blocks::{List, Task};
+use crate::blocks::{Block, Item, Kind, List, Task};
 use crate::page::{line, r};
 use crate::ui::icons;
+use crate::ui::widgets::Control;
 
 pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     let look = cx.look;
@@ -67,16 +68,26 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                     b.border(edge, c.faint).child(hot)
                 };
                 let line_no = it.line;
-                el().size(hit_w, hit_h)
+                let lbl = task_label(it);
+                let mut hit = el()
+                    .size(hit_w, hit_h)
+                    .radius(4.0)
                     .center()
                     .hover_group()
                     .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
                     .role("checkbox")
                     .checked(done)
-                    .cursor(rune::Cursor::Pointer)
-                    .on_press(move |s: &mut App| s.toggle_task(line_no, !done))
-                    .child(b)
-                    .pin(Some(mx + mw - bx - pad_x), Some(r(xc - bx / 2.0 - t * 0.04) - pad_y), None, None)
+                    .label(lbl);
+                if cx.selectable {
+                    let (_, _, rc) = crate::ui::focus_ring(cx.v.p);
+                    hit = crate::ui::focus::stop(hit)
+                        .cursor(rune::Cursor::Pointer)
+                        .focus_ring(2.0, 1.0, rc)
+                        .keeps_text_selection()
+                        .preserve_focus_on_press(true)
+                        .control(move |s: &mut App, _| s.toggle_task(line_no, !done));
+                }
+                hit.child(b).pin(Some(mx + mw - bx - pad_x), Some(r(xc - bx / 2.0 - t * 0.04) - pad_y), None, None)
             }
         };
         // A done item's text is dim (BLK-31).
@@ -85,6 +96,34 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
         out = out.child(el().key(format!("li-{}", it.line)).w_full().child(body).child(marker.key("marker")));
     }
     out
+}
+
+/// Descriptive accessible label for a task checkbox from its item text (`WORDSEL`).
+fn task_label(it: &Item) -> String {
+    fn collect(blocks: &[Block], out: &mut String) {
+        for b in blocks {
+            match &b.kind {
+                Kind::Paragraph { runs } => {
+                    for run in runs {
+                        if run.br {
+                            out.push(' ');
+                        } else {
+                            out.push_str(&run.t);
+                        }
+                    }
+                }
+                Kind::Heading { text, .. } => out.push_str(text),
+                _ => continue,
+            }
+            if !out.trim().is_empty() {
+                break;
+            }
+        }
+    }
+    let mut out = String::new();
+    collect(&it.blocks, &mut out);
+    let t = out.trim();
+    if t.is_empty() { "Task".to_string() } else { t.to_string() }
 }
 
 /// Hit target dimensions `(width, height)` for a task checkbox at text size `t`, line box `lh`,

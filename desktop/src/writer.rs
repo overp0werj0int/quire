@@ -797,6 +797,60 @@ pub fn count_words(text: &str) -> usize {
     n
 }
 
+/// Words within the byte selection `a..b` of `doc`, applying the same front-matter and fenced-code
+/// exclusion as [`count`] so `Ctrl+A` always equals the note's total word count and selections
+/// inside front matter or code fences yield 0 (`WORDSEL`, WR-188).
+pub fn count_words_range(doc: &str, a: usize, b: usize) -> usize {
+    let mut lo = a.min(b).min(doc.len());
+    let mut hi = a.max(b).min(doc.len());
+    while lo > 0 && !doc.is_char_boundary(lo) {
+        lo -= 1;
+    }
+    while hi < doc.len() && !doc.is_char_boundary(hi) {
+        hi += 1;
+    }
+    if lo >= hi {
+        return 0;
+    }
+    let front = strip_front_offset(doc);
+    lo = lo.max(front);
+    if lo >= hi {
+        return 0;
+    }
+    let mut n = 0usize;
+    let mut fence: Option<(u8, usize)> = None;
+    let mut at = front;
+    for ln in doc[front..].split('\n') {
+        let line_end = at + ln.len();
+        if at >= hi {
+            break;
+        }
+        match fence {
+            Some((ch, len)) => {
+                if fence_close(ln, ch, len) {
+                    fence = None;
+                }
+                at = line_end + 1;
+                continue;
+            }
+            None => {
+                if let Some(f) = fence_open(ln) {
+                    fence = Some(f);
+                    at = line_end + 1;
+                    continue;
+                }
+            }
+        }
+        let seg_a = lo.max(at);
+        let seg_b = hi.min(line_end);
+        if seg_a < seg_b {
+            n += count_words_line(&doc[seg_a..seg_b]);
+        }
+        at = line_end + 1;
+    }
+    n
+}
+
 /// Zero-allocation word count for one non-fenced line, stripping link targets, HTML tags,
 /// bare URLs and Markdown marks on the fly.
 pub(crate) fn count_words_line(ln: &str) -> usize {
@@ -1230,6 +1284,22 @@ mod tests {
         // a'b, a, b, a, b, e.g, foo, bar -> 8 words.
         assert_eq!(count_words("a'b a''b a.'b e.g. foo' bar."), 8);
         assert_eq!(count_words("don\u{2019}t stop\u{2019}\u{2019}now"), 3);
+
+        // WORDSEL: range count excludes front matter and open code fences identically to `count`.
+        let doc = "---\ntitle: Front Matter Words\ntags: [alpha, beta]\n---\n\nOne two three four.\n\n```rust\nlet hidden = five_six;\n```\n\nSeven eight.\n";
+        assert_eq!(count(doc).words, 6);
+        assert_eq!(count_words_range(doc, 0, doc.len()), count(doc).words, "Ctrl+A matches total");
+        let front_end = strip_front_offset(doc);
+        assert_eq!(count_words_range(doc, 0, front_end), 0, "selection inside front matter is 0");
+        assert_eq!(count_words_range(doc, 4, 25), 0, "partial front-matter selection is 0");
+        let two_end = doc.find("three").unwrap();
+        assert_eq!(count_words_range(doc, 10, two_end), 2, "selection crossing delimiter counts body only");
+        let code_a = doc.find("let hidden").unwrap();
+        let code_b = doc.find(";\n").unwrap() + 1;
+        assert_eq!(count_words_range(doc, code_a, code_b), 0, "selection starting mid-fence is 0");
+        let seven_a = doc.find("Seven").unwrap();
+        assert_eq!(count_words_range(doc, code_a, doc.len()), 2, "mid-fence to end counts trailing prose only");
+        assert_eq!(count_words_range(doc, doc.len(), seven_a), 2, "reversed selection range normalizes");
     }
 
     #[test]

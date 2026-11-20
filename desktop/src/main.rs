@@ -3214,6 +3214,114 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// WORDSEL: Source Select All excludes front matter from the outline's selected word count,
+    /// and Preview task checkboxes are keyboard-focusable, labelled, Space/Enter-activatable,
+    /// and pointer-clickable without leaving a stray focus ring.
+    #[test]
+    fn wordsel_front_matter_selection_and_keyboard_task_checkbox() {
+        use rune::{Key, KeyEvent, Mods};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-wordsel-{}", std::process::id()));
+
+        // 1. Source Ctrl+A with front matter -> "4 of 4 words" in right outline.
+        let front = "---\ntitle: Front Matter Words\ntags: [alpha, beta]\n---\n\nOne two three four.\n";
+        let (mut rt, _) = open(&dir, front, crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| {
+            s.persist.right_open = true;
+            let len = s.active_text().len();
+            s.cur_edit().set_selection(0, len);
+            s.focus_editor(tx);
+        });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let wc = rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("word-count")).and_then(|e| e.text).unwrap_or_default();
+        assert_eq!(wc, "4 of 4 words", "Ctrl+A must exclude front matter from selected word count");
+
+        // 2. Preview task checkboxes: focusable, labelled, Space & Enter toggle, pointer leaves no ring.
+        let tasks = "# Tasks\n\n- [ ] First task\n- [ ] Second task\n";
+        let (mut rt, _) = open(&dir, tasks, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((800.0, 500.0), 1.0);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let cbs: Vec<_> = rt.elements().into_iter().filter(|e| !e.exiting && e.role == "checkbox").collect();
+        assert_eq!(cbs.len(), 2, "two task checkboxes rendered");
+        assert!(cbs.iter().all(|c| c.focusable), "all preview task checkboxes must be focusable");
+        assert_eq!(cbs[0].label.as_deref(), Some("First task"));
+        assert_eq!(cbs[1].label.as_deref(), Some("Second task"));
+
+        // Pointer click on second checkbox toggles it without stealing focus or lighting a ring.
+        let r1 = cbs[1].rect;
+        let (cx, cy) = (r1[0] + r1[2] / 2.0, r1[1] + r1[3] / 2.0);
+        rt.pointer_move(cx, cy);
+        rt.pointer_down(cx, cy);
+        rt.pointer_up(cx, cy);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let mut text_now = String::new();
+        rt.update_if(|s, _| {
+            text_now = s.active_text().to_string();
+            false
+        });
+        assert!(text_now.contains("- [ ] First task") && text_now.contains("- [x] Second task"), "pointer click toggled second task: {text_now:?}");
+        let any_cb_ring = rt.elements().into_iter().any(|e| !e.exiting && e.role == "checkbox" && e.focus_visible);
+        assert!(!any_cb_ring, "pointer click must not leave a stray focus ring on checkbox");
+
+        // Keyboard Tab into first checkbox, then Space toggles it.
+        let tab = KeyEvent { key: Key::Tab, mods: Mods::default() };
+        let mut reached = false;
+        for _ in 0..12 {
+            rt.key(tab.clone());
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            if rt.elements().into_iter().any(|e| !e.exiting && e.role == "checkbox" && e.focused) {
+                reached = true;
+                break;
+            }
+        }
+        assert!(reached, "Tab must reach first preview task checkbox");
+        rt.key(KeyEvent { key: Key::Text(" ".into()), mods: Mods::default() });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            text_now = s.active_text().to_string();
+            false
+        });
+        assert!(text_now.contains("- [x] First task"), "Space must toggle focused task checkbox: {text_now:?}");
+
+        // Tab to first checkbox again and Enter untoggles it.
+        let mut reached_again = false;
+        for _ in 0..12 {
+            rt.key(tab.clone());
+            for _ in 0..3 {
+                rt.frame(DT);
+            }
+            if rt.elements().into_iter().any(|e| !e.exiting && e.role == "checkbox" && e.focused) {
+                reached_again = true;
+                break;
+            }
+        }
+        assert!(reached_again, "Tab reaches checkbox after toggle");
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            text_now = s.active_text().to_string();
+            false
+        });
+        assert!(text_now.contains("- [ ] First task"), "Enter must toggle focused task checkbox: {text_now:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// TYPOPOLISH: menu.rs delegates Cut/Copy/Paste chord labels to keymap, Lock dialog heading
     /// uses 17 pt/600 scale (>= 20 pt box height), Settings White swatch card has a visible border
     /// on Paper, and sidebar folder rows request 600 weight for distinct hierarchy.

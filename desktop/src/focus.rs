@@ -85,6 +85,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "find-next",
     "find-close",
     "first-note",
+    "marker",
 ];
 
 /// The text fields on the page, outside the note: the search field, find's, the note's name

@@ -166,16 +166,16 @@ fn counts(v: V) -> El {
     let c = Roles::panel(p);
     let doc = s.active_text();
     let style = styles::nav(panel::BODY_SMALL, false);
-    let sel = (s.mode == Mode::Source)
+    let sel_range = (s.mode == Mode::Source)
         .then(|| s.active.as_ref().and_then(|a| s.edits.get(a)))
         .flatten()
-        .map_or("", |e| &doc[e.anchor.min(e.focus).min(doc.len())..e.anchor.max(e.focus).min(doc.len())]);
+        .map(|e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())))
+        .filter(|&(a, b)| a < b);
     let count = s.word_count();
     let wc = count.words;
-    let words = if sel.is_empty() {
-        format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" })
-    } else {
-        format!("{} of {} words", group(crate::writer::count_words(sel)), group(wc))
+    let words = match sel_range {
+        None => format!("{} {}", group(wc), if wc == 1 { "word" } else { "words" }),
+        Some((a, b)) => format!("{} of {} words", group(crate::writer::count_words_range(doc, a, b)), group(wc)),
     };
     let mut r = row()
         .key("counts")
