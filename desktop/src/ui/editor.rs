@@ -338,7 +338,7 @@ fn shows_toolbar(v: V) -> bool {
 /// The toolbar's lock: a plain note gets a password, and an unlocked note locks again. The
 /// accent marks a note that is locked and open now.
 fn lock_button(v: V) -> El {
-    use super::widgets::LOCK;
+    use super::icons::LOCK;
     let p = v.p;
     let open = v.s.active.as_deref().is_some_and(|a| v.s.note_unlocked(a));
     let help = crate::commands::lock_name(open);
@@ -363,7 +363,8 @@ fn lock_button(v: V) -> El {
 /// until it reaches TOOLBAR_TOP below the title bar, then stays there, and the note scrolls
 /// under it.
 fn toolbar(v: V) -> El {
-    use super::widgets::{BOLD, BULLETS, CODE, HEADING, IMAGE, ITALIC, LINK, NUMBERS, QUOTE, STRIKE, TASK, WIKI, icon_button};
+    use super::icons::{BOLD, BULLETS, CODE, HEADING, IMAGE, ITALIC, LINK, NUMBERS, QUOTE, STRIKE, TASK, WIKI};
+    use super::widgets::icon_button;
     use crate::format::Fmt;
     let p = v.p;
     let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);

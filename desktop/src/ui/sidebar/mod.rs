@@ -17,7 +17,8 @@ use rune::{El, ScrollSpec, col, el, icon, row, text, text_input};
 use super::V;
 use super::panel;
 use super::styles::{keys, nav};
-use super::widgets::{Control, GEAR, PLUS, SB_CLOSE, SB_SEARCH, TAG};
+use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG};
+use super::widgets::Control;
 use crate::app::App;
 use crate::keymap;
 use crate::roles::Roles;
@@ -47,6 +48,7 @@ pub fn sidebar(v: V) -> El {
         .w(W)
         .h_full()
         .min_h(0.0)
+        .fill(p.side)
         .border_sides([0.0, 1.0, 0.0, 0.0], p.line)
         .border_layout()
         .child(super::titlebar::corner_room());
@@ -166,7 +168,7 @@ fn search_field(v: V) -> El {
                     s.query = rune::TextEdit::new("");
                     tx.focus("search", false);
                 })
-                .child(icon(&SB_CLOSE, ICON).color(c.faint)),
+                .child(icon(&CLOSE, ICON).color(c.faint)),
         )
     };
     row()
@@ -183,7 +185,7 @@ fn search_field(v: V) -> El {
         .border(1.0, p.line)
         .border_layout()
         .focus_within_ring(1.0, -1.0, c.faint)
-        .child(icon(&SB_SEARCH, ICON).color(c.faint))
+        .child(icon(&SEARCH, ICON).color(c.faint))
         .child(field)
         .children(end)
 }

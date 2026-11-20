@@ -100,7 +100,7 @@ fun PaletteScreen(vm: QuireViewModel) {
                     },
                 )
             }
-            IconBtn(QIcons.CLOSE, viewport = 8f, iconSize = 10.dp, stroke = 1.2f) { vm.closePalette() }
+            IconBtn(QIcons.CLOSE, iconSize = 14.dp) { vm.closePalette() }
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(6.dp)) {
             itemsIndexed(d.items) { i, it ->

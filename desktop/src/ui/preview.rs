@@ -12,7 +12,7 @@ use std::rc::Rc;
 use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextHighlight, TextStyle, Tx, col, el, icon, rich, row, text};
 
 use super::V;
-use super::octicons;
+use super::icons;
 use crate::app::App;
 use crate::blocks::{Alert, Block, Doc, Footnote, GalleryItem, Kind, Link, Run};
 use crate::md::Img;
@@ -94,6 +94,8 @@ struct Rich {
     marks: Vec<TextHighlight>,
     /// Inline-code chips, which get a hairline edge (PAGE-76).
     chips: Vec<(usize, usize, Color)>,
+    /// Visual padding spaces around inline-code chips that copying skips.
+    uncopied: Vec<std::ops::Range<usize>>,
 }
 
 impl Rich {
@@ -193,17 +195,25 @@ impl Rich {
         self.spans.push(Span { mono: true, size: Some(side), bg: Some(bg), bg_pad: pad_y, ..Span::new(c, d) });
         self.spans.push(Span { mono: true, size: Some(size), color, bg: Some(bg), bg_pad: pad_y, ..Span::new(b, c) });
         self.chips.push((a, d, look.c.chip_edge));
+        self.uncopied.push(a..b);
+        self.uncopied.push(c..d);
     }
 
-    fn el(self, style: TextStyle, color: Color) -> El {
+    fn el(self, style: TextStyle, color: Color, sel: Option<Color>) -> El {
         let mut e = rich(if self.text.is_empty() { " ".to_string() } else { self.text }, self.spans).font(style).color(color).wrap().span_radius(4.0);
         for (a, b, c) in self.strikes {
             e = e.strike(a, b, c);
+        }
+        for r in self.uncopied {
+            e = e.uncopied(r);
         }
         e = e.text_highlights(self.marks).span_rings(self.chips.into_iter().map(|(a, b, c)| (a, b, c, 1.0)));
         for (range, id, color) in self.links {
             // Links underline only under the pointer (PAGE-73).
             e = e.link(rune::Link::new(range, id).hover(LinkPaint::new().underline(color)));
+        }
+        if let Some(bg) = sel {
+            e = e.selectable(true).selection_color(bg);
         }
         e.on_link(on_link)
     }
@@ -286,6 +296,7 @@ pub fn preview(v: V) -> El {
     col()
         .key("preview")
         .w_full()
+        .selection_group(true)
         .growth(rune::GrowthSpec::default())
         .virtual_rows(
             doc.blocks.len(),
@@ -298,7 +309,7 @@ pub fn preview(v: V) -> El {
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
                 let key = crate::reader::block_key(bl);
                 rune::memo(key.clone(), version, || {
-                    let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref() };
+                    let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref(), selectable: true };
                     let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
                     // A right-click on the row, its gap above included, opens its block's menu (RD-68).
                     let line = bl.lines.start;
@@ -318,7 +329,7 @@ pub fn preview(v: V) -> El {
 pub fn context(v: V, doc: &Doc, i: usize) -> El {
     let look = look(v);
     let Some(bl) = doc.blocks.get(i) else { return el() };
-    let cx = Cx { v, look: &look, doc, find: None };
+    let cx = Cx { v, look: &look, doc, find: None, selectable: false };
     let tone = Tone { color: look.c.dim, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
     cx.block(bl, tone).w_full()
 }
@@ -341,9 +352,20 @@ struct Cx<'a> {
     look: &'a Look,
     doc: &'a Doc,
     find: Option<&'a Hl>,
+    selectable: bool,
 }
 
 impl Cx<'_> {
+    pub(super) fn sel(&self) -> Option<Color> {
+        self.selectable.then_some(self.look.c.selection)
+    }
+
+    pub(super) fn selectable_text(&self, e: El) -> El {
+        match self.sel() {
+            Some(bg) => e.selectable(true).selection_color(bg),
+            None => e,
+        }
+    }
     /// The first source line of the block an anchor names.
     fn anchor_line(&self, anchor: &str) -> Option<usize> {
         self.doc.anchors.get(anchor).and_then(|&i| self.doc.blocks.get(i)).map(|b| b.lines.start)
@@ -426,7 +448,7 @@ impl Cx<'_> {
             Kind::FrontMatter { title, fields } => front::card(self, title, fields),
             Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone),
             Kind::Paragraph { runs } if is_tag_line(runs) => tag_line(self, runs, tone),
-            Kind::Paragraph { runs } => self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color).w_full(),
+            Kind::Paragraph { runs } => self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color, self.sel()).w_full(),
             Kind::List(l) => list::list(self, l, tone),
             Kind::Quote { blocks } => self.quote(blocks, tone),
             Kind::Alert { kind, blocks } => self.alert(*kind, blocks, tone),
@@ -451,7 +473,7 @@ impl Cx<'_> {
         if level == 6 {
             style = style.tracking(0.6);
         }
-        let mut e = self.rich_at(runs, Tone { size, ..tone }, pid).el(style, color).w_full().role("heading").level(level as u32).label(label.to_string());
+        let mut e = self.rich_at(runs, Tone { size, ..tone }, pid).el(style, color, self.sel()).w_full().role("heading").level(level as u32).label(label.to_string());
         if level == 6 {
             e = e.text_case(TextCase::Uppercase);
         }
@@ -508,11 +530,11 @@ impl Cx<'_> {
         let c = &look.c;
         let b = look.b;
         let (tint, glyph) = match kind {
-            Alert::Note => (c.blue, &octicons::INFO),
-            Alert::Tip => (c.green, &octicons::LIGHT_BULB),
-            Alert::Important => (c.magenta, &octicons::REPORT),
-            Alert::Warning => (c.yellow, &octicons::ALERT),
-            Alert::Caution => (c.red, &octicons::STOP),
+            Alert::Note => (c.blue, &icons::INFO),
+            Alert::Tip => (c.green, &icons::LIGHT_BULB),
+            Alert::Important => (c.magenta, &icons::IMPORTANT),
+            Alert::Warning => (c.yellow, &icons::WARNING),
+            Alert::Caution => (c.red, &icons::CAUTION),
         };
         let ts = r(b * 0.76);
         let isz = r(b * 0.95);
@@ -546,7 +568,7 @@ impl Cx<'_> {
             .w_full()
             .items_stretch()
             .child(el().key("rule").w(1.0).fill(look.c.hairline))
-            .child(text(t.to_string()).key("text").font(look.mono_at(r(b * 0.8), 1.5)).color(look.c.faint).wrap_anywhere().grow(1.0).min_w(0.0).ml(r(b * 0.9)))
+            .child(self.selectable_text(text(t.to_string()).key("text").font(look.mono_at(r(b * 0.8), 1.5)).color(look.c.faint).wrap_anywhere()).grow(1.0).min_w(0.0).ml(r(b * 0.9)))
     }
 
     /// An image's pixels, or the placeholder card (BLK-70, BLK-72). `size` is a gallery's shown
@@ -597,7 +619,7 @@ impl Cx<'_> {
             .radius(4.0)
             .fill(look.c.card)
             .border(1.0, look.c.on_page(look.c.hairline))
-            .child(icon(&octicons::IMAGE, r(b * 1.05)).color(look.c.faint));
+            .child(icon(&icons::IMAGE, r(b * 1.05)).color(look.c.faint));
         let msg = text(msg).font(look.mono_at(ts, 1.3)).color(look.c.faint).min_w(0.0);
         match size {
             // A gallery cell: the message wraps inside the cell and never spills out of it.
@@ -627,7 +649,7 @@ impl Cx<'_> {
         let mut c = col().w_full().items_center().child(self.picture(img, None).key("pic"));
         if !img.alt.is_empty() {
             let size = r(b * 0.84);
-            c = c.child(text(img.alt.clone()).key("caption").font(look.prose(size, 1.5).italic()).color(look.c.dim).wrap().w_full().align(rune::Align::Center).mt(r(b * 0.6)));
+            c = c.child(self.selectable_text(text(img.alt.clone()).key("caption").font(look.prose(size, 1.5).italic()).color(look.c.dim).wrap()).w_full().align(rune::Align::Center).mt(r(b * 0.6)));
         }
         c
     }
@@ -739,7 +761,7 @@ fn tag_line(cx: &Cx, runs: &[Run], tone: Tone) -> El {
                 .role("link")
                 .label(run.t.clone())
                 .on_press_tx(move |s: &mut App, tx| s.search_tag(&tag, tx))
-                .child(text(run.t.clone()).font(look.mono_at(size, 1.3)).color(look.c.accent)),
+                .child(cx.selectable_text(text(run.t.clone()).font(look.mono_at(size, 1.3)).color(look.c.accent))),
         );
     }
     out

@@ -7,7 +7,7 @@ use super::{Cx, Tone};
 use crate::app::App;
 use crate::blocks::{List, Task};
 use crate::page::{line, r};
-use crate::ui::octicons;
+use crate::ui::icons;
 
 pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     let look = cx.look;
@@ -55,7 +55,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                 let (rad, edge) = (2f32.max(r(bx * 0.24)), 1f32.max(r(t / 12.0)));
                 let mut b = el().size(bx, bx).radius(rad);
                 b = if done {
-                    b.fill(c.accent).child(icon(&octicons::TICK, bx).color(c.bg))
+                    b.center().fill(c.accent).child(icon(&icons::CHECK, (bx * 0.78).round()).color(c.bg))
                 } else {
                     // Accent under the pointer, at once as omarky's border colour has no fade.
                     let hot = el().key("hot").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(rad).border(edge, c.accent).group_opacity(0.0, 1.0);

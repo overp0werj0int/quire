@@ -20,7 +20,7 @@ Notes on reading them:
 ## Opening the sheet
 
 - **SHEET-001** [adapted: 0003] [verify: script] `e` (no modifiers) opens the sheet on one block. `E` (Shift+e) opens it on the block's whole section (omarky preset) (`reader/ui/app/ReaderWindow.qml:447-448`).
-- **SHEET-002** [in] [verify: script] The block chosen is, in order of preference, the block under the pointer, else the block holding the current text selection, else the block at the top of the view (`reader/ui/app/ReaderWindow.qml:311-317`).
+- **SHEET-002** [in] [verify: script] The block(s) chosen are, in order of preference, every block touched by the current text selection, else the block under the pointer, else the block at the top of the view (`reader/ui/app/ReaderWindow.qml:311-317`).
 - **SHEET-003** [adapted: 0001] [verify: state] Nothing opens unless a note is open in preview mode. A locked note shows Quire's lock panel instead of the page, so its sheet opens only while it is unlocked. omarky: nothing opens when the window has no file, the file has not loaded, or the file has been deleted (`reader/ui/app/ReaderWindow.qml:346`).
 - **SHEET-004** [deferred] [verify: -] In changes mode, when the newer side is a past version, the sheet refuses with the toast "Compare with Now to edit the file" (`reader/ui/app/ReaderWindow.qml:347`).
 - **SHEET-005** [deferred] [verify: -] In changes mode a fold row cannot be edited, with the toast "Open the fold to edit what is in it" (`reader/ui/app/ReaderWindow.qml:351`).

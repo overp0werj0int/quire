@@ -5,7 +5,8 @@ use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
 
 use super::V;
 use super::layer::Card;
-use super::widgets::{LOCK, label, outline_button, primary_button};
+use super::icons::LOCK;
+use super::widgets::{label, outline_button, primary_button};
 use crate::app::App;
 use super::styles::sans;
 use crate::theme;

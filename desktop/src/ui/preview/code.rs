@@ -3,7 +3,7 @@
 use rune::{El, Span, TextStyle, col, el, row, text};
 
 use super::Cx;
-use crate::ui::octicons;
+use crate::ui::icons;
 use crate::blocks::{DiffKind, DiffLine};
 use crate::page::{line, r};
 use crate::roles::mix;
@@ -73,7 +73,7 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     let marks = cx.marks(pid, &src, 0).0;
     let copy = src.clone();
     // Code never wraps: a long line runs on and the area scrolls sideways (BLK-47).
-    let code = text(if src.is_empty() { " ".to_string() } else { src }).spans(spans).key("code").font(style).color(c.text).text_highlights(marks);
+    let code = cx.selectable_text(text(if src.is_empty() { " ".to_string() } else { src }).spans(spans).key("code").font(style).color(c.text).text_highlights(marks));
     let fade = rune::ScrollFade::strength(r(b * 2.4)).full_at(1.0).linear().end_only();
     body = body.child(el().key("scroll").grow(1.0).min_w(0.0).scroll_x().scroll_fade(fade).child(code));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
@@ -81,8 +81,8 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     // Over the block the badge gives way to a Copy chip, which says Copied in green for a
     // moment after a click, with or without the pointer (BLK-51).
     let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
-    let (glyph, label, tint) = if copied { (&octicons::CHECK, "Copied", c.green) } else { (&octicons::COPY, "Copy", c.dim) };
-    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: 10.0, icon: 10.0, label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
+    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.green) } else { (&icons::COPY, "Copy", c.dim) };
+    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: 10.0, icon: 12.0, label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
         .el(c)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
         .label("Copy the code")
@@ -133,7 +133,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
             .key(format!("l-{i}"))
             .px(pad_x)
             .child(text(l.sign).key("sign").font(style).color(ink).w(r(size * 1.6)))
-            .child(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink).text_highlights(marks));
+            .child(cx.selectable_text(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink).text_highlights(marks)));
         if let Some(f) = band {
             rw = rw.fill(f);
         }

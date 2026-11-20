@@ -8,7 +8,7 @@ use super::layer::Card;
 use super::chip::Chip;
 use super::panel::{BODY, CAPTION};
 use super::styles::{self, caption, keys, sans};
-use super::widgets::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
+use super::icons::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
@@ -72,9 +72,9 @@ pub fn find_bar(v: V) -> El {
                 .child(icon(&SEARCH, 14.0).color(c.faint))
                 .child(field)
                 .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
-                .child(button("find-prev", &CHEVRON_UP, 10.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))
-                .child(button("find-next", &CHEVRON_DOWN, 10.0, tip("Next match", "find.next"), |s, tx| s.find_step(true, tx)))
-                .child(button("find-close", &CLOSE, 8.0, tip("Close find", "find.close"), |s, tx| s.close_find(tx))),
+                .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))
+                .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), |s, tx| s.find_step(true, tx)))
+                .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), |s, tx| s.close_find(tx))),
         )
 }
 

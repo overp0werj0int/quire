@@ -8,7 +8,7 @@ mod lists;
 mod lock;
 mod menu;
 mod outline;
-mod octicons;
+mod icons;
 mod panel;
 pub(crate) mod styles;
 mod palette;
@@ -153,9 +153,12 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             // The sidebar runs the full height; the title bar and the page share the rest. Zen
             // mode's bar spans the window from the frame it shows, so its pill never rides the
             // page's widening as the sidebar goes.
+            let slide = rune::Spring::new(0.16, 0.0);
+            let slide_pair = rune::SpringPair::new(slide, slide);
+            let side = v.left_visible().then(|| sidebar::sidebar(v).transition(rune::Transition::move_edge(rune::Edge::Leading).springs(slide_pair)));
             let bar = if focus { el().key("titlebar-room").h(titlebar::BAR_H) } else { titlebar::titlebar(v) };
-            let main = col().key("main").grow(1.0).min_w(0.0).h_full().child(bar).child(editor::body(v));
-            let frame = row().key("frame").w_full().h_full().children(v.left_visible().then(|| sidebar::sidebar(v))).child(main);
+            let main = col().key("main").grow(1.0).min_w(0.0).h_full().motion(slide).child(bar).child(editor::body(v));
+            let frame = row().key("frame").w_full().h_full().children(side).child(main);
             let root = root.child(frame);
             if focus {
                 root.child(titlebar::titlebar(v).pin(Some(0.0), Some(0.0), Some(0.0), None)).children(editor::progress(v))

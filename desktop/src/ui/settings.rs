@@ -5,7 +5,8 @@ use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
 
 use super::V;
 use super::layer::Card;
-use super::widgets::{CLOSE_THIN, Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
+use super::icons::CLOSE;
+use super::widgets::{Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
 use super::styles::{self, literal, note, sans};
@@ -60,7 +61,7 @@ pub(super) fn settings(v: V) -> Card {
                 .label("Close")
                 .help("Close")
                 .control(|s: &mut App, tx: &mut Tx| s.close_layer(tx))
-                .child(icon(&CLOSE_THIN, 10.0).color(p.mute).group_color(p.ink)),
+                .child(icon(&CLOSE, 14.0).color(p.mute).group_color(p.ink)),
         );
     let body = match s.set_sec {
         Sec::Appearance => appearance(v),

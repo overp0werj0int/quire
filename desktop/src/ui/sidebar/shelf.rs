@@ -10,7 +10,8 @@ use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Live, Mods, Phase, PointerBut
 use super::super::V;
 use super::super::lists;
 use super::super::styles::nav;
-use super::super::widgets::{SB_CLOSE, name_tip};
+use super::super::icons::CLOSE;
+use super::super::widgets::name_tip;
 use super::{BUTTON_END, ICON};
 use super::parts::{GAP, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
@@ -146,7 +147,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .help("Close tab")
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
-        .child(icon(&SB_CLOSE, ICON).color(if on { c.dim } else { c.faint }));
+        .child(icon(&CLOSE, ICON).color(if on { c.dim } else { c.faint }));
     let title_el = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
     let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint).ml(COUNT_GAP)));

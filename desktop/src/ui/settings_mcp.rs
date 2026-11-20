@@ -6,7 +6,8 @@ use rune::{El, Tx, col, el, icon, row, text};
 use super::V;
 use super::settings::{block, row_};
 use super::settings_sync::text_box;
-use super::widgets::{CHECK, Control, label, outline_button, seg, settings_seg, settings_seg_literal, switch};
+use super::icons::CHECK;
+use super::widgets::{Control, label, outline_button, seg, settings_seg, settings_seg_literal, switch};
 use crate::app::App;
 use crate::store::{MCP_TOOLS, new_token};
 use super::styles::{literal, sans};
@@ -119,7 +120,7 @@ pub fn mcp(v: V) -> El {
         }
         let mut bx = row().key("box").size(16.0, 16.0).center().radius(4.0).border(1.5, if on { p.button } else { p.mark }).border_layout();
         if on {
-            bx = bx.fill(p.button).child(icon(&CHECK, 10.0).color(p.on_acc));
+            bx = bx.fill(p.button).child(icon(&CHECK, 11.0).color(p.on_acc));
         }
         let mut r = row()
             .key(format!("tool-{id}"))

@@ -4,7 +4,8 @@
 use rune::{El, Tx, el, row};
 
 use super::V;
-use super::widgets::{CODE, COPY_ALL, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, dots, icon_button, label, toggle_button};
+use super::icons::{CODE, COPY, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN};
+use super::widgets::{dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
 use super::styles::sans;
@@ -36,8 +37,10 @@ pub(super) fn act(f: fn(&mut App, &mut Tx)) -> impl Fn(&mut App, &mut Tx) + 'sta
     }
 }
 
-/// The corner's width: its padding, the dots, the gap and the toggle.
-const CORNER_W: f32 = 14.0 + super::widgets::DOTS_W + 10.0 + BUTTON + 8.0;
+/// The corner's leading padding, gap after the window dots (when shown), and total width.
+const CORNER_PL: f32 = if super::widgets::DOTS_W > 0.0 { 14.0 } else { 8.0 };
+const CORNER_GAP: f32 = if super::widgets::DOTS_W > 0.0 { 10.0 } else { 0.0 };
+const CORNER_W: f32 = CORNER_PL + super::widgets::DOTS_W + CORNER_GAP + BUTTON + 8.0;
 
 /// The window's top-left corner: the window dots and the sidebar toggle. It lies over the
 /// window, outside the sidebar, which leaves room for it at its top, as the title bar does when
@@ -51,13 +54,13 @@ pub fn corner(v: V) -> El {
         .w(CORNER_W)
         .paint_order(37)
         .h(BAR_H)
-        .pl(14.0)
+        .pl(CORNER_PL)
         .pr(8.0)
-        .gap(10.0)
+        .gap(CORNER_GAP)
         .center_y()
         .window_drag()
         .preserve_focus_on_press(true)
-        .child(dots(p))
+        .children((super::widgets::DOTS_W > 0.0).then(|| dots(p)))
         .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), crate::commands::sidebar_name(v.s), "app.toggle-sidebar")).no_window_drag().on_press_tx(|s: &mut App, tx| s.toggle_left(tx)))
 }
 
@@ -81,7 +84,8 @@ fn bar(v: V) -> El {
         title = title.child(super::editor::crumb(v));
     }
 
-    let right = actions(v, row().key("right-zone").h(BAR_H).pl(6.0).pr(10.0).gap(6.0).center_y());
+    let right = actions(v, row().key("right-zone").h(BAR_H).pl(6.0).pr(8.0).gap(4.0).center_y());
+    let slide = rune::Spring::new(0.16, 0.0);
 
     // A press on the bar's buttons, or a drag of the window by it, leaves the keyboard where
     // it was: the caret stays in the note. The rename field still takes focus.
@@ -92,7 +96,7 @@ fn bar(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .paint_order(3)
-        .children((!left_visible).then(|| corner_room().w(CORNER_W)))
+        .child(corner_room().w(if left_visible { 0.0 } else { CORNER_W }).motion(slide))
         .child(title)
         .child(right)
         .child(el().w(v.trailing))
@@ -114,7 +118,7 @@ fn actions(v: V, mut r: El) -> El {
         let find = tip("Find in note", "reader.find");
         r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open).on_press_tx(act(|s, tx| s.toggle_find(tx))));
         let all = tip("Copy the whole note", "reader.copy-all");
-        r = r.child(bar_button(p, "copy-all", &COPY_ALL, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
+        r = r.child(bar_button(p, "copy-all", &COPY, &all).role("button").on_press_tx(act(|s, tx| s.copy_all(tx))));
         let wide = s.wide();
         let (glyph, name) = if wide { (&NARROW, "Use readable width") } else { (&WIDEN, "Use full width") };
         let help = tip(name, "reader.toggle-wide");
@@ -134,7 +138,7 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_button(p, "next-font", &FONT, &help).role("button").on_press_tx(act(|s, tx| s.next_font(tx))));
     }
     if v.has_doc() {
-        r = r.child(el().key("bar-sep").w(1.0).h(16.0).mx(2.0).fill(p.line));
+        r = r.child(el().key("bar-sep").w(1.0).h(16.0).fill(p.line));
         // One button flips between source and preview. Its icon shows where it goes.
         let glyph = if s.mode == Mode::Source { &EYE } else { &CODE };
         let help = tip(crate::commands::mode_name(s), "app.toggle-mode");
@@ -151,7 +155,7 @@ fn actions(v: V, mut r: El) -> El {
 
 /// The width of zen mode's pill in preview, the wider: six buttons (`actions`), the rule
 /// between them, their gaps and its padding.
-const PILL_ROOM: f32 = 6.0 * (BUTTON + 6.0) + 5.0 + 8.0;
+const PILL_ROOM: f32 = 6.0 * (BUTTON + 4.0) + 1.0 + 8.0;
 
 /// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
 /// nothing covers it; the window dots and a button to leave show under the pointer.
@@ -200,8 +204,8 @@ fn focus_bar(v: V) -> El {
                     .key("zen-actions")
                     .h(BUTTON + 8.0)
                     .px(4.0)
-                    .mr(10.0)
-                    .gap(6.0)
+                    .mr(8.0)
+                    .gap(4.0)
                     .center_y()
                     .radius(10.0)
                     .fill(p.bg.alpha(0.85))

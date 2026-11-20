@@ -33,28 +33,55 @@ pub struct Pick {
 }
 
 /// The range for block `i` (SHEET-007 to SHEET-011).
+#[cfg(test)]
 pub fn pick(doc: &Doc, i: usize, scope: Scope) -> Option<Pick> {
-    let b = doc.blocks.get(i)?;
+    pick_range(doc, i, i, scope)
+}
+
+/// The range for blocks `first..=last` (SHEET-007 to SHEET-011). When a text selection spans
+/// multiple blocks, `Scope::Block` edits every block from `first` through `last` (with the
+/// neighbours outside that span as context), and `Scope::Section` covers from `first`'s section
+/// through the end of `last`'s section.
+pub fn pick_range(doc: &Doc, first: usize, last: usize, scope: Scope) -> Option<Pick> {
+    let (first, last) = (first.min(last), first.max(last));
+    let a = doc.blocks.get(first)?;
+    let z = doc.blocks.get(last)?;
     if scope == Scope::Block {
-        return Some(Pick { lines: b.lines.clone(), before: i.checked_sub(1), after: (i + 1 < doc.blocks.len()).then_some(i + 1) });
-    }
-    let end_all = doc.blocks.last().map_or(0, |b| b.lines.end);
-    let hs = &doc.headings;
-    // The nearest heading at or above the block's first line.
-    let Some(h) = hs.iter().rposition(|h| h.line <= b.lines.start) else {
-        // Before the first heading, or no headings at all (SHEET-010).
-        return Some(match hs.first() {
-            Some(first) => Pick { lines: 0..first.line, before: None, after: Some(first.index) },
-            None => Pick { lines: 0..end_all, before: None, after: None },
+        return Some(Pick {
+            lines: a.lines.start..z.lines.end,
+            before: first.checked_sub(1),
+            after: (last + 1 < doc.blocks.len()).then_some(last + 1),
         });
+    }
+    let section_of = |i: usize| -> Option<Pick> {
+        let b = doc.blocks.get(i)?;
+        let end_all = doc.blocks.last().map_or(0, |b| b.lines.end);
+        let hs = &doc.headings;
+        // The nearest heading at or above the block's first line.
+        let Some(h) = hs.iter().rposition(|h| h.line <= b.lines.start) else {
+            // Before the first heading, or no headings at all (SHEET-010).
+            return Some(match hs.first() {
+                Some(head) => Pick { lines: 0..head.line, before: None, after: Some(head.index) },
+                None => Pick { lines: 0..end_all, before: None, after: None },
+            });
+        };
+        let level = hs[h].level;
+        let next = hs[h + 1..].iter().find(|n| n.level <= level);
+        Some(Pick {
+            lines: hs[h].line..next.map_or(end_all, |n| n.line),
+            before: h.checked_sub(1).map(|p| hs[p].index),
+            after: next.map(|n| n.index),
+        })
     };
-    let level = hs[h].level;
-    let next = hs[h + 1..].iter().find(|n| n.level <= level);
-    Some(Pick {
-        lines: hs[h].line..next.map_or(end_all, |n| n.line),
-        before: h.checked_sub(1).map(|p| hs[p].index),
-        after: next.map(|n| n.index),
-    })
+    let mut p = section_of(first)?;
+    if last > first {
+        let tail = section_of(last)?;
+        if tail.lines.end > p.lines.end {
+            p.lines.end = tail.lines.end;
+            p.after = tail.after;
+        }
+    }
+    Some(p)
 }
 
 /// The bytes of `text` that lines `lines` occupy, without the newline after the last.
@@ -96,13 +123,21 @@ pub struct Sheet {
 impl App {
     /// `e` and `E` (SHEET-001 to SHEET-003, SHEET-013).
     pub fn open_sheet(&mut self, scope: Scope, tx: &mut Tx) {
+        self.open_sheet_at(None, scope, tx);
+    }
+
+    /// Opens the edit sheet on the block at `at` (from a right-click menu), else the selected
+    /// block(s), else the hovered or top visible block.
+    pub fn open_sheet_at(&mut self, at: Option<usize>, scope: Scope, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         if self.mode != Mode::Preview || self.note_locked(&rel) {
             return;
         }
         let doc = self.doc();
-        let Some(i) = self.sheet_block(&doc, tx) else { return };
-        let Some(pick) = pick(&doc, i, scope) else { return };
+        let Some((first, last)) = at.and_then(|l| doc.blocks.iter().position(|b| b.lines.start == l).map(|i| (i, i))).or_else(|| self.sheet_blocks(&doc, tx)) else {
+            return;
+        };
+        let Some(pick) = pick_range(&doc, first, last, scope) else { return };
         let base = self.active_text().to_string();
         let orig = base[line_bytes(&base, &pick.lines)].to_string();
         let mut edit = TextEdit::new(orig.clone());
@@ -113,23 +148,18 @@ impl App {
         tx.focus(EDITOR, false);
     }
 
-    /// The block under the pointer, else the one holding the selection, else the top one
-    /// (SHEET-002).
-    fn sheet_block(&self, doc: &Doc, tx: &mut Tx) -> Option<usize> {
+    /// The block(s) holding the active text selection, else the block under the pointer, else the
+    /// top one (SHEET-002).
+    fn sheet_blocks(&self, doc: &Doc, tx: &Tx) -> Option<(usize, usize)> {
+        if let Some(span) = self.selected_block_span(doc, tx) {
+            return Some(span);
+        }
         if let Some(l) = self.reader.hover
             && let Some(i) = doc.blocks.iter().position(|b| b.lines.start == l)
         {
-            return Some(i);
+            return Some((i, i));
         }
-        let held = tx.text_selection().and_then(|s| {
-            s.texts().iter().filter(|t| t.is_selected()).find_map(|t| t.path().split('/').find(|seg| seg.starts_with("pb-")).map(str::to_string))
-        });
-        if let Some(k) = held
-            && let Some(i) = doc.blocks.iter().position(|b| crate::reader::block_key(b) == k)
-        {
-            return Some(i);
-        }
-        Some(self.top()).filter(|&i| i < doc.blocks.len())
+        Some(self.top()).filter(|&i| i < doc.blocks.len()).map(|i| (i, i))
     }
 
     /// Ctrl+Enter and Ctrl+S (SHEET-033, SHEET-044 to SHEET-048).
@@ -270,5 +300,19 @@ mod tests {
         assert_eq!(splice("a\nb\n", &(0..1), ""), "\nb\n");
         assert_eq!(splice("a\nb\nc\n", &(0..3), "x"), "x\n");
         assert_eq!(&NOTE[line_bytes(NOTE, &(2..10))], "# One\n\npara a\n\n## Two\n\npara b\n");
+    }
+
+    #[test]
+    fn pick_range_covers_every_selected_block_and_section() {
+        let doc = crate::blocks::build(NOTE);
+        // Selecting across "para a" (line 4) through "para b" (line 8) in Block scope edits lines 4..9.
+        let p = pick_range(&doc, at(&doc, 4), at(&doc, 8), Scope::Block).unwrap();
+        assert_eq!(p.lines, 4..9);
+        assert_eq!((p.before, p.after), (Some(at(&doc, 2)), Some(at(&doc, 10))));
+        assert_eq!(&NOTE[line_bytes(NOTE, &p.lines)], "para a\n\n## Two\n\npara b");
+        // In Section scope, spanning "# One" into "# Three" covers both sections.
+        let s = pick_range(&doc, at(&doc, 4), at(&doc, 12), Scope::Section).unwrap();
+        assert_eq!(s.lines, 2..13);
+        assert_eq!((s.before, s.after), (None, None));
     }
 }

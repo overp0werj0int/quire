@@ -2521,6 +2521,78 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The docked sidebar slides off and back in as one full-height piece, locked edge-to-edge
+    /// with `main` across every frame.
+    #[test]
+    fn sidebar_slides_as_one_full_height_piece() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-side-slide-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Source);
+        rt.update(|s, _| s.persist.left_open = true);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let root_h = rt.presented("root").unwrap().0[3];
+        let (x, y) = rt.find("toggle-left").expect("toggle-left");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let side = rt.presented("sidebar").expect("sidebar still sliding out").0;
+        let main = rt.presented("main").expect("main").0;
+        assert_eq!(side[1], 0.0, "sidebar stays pinned to top while closing: {side:?}");
+        assert_eq!(side[3], root_h, "sidebar stays full height while closing: {side:?}");
+        assert!(side[0] < -10.0, "sidebar slides off-screen to the left: {side:?}");
+        assert!(((side[0] + side[2]) - main[0]).abs() < 1.0, "sidebar and main stay locked edge-to-edge while closing: side={side:?} main={main:?}");
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        assert!(rt.presented("sidebar").is_none(), "sidebar unmounted after closing");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let side = rt.presented("sidebar").expect("sidebar sliding in").0;
+        let main = rt.presented("main").expect("main").0;
+        assert_eq!(side[1], 0.0, "sidebar stays pinned to top while opening: {side:?}");
+        assert_eq!(side[3], root_h, "sidebar stays full height while opening: {side:?}");
+        assert!(side[0] < -10.0, "sidebar enters from off-screen left: {side:?}");
+        assert!(((side[0] + side[2]) - main[0]).abs() < 1.0, "sidebar and main stay locked edge-to-edge while opening: side={side:?} main={main:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Topbar buttons have consistent spacing (4 pt gaps, 8 pt around the divider, 8 pt outer
+    /// margins when no macOS traffic lights are drawn).
+    #[test]
+    fn topbar_icons_have_even_spacing_and_margins() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-bar-space-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, LONG, crate::app::Mode::Preview);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let root_w = rt.presented("root").unwrap().0[2];
+        let left = info(&rt, "toggle-left").expect("toggle-left").rect;
+        if !cfg!(target_os = "macos") {
+            assert_eq!(left[0], 8.0, "toggle-left sits 8 pt from the left edge: {left:?}");
+        }
+        let buttons = ["find", "copy-all", "wide", "help", "mode", "focus", "toggle-right"];
+        let rects: Vec<[f32; 4]> = buttons.iter().map(|k| info(&rt, k).expect(k).rect).collect();
+        let right_edge = rects.last().unwrap()[0] + rects.last().unwrap()[2];
+        assert!((root_w - right_edge - 8.0).abs() < 0.5, "toggle-right ends 8 pt from right edge: {right_edge} vs {root_w}");
+        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6)] {
+            let gap = rects[pair.1][0] - (rects[pair.0][0] + rects[pair.0][2]);
+            assert!((gap - 4.0).abs() < 0.5, "4 pt gap between {} and {}: {gap}", buttons[pair.0], buttons[pair.1]);
+        }
+        let sep = info(&rt, "bar-sep").expect("bar-sep").rect;
+        let before = sep[0] - (rects[3][0] + rects[3][2]);
+        let after = rects[4][0] - (sep[0] + sep[2]);
+        assert!((before - 4.0).abs() < 0.5 && (after - 4.0).abs() < 0.5, "uniform 4 pt around divider: before={before} after={after}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-118: find selects the first match after the caret and brings it to the view's middle.
     #[test]
     fn wr_118_find_centres_its_match() {
@@ -3054,6 +3126,130 @@ mod edit_menu_tests {
             false
         });
         assert_eq!(lines, Some(2..3), "Edit block opens the sheet on the clicked block");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Front matter card shows its title and fields without a "front matter" corner label.
+    #[test]
+    fn front_matter_card_omits_front_matter_label() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-front-label-{}", std::process::id()));
+        let md = "---\ntitle: Architecture Notes\ndate: 2026-11-19\nstatus: active\n---\n\n# Body\n";
+        let (mut rt, _) = crate::bench::open(&dir, md, crate::app::Mode::Preview);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let texts: Vec<String> = rt.elements().into_iter().filter_map(|e| e.text).collect();
+        assert!(texts.iter().any(|t| t == "Architecture Notes"), "front matter title renders: {texts:?}");
+        assert!(
+            !texts.iter().any(|t| t.eq_ignore_ascii_case("front matter")),
+            "front matter card must not render the 'front matter' label: {texts:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Preview mode supports mouse drag selection (single- and multi-block) for copying (Ctrl+C)
+    /// and editing (`e` edits every selected block; `E` edits their covering section(s)), without
+    /// keyboard block selection.
+    #[test]
+    fn preview_mouse_selection_supports_copy_and_multi_block_edit() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-preview-sel-{}", std::process::id()));
+        let md = "# One\n\nFirst paragraph here.\n\n## Two\n\nSecond paragraph here.\n\nThird paragraph here.\n";
+        let (mut rt, _) = crate::bench::open(&dir, md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let blocks: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("block")).map(|e| e.rect).collect();
+
+        // 1. Shift+Down/Up do not create a keyboard selection in preview mode.
+        let shift = rune::Mods { shift: true, ..rune::Mods::default() };
+        rt.key(rune::KeyEvent { key: rune::Key::Down, mods: shift });
+        rt.frame(DT);
+        let mut sel = None;
+        rt.update_if(|_, tx| {
+            sel = tx.text_selection().map(|s| s.text().to_string());
+            false
+        });
+        assert_eq!(sel, None, "Shift+Down does not select text in preview mode");
+
+        // 2. Partial mouse drag across multiple blocks: from inside block 1 ("First paragraph here.")
+        //    through block 2 ("## Two") into block 3 ("Second paragraph here.").
+        let [x1, y1, _, h1] = blocks[1];
+        let [x3, y3, _, h3] = blocks[3];
+        rt.pointer_down(x1 + 35.0, y1 + h1 / 2.0);
+        rt.pointer_move(x3 + 65.0, y3 + h3 / 2.0);
+        rt.pointer_up(x3 + 65.0, y3 + h3 / 2.0);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.update_if(|_, tx| {
+            sel = tx.text_selection().map(|s| s.text().to_string());
+            false
+        });
+        assert!(
+            sel.as_deref().is_some_and(|t| t.contains("paragraph") && t.contains("Two") && t.contains("Second")),
+            "mouse drag selected across multiple blocks: {sel:?}"
+        );
+
+        // Ctrl+C copies the selected text.
+        let cmd = rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..rune::Mods::default() };
+        rt.key(rune::KeyEvent { key: rune::Key::Command('c'), mods: cmd });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut toast = None;
+        rt.update_if(|s, _| {
+            toast = s.reader.toast.as_ref().map(|t| t.0.clone());
+            false
+        });
+        assert_eq!(toast.as_deref(), Some("Copied"), "Ctrl+C copies the mouse selection");
+
+        // Pressing `e` opens the edit sheet containing ALL selected blocks (blocks 1..=3, lines 2..7),
+        // with block 0 as before-context and block 4 as after-context.
+        rt.key(rune::KeyEvent { key: rune::Key::Text("e".into()), mods: rune::Mods::default() });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut sheet_state = None;
+        rt.update_if(|s, _| {
+            sheet_state = s.sheet().map(|sh| (sh.pick.lines.clone(), sh.pick.before, sh.pick.after, sh.orig.clone()));
+            false
+        });
+        assert_eq!(
+            sheet_state,
+            Some((2..7, Some(0), Some(4), "First paragraph here.\n\n## Two\n\nSecond paragraph here.".to_string())),
+            "`e` opens the edit sheet with every block touched by the selection"
+        );
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+
+        // 3. Ctrl+A selects all preview text, and Esc clears selection without leaving preview.
+        rt.key(rune::KeyEvent { key: rune::Key::Command('a'), mods: cmd });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.update_if(|_, tx| {
+            sel = tx.text_selection().map(|s| s.text().to_string());
+            false
+        });
+        assert!(
+            sel.as_deref().is_some_and(|t| t.contains("One") && t.contains("Third paragraph here.")),
+            "Ctrl+A selects the whole preview: {sel:?}"
+        );
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let mut mode_and_sel = (crate::app::Mode::Source, true);
+        rt.update_if(|s, tx| {
+            mode_and_sel = (s.mode, tx.text_selection().is_some());
+            false
+        });
+        assert_eq!(mode_and_sel, (crate::app::Mode::Preview, false), "first Esc clears selection and stays in preview");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -40,7 +40,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -86,7 +85,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -222,7 +220,7 @@ private fun TopBar(vm: QuireViewModel) {
         Box(Modifier.weight(1f).padding(start = 4.dp)) {
             if (active != null) Crumb(vm, active) else Mono(vm.vault?.name ?: "", 12.sp, c.mute, maxLines = 1)
         }
-        IconBtn(QIcons.SEARCH, stroke = 1.5f, iconSize = 15.dp) { vm.openPalette("files") }
+        IconBtn(QIcons.SEARCH, iconSize = 15.dp) { vm.openPalette("files") }
         if (active != null) {
             // One button flips between source and preview. Its icon shows where it goes.
             IconBtn(if (vm.mode == Mode.Source) QIcons.EYE else QIcons.CODE) {
@@ -345,7 +343,7 @@ private fun TabStrip(vm: QuireViewModel) {
             itemsIndexed(tabs, key = { _, p -> p }) { _, p -> Tab(vm, p, p == active) }
             item {
                 Box(Modifier.padding(start = 2.dp, bottom = 4.dp)) {
-                    IconBtn(QIcons.PLUS, viewport = 12f, iconSize = 12.dp, size = 30.dp) { vm.newNote() }
+                    IconBtn(QIcons.PLUS, iconSize = 14.dp, size = 30.dp) { vm.newNote() }
                 }
             }
         }
@@ -399,7 +397,7 @@ private fun Tab(vm: QuireViewModel, path: String, on: Boolean) {
                 .alpha(if (on) 1f else 0.55f)
                 .tap(RoundedCornerShape(5.dp)) { vm.closeTab(path) },
             contentAlignment = Alignment.Center,
-        ) { QIcon(QIcons.CLOSE, 8f, 8.dp, 1.3f, c.mute) }
+        ) { QIcon(QIcons.CLOSE, 12.dp, c.mute) }
     }
 }
 
@@ -643,18 +641,18 @@ private fun toolLabel(a: String) = when (a) {
 private fun ToolGlyph(a: String, c: QColors, on: Boolean = false) {
     val ink = c.ink2
     when (a) {
-        "bold" -> Txt("B", 16.sp, ink, weight = FontWeight.W700)
-        "italic" -> Txt("I", 17.sp, ink, family = QFonts.serifText, italic = true)
-        "strike" -> BasicText("S", style = TextStyle(fontFamily = QFonts.sans, fontSize = 16.sp, color = ink, textDecoration = TextDecoration.LineThrough))
-        "heading" -> Txt("H", 16.sp, ink, weight = FontWeight.W600)
-        "link" -> QIcon(QIcons.LINK, 16f, 16.dp, 1.3f, ink)
-        "noteLink" -> Mono("[[ ]]", 12.sp, ink)
-        "bullet" -> QIcon(QIcons.LIST, 16f, 16.dp, 1.3f, ink)
-        "number" -> Mono("1.", 13.sp, ink)
-        "task" -> QIcon(QIcons.TASK, 16f, 16.dp, 1.3f, ink)
-        "quote" -> QIcon(QIcons.QUOTE, 16f, 16.dp, 1.3f, ink)
-        "code" -> QIcon(QIcons.CODE, 16f, 16.dp, 1.3f, ink)
-        "lock" -> QIcon(QIcons.LOCK, 16f, 16.dp, 1.3f, lockColor(c, on))
-        else -> QIcon(QIcons.IMAGE, 16f, 16.dp, 1.25f, ink)
+        "bold" -> QIcon(QIcons.BOLD, 16.dp, ink)
+        "italic" -> QIcon(QIcons.ITALIC, 16.dp, ink)
+        "strike" -> QIcon(QIcons.STRIKE, 16.dp, ink)
+        "heading" -> QIcon(QIcons.HEADING, 16.dp, ink)
+        "link" -> QIcon(QIcons.LINK, 16.dp, ink)
+        "noteLink" -> QIcon(QIcons.WIKI, 16.dp, ink)
+        "bullet" -> QIcon(QIcons.LIST, 16.dp, ink)
+        "number" -> QIcon(QIcons.NUMBERS, 16.dp, ink)
+        "task" -> QIcon(QIcons.TASK, 16.dp, ink)
+        "quote" -> QIcon(QIcons.QUOTE, 16.dp, ink)
+        "code" -> QIcon(QIcons.CODE, 16.dp, ink)
+        "lock" -> QIcon(QIcons.LOCK, 16.dp, lockColor(c, on))
+        else -> QIcon(QIcons.IMAGE, 16.dp, ink)
     }
 }

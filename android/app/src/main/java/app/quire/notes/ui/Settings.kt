@@ -90,7 +90,7 @@ fun SettingsScreen(vm: QuireViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Label("settings", Modifier.weight(1f))
-                IconBtn(QIcons.CLOSE, viewport = 8f, iconSize = 10.dp, stroke = 1.2f) { vm.settingsOpen = false }
+                IconBtn(QIcons.CLOSE, iconSize = 14.dp) { vm.settingsOpen = false }
             }
             Row(
                 Modifier

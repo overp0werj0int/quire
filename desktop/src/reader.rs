@@ -935,9 +935,27 @@ impl App {
         }
     }
 
-    /// The source lines of the block under the pointer, else the top block (RD-69, RD-100).
-    fn block_here(&self) -> Option<std::ops::Range<usize>> {
+    /// The inclusive span of top-level blocks touched by the active text selection.
+    pub(crate) fn selected_block_span(&self, doc: &Doc, tx: &Tx) -> Option<(usize, usize)> {
+        let sel = tx.text_selection()?;
+        let mut first: Option<usize> = None;
+        let mut last: Option<usize> = None;
+        for t in sel.texts().iter().filter(|t| t.is_selected()) {
+            let Some(k) = t.path().split('/').find(|seg| seg.starts_with("pb-")) else { continue };
+            let Some(i) = doc.blocks.iter().position(|b| block_key(b) == k) else { continue };
+            first = Some(first.map_or(i, |f| f.min(i)));
+            last = Some(last.map_or(i, |l| l.max(i)));
+        }
+        first.zip(last)
+    }
+
+    /// The source lines of the selected block(s), else the block under the pointer, else the top
+    /// block (RD-69, RD-100).
+    fn block_here(&self, tx: &Tx) -> Option<std::ops::Range<usize>> {
         let doc = self.doc();
+        if let Some((first, last)) = self.selected_block_span(&doc, tx) {
+            return Some(doc.blocks[first].lines.start..doc.blocks[last].lines.end);
+        }
         let b = match self.reader.hover {
             Some(l) => doc.blocks.iter().find(|b| b.lines.start == l),
             None => doc.blocks.get(self.top()),
@@ -965,14 +983,13 @@ impl App {
 
     /// The edit sheet on the block at `line`, or on its section (RD-68, SHEET-001).
     pub fn edit_block_at(&mut self, line: usize, scope: crate::sheet::Scope, tx: &mut Tx) {
-        self.reader.hover = Some(line);
-        self.open_sheet(scope, tx);
+        self.open_sheet_at(Some(line), scope, tx);
     }
 
-    /// The Menu key or Shift+F10 in the reader: the menu of the block under the pointer, else of
-    /// the block at the top of the view (RD-68), as a right-click on it opens it.
+    /// The Menu key or Shift+F10 in the reader: the menu of the selected or hovered block, else
+    /// of the block at the top of the view (RD-68), as a right-click on it opens it.
     pub fn block_menu_here(&mut self, tx: &mut Tx) {
-        let Some(lines) = self.block_here() else { return };
+        let Some(lines) = self.block_here(tx) else { return };
         let Some(i) = self.doc().blocks.iter().position(|b| b.lines.start == lines.start) else { return };
         let at = self.reader.map.borrow().menu_at(i, self.reader.scroll.get()[0], self.b() * 1.6);
         if let Some(at) = at {
@@ -983,8 +1000,9 @@ impl App {
     }
 
     pub fn copy_block_here(&mut self, tx: &mut Tx) {
-        if let Some(l) = self.block_here() {
-            self.copy_block(l.start, tx);
+        if let Some(l) = self.block_here(tx) {
+            tx.copy(source_lines(self.active_text(), l));
+            self.toast("Copied the block's Markdown", tx);
         }
     }
 

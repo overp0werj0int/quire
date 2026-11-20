@@ -11,7 +11,7 @@ use super::super::V;
 use super::super::lists;
 use super::super::panel;
 use super::super::styles::nav;
-use super::super::widgets::TAG;
+use super::super::icons::TAG;
 use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TAB_TITLE_LH, TEXT_X, caption_style, section_label, two_rows};
 use super::tree::last_part;
 use super::kbd;

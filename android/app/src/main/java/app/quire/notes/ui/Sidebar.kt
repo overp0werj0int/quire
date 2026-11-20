@@ -184,7 +184,7 @@ fun Sidebar(vm: QuireViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Txt(v.name, 14.sp, c.ink, Modifier.weight(1f), weight = FontWeight.W600, maxLines = 1)
-                QIcon(QIcons.CHEVRON_DOWN, 10f, 10.dp, 1.3f, c.mute)
+                QIcon(QIcons.CHEVRON_DOWN, 12.dp, c.mute)
             }
             if (vm.vaultMenu) VaultMenu(vm)
         }
@@ -333,15 +333,15 @@ private fun FolderRow(vm: QuireViewModel, r: TreeRow, drag: DragState, menu: Boo
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(Modifier.width(12.dp), contentAlignment = Alignment.Center) {
-                QIcon(QIcons.CHEVRON_RIGHT, 8f, 8.dp, 1.4f, c.mute, Modifier.rotate(if (r.open) 90f else 0f))
+                QIcon(QIcons.CHEVRON_RIGHT, 11.dp, c.mute, Modifier.rotate(if (r.open) 90f else 0f))
             }
-            QIcon(if (r.open) QIcons.FOLDER_OPEN else QIcons.FOLDER_CLOSED, 16f, 15.dp, 1.25f, c.mute)
+            QIcon(if (r.open) QIcons.FOLDER_OPEN else QIcons.FOLDER_CLOSED, 15.dp, c.mute)
             Txt(r.name, 13.5.sp, c.ink2, Modifier.weight(1f), weight = FontWeight.W500, maxLines = 1)
             // A new note in this folder, like "New note" but with the folder already picked.
             Box(
                 Modifier.size(32.dp).tap(RoundedCornerShape(6.dp)) { vm.newNote(inFolder = r.path) },
                 contentAlignment = Alignment.Center,
-            ) { QIcon(QIcons.PLUS, 12f, 12.dp, 1.3f, c.mute) }
+            ) { QIcon(QIcons.PLUS, 14.dp, c.mute) }
         }
         if (menu) {
             var asking by remember { mutableStateOf(false) }
@@ -520,7 +520,7 @@ private fun NewFolderRow(vm: QuireViewModel, depth: Int, drag: DragState) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Spacer(Modifier.width(12.dp))
-        QIcon(QIcons.FOLDER_CLOSED, 16f, 15.dp, 1.25f, c.mute)
+        QIcon(QIcons.FOLDER_CLOSED, 15.dp, c.mute)
         BasicTextField(
             value = vm.newFolderName,
             onValueChange = { vm.newFolderName = it },
@@ -602,7 +602,7 @@ private fun SearchPanel(vm: QuireViewModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    QIcon(QIcons.SEARCH, 16f, 13.dp, 1.5f, c.mute)
+                    QIcon(QIcons.SEARCH, 14.dp, c.mute)
                     Box(Modifier.weight(1f)) {
                         BasicTextField(
                             value = vm.query,
@@ -621,7 +621,7 @@ private fun SearchPanel(vm: QuireViewModel) {
                     }
                     if (vm.query.isNotEmpty()) {
                         Box(Modifier.size(24.dp).tap(RoundedCornerShape(5.dp)) { vm.query = "" }, contentAlignment = Alignment.Center) {
-                            QIcon(QIcons.CLOSE, 8f, 8.dp, 1.3f, c.mute)
+                            QIcon(QIcons.CLOSE, 12.dp, c.mute)
                         }
                     }
                 }

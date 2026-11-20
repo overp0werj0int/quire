@@ -98,7 +98,7 @@ fun LockPanel(vm: QuireViewModel) {
             Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(top = 56.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            QIcon(QIcons.LOCK, 16f, 28.dp, 1.3f, c.mute, Modifier.padding(bottom = 6.dp))
+            QIcon(QIcons.LOCK, 28.dp, c.mute, Modifier.padding(bottom = 6.dp))
             Txt("This note is locked.", 17.sp, c.ink, weight = FontWeight.W500)
             Txt("Enter the password to read and edit it.", 13.5.sp, c.mute, lineHeight = 20.sp)
             Row(

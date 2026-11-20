@@ -383,6 +383,7 @@ impl App {
     /// Preview to source: back where the editor was, unless the preview was scrolled; then
     /// the line at the preview's top goes to the editor's top (WR-112).
     pub fn switch_mode(&mut self, tx: &mut Tx) {
+        tx.clear_text_selection();
         if self.mode == Mode::Source {
             let text = self.active_text();
             let caret = self.edits.get(self.active.as_deref().unwrap_or_default()).map_or(0, |e| e.focus.min(text.len()));

@@ -1,4 +1,4 @@
-//! Small pieces the screens share: the design's icons, segmented controls and switches.
+//! Small pieces the screens share: brand marks, icon buttons, segmented controls and switches.
 
 use rune::{Color, El, Icon, Key, KeyEvent, Mods, Shadow, TextStyle, Tx, el, icon, row, text};
 
@@ -14,59 +14,9 @@ macro_rules! svg {
     };
 }
 
-svg!(SIDEBAR_LEFT, 16.0, r#"<rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 3v10" fill="none" stroke="currentColor" stroke-width="1.3"/>"#);
-svg!(SIDEBAR_RIGHT, 16.0, r#"<rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10 3v10" fill="none" stroke="currentColor" stroke-width="1.3"/>"#);
-svg!(CLOSE, 8.0, r#"<path d="M1 1l6 6M7 1L1 7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(CLOSE_THIN, 8.0, r#"<path d="M1 1l6 6M7 1L1 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>"#);
-svg!(PLUS, 16.0, r#"<path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(CHEVRON_DOWN, 10.0, r#"<path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(CHEVRON_UP, 10.0, r#"<path d="M2 6.5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-// The sidebar's icons, from the designer's symbols (SB-07): 16 units, 1.5 stroke, round caps
-// and joins; the chevron 10 units, 1.6 stroke.
-svg!(SB_CHEVRON, 10.0, r#"<path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(SB_SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 10.5L14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(SB_CLOSE, 16.0, r#"<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(FOLDER, 16.0, r#"<path d="M2 4.5V12a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3.5H3a1 1 0 00-1 1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(FOLDER_OPEN, 16.0, r#"<path d="M2 12V4.5a1 1 0 011-1h3.5L8 5h4.5a1 1 0 011 1v1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12l1.6-4.3a1 1 0 01.94-.7h9.66a.6.6 0 01.56.8l-1.46 4.5a1 1 0 01-.94.7H3a1 1 0 01-1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(TAG, 16.0, r#"<path d="M2 2.5h5.5l6.5 6.5-5 5L2.5 7.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.2" cy="5.2" r=".9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(GEAR, 16.0, r#"<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.47 3.47l1.42 1.42M11.11 11.11l1.42 1.42M3.47 12.53l1.42-1.42M11.11 4.89l1.42-1.42" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="butt"/>"#);
-svg!(SEARCH, 16.0, r#"<circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.3 10.3L13.6 13.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(EYE, 16.0, r#"<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/>"#);
-// The writer's view toggles in the title bar: paragraph focus (the middle line at full ink),
-// typewriter scrolling (the line held in the middle) and the next font.
-svg!(PARAGRAPH, 16.0, r#"<path d="M2.5 3.5h11M2.5 12.5h8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".4"/><path d="M2.5 8h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>"#);
-svg!(TYPEWRITER, 16.0, r#"<path d="M2 8h12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 2.5L8 5l2.5-2.5M5.5 13.5L8 11l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(FONT, 16.0, r#"<path d="M1.5 13L5 3l3.5 10M2.8 9.6h4.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11.6" cy="10.6" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M13.9 8v5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-// The formatting toolbar.
-svg!(BOLD, 16.0, r#"<path d="M4.8 2.8h3.9a2.6 2.6 0 0 1 0 5.2H4.8zM4.8 8h4.6a2.6 2.6 0 0 1 0 5.2H4.8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>"#);
-svg!(ITALIC, 16.0, r#"<path d="M7 2.8h5.2M3.8 13.2H9M9.6 2.8L6.4 13.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(STRIKE, 16.0, r#"<path d="M2.8 8h10.4M11 4.4c-.5-.9-1.6-1.6-3-1.6-1.8 0-3 1-3 2.3 0 .9.5 1.5 1.4 1.9M5 11.6c.5.9 1.6 1.6 3 1.6 1.8 0 3.1-1 3.1-2.4 0-.5-.1-.9-.4-1.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(HEADING, 16.0, r#"<path d="M4 3v10M12 3v10M4 8h8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>"#);
-svg!(LINK, 16.0, r#"<path d="M6.9 9.1a2.6 2.6 0 0 0 3.7 0l2.1-2.1a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.1 6.9a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.7-.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(WIKI, 16.0, r#"<path d="M4.6 3H2.6v10h2M7.2 3H5.4v10h1.8M8.8 3h1.8v10H8.8M11.4 3h2v10h-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(BULLETS, 16.0, r#"<circle cx="3.2" cy="4" r="1" fill="currentColor"/><circle cx="3.2" cy="8" r="1" fill="currentColor"/><circle cx="3.2" cy="12" r="1" fill="currentColor"/><path d="M6.2 4h7.6M6.2 8h7.6M6.2 12h7.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-svg!(NUMBERS, 16.0, r#"<path d="M2.5 2.9l1-.6v3.4M2.2 7.5c.2-.5.6-.8 1.1-.8.6 0 1 .4 1 .9 0 .8-2.1 1.5-2.1 2.4h2.2M6.6 4h7.2M6.6 8h7.2M6.6 12h7.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(TASK, 16.0, r#"<rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.3 8.2l1.9 1.9 3.6-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(QUOTE, 16.0, r#"<path d="M3.2 3v10M6.4 4.6h7M6.4 8h7M6.4 11.4h4.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-// A padlock: lock a note with a password.
-svg!(LOCK, 16.0, r#"<rect x="3.4" y="7" width="9.2" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#);
-// A picture with a hill and a sun: insert an image.
-svg!(IMAGE, 16.0, r#"<rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="10.5" cy="6.2" r="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.6 11.6l3.6-3.7 2.6 2.6 1.6-1.5 3 2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>"#);
-// Four corners of a frame: focus mode.
-svg!(FOCUS, 16.0, r#"<path d="M2.5 6V4a1.5 1.5 0 0 1 1.5-1.5h2M10 2.5h2A1.5 1.5 0 0 1 13.5 4v2M13.5 10v2a1.5 1.5 0 0 1-1.5 1.5h-2M6 13.5H4A1.5 1.5 0 0 1 2.5 12v-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-// Arrows out and in: the wide measure and the reading measure (RD-34).
-svg!(WIDEN, 16.0, r#"<path d="M1.8 8h12.4M4.3 5.5L1.8 8l2.5 2.5M11.7 5.5L14.2 8l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(NARROW, 16.0, r#"<path d="M1.5 8h4.3M10.2 8h4.3M3.5 5.5L6 8l-2.5 2.5M12.5 5.5L10 8l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-// A question mark in a ring: the shortcuts sheet.
-svg!(HELP, 16.0, r#"<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.3a1.9 1.9 0 0 1 3.7.4c0 1.3-1.9 1.5-1.9 2.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".8" fill="currentColor"/>"#);
-// The title bar's Copy all: two sheets in the bar's line, unlike the filled octicon that code
-// blocks use.
-svg!(COPY_ALL, 16.0, r#"<rect x="6" y="6" width="7.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.5 6V4A1.5 1.5 0 0 0 8 2.5H4A1.5 1.5 0 0 0 2.5 4v4A1.5 1.5 0 0 0 4 9.5h2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
-svg!(CODE, 16.0, r#"<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>"#);
 // The logo's mark: three sheets in a stack, the violet one in front (assets/brand).
 svg!(MARK, 100.0, r##"<rect x="38" y="10" width="46" height="60" rx="6" fill="#e1dbcf"/><rect x="27" y="20" width="46" height="60" rx="6" fill="#c9bfae"/><rect x="16" y="30" width="46" height="60" rx="6" fill="#7a4fba"/>"##);
 svg!(MARK_ON_INK, 100.0, r##"<rect x="38" y="10" width="46" height="60" rx="6" fill="#3a352e"/><rect x="27" y="20" width="46" height="60" rx="6" fill="#5f584e"/><rect x="16" y="30" width="46" height="60" rx="6" fill="#b597e8"/>"##);
-svg!(CHECK, 10.0, r##"<path d="M1.5 5.2l2.4 2.4L8.5 2.6" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>"##);
 
 /// A one-line text. Monospaced text gets its exact CSS width (0.6 em a character), because
 /// Rune rounds text boxes up to device pixels and those fractions add up along a row.

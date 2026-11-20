@@ -6,7 +6,8 @@ use rune::{El, Phase, ScrollSpec, col, el, icon};
 
 use super::super::V;
 use super::super::panel;
-use super::super::widgets::{Control, SB_CHEVRON};
+use super::super::icons::CHEVRON_DOWN;
+use super::super::widgets::Control;
 use super::parts::{GAP, LABEL_H, ROW_H, label_row};
 use super::{BAR_PAD, BUTTON, shelf, tree};
 use crate::app::App;
@@ -123,7 +124,7 @@ fn label(v: V, of: Section, name: &str, count: String, folded: Option<bool>) -> 
     };
     let (rw, rg, rc) = super::super::focus_ring(p);
     let turn = if folded { -std::f32::consts::FRAC_PI_2 } else { 0.0 };
-    let chevron = icon(&SB_CHEVRON, 10.0).color(c.faint).rotate(turn).rotate_motion(rune::Spring::new(0.12, 0.0));
+    let chevron = icon(&CHEVRON_DOWN, 10.0).color(c.faint).rotate(turn).rotate_motion(rune::Spring::new(0.12, 0.0));
     super::super::focus::stop(label_row(p, key, Some(chevron), name, count))
         .hover(c.hover)
         .role("button")
