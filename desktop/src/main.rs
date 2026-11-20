@@ -5821,8 +5821,9 @@ mod layer_matrix_tests {
         let tab = rect_of(&rt, &key);
         let x = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("x") && e.path.split('/').any(|s| s == key)).expect("its close button").rect;
         let parts = texts(&rt, &key);
-        assert_eq!(parts.len(), 3, "a name, a folder and the active tab's count: {parts:?}");
-        assert_eq!(parts[2].0, "· 1 section");
+        assert_eq!(parts.len(), 4, "a name, a folder, separator dot, and the active tab's count: {parts:?}");
+        assert_eq!(parts[2].0, "·");
+        assert_eq!(parts[3].0, "1 section");
         for (t, r) in &parts {
             assert!(r[0] >= tab[0] && r[0] + r[2] <= x[0] + 0.5, "'{t}' {r:?} stays left of the close button {x:?}");
         }
