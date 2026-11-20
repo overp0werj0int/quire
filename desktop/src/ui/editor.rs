@@ -230,8 +230,12 @@ fn doc_scroll(v: V) -> El {
             }
         });
     if super::reading(s) {
-        // The page holds its top block in place when text above it changes (RD-11, RD-13).
+        // The page holds its top block in place when text above it changes (RD-11, RD-13),
+        // and fades scrolled edges subtly outside zen mode (`SCROLLFADE`).
         scroll = scroll.scroll_anchor();
+        if !focus {
+            scroll = scroll.scroll_fade(preview::scroll_fade());
+        }
     }
     // The room the caret keeps from the view's edges while you type. Rune applies one margin
     // symmetrically at both edges and snaps instantly in `follow_caret()`. While a foot band shows

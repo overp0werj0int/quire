@@ -80,7 +80,15 @@ fn shelf_el(v: V, n: usize, h: Option<f32>, folds: bool) -> El {
     if folded {
         return out.pb(SHELF_END).border_sides([0.0, 0.0, 1.0, 0.0], p.line).border_layout().child(col().w_full().pt(GAP).child(shelf::rows(v, true)));
     }
-    let rows = col().key("shelf-scroll").grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).scroll_margin(panel::RING_ROOM).child(col().w_full().pt(panel::RING_ROOM).pb(SHELF_END).child(shelf::rows(v, false)));
+    let rows = col()
+        .key("shelf-scroll")
+        .grow(1.0)
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_fade(super::scroll_fade())
+        .scroll_margin(panel::RING_ROOM)
+        .child(col().w_full().pt(panel::RING_ROOM).pb(SHELF_END).child(shelf::rows(v, false)));
     match h {
         Some(h) => out.h(h).child(rows),
         None => out.child(rows),

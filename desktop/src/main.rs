@@ -2691,6 +2691,35 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// SCROLLFADE: unresolved wikilinks meet >= 4.5:1 contrast on Paper and Ink, and Help,
+    /// Settings Shortcuts, and Command Palette share unified `kbd` caps.
+    #[test]
+    fn scrollfade_unresolved_wikilink_and_unified_kbd() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-scrollfade-{}", std::process::id()));
+        let md = "# Wiki\n\nLink to [[Missing target]] right here.\n\n";
+        let (mut rt, _) = open(&dir, md, crate::app::Mode::Preview);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let wl = info(&rt, "wiki:Missing target").expect("unresolved wikilink");
+        assert!(wl.rect[2] > 20.0, "unresolved wikilink laid out: {:?}", wl.rect);
+        for (id, dark) in [("paper", false), ("ink", true), ("solarized-light", false), ("nord", true)] {
+            let r = crate::roles::Roles::new(crate::theme::theme_pal(id, dark));
+            let cr = crate::theme::contrast(r.readable_dim(), r.bg);
+            assert!(cr >= 4.5, "{id}: unresolved wikilink contrast {cr:.2}:1 (< 4.5)");
+        }
+        // Command palette uses shared `kbd` chips.
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Commands, tx));
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let pal_kbds = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("kbd") && e.path.contains("/palette/")).count();
+        assert!(pal_kbds >= 4, "command palette renders shared kbd caps: {pal_kbds}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
     /// a hover, above the page rather than over its text.
     #[test]

@@ -77,6 +77,24 @@ pub fn faded_h(name: &str, bg: Color, height: f32, page: El) -> El {
 /// share a row. omarky's find bar has it (RD-53, WR-122).
 pub const BAR_RADIUS: f32 = 6.0;
 
+/// Unified `<kbd>` key cap shared across Help, Settings, Command Palette, and sidebar search/tag
+/// rows (`SCROLLFADE`). `compact` fits inside dense rows and footers; full size sits in shortcut
+/// tables. Ink uses `Roles::panel(p).dim` (>= 4.5:1 on every panel and dialog surface).
+pub fn kbd(p: &Pal, label_: impl Into<String>, compact: bool) -> El {
+    let c = Roles::panel(p);
+    let (size, lh, px, py) = if compact { (super::styles::CAPTION, 12.0, 4.0, 2.0) } else { (11.0, 14.0, 6.0, 2.0) };
+    row()
+        .key("kbd")
+        .px(px)
+        .py(py)
+        .radius(4.0)
+        .fill(c.raised)
+        .border(1.0, c.hairline)
+        .border_layout()
+        .center()
+        .child(text(label_.into()).font(super::styles::keys(size).lh(lh)).color(c.dim))
+}
+
 /// Consistent focus-within ring for single-line text inputs (`SB-95`, `KBDA11Y`): a 1.5 pt
 /// inset ring in `Roles::panel(p).faint` (>= 4.5:1 on every panel/page surface) when the inner
 /// `text_input` has focus.

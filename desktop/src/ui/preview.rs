@@ -145,8 +145,9 @@ impl Rich {
                 Some(Link::Wiki(target)) => {
                     let (name, _) = crate::md::wiki_parts(target);
                     let ok = name.is_empty() || cx.v.s.names.resolve(&name).is_some();
-                    let color = if ok { c.link } else { c.faint };
-                    self.push(&run.t, Span { color: Some(color), ..base });
+                    let color = if ok { c.link } else { c.readable_dim() };
+                    let underline = (!ok).then_some(c.faint);
+                    self.push(&run.t, Span { color: Some(color), underline, ..base });
                     self.links.push((a..self.text.len(), format!("wiki:{}", target.trim()), color));
                 }
                 Some(Link::Url(u)) if run.img.is_none() => {
@@ -253,6 +254,13 @@ fn look(v: V) -> Look {
         dark: v.p.dark,
         c: Roles::new(v.p),
     }
+}
+
+/// Subtle top and bottom scroll-edge fades for Preview `doc-scroll` outside zen mode
+/// (`SCROLLFADE`), softening scrolled prose without obstructing the reading progress line or
+/// narrow Find backing.
+pub(super) fn scroll_fade() -> rune::ScrollFade {
+    rune::ScrollFade::strength(20.0).full_at(1.0).linear()
 }
 
 /// The page (VER-32): a virtual list of the note's top-level blocks, so only the rows near the

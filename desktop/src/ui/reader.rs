@@ -6,7 +6,7 @@ use rune::{Color, El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text, t
 use super::V;
 use super::layer::Card;
 use super::chip::Chip;
-use super::panel::{BODY, CAPTION};
+use super::panel::BODY;
 use super::styles::{self, caption, keys, sans};
 use super::icons::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
 use super::widgets::Control;
@@ -236,10 +236,9 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
     ),
 ];
 
-/// A key cap (RD-91): caption text in dim on a raised fill, hairline border, 12 by 6 px of
-/// padding in all.
-pub(super) fn cap(t: String, c: &Roles) -> El {
-    row().px(6.0).py(3.0).radius(3.0).fill(c.raised).border(1.0, c.hairline).child(text(t).font(keys(CAPTION)).color(c.dim))
+/// A key cap (RD-91): delegates to the shared `<kbd>` helper (`widgets::kbd`, `SCROLLFADE`).
+pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
+    super::widgets::kbd(p, t, false)
 }
 
 /// The help sheet (RD-86 to RD-91; in the writer WR-158 to WR-166).
@@ -272,7 +271,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .color(super::styles::caption_ink(v.p)),
         )
         .child(el().grow(1.0))
-        .child(cap(keymap::label_of("Esc"), &c))
+        .child(cap(keymap::label_of("Esc"), v.p))
         .child(
             row()
                 .key("help-close")
@@ -300,7 +299,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                     let chords = a.chords(preset);
                     let show = if *id == "reader.help" { chords } else { &chords[..chords.len().min(1)] };
                     for k in show {
-                        keys = keys.child(cap(keymap::label_of(k), &c));
+                        keys = keys.child(cap(keymap::label_of(k), v.p));
                     }
                 }
             }

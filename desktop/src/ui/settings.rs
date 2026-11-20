@@ -491,13 +491,7 @@ fn keys(v: V) -> El {
         for a in shown {
             let mut chips = row().gap(5.0).center_y();
             for kb in keymap::display_labels(preset, a.id) {
-                chips = chips.child(
-                    super::widgets::padded(kb, styles::keys(11.5), p.ink2, 7.0, 2.0, 2.0)
-                        .radius(5.0)
-                        .fill(p.bg)
-                        .border_sides([1.0, 1.0, 2.0, 1.0], p.line)
-                        .border_layout(),
-                );
+                chips = chips.child(super::widgets::kbd(p, kb, false));
             }
             c = c.child(
                 row()

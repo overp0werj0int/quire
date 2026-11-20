@@ -12,11 +12,11 @@ mod tree;
 
 pub use tree::drag_ghost;
 
-use rune::{El, ScrollSpec, col, el, icon, row, text, text_input};
+use rune::{El, ScrollSpec, col, el, icon, row, text_input};
 
 use super::V;
 use super::panel;
-use super::styles::{keys, nav};
+use super::styles::nav;
 use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG};
 use super::widgets::Control;
 use crate::app::App;
@@ -65,11 +65,25 @@ pub fn sidebar(v: V) -> El {
     side.child(top_bar(v)).child(middle).child(foot(v))
 }
 
+/// Subtle scroll-edge fade shared by sidebar lists (`side-scroll`, `results-scroll`,
+/// `shelf-scroll`) so short drawers soften cropped rows instead of hard-clipping (`SCROLLFADE`).
+pub(super) fn scroll_fade() -> rune::ScrollFade {
+    rune::ScrollFade::strength(14.0).full_at(1.0).linear()
+}
+
 /// A list that scrolls in the room left to it. A focused row's ring reaches RING_ROOM past the
 /// row: a row that takes focus scrolls in far enough to show it, and the list leaves that room
 /// at its ends (RING).
 pub(super) fn scroll(key: &str, body: El) -> El {
-    col().key(key).grow(1.0).min_h(0.0).w_full().scroll(ScrollSpec { stick_bottom: false }).scroll_margin(panel::RING_ROOM).child(col().w_full().pt(panel::RING_ROOM).pb(12.0).child(body))
+    col()
+        .key(key)
+        .grow(1.0)
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_fade(scroll_fade())
+        .scroll_margin(panel::RING_ROOM)
+        .child(col().w_full().pt(panel::RING_ROOM).pb(12.0).child(body))
 }
 
 /// The top bar: the search field and the "+" button (SB-09).
@@ -194,9 +208,7 @@ fn search_field(v: V) -> El {
 
 /// A key's name in a chip, as the field's hint (SB-10) and the filled result's (SB-65).
 pub(super) fn kbd(v: V, k: String) -> El {
-    let p = v.p;
-    let c = Roles::panel(p);
-    el().key("kbd").px(4.0).py(2.0).radius(4.0).border(1.0, p.line).border_layout().child(text(k).font(keys(super::styles::CAPTION).lh(12.0)).color(c.faint))
+    super::widgets::kbd(v.p, k, true)
 }
 
 /// The footer: the tags button on the left, the settings button on the right (SB-78). Note

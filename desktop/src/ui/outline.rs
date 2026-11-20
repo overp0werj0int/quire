@@ -104,7 +104,15 @@ pub fn outline(v: V) -> El {
     if back.is_empty() {
         list = list.child(text("No notes link here yet.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
-    let scroll = col().key("outline-scroll").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).scroll_margin(panel::RING_ROOM).child(list);
+    let scroll = col()
+        .key("outline-scroll")
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_fade(rune::ScrollFade::strength(14.0).full_at(1.0).linear())
+        .scroll_margin(panel::RING_ROOM)
+        .child(list);
     super::focus::pane(col(), crate::focus::Pane::Outline)
         .key("outline")
         .w(PANEL_W)

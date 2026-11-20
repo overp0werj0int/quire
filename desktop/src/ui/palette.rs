@@ -92,9 +92,14 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
                 .child(rich(t.clone(), spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(t))
-                // The note's folder, or the command's key: at most `SUB_W`, so a long folder
-                // never squeezes the name. A folder keeps its end, the folder nearest the note.
-                .child(text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W).help_when_truncated(it.sub.clone())),
+                // The note's folder, or the command's key cap (`widgets::kbd`, `SCROLLFADE`).
+                .children((!it.sub.is_empty()).then(|| {
+                    if cmds {
+                        super::widgets::kbd(p, it.sub.clone(), true)
+                    } else {
+                        text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W).help_when_truncated(it.sub.clone())
+                    }
+                })),
         );
     }
     if d.items.is_empty() {
@@ -121,8 +126,8 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         .scroll_margin(PAL_FADE)
         .child(super::widgets::faded_h("pal", p.bg, PAL_FADE, list));
 
-    // A key in the keys' face, then what it does (C14).
-    let hint = |k: String, what: &str| row().gap(5.0).center_y().child(label(k, keys(11.0), p.mute)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
+    // A key cap in the shared `<kbd>` style, then what it does (C14, SCROLLFADE).
+    let hint = |k: String, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(p, k, true)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
     let foot = row()
         .key("pal-foot")
         .h(FOOT_H)
@@ -137,7 +142,16 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         .child(hint("↵".into(), if cmds { "run" } else { "open" }))
         .child(hint("Esc".into(), "close"))
         .child(el().grow(1.0))
-        .child(if cmds { hint(crate::keymap::label(v.s.preset(), "app.quick-switcher"), "for notes") } else { row().gap(5.0).center_y().child(label("type", sans(11.5, 400.0), p.mute)).child(label(">", keys(11.0), p.mute)).child(label("for commands", sans(11.5, 400.0), p.mute)) });
+        .child(if cmds {
+            hint(crate::keymap::label(v.s.preset(), "app.quick-switcher"), "for notes")
+        } else {
+            row()
+                .gap(5.0)
+                .center_y()
+                .child(label("type", sans(11.5, 400.0), p.mute))
+                .child(super::widgets::kbd(p, ">", true))
+                .child(label("for commands", sans(11.5, 400.0), p.mute))
+        });
 
     let [a, b] = theme::palette_shadows();
     let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).border(1.0, Roles::new(p).hairline).box_shadow(a).box_shadow(b).child(

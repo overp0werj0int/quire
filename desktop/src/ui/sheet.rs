@@ -105,10 +105,10 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
                 .h(KEY_ROW)
                 .gap(8.0)
                 .center_y()
-                .child(cap(key_of("sheet.cancel"), &c))
+                .child(cap(key_of("sheet.cancel"), v.p))
                 .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone))
                 .child(el().w(10.0 - 8.0))
-                .child(cap(key_of("sheet.save"), &c))
+                .child(cap(key_of("sheet.save"), v.p))
                 .child(text("saves").font(sans(11.5, 400.0)).color(c.faint))
         }
     };
