@@ -65,12 +65,19 @@ struct Cache {
     lines: FxMap<Key, Rc<(Styled, State)>>,
 }
 
-/// Whole-note assembled spans, strikes, hangs, and paragraph styles reused across unchanged
-/// frames (`Ctrl+Shift+K`, `Ctrl+S`, repeated `Ctrl+P`, toasts, caret moves without focus fade).
+/// Whole-note assembled spans, strikes, hangs, paragraph styles, and per-line indices reused
+/// across unchanged frames and patched incrementally on single-line edits (`LIVEPACE`, `COLDPACE`).
 struct Assembled {
     text_key: TextKey,
+    e: f32,
+    ink: Ink,
     with: (u32, [u32; 40], u64),
     focus: Option<(usize, usize)>,
+    line_starts: Vec<usize>,
+    span_starts: Vec<usize>,
+    strike_starts: Vec<usize>,
+    line_states: Vec<State>,
+    has_comment: bool,
     spans: Vec<Span>,
     strikes: Vec<(usize, usize, Option<Color>)>,
     hangs: Vec<(usize, usize)>,
@@ -157,17 +164,38 @@ pub fn find_in(text: &str, q: &str) -> Vec<Range<usize>> {
 /// Spans, strike lines and each line's hanging mark (`Styled::hang`) for a whole text.
 pub type Spans = (Vec<Span>, Vec<(usize, usize, Option<Color>)>, Vec<(usize, usize)>);
 
-/// Styles `text` line by line, carrying the block state from each line to the next, and
-/// places each line's spans at its offset.
-fn spans_by(text: &str, cap: (usize, usize, usize), mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
+/// Full indexed assembly: spans, strikes, hangs, plus per-line byte/span/strike starts and end
+/// states for O(1)-line incremental patching on typing (`COLDPACE`).
+struct IndexedSpans {
+    spans: Vec<Span>,
+    strikes: Vec<(usize, usize, Option<Color>)>,
+    hangs: Vec<(usize, usize)>,
+    line_starts: Vec<usize>,
+    span_starts: Vec<usize>,
+    strike_starts: Vec<usize>,
+    line_states: Vec<State>,
+    has_comment: bool,
+}
+
+fn spans_by_indexed(text: &str, cap: (usize, usize, usize), mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> IndexedSpans {
     let mut spans = Vec::with_capacity(cap.0);
     let mut strikes = Vec::with_capacity(cap.1);
     let mut hangs = Vec::with_capacity(cap.2);
+    let mut line_starts = Vec::with_capacity(cap.2);
+    let mut span_starts = Vec::with_capacity(cap.2 + 1);
+    let mut strike_starts = Vec::with_capacity(cap.2 + 1);
+    let mut line_states = Vec::with_capacity(cap.2);
+    let mut has_comment = false;
     let mut st = State::default();
     let mut at = 0;
     for (i, ln) in text.split('\n').enumerate() {
+        line_starts.push(at);
+        span_starts.push(spans.len());
+        strike_starts.push(strikes.len());
         let styled = style(i, ln, st);
         st = styled.1;
+        has_comment |= st.block == writer::Block::Comment;
+        line_states.push(st);
         for s in &styled.0.spans {
             spans.push(Span { start: s.start + at as u32, end: s.end + at as u32, ..s.clone() });
         }
@@ -175,7 +203,47 @@ fn spans_by(text: &str, cap: (usize, usize, usize), mut style: impl FnMut(usize,
         hangs.push(styled.0.hang);
         at += ln.len() + 1;
     }
-    (spans, strikes, hangs)
+    span_starts.push(spans.len());
+    strike_starts.push(strikes.len());
+    IndexedSpans { spans, strikes, hangs, line_starts, span_starts, strike_starts, line_states, has_comment }
+}
+
+/// Byte length of the longest common prefix of `a` and `b`.
+fn common_prefix_len(a: &[u8], b: &[u8]) -> usize {
+    let n = a.len().min(b.len());
+    let mut i = 0;
+    while i + 8 <= n && a[i..i + 8] == b[i..i + 8] {
+        i += 8;
+    }
+    while i < n && a[i] == b[i] {
+        i += 1;
+    }
+    i
+}
+
+/// Byte length of the longest common suffix of `a[pref..]` and `b[pref..]`.
+fn common_suffix_len(a: &[u8], b: &[u8], pref: usize) -> usize {
+    let max = a.len().min(b.len()) - pref;
+    let mut i = 0;
+    while i + 8 <= max && a[a.len() - i - 8..a.len() - i] == b[b.len() - i - 8..b.len() - i] {
+        i += 8;
+    }
+    while i < max && a[a.len() - i - 1] == b[b.len() - i - 1] {
+        i += 1;
+    }
+    i
+}
+
+fn line_affects_headings(ln: &str) -> bool {
+    let t = ln.trim_start();
+    t.starts_with('#') || t.starts_with("```")
+}
+
+/// Styles `text` line by line, carrying the block state from each line to the next, and
+/// places each line's spans at its offset.
+fn spans_by(text: &str, cap: (usize, usize, usize), style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
+    let idx = spans_by_indexed(text, cap, style);
+    (idx.spans, idx.strikes, idx.hangs)
 }
 
 impl App {
@@ -216,7 +284,7 @@ impl App {
         }
         let names = &self.names;
         let resolves = |t: &str| names.resolve(t).is_some();
-        let (spans, strikes, hangs) = spans_by(text, cap, |i, ln, st| {
+        let idx = spans_by_indexed(text, cap, |i, ln, st| {
             let faded = focus.is_some_and(|(a, b)| i < a || i > b);
             let key = (hash_line(ln), ln.len(), st, i == 0, faded);
             if let Some(hit) = cache.lines.get(&key) {
@@ -228,8 +296,148 @@ impl App {
             cache.lines.insert(key, v.clone());
             v
         });
-        let para_styles = crate::ui::editor::paragraph_styles(&hangs, gutter);
-        *assembled = Some(Assembled { text_key: text_key.to_owned(), with, focus, spans, strikes, hangs, para_gutter: gutter_bits, para_styles });
+        let para_styles = crate::ui::editor::paragraph_styles(&idx.hangs, gutter);
+        *assembled = Some(Assembled {
+            text_key: text_key.to_owned(),
+            e,
+            ink: *ink,
+            with,
+            focus,
+            line_starts: idx.line_starts,
+            span_starts: idx.span_starts,
+            strike_starts: idx.strike_starts,
+            line_states: idx.line_states,
+            has_comment: idx.has_comment,
+            spans: idx.spans,
+            strikes: idx.strikes,
+            hangs: idx.hangs,
+            para_gutter: gutter_bits,
+            para_styles,
+        });
+    }
+
+    /// Incrementally updates `lines_count`, `headings`, and `assembled` on single-line edits
+    /// (typing/backspace/delete without newlines) instead of rescanning all lines (`COLDPACE`).
+    /// Falls back automatically to full rebuild if newlines change or a block state flips.
+    pub(crate) fn on_single_line_edit(&self, old_key: TextKey, new_key: TextKey, old_text: &str, new_text: &str) {
+        let (ob, nb) = (old_text.as_bytes(), new_text.as_bytes());
+        let pref = common_prefix_len(ob, nb);
+        let suff = common_suffix_len(ob, nb, pref);
+        let old_hi = ob.len() - suff;
+        let new_hi = nb.len() - suff;
+        if ob[pref..old_hi].contains(&b'\n') || nb[pref..new_hi].contains(&b'\n') {
+            return;
+        }
+        // Single-line edit: line count is unchanged.
+        if let Some((k, _)) = self.wstate.lines_count.borrow_mut().as_mut()
+            && *k == old_key
+        {
+            *k = new_key.clone();
+        }
+        // Check whether the single edited line can affect ATX headings or fenced blocks.
+        let line_start = ob[..pref].iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        let old_line_end = ob[old_hi..].iter().position(|&b| b == b'\n').map_or(ob.len(), |i| old_hi + i);
+        let new_line_end = nb[new_hi..].iter().position(|&b| b == b'\n').map_or(nb.len(), |i| new_hi + i);
+        let old_ln = &old_text[line_start..old_line_end];
+        let new_ln = &new_text[line_start..new_line_end];
+        if !line_affects_headings(old_ln) && !line_affects_headings(new_ln)
+            && let Some(c) = self.wstate.headings.borrow_mut().as_mut()
+            && c.text_key == old_key
+        {
+            c.text_key = new_key.clone();
+        }
+        // Incrementally patch `wstate.assembled` for this one line if block state holds.
+        let mut assembled = self.wstate.assembled.borrow_mut();
+        let Some(a) = assembled.as_mut() else { return };
+        if a.text_key != old_key || a.with.2 != self.names_gen as u64 {
+            return;
+        }
+        let line_idx = a.line_starts.partition_point(|&s| s <= pref).saturating_sub(1);
+        if line_idx >= a.line_starts.len() || a.line_starts[line_idx] != line_start {
+            return;
+        }
+        let st_before = if line_idx == 0 { State::default() } else { a.line_states[line_idx - 1] };
+        let resolves = |t: &str| self.names.resolve(t).is_some();
+        let (mut styled, next_st) = writer::line(new_ln, line_idx == 0, st_before, a.e, &a.ink, &resolves);
+        if next_st != a.line_states[line_idx] {
+            // Fence, front-matter, comment or setext state flipped: let `ensure_assembled` rebuild.
+            return;
+        }
+        // Incrementally patch `wstate.count` in O(line_len) when block state is unchanged and
+        // outside front matter or multi-line HTML comments (so typing with Outline open never
+        // rescans the full note).
+        if !a.has_comment
+            && let Some((k, count)) = self.wstate.count.borrow_mut().as_mut()
+            && *k == old_key
+        {
+            let old_front = writer::strip_front_offset(old_text);
+            let new_front = writer::strip_front_offset(new_text);
+            if old_front == new_front && line_start >= old_front {
+                let words_delta = match (st_before.block, next_st.block) {
+                    (writer::Block::None, writer::Block::None) => {
+                        Some(writer::count_words_line(new_ln) as isize - writer::count_words_line(old_ln) as isize)
+                    }
+                    (writer::Block::Fence(ca, la), writer::Block::Fence(cb, lb)) if (ca, la) == (cb, lb) => Some(0),
+                    _ => None,
+                };
+                if let Some(dw) = words_delta {
+                    let old_chars = old_ln.chars().filter(|c| !c.is_whitespace()).count() as isize;
+                    let new_chars = new_ln.chars().filter(|c| !c.is_whitespace()).count() as isize;
+                    count.words = (count.words as isize + dw).max(0) as usize;
+                    count.chars = (count.chars as isize + (new_chars - old_chars)).max(0) as usize;
+                    count.minutes = writer::count_minutes(count.words);
+                    *k = new_key.clone();
+                }
+            }
+        }
+        if a.focus.is_some_and(|(fa, fb)| line_idx < fa || line_idx > fb) {
+            styled = writer::fade(&styled, new_ln.len(), a.ink.ghost);
+        }
+        let delta_bytes = nb.len() as isize - ob.len() as isize;
+        let sp_lo = a.span_starts[line_idx];
+        let sp_hi = a.span_starts[line_idx + 1];
+        let new_spans: Vec<Span> = styled.spans.into_iter().map(|s| Span { start: s.start + line_start as u32, end: s.end + line_start as u32, ..s }).collect();
+        let delta_sp = new_spans.len() as isize - (sp_hi - sp_lo) as isize;
+        let tail_sp_start = sp_lo + new_spans.len();
+        a.spans.splice(sp_lo..sp_hi, new_spans);
+        if delta_bytes != 0 {
+            for s in &mut a.spans[tail_sp_start..] {
+                s.start = (s.start as isize + delta_bytes) as u32;
+                s.end = (s.end as isize + delta_bytes) as u32;
+            }
+        }
+        let st_lo = a.strike_starts[line_idx];
+        let st_hi = a.strike_starts[line_idx + 1];
+        let new_strikes: Vec<(usize, usize, Option<Color>)> = styled.strikes.into_iter().map(|(x, y, c)| (x + line_start, y + line_start, Some(c))).collect();
+        let delta_st = new_strikes.len() as isize - (st_hi - st_lo) as isize;
+        let tail_st_start = st_lo + new_strikes.len();
+        a.strikes.splice(st_lo..st_hi, new_strikes);
+        if delta_bytes != 0 {
+            for (x, y, _) in &mut a.strikes[tail_st_start..] {
+                *x = (*x as isize + delta_bytes) as usize;
+                *y = (*y as isize + delta_bytes) as usize;
+            }
+        }
+        if a.hangs[line_idx] != styled.hang {
+            a.hangs[line_idx] = styled.hang;
+            a.para_styles[line_idx] = crate::ui::editor::paragraph_style(styled.hang, f32::from_bits(a.para_gutter));
+        }
+        if delta_bytes != 0 {
+            for off in &mut a.line_starts[line_idx + 1..] {
+                *off = (*off as isize + delta_bytes) as usize;
+            }
+        }
+        if delta_sp != 0 {
+            for off in &mut a.span_starts[line_idx + 1..] {
+                *off = (*off as isize + delta_sp) as usize;
+            }
+        }
+        if delta_st != 0 {
+            for off in &mut a.strike_starts[line_idx + 1..] {
+                *off = (*off as isize + delta_st) as usize;
+            }
+        }
+        a.text_key = new_key;
     }
 
     /// The source's spans, strike lines, and paragraph styles for the whole note, cached while
@@ -604,5 +812,81 @@ mod tests {
         assert_eq!(find_in("a.b", "."), vec![1..2]);
         assert_eq!(find_in("Straße fast", "fast"), vec![8..12]);
         assert!(find_in("x", "").is_empty());
+    }
+
+    /// COLDPACE: incremental single-line patching of `Assembled`, `line_count`, and
+    /// `headings_cached` produces bit-for-bit identical spans, strikes, paragraph styles,
+    /// line counts, and headings as a full rebuild across prose, heading, UTF-8, bold/strike,
+    /// fence toggle, and newline edits.
+    #[test]
+    fn coldpace_incremental_patch_matches_full_assembly() {
+        use crate::roles::Roles;
+        use crate::writer::Ink;
+        let dir = std::env::temp_dir().join(format!("quire-coldpace-patch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let initial = "# Title\n\nFirst paragraph with **bold** and ~~strike~~.\n\n## Second\n\n- bullet item\n- another item\n\n```rust\nlet x = 1;\n```\n\nTail line.\n";
+        std::fs::write(dir.join("note.md"), initial).unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("note.md", None, tx);
+            s.mode = crate::app::Mode::Source;
+        });
+        let p = crate::theme::theme_pal("paper", false);
+        let c = Roles::new(p);
+        let ink = Ink::new(&c);
+        let e = 14.0f32;
+        let gutter = crate::ui::editor::hang_gutter(e);
+
+        let edits: &[(&str, &str)] = &[
+            ("prose-insert", "# Title\n\nFirst paragraph with **bold** and ~~strike~~ and café.\n\n## Second\n\n- bullet item\n- another item\n\n```rust\nlet x = 1;\n```\n\nTail line.\n"),
+            ("prose-delete", "# Title\n\nFirst para with **bold** and ~~strike~~ and café.\n\n## Second\n\n- bullet item\n- another item\n\n```rust\nlet x = 1;\n```\n\nTail line.\n"),
+            ("fenced-code-edit", "# Title\n\nFirst para with **bold** and ~~strike~~ and café.\n\n## Second\n\n- bullet item\n- another item\n\n```rust\nlet x = 42 + y;\n```\n\nTail line.\n"),
+            ("heading-prefix", "livecheck # Title\n\nFirst para with **bold** and ~~strike~~ and café.\n\n## Second\n\n- bullet item\n- another item\n\n```rust\nlet x = 42 + y;\n```\n\nTail line.\n"),
+            ("list-hang-change", "livecheck # Title\n\nFirst para with **bold** and ~~strike~~ and café.\n\n## Second\n\nplain item\n- another item\n\n```rust\nlet x = 42 + y;\n```\n\nTail line.\n"),
+            ("fence-open-fallback", "livecheck # Title\n\n```\n\n## Second\n\nplain item\n- another item\n\n```rust\nlet x = 42 + y;\n```\n\nTail line.\n"),
+            ("newline-fallback", "# Title\n\nLine A\nLine B\n\n## Second\n\nTail.\n"),
+        ];
+
+        // Prime caches on initial text.
+        rt.update_if(|s, _| {
+            let _ = s.source_spans_and_styles(e, &ink, None, gutter);
+            let _ = s.line_count();
+            let _ = s.headings_cached();
+            let _ = s.word_count();
+            false
+        });
+
+        for &(name, next) in edits {
+            let next_s = next.to_string();
+            rt.update_if(move |s, _| {
+                s.cur_edit().replace_text(&next_s);
+                s.after_edit();
+                let got_spans = s.source_spans_and_styles(e, &ink, None, gutter);
+                let got_lines = s.line_count();
+                let got_heads = s.headings_cached().0;
+                let got_count = s.word_count();
+                // Force full uncached rebuild and compare bit-for-bit.
+                *s.wstate.assembled.borrow_mut() = None;
+                *s.wstate.lines_count.borrow_mut() = None;
+                *s.wstate.headings.borrow_mut() = None;
+                *s.wstate.count.borrow_mut() = None;
+                let want_spans = s.source_spans_and_styles(e, &ink, None, gutter);
+                let want_lines = s.line_count();
+                let want_heads = s.headings_cached().0;
+                let want_count = s.word_count();
+                assert_eq!(got_spans.0, want_spans.0, "{name}: spans mismatch");
+                assert_eq!(got_spans.1, want_spans.1, "{name}: strikes mismatch");
+                assert_eq!(got_spans.2, want_spans.2, "{name}: para_styles mismatch");
+                assert_eq!(got_lines, want_lines, "{name}: line_count mismatch");
+                assert_eq!(*got_heads, *want_heads, "{name}: headings mismatch");
+                assert_eq!(got_count, want_count, "{name}: word_count mismatch");
+                false
+            });
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -160,7 +160,7 @@ pub struct PageMap {
     /// The height the list gives a row not yet laid out.
     estimate: f32,
     /// The gap above each block, from the view, and the body size bits those gaps came from.
-    gaps: Vec<f32>,
+    gaps: Rc<Vec<f32>>,
     gaps_size: u32,
     /// Which `note` version `starts` currently reflects.
     starts_note: Option<u64>,
@@ -276,7 +276,7 @@ impl PageMap {
         }
         let size_bits = body_size.to_bits();
         if note_changed || size_bits != self.gaps_size || estimate != self.estimate {
-            self.gaps = gaps();
+            self.gaps = Rc::new(gaps());
             self.gaps_size = size_bits;
             self.estimate = estimate;
             changed = true;
@@ -284,6 +284,11 @@ impl PageMap {
         if changed {
             self.join();
         }
+    }
+
+    /// Cached per-block top gaps computed for the current note and body size (`COLDPACE`).
+    pub fn gaps(&self) -> Rc<Vec<f32>> {
+        self.gaps.clone()
     }
 
     /// Updates `starts` only when `note` changed (`LIVEPACE`).

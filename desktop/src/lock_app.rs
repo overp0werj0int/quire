@@ -8,16 +8,22 @@ use crate::lock;
 impl App {
     /// Seals an unlocked note's new text into the folder copy, to save soon.
     pub(crate) fn store_unlocked(&mut self, rel: &str, text: String) {
+        let old_key = self.active_text_key().to_owned();
         let Some(u) = self.unlocked.get_mut(rel) else { return };
         if u.text == text {
             return;
         }
+        let old_text = std::mem::replace(&mut u.text, String::new());
         u.set_text(text);
         let sealed = lock::seal(&u.key, &u.text);
         if let Some(v) = &mut self.vault {
             v.put(rel.to_string(), sealed);
         }
         self.mark_dirty_pub(rel);
+        if self.active.as_deref() == Some(rel) {
+            let new_key = self.active_text_key().to_owned();
+            self.on_single_line_edit(old_key, new_key, &old_text, self.active_text());
+        }
     }
 
     /// An unlocked note changed outside the app, through sync or another app. The new text

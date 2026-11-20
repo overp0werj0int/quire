@@ -215,9 +215,22 @@ pub struct App {
     pub notes: Vec<PathBuf>,
     /// Note mode's notes in Open but not shown, by full path: what each keeps until it shows again.
     parked: HashMap<PathBuf, Parked>,
+    /// Window size has been measured by at least one layout pass (`COLDPACE`).
+    pub laid_out: std::cell::Cell<bool>,
+    /// Idle deadline for scheduling `Tx::prepare_text(ui::prepare_cold)` after open/switch (`COLDPACE`).
+    prepare_due: Option<f64>,
+    /// Snapshot of note/viewport/theme inputs last pre-warmed via `Tx::prepare_text`.
+    prepared_key: Option<PrepareKey>,
     /// Folder mode's sidebar setting, kept while Note mode collapses the sidebar, so Note mode
     /// never changes what Folder mode opens with.
     folder_left: Option<bool>,
+}
+
+/// Inputs that determine whether Source and Command Palette text layouts are already pre-warmed.
+#[derive(Clone, PartialEq, Eq)]
+struct PrepareKey {
+    source: Option<(TextKey, u32, u32, String, bool, bool, bool, bool)>,
+    palette: (bool, crate::keymap::Preset, bool, bool, String),
 }
 
 /// A locked note while it is open.
@@ -278,6 +291,13 @@ impl TextKey {
 impl TextKeyRef<'_> {
     pub fn to_owned(self) -> TextKey {
         TextKey { vault_id: self.vault_id, path: self.path.to_owned(), ver: self.ver, unlocked: self.unlocked, len: self.len }
+    }
+
+    pub fn hash_val(self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.vault_id, self.path, self.ver, self.unlocked, self.len).hash(&mut h);
+        h.finish()
     }
 }
 
@@ -359,6 +379,9 @@ pub fn init() -> App {
         unlocked: HashMap::new(),
         notes: Vec::new(),
         parked: HashMap::new(),
+        laid_out: std::cell::Cell::new(false),
+        prepare_due: None,
+        prepared_key: None,
         folder_left: None,
         unlock_error: None,
         reader: Default::default(),
@@ -609,6 +632,7 @@ impl App {
         changed |= self.drop_stale_layers(tx);
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
+        self.poll_prepare(t, tx);
         changed |= self.search_due(t, tx);
         let res = tx.focused().filter(|k| k.starts_with("res-")).map(str::to_string);
         if res != self.res_focus {
@@ -626,6 +650,45 @@ impl App {
             }
         }
         changed
+    }
+
+    /// Schedules idle text pre-warming (`Tx::prepare_text(ui::prepare_cold)`) 250 ms after opening
+    /// a vault note or changing viewport/theme so initial frames finish undisturbed at 60 Hz while
+    /// cold 1st `Ctrl+P` (Preview->Source) and 1st `Ctrl+Shift+K` (Command Palette) hit warm caches.
+    fn poll_prepare(&mut self, t: f64, tx: &mut Tx) {
+        if self.screen != Screen::Vault || !self.laid_out.get() || self.active_locked() {
+            return;
+        }
+        let vw = self.view_w.get();
+        let dark = self.dark_mode(self.sys_dark.get());
+        let set = self.settings();
+        let left_vis = self.persist.left_open && !self.focus && vw >= SIDEBAR_DOCK_W;
+        let right_vis = self.persist.right_open && !self.focus && self.active.is_some() && vw >= OUTLINE_DOCK_W;
+        let source = (self.mode == Mode::Preview && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
+            (self.active_text_key().to_owned(), vw.to_bits(), set.size, set.font.clone(), self.wide(), left_vis, right_vis, dark)
+        });
+        let palette = (dark, self.preset(), self.note_mode(), self.active.is_some(), set.panel_font.clone());
+        let cur = PrepareKey { source, palette };
+        if self.prepared_key.as_ref() == Some(&cur)
+            || (cur.source.is_none() && self.prepared_key.as_ref().is_some_and(|p| p.palette == cur.palette))
+        {
+            self.prepare_due = None;
+            return;
+        }
+        match self.prepare_due {
+            None => {
+                self.prepare_due = Some(t + 0.25);
+                tx.wake_after(Duration::from_millis(250));
+            }
+            Some(due) if t >= due => {
+                self.prepare_due = None;
+                self.prepared_key = Some(cur);
+                tx.prepare_text(crate::ui::prepare_cold, None);
+            }
+            Some(due) => {
+                tx.wake_after(Duration::from_secs_f64((due - t).max(0.01)));
+            }
+        }
     }
 
     pub fn set_waker(&mut self, w: rune::Waker) {
@@ -1210,9 +1273,14 @@ impl App {
         }
         let changed = self.edits.get(&a).is_some_and(|e| self.vault.as_ref().is_some_and(|v| v.files().get(&a).map(String::as_str) != Some(e.text.as_str())));
         if changed && let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) {
-            if let Some(v) = &mut self.vault {
-                v.put(a.clone(), text);
+            let old_key = self.active_text_key().to_owned();
+            let old_text = self.vault.as_mut().and_then(|v| v.replace(a.clone(), text));
+            if self.vault.is_some() {
                 self.mark_dirty(&a);
+            }
+            if let Some(old_text) = old_text {
+                let new_key = self.active_text_key().to_owned();
+                self.on_single_line_edit(old_key, new_key, &old_text, self.active_text());
             }
         }
     }

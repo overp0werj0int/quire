@@ -130,7 +130,11 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let p = s.palette(cx.system_dark());
     let dark = p.dark;
     s.sys_dark.set(cx.system_dark());
-    let [vw, vh] = cx.layout_size("root").unwrap_or([1280.0, 800.0]);
+    let measured = cx.layout_size("root");
+    if measured.is_some() {
+        s.laid_out.set(true);
+    }
+    let [vw, vh] = measured.unwrap_or([1280.0, 800.0]);
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
     s.view_w.set(vw);
@@ -192,6 +196,26 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     // Under reduced motion Rune still fades what opens, closes and changes opacity, for 180 ms
     // (Apple's reduced motion). PAGE-84 wants none: everything in the window lands at once.
     if reduced { root.instant_changes() } else { root }
+}
+
+/// Idle text pre-warm view passed to `Tx::prepare_text` (`COLDPACE`): measures the active note's
+/// Source editor (while reading in Preview) and the Command Palette at exact window geometry so
+/// the first `Ctrl+P` and first `Ctrl+Shift+K` hit warm `TextSystem` caches instead of spiking.
+pub(crate) fn prepare_cold(s: &App, cx: &mut Cx<App>) -> El {
+    theme::set_scale(cx.env().scale);
+    let p = s.palette(cx.system_dark());
+    let dark = p.dark;
+    let [vw, vh] = cx.layout_size("root").unwrap_or([s.view_w.get().max(1280.0), s.view_h.get().max(800.0)]);
+    let trailing = cx.chrome_insets().trailing;
+    let v = V { s, p, dark, vw, vh, trailing, caret: None, caret_view: None, find_at: None, place_at: None };
+    let mut out = col().w_full().h_full();
+    if v.has_doc() && s.mode == crate::app::Mode::Preview && !s.active_locked() && s.active_text().len() <= 2_000_000 {
+        out = out.child(editor::prepare_source(v));
+    }
+    if v.is_vault() {
+        out = out.child(palette::prepare_commands(v));
+    }
+    out
 }
 
 /// A drawer (`crate::layer`): in a window too narrow to dock it, the sidebar over the page's

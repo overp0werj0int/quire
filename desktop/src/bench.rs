@@ -461,4 +461,81 @@ fn bench_livepace_long() {
     run_case("1753-panels-closed", &text_1753, false, false);
     run_case("1753-panels-open", &text_1753, true, true);
     run_case("5470-panels-open", LONG, true, true);
+
+    // Measure the idle-prewarmed path (`Tx::prepare_text(ui::prepare_cold)` in live windows)
+    // to verify 100% TextSystem cache key parity for cold 1st Ctrl+P and cold 1st Ctrl+Shift+K.
+    static WARM_PASS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    fn bench_view(s: &App, cx: &mut rune::Cx<App>) -> rune::El {
+        if WARM_PASS.load(std::sync::atomic::Ordering::Relaxed) {
+            crate::ui::prepare_cold(s, cx)
+        } else {
+            crate::ui::view(s, cx)
+        }
+    }
+    let run_prepared = |label: &str, text: &str| {
+        let dir = std::env::temp_dir().join(format!("quire-bench-prep-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("notes");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Long.md"), text).unwrap();
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        WARM_PASS.store(false, std::sync::atomic::Ordering::Relaxed);
+        let mut rt = Runtime::new(crate::app::init(), bench_view, (1920.0, 1080.0), Env { system_dark: false, scale: 1.0 });
+        rt.on_key = Some(crate::keys::on_key);
+        rt.poll = Some(|s: &mut App, t, tx| s.poll(t, tx));
+        rt.frame(DT);
+        rt.update(move |s, tx| {
+            s.open_vault(root, tx);
+            s.persist.left_open = false;
+            s.persist.right_open = false;
+            s.mode = Mode::Preview;
+            s.open_file("Long.md", None, tx);
+            s.keys_to_note(tx);
+        });
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        // Simulate idle turn running `ui::prepare_cold` into the window's TextSystem.
+        phases();
+        let tw = Instant::now();
+        WARM_PASS.store(true, std::sync::atomic::Ordering::Relaxed);
+        rt.update(|_, _| {});
+        rt.frame(DT);
+        let warm_ms = ms(tw);
+        let warm_ph = phases();
+        WARM_PASS.store(false, std::sync::atomic::Ordering::Relaxed);
+        rt.update(|_, _| {});
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let ctrl_p = KeyEvent { key: Key::Command('p'), mods: Mods { cmd: true, ..Mods::default() } };
+        let ctrl_shift_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, shift: true, ..Mods::default() } };
+        let esc = KeyEvent { key: Key::Escape, mods: Mods::default() };
+
+        eprintln!("\n=== LIVEPACE-PREPARED ({label}: {} lines, {} bytes) ===", text.lines().count(), text.len());
+        eprintln!("  idle prepare_cold:      {warm_ms:6.2} ms{warm_ph}");
+        phases();
+        let t = Instant::now();
+        rt.key(ctrl_p);
+        rt.frame(DT);
+        eprintln!("  Ctrl+P #1 (warmed):     {:6.2} ms{}", ms(t), phases());
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        phases();
+        let t = Instant::now();
+        rt.key(ctrl_shift_k);
+        rt.frame(DT);
+        eprintln!("  Ctrl+Shift+K (warmed):  {:6.2} ms{}", ms(t), phases());
+        rt.key(esc);
+        rt.frame(DT);
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+    run_prepared("1753-panels-closed", &text_1753);
+    run_prepared("5470-panels-closed", LONG);
 }

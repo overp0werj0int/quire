@@ -135,12 +135,19 @@ impl Vault {
 
     /// Writes the note at `path`.
     pub fn put(&mut self, path: String, text: String) {
+        self.replace(path, text);
+    }
+
+    /// Replaces `path`'s text in the vault and returns its previous text without cloning.
+    pub fn replace(&mut self, path: String, text: String) -> Option<String> {
         self.writes += 1;
         self.ver.insert(path.clone(), self.writes);
         *self.note_writes.entry(path.clone()).or_insert(0) += 1;
-        if self.files.insert(path, text).is_none() {
+        let prev = self.files.insert(path, text);
+        if prev.is_none() {
             self.paths += 1;
         }
+        prev
     }
 
     /// Takes the note at `path` out, with its text.

@@ -300,7 +300,8 @@ pub fn preview(v: V) -> El {
     };
     let look = Rc::new(look(v));
     let find = Rc::new(find);
-    let gaps = Rc::new(page::gaps(look.b, &doc.blocks));
+    let cached_gaps = s.reader.map.borrow().gaps();
+    let gaps = if cached_gaps.len() == doc.blocks.len() { cached_gaps } else { Rc::new(page::gaps(look.b, &doc.blocks)) };
     let estimate = page::row_estimate(look.b);
     let (p, dark, vw, vh, trailing) = (v.p, v.dark, v.vw, v.vh, v.trailing);
     // The rows read the blocks this view parsed: `App::doc` hashes the whole note to find its

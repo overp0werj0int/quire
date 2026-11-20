@@ -744,23 +744,31 @@ pub fn count(text: &str) -> Count {
     let body = strip_front(text);
     let chars = body.chars().filter(|c| !c.is_whitespace()).count();
     let words = count_words(body);
-    let minutes = if words == 0 { 0 } else { ((words as f32 / 230.0).round() as usize).max(1) };
+    let minutes = count_minutes(words);
     Count { words, chars, minutes }
 }
 
-fn strip_front(text: &str) -> &str {
+pub(crate) fn count_minutes(words: usize) -> usize {
+    if words == 0 { 0 } else { ((words as f32 / 230.0).round() as usize).max(1) }
+}
+
+pub(crate) fn strip_front_offset(text: &str) -> usize {
     if !(text.starts_with("---\n") || text == "---") {
-        return text;
+        return 0;
     }
     let mut at = 4.min(text.len());
     for ln in text[at..].split_inclusive('\n') {
         at += ln.len();
         let t = ln.trim_end_matches(['\n', '\r']);
         if t == "---" || t == "..." {
-            return &text[at..];
+            return at;
         }
     }
-    text
+    0
+}
+
+fn strip_front(text: &str) -> &str {
+    &text[strip_front_offset(text)..]
 }
 
 /// Words in the text: fenced code, link targets, HTML tags, bare URLs and Markdown marks
@@ -791,7 +799,7 @@ pub fn count_words(text: &str) -> usize {
 
 /// Zero-allocation word count for one non-fenced line, stripping link targets, HTML tags,
 /// bare URLs and Markdown marks on the fly.
-fn count_words_line(ln: &str) -> usize {
+pub(crate) fn count_words_line(ln: &str) -> usize {
     let b = ln.as_bytes();
     let mut n = 0usize;
     let mut in_word = false;

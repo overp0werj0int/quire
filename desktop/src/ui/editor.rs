@@ -680,7 +680,56 @@ pub(super) fn docked(v: V) -> (f32, f32) {
 
 /// The writer (`behavior/writer.md`): one field, painted with the formatting spans of
 /// `crate::writer`. The text is the note's Markdown, character for character (WR-01).
+/// Memoized on its exact text/style/caret/find inputs so modal overlays, saves, toasts, and
+/// hover frames skip cloning thousands of spans and paragraph styles (`COLDPACE`).
 fn source(v: V, width: f32, room: f32) -> El {
+    let s = v.s;
+    let doc = s.active_text();
+    let style = ed_style(v);
+    let e = style.size;
+    let set = s.settings();
+    let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
+    let caret = edit.map_or(0, |ed| ed.focus.min(doc.len()));
+    let focus = set.paragraph_focus.then(|| md::para_range(doc, caret));
+    let gutter = if doc.is_empty() { 0.0 } else { hang_gutter(e).min(room) };
+    let pad_top = if set.typewriter_scroll { v.vh * 0.5 } else { 0.0 };
+    let version = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (
+            (
+                s.active_text_key().hash_val(),
+                edit.map(|ed| (ed.anchor, ed.focus, ed.focused, ed.preedit())),
+                e.to_bits(),
+                &set.font,
+                set.spellcheck,
+                v.p as *const crate::theme::Pal as usize,
+                s.names_gen,
+            ),
+            (
+                width.to_bits(),
+                gutter.to_bits(),
+                pad_top.to_bits(),
+                focus,
+                s.wstate.top_line.map(|(l, _)| l),
+                s.find_query(),
+                s.find_query().map(|_| (s.reader.find.cur, s.reader.reveal.place_n())),
+            ),
+        )
+            .hash(&mut h);
+        h.finish()
+    };
+    rune::memo("source", version, || build_source(v, width, room, false))
+}
+
+/// Offscreen Source editor built inside `Tx::prepare_text` while reading in Preview so the first
+/// `Ctrl+P` hits both `App::wstate.assembled` and Rune's `TextSystem::paragraphs` (`COLDPACE`).
+pub(super) fn prepare_source(v: V) -> El {
+    let page = source_column(v);
+    build_source(v, page.width, page.gutter, true)
+}
+
+fn build_source(v: V, width: f32, room: f32, preparing: bool) -> El {
     let p = v.p;
     let s = v.s;
     let doc = s.active_text();
@@ -723,9 +772,9 @@ fn source(v: V, width: f32, room: f32) -> El {
             marks.push(if k == cur { TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR) } else { TextHighlight::new(r, c.find) });
         }
     }
-    let empty = TextEdit::new("");
+    let fallback = TextEdit::new(if preparing && edit.is_none() { doc } else { "" });
     let pad_top = if s.settings().typewriter_scroll { v.vh * 0.5 } else { 0.0 };
-    let input = text_input(edit.unwrap_or(&empty), style)
+    let input = text_input(edit.unwrap_or(&fallback), style)
         .key("editor")
         .w_full()
         .color(ink.text);
@@ -751,11 +800,17 @@ pub(crate) fn hang_gutter(e: f32) -> f32 {
     (e * 3.2).round()
 }
 
+/// One line's paragraph layout style for `hang = (lead, end)` at `gutter`.
+#[inline]
+pub(crate) fn paragraph_style((lead, end): (usize, usize), gutter: f32) -> rune::ParagraphStyle {
+    let base = rune::ParagraphStyle::new().indent(gutter);
+    if end > 0 { base.hang(end).lead(lead) } else { base }
+}
+
 /// Each line's layout in a field whose lines start `gutter` in: its mark hung before that, a
 /// list item's leading whitespace kept in the column (WR-16, WR-19, WR-22, WR-25, WR-225).
 pub(crate) fn paragraph_styles(hangs: &[(usize, usize)], gutter: f32) -> Vec<rune::ParagraphStyle> {
-    let base = rune::ParagraphStyle::new().indent(gutter);
-    hangs.iter().map(|&(lead, end)| if end > 0 { base.hang(end).lead(lead) } else { base }).collect()
+    hangs.iter().map(|&h| paragraph_style(h, gutter)).collect()
 }
 
 /// Quire's own menu on a right-click in field `key` where Rune has no native one, as on Linux

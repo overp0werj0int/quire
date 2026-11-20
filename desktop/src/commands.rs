@@ -145,8 +145,12 @@ pub fn segs(s: &str, idx: &[usize]) -> Vec<(String, bool)> {
 
 pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
     let p = s.pal()?;
-    let mut mode = p.mode;
-    let mut q = p.q.text.as_str();
+    Some(pal_data_for(s, dark, p.mode, &p.q.text, p.idx))
+}
+
+/// Builds palette items for a given mode, query, and index (shared with idle pre-warming).
+pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx: usize) -> PalData {
+    let mut q = raw_q;
     if mode == PalMode::Files && q.starts_with('>') {
         mode = PalMode::Commands;
         q = &q[1..];
@@ -194,8 +198,8 @@ pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
             items.push(Item { segs: segs(&c.label, &idx), sub, action: Action::Cmd(c.run) });
         }
     }
-    let idx = p.idx.min(items.len().saturating_sub(1));
-    Some(PalData { mode, items, idx })
+    let idx = raw_idx.min(items.len().saturating_sub(1));
+    PalData { mode, items, idx }
 }
 
 /// Runs a row: the palette closes first, so a command that opens a layer opens it in the

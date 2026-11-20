@@ -24,9 +24,21 @@ const SUB_W: f32 = 220.0;
 
 /// The quick switcher or the command palette, near the window's top (`super::layer`).
 pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
+    let d = pal_data(v.s, v.dark)?;
+    Some(palette_card(v, d, &pal.q))
+}
+
+/// Offscreen command palette built inside `Tx::prepare_text` to warm Instrument Sans font loading
+/// and command-row text layouts at exact palette width before the first `Ctrl+Shift+K` (`COLDPACE`).
+pub(super) fn prepare_commands(v: V) -> rune::El {
+    let d = commands::pal_data_for(v.s, v.dark, PalMode::Commands, "", 0);
+    let q = rune::TextEdit::new("");
+    let card = palette_card(v, d, &q);
+    col().w_full().items_center().px(20.0).child(card.el)
+}
+
+fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
     let p = v.p;
-    let s = v.s;
-    let d = pal_data(s, v.dark)?;
     let cmds = d.mode == PalMode::Commands;
     let head = row()
         .key("pal-head")
@@ -39,7 +51,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         .border_layout()
         .child(super::widgets::padded(if cmds { "run" } else { "open" }, sans(11.5, 500.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
         .child(
-            text_input(&pal.q, sans(15.0, 400.0))
+            text_input(q, sans(15.0, 400.0))
                 .key("pal-input")
                 .single_line()
                 .px(2.0)
@@ -166,7 +178,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
             .child(scroller)
             .child(foot),
     );
-    Some(Card { el: panel, plane: Some(col().items_center().pt(top).px(20.0).pb(LAYER_BOTTOM)) })
+    Card { el: panel, plane: Some(col().items_center().pt(top).px(20.0).pb(LAYER_BOTTOM)) }
 }
 
 /// The palette's field, for its edit hook, which can still run in the frame the palette
