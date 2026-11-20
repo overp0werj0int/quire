@@ -972,6 +972,68 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn welcome_keyboard_focus_recent_menu_and_narrow_lock() {
+        use crate::bench::DT;
+        use rune::{Key, KeyEvent, Mods};
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-welkbd-{}", std::process::id()));
+        let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
+        rt.on_key = Some(crate::keys::on_key);
+        let settle = |rt: &mut Runtime<crate::app::App>| {
+            for _ in 0..20 {
+                rt.frame(DT);
+            }
+        };
+        // Narrow lock dialog fits a 340pt window.
+        rt.set_viewport((340.0, 500.0), 1.0);
+        rt.update(|s, tx| s.ask_lock(tx));
+        settle(&mut rt);
+        let dlg = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("lock-dialog") && !e.exiting).expect("lock-dialog");
+        assert!(dlg.rect[0] >= 0.0 && dlg.rect[0] + dlg.rect[2] <= 340.0, "lock-dialog fits narrow window: {:?}", dlg.rect);
+        rt.update(|s, tx| s.close_layers(tx));
+        // vault-menu near the bottom accounts for header height and never clips below vh.
+        rt.update(|s, tx| s.open_menu(crate::layer::MenuOf::Folder, (20.0, 490.0), tx));
+        settle(&mut rt);
+        let vm = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("vault-menu") && !e.exiting).expect("vault-menu");
+        assert!(vm.rect[1] + vm.rect[3] <= 500.0, "vault-menu stays inside bottom edge: {:?}", vm.rect);
+        // Welcome screen: Tab focuses `create` with a visible ring, and `recent-0` opens in-app menu.
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.go_welcome(tx));
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+        settle(&mut rt);
+        let els = rt.elements();
+        let create = els.iter().find(|e| e.key.as_deref() == Some("create")).expect("create");
+        let open = els.iter().find(|e| e.key.as_deref() == Some("open")).expect("open");
+        let recent0 = els.iter().find(|e| e.key.as_deref() == Some("recent-0")).expect("recent-0");
+        assert!(create.focusable && open.focusable && recent0.focusable);
+        assert!(create.focused && create.focus_visible, "Tab focuses create with visible ring");
+        // In-app recent-menu removes a folder from recents.
+        let mut path = std::path::PathBuf::new();
+        let mut before = 0usize;
+        rt.update_if(|s, _| {
+            before = s.persist.vaults.len();
+            path = s.persist.vaults[0].path.clone();
+            false
+        });
+        rt.update(move |s, tx| s.open_menu(crate::layer::MenuOf::RecentVault(path), (500.0, 500.0), tx));
+        settle(&mut rt);
+        assert!(rt.find("recent-menu").is_some(), "recent-menu opens as in-app menu");
+        let (fx, fy) = rt.find("menu-forget").expect("menu-forget");
+        rt.pointer_move(fx, fy);
+        rt.pointer_down(fx, fy);
+        rt.pointer_up(fx, fy);
+        settle(&mut rt);
+        let mut after = 0usize;
+        rt.update_if(|s, _| {
+            after = s.persist.vaults.len();
+            false
+        });
+        assert_eq!(after, before - 1, "menu-forget removes the recent folder");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-122: in the source the find bar sits on the formatting toolbar's row when it fits
     /// beside it, and otherwise takes its own row under it, with the text starting below that
     /// row. The two never overlap, from the smallest window up.

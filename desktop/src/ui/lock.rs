@@ -80,7 +80,8 @@ pub(super) fn dialog(v: V) -> Card {
     };
     let mut panel = col()
         .key("lock-dialog")
-        .w(400.0)
+        .w_full()
+        .max_w(400.0)
         .padding(24.0)
         .gap(16.0)
         .radius(12.0)
@@ -111,5 +112,5 @@ pub(super) fn dialog(v: V) -> Card {
             .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)))
             .child(primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))),
     );
-    Card { el: panel, plane: Some(el().center()) }
+    Card { el: panel, plane: Some(col().center().px(16.0)) }
 }

@@ -2,7 +2,7 @@
 
 use rune::{Color, El, ScrollSpec, col, el, row, text, text_input};
 
-use super::widgets::{MARK, MARK_ON_INK, dots, label, primary_button};
+use super::widgets::{Control, MARK, MARK_ON_INK, dots, label, primary_button};
 use super::{V, baseline_shift};
 use crate::app::App;
 use crate::store::tilde;
@@ -97,7 +97,8 @@ pub fn welcome(v: V) -> El {
                                 .border_layout()
                                 .hover(p.hover)
                                 .role("button")
-                                .on_press(|s: &mut App| s.creating = None)
+                                .label("Cancel")
+                                .control(|s: &mut App, _| s.creating = None)
                                 .child(label("Cancel", sans(13.0, 400.0), p.ink2)),
                         )
                         .child(primary_button(p, "create-go", "Create", 32.0, 16.0, 13.0, |s, tx| s.create_vault(tx))),
@@ -124,16 +125,9 @@ pub fn welcome(v: V) -> El {
                 .hover(p.hover)
                 .role("button")
                 .label(r.name.clone())
-                .on_press_tx(move |s: &mut App, tx| s.open_vault(path.clone(), tx))
-                .on_secondary_press(move |s: &mut App, _, tx| {
-                    let menu = rune::PopupMenu::new().item(rune::PopupItem::new("forget", "Remove from recent"));
-                    let f = forget.clone();
-                    tx.popup_menu(menu, format!("recent-{i}"), move |s: &mut App, picked, _| {
-                        if picked.as_deref() == Some("forget") {
-                            s.forget_vault(&f);
-                        }
-                    });
-                    let _ = s;
+                .control(move |s: &mut App, tx| s.open_vault(path.clone(), tx))
+                .on_secondary_press(move |s: &mut App, at, tx| {
+                    s.open_menu(crate::layer::MenuOf::RecentVault(forget.clone()), (at.x, at.y), tx);
                 })
                 .child(label(r.name.clone(), name_style, p.ink))
                 .child(text(tilde(&r.path)).font(small).color(p.mute).truncate().grow(1.0).shrink().mt(shift))
@@ -168,7 +162,7 @@ fn card(v: V, key: &str, title: &str, desc: &str, run: fn(&mut App, &mut rune::T
         .hover_group()
         .role("button")
         .label(title)
-        .on_press_tx(move |s: &mut App, tx| run(s, tx))
+        .control(move |s: &mut App, tx| run(s, tx))
         .child(
             col()
                 .grow(1.0)

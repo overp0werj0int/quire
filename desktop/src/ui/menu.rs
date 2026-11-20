@@ -44,23 +44,30 @@ fn item(label: &'static str, run: Run) -> Item {
 pub(super) fn menu(v: V, m: &Menu) -> Card {
     let el = match &m.of {
         MenuOf::Folder => folder(v, m.at),
-        MenuOf::Tree(on) => list(v, "tree-menu", m.at, 200.0, None, tree(on, m.at)),
+        MenuOf::Tree(on) => list(v, "tree-menu", m.at, 200.0, None, 0.0, tree(on, m.at)),
         MenuOf::DeleteFolder(f) => confirm_delete_folder(v, f, m.at),
-        MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, edit(v)),
-        MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, block(v, *line)),
+        MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, 0.0, edit(v)),
+        MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, 0.0, block(v, *line)),
+        MenuOf::RecentVault(path) => list(v, "recent-menu", m.at, 180.0, None, 0.0, recent_vault(path)),
     };
     Card { el, plane: None }
 }
 
-/// A menu's panel at `at`, at least `min_w` wide, with `head` over its items.
-fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Vec<Item>) -> El {
+/// Clamps a menu's top-left corner inside the window with an 8 pt edge margin.
+pub(crate) fn menu_pos(vw: f32, vh: f32, at: (f32, f32), w: f32, h: f32) -> (f32, f32) {
+    let x = at.0.min(vw - w - 8.0).max(8.0);
+    let y = at.1.min(vh - h - 8.0).max(8.0);
+    (x, y)
+}
+
+/// A menu's panel at `at`, at least `min_w` wide, with `head` (of height `head_h`) over its items.
+fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, head_h: f32, items: Vec<Item>) -> El {
     let p = v.p;
     // Wide enough for the longest row's name and key, at about 7.2 points a character.
     let need = |it: &Item| 30.0 + 7.2 * (it.label.len() + it.keys.as_ref().map_or(0, |k| k.len() + 2)) as f32;
     let w = items.iter().map(need).fold(min_w, f32::max).ceil();
-    let h = 10.0 + 30.0 * items.len() as f32;
-    let x = at.0.min(v.vw - w - 8.0).max(8.0);
-    let y = at.1.min(v.vh - h - 8.0).max(8.0);
+    let h = 10.0 + head_h + 30.0 * items.len() as f32;
+    let (x, y) = menu_pos(v.vw, v.vh, at, w, h);
     let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").focus_group().children(head);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
@@ -85,7 +92,11 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, items: Ve
 fn folder(v: V, at: (f32, f32)) -> El {
     let p = v.p;
     let path = v.s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
-    let head = text(path).font(literal(panel::BODY_SMALL).lh(11.0 * 1.45)).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0);
+    let min_w: f32 = 228.0;
+    let head_style = literal(panel::BODY_SMALL).lh(11.0 * 1.45);
+    let head_text_h = if path.is_empty() { 0.0 } else { rune::text::measure(&path, &[], head_style, Some((min_w - 30.0).max(40.0))).1 };
+    let head_h = (head_text_h + 15.0).ceil();
+    let head = text(path).font(head_style).color(p.mute).wrap().wrap_anywhere().pt(7.0).px(10.0).pb(8.0);
     let items = vec![
         Item { key: Some("menu-switch"), ..item("Switch folder…", Box::new(|s, tx| s.go_welcome(tx))) },
         Item {
@@ -99,7 +110,13 @@ fn folder(v: V, at: (f32, f32)) -> El {
             )
         },
     ];
-    list(v, "vault-menu", at, 228.0, Some(head), items)
+    list(v, "vault-menu", at, min_w, Some(head), head_h, items)
+}
+
+/// A recent folder row's context menu on the welcome screen.
+fn recent_vault(path: &std::path::Path) -> Vec<Item> {
+    let p = path.to_path_buf();
+    vec![Item { key: Some("menu-forget"), ..item("Remove from recent", Box::new(move |s, _| s.forget_vault(&p))) }]
 }
 
 /// The tree's menu: new notes and folders, rename, move or delete for a note, and delete for a
