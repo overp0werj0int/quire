@@ -324,15 +324,7 @@ pub fn init() -> App {
         None => (app.persist.last.clone(), None),
     };
     if let Some(p) = start {
-        if app.load_vault(&p).is_err() {
-            app.screen = Screen::Welcome;
-        } else if let Some(n) = note.filter(|n| app.files().contains_key(n)) {
-            if !app.tabs.contains(&n) {
-                app.tabs.push(n.clone());
-            }
-            app.active = Some(n);
-            app.ensure_edit();
-        }
+        app.open_startup(&p, note.as_deref());
     }
     if app.screen == Screen::Welcome {
         app.refresh_counts();
@@ -947,6 +939,11 @@ impl App {
             self.recent = self.tabs.clone();
         }
         self.expanded = ses.expanded.into_iter().collect();
+        if self.expanded.is_empty()
+            && let Some(a) = self.active.clone()
+        {
+            self.expand_ancestors(&a);
+        }
         if v.scope == Scope::Folder {
             if !self.persist.vaults.iter().any(|r| r.path == path) {
                 self.persist.vaults.push(VaultRef { name: v.name.clone(), path: path.clone() });
@@ -1129,6 +1126,29 @@ impl App {
         }
     }
 
+    /// Opens `dir` at startup, optionally activating `note` and expanding its ancestor folders.
+    pub(crate) fn open_startup(&mut self, dir: &Path, note: Option<&str>) {
+        if self.load_vault(dir).is_err() {
+            self.screen = Screen::Welcome;
+        } else if let Some(n) = note.filter(|n| self.files().contains_key(*n)) {
+            if !self.tabs.iter().any(|t| t == n) {
+                self.tabs.push(n.to_string());
+            }
+            self.expand_ancestors(n);
+            self.active = Some(n.to_string());
+            self.ensure_edit();
+        }
+    }
+
+    /// Expands every ancestor folder of `path` in the vault tree.
+    fn expand_ancestors(&mut self, path: &str) {
+        let mut d = md::dir(path).to_string();
+        while !d.is_empty() {
+            self.expanded.insert(d.clone());
+            d = md::dir(&d).to_string();
+        }
+    }
+
     pub fn open_file(&mut self, path: &str, sel: Option<Sel>, tx: &mut Tx) {
         if self.files().get(path).is_none() {
             return;
@@ -1139,11 +1159,7 @@ impl App {
         }
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
-        let mut d = md::dir(path).to_string();
-        while !d.is_empty() {
-            self.expanded.insert(d.clone());
-            d = md::dir(&d).to_string();
-        }
+        self.expand_ancestors(path);
         self.recent.retain(|x| x != path);
         self.recent.insert(0, path.to_string());
         self.recent.truncate(30);

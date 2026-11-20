@@ -6250,6 +6250,39 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEEPINDENT: startup QUIRE_FOLDER + QUIRE_NOTE expands every ancestor folder and caps
+    /// indentation so 12-level nested rows stay readable (>= 48 pt) with guides clear of text.
+    #[test]
+    fn deep_startup_note_expands_ancestors_and_stays_readable() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-deepindent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let vault_dir = dir.join("vault");
+        let rel = (1..=12).map(|i| format!("d{i:02}")).collect::<Vec<_>>().join("/") + "/Leaf.md";
+        let full = vault_dir.join(&rel);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(&full, "# Deep Leaf\n\nBody text.\n").unwrap();
+        // SAFETY: ENV lock held.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let mut app = crate::app::init();
+        app.open_startup(&vault_dir, Some(&rel));
+        let mut rt = Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        settle(&mut rt);
+        let leaf_key = crate::folders::row_key("file", &rel);
+        assert!(rt.find(&leaf_key).is_some(), "startup note's ancestors are expanded and leaf row shows");
+        let leaf_text = rt.elements().into_iter().find(|e| e.text.as_deref() == Some("Leaf") && e.path.split('/').any(|s| s == leaf_key)).expect("Leaf label");
+        let room = 239.0 - leaf_text.rect[0];
+        assert!(room >= 48.0 && leaf_text.rect[2] >= 20.0, "deep leaf keeps readable room: rect={:?}, room={room}", leaf_text.rect);
+        for g in guides_in(&rt, &leaf_key) {
+            assert!(g[0] + g[2] < leaf_text.rect[0], "guide {g:?} stays left of label {:?}", leaf_text.rect);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-49: a click on a folder's row opens or closes it, and its icon turns with it.
     #[test]
     fn a_click_opens_a_folder_and_turns_its_icon() {

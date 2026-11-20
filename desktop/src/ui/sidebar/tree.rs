@@ -96,13 +96,16 @@ pub(super) fn last_part(dir: &str, style: rune::TextStyle) -> f32 {
 
 /// One level's indent: an icon and the gap after it (SB-50).
 const STEP: f32 = 21.0;
+/// Deepest indented level: past depth 5 (121 pt left edge in the 248 pt sidebar), deeper rows
+/// stay at this indent so folder and note names always keep readable room (SB-129).
+const MAX_DEPTH: usize = 5;
 /// Room between a folder's 14 pt icon and its name.
 const ICON_GAP: f32 = STEP - ICON;
 
 /// The left edge of a row's first icon or name at `depth`: the rows' text edge at the root,
-/// one step in for each level (SB-50).
+/// one step in for each level up to `MAX_DEPTH` (SB-50, SB-129).
 fn lead(depth: usize) -> f32 {
-    TEXT_X + depth as f32 * STEP
+    TEXT_X + depth.min(MAX_DEPTH) as f32 * STEP
 }
 
 /// A tree row keyed `key`: the hover fill under the pointer, cut names offering their whole
@@ -122,7 +125,7 @@ fn guides(v: V, rows: Vec<(usize, El)>) -> Vec<El> {
         .enumerate()
         .map(|(i, (depth, r))| {
             let next = depths.get(i + 1).copied().unwrap_or(0);
-            r.children((0..depth).map(|k| {
+            r.children((0..depth.min(MAX_DEPTH)).map(|k| {
                 // 14 pt in from the parent row's left padding edge, left of the icon's centre.
                 let x = lead(k) + ICON / 2.0 - 1.0 - INSET;
                 el().key(format!("guide-{k}")).pin(Some(x), Some(0.0), None, Some(if next > k { -GAP } else { 0.0 })).w(1.0).fill(line).inert()
