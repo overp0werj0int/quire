@@ -6556,9 +6556,11 @@ mod layer_matrix_tests {
         }
         let dur = settled_ms.zip(first_ms).map_or(999.0, |(a, b)| a - b);
         assert!(dur <= 140.0, "pal-layer settles to >=0.95 opacity in {dur:.1}ms (<=140ms)");
-        // Check no pal-* row is sliced across pal-scroll's bottom edge.
+        // Check no pal-* row is sliced across pal-scroll's bottom edge, and pal-fade clears
+        // the text of the last visible command row (PALFOLD + PALFADE).
         let ps = rect_of(&rt, "pal-scroll");
         let bot = ps[1] + ps[3];
+        let mut last_row: Option<(String, [f32; 4])> = None;
         for e in rt.elements() {
             if let Some(k) = &e.key
                 && k.starts_with("pal-")
@@ -6566,8 +6568,24 @@ mod layer_matrix_tests {
             {
                 let (ry, rh) = (e.rect[1], e.rect[3]);
                 assert!(!(ry < bot - 0.5 && ry + rh > bot + 0.5), "row {k} sliced at fold: {ry}..{} vs bot {bot}", ry + rh);
+                if ry + rh <= bot + 0.5 {
+                    last_row = Some((k.clone(), e.rect));
+                }
             }
         }
+        let (last_k, last_r) = last_row.expect("last visible palette row");
+        let fade = rect_of(&rt, "pal-fade");
+        let last_text = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.text.is_some() && e.path.split('/').any(|seg| seg == last_k))
+            .expect("last visible row text");
+        assert!(
+            fade[1] >= last_text.rect[1] + last_text.rect[3] - 0.5,
+            "pal-fade ({fade:?}) must stay below last visible row text ({:?})",
+            last_text.rect
+        );
+        assert!(fade[1] + fade[3] <= last_r[1] + last_r[3] + 0.5, "pal-fade aligns with scrollport bottom");
         // Settings -> Shortcuts hides Ctrl+? and splits alternate chords into separate chips.
         rt.update(|s, tx| {
             s.open_settings(tx);

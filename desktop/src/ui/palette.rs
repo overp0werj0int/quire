@@ -16,6 +16,9 @@ const FOOT_H: f32 = 35.0;
 const LAYER_BOTTOM: f32 = 20.0;
 const ROW_H: f32 = 36.0;
 const LIST_PAD: f32 = 6.0;
+/// Slim edge fade that stays below the 14 pt text inside a 36 pt palette row (9.5 pt bottom room),
+/// so the last whole visible command row keeps full contrast instead of being washed out.
+const PAL_FADE: f32 = 8.0;
 /// The widest a row's folder or key runs: about two fifths of the row, so the name keeps the rest.
 const SUB_W: f32 = 220.0;
 
@@ -114,8 +117,8 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         .max_h(scroll_max_h)
         .min_h(0.0)
         .scroll(ScrollSpec { stick_bottom: false })
-        .scroll_margin(super::widgets::SCROLL_FADE)
-        .child(super::widgets::faded("pal", p.bg, list));
+        .scroll_margin(PAL_FADE)
+        .child(super::widgets::faded_h("pal", p.bg, PAL_FADE, list));
 
     // A key in the keys' face, then what it does (C14).
     let hint = |k: String, what: &str| row().gap(5.0).center_y().child(label(k, keys(11.0), p.mute)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));

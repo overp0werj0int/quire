@@ -59,9 +59,14 @@ pub const SCROLL_FADE: f32 = 28.0;
 /// none, and the first 12 points of scroll bring one in whole. `name` keys them:
 /// `{name}-page`, `{name}-fade` and `{name}-fade-top`, each fade in a `-hold` box.
 pub fn faded(name: &str, bg: Color, page: El) -> El {
+    faded_h(name, bg, SCROLL_FADE, page)
+}
+
+/// Like [`faded`], with a custom edge-fade height `height`.
+pub fn faded_h(name: &str, bg: Color, height: f32, page: El) -> El {
     let fade = |key: String, top: bool| {
         let stops = if top { [(0.0, bg), (1.0, bg.alpha(0.0))] } else { [(0.0, bg.alpha(0.0)), (1.0, bg)] };
-        el().key(key).pin(Some(0.0), Some(if top { 0.0 } else { -SCROLL_FADE }), Some(0.0), None).h(SCROLL_FADE).linear_gradient(std::f32::consts::PI, stops).inert().stuck_reveal(12.0)
+        el().key(key).pin(Some(0.0), Some(if top { 0.0 } else { -height }), Some(0.0), None).h(height).linear_gradient(std::f32::consts::PI, stops).inert().stuck_reveal(12.0)
     };
     let top = el().key(format!("{name}-fade-top-hold")).w_full().h(0.0).sticky_top(0.0).paint_order(1).child(fade(format!("{name}-fade-top"), true));
     let bottom = el().key(format!("{name}-fade-hold")).w_full().h(0.0).sticky_bottom(0.0).child(fade(format!("{name}-fade"), false));
