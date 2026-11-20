@@ -42,9 +42,10 @@ pub(super) fn chip_size(b: f32) -> f32 {
 }
 
 /// Scaled font size for code/diff metadata labels (language badge, diff counts), proportional
-/// to preview body size `b / 14.0` (11 pt at default 14 pt body), clamped sensibly.
+/// to preview body size `b / 14.0` (11 pt at default 14 pt body), clamped to >= 10 pt so thin
+/// zoomed-out mono glyphs stay crisp and readable (`CONTRAST4`).
 pub(super) fn badge_size(b: f32) -> f32 {
-    r((11.0 * (b / 14.0)).clamp(9.0, 18.0))
+    r((11.0 * (b / 14.0)).clamp(10.0, 18.0))
 }
 
 /// Top inset for the badge / Copy chip and top padding for the code body (BLK-44, BLK-51).
@@ -107,7 +108,7 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     // Over the block the badge gives way to a Copy chip, which says Copied in green for a
     // moment after a click, with or without the pointer (BLK-51).
     let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
-    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.green) } else { (&icons::COPY, "Copy", c.readable_dim()) };
+    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
     let chip = crate::ui::chip::Chip { key: "copy", glyph, size: chip_sz, icon: r(chip_sz * 1.1), label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
         .el(c)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
@@ -138,8 +139,8 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
         .gap(r(b * 0.6))
         .center_y()
         .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline_soft)
-        .child(text(format!("+{added}")).key("added").font(count).color(c.green))
-        .child(text(format!("\u{2212}{removed}")).key("removed").font(count).color(c.red))
+        .child(text(format!("+{added}")).key("added").font(count).color(c.readable_green()))
+        .child(text(format!("\u{2212}{removed}")).key("removed").font(count).color(c.readable_red()))
         .child(el().key("space").grow(1.0))
         .child(if lang.is_empty() { el() } else { badge(cx, lang) });
     // Bands run the full width of the panel, or of the longest line when it scrolls.
@@ -182,6 +183,7 @@ mod tests {
         assert!(super::chip_size(17.0) > super::chip_size(14.0), "Copy chip grows with zoom");
         assert!(super::badge_size(17.0) > super::badge_size(14.0), "language badge grows with zoom");
         assert_eq!(super::chip_size(6.0), 10.0, "lower clamp");
+        assert_eq!(super::badge_size(6.0), 10.0, "badge lower clamp keeps zoomed-out mono crisp");
         assert_eq!(super::chip_size(40.0), 20.0, "upper clamp");
     }
 

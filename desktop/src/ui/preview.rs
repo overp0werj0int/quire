@@ -145,22 +145,24 @@ impl Rich {
                 Some(Link::Wiki(target)) => {
                     let (name, _) = crate::md::wiki_parts(target);
                     let ok = name.is_empty() || cx.v.s.names.resolve(&name).is_some();
-                    let color = if ok { c.link } else { c.readable_dim() };
+                    let color = if ok { c.readable_link() } else { c.readable_dim() };
                     let underline = (!ok).then_some(c.faint);
                     self.push(&run.t, Span { color: Some(color), underline, ..base });
                     self.links.push((a..self.text.len(), format!("wiki:{}", target.trim()), color));
                 }
                 Some(Link::Url(u)) if run.img.is_none() => {
-                    self.push(&run.t, Span { color: Some(c.link), ..base });
-                    self.links.push((a..self.text.len(), format!("url:{u}"), c.link));
+                    let color = c.readable_link();
+                    self.push(&run.t, Span { color: Some(color), ..base });
+                    self.links.push((a..self.text.len(), format!("url:{u}"), color));
                 }
                 Some(Link::Anchor(an)) => {
                     // A footnote reference is small (PAGE-78, adapted): omarky's <sup> is 10 px at
                     // 14 px. It sits on the baseline, since Rune has no raised spans.
+                    let color = c.readable_link();
                     let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), ..base } } else { base };
-                    self.push(&run.t, Span { color: Some(c.link), ..sup });
+                    self.push(&run.t, Span { color: Some(color), ..sup });
                     if let Some(l) = cx.anchor_line(an) {
-                        self.links.push((a..self.text.len(), format!("line:{l}"), c.link));
+                        self.links.push((a..self.text.len(), format!("line:{l}"), color));
                     }
                 }
                 // An image inside a sentence shows its alt text.
@@ -713,7 +715,7 @@ impl Cx<'_> {
             let mut num = text(format!("{}.", f.number))
                 .key("num")
                 .font(TextStyle::new(ns, 400.0).family(look.mono).lh(lh).features("'tnum' 1"))
-                .color(c.link)
+                .color(c.readable_link())
                 .w(r(b * 1.9));
             if let Some(l) = cite.filter(|_| f.refs > 0) {
                 num = num.cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx| s.jump(l, tx));
