@@ -47,6 +47,7 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
     }
     let stack: &[Ctx] = if stop.is_some() && !crate::focus::chord(ev) { &[Ctx::Global] } else { page_stack(s) };
     let field = tx.focused().is_some_and(crate::focus::field);
+    let writing = s.writing_note();
     // The Menu key or Shift+F10 on the note: the page's block menu, as Rune opens a focused
     // control's (a sidebar row's, say).
     if vault && s.mode == crate::app::Mode::Preview && crate::focus::on_note(tx) && menu_key(ev) {
@@ -70,9 +71,10 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             }
         }
         for a in keymap::lookup(preset, *ctx, ev) {
-            // Away from the notes, only Esc and Quit act; from a text field, nothing at the
-            // note's caret does.
-            if (!vault && !matches!(a.id, "app.escape" | "app.quit")) || (field && crate::focus::at_caret(a)) {
+            // Away from the notes, only Esc and Quit act; from a text field or when no editable
+            // note is open (empty vault, no tab, locked note), nothing at the note's caret does
+            // (so Tab/Shift+Tab/Enter reach Rune's focus traversal cleanly, `FOCUSMODEL`).
+            if (!vault && !matches!(a.id, "app.escape" | "app.quit")) || ((field || !writing) && crate::focus::at_caret(a)) {
                 continue;
             }
             if a.id == "app.escape" {

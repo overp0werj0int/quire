@@ -173,7 +173,7 @@ fn actions(v: V, mut r: El) -> El {
         let help = tip(crate::commands::zen_name(s), if zen { "app.escape" } else { "app.focus-mode" });
         r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen, act(|s, tx| s.toggle_focus(tx))));
     }
-    if !zen {
+    if !zen && v.has_doc() {
         let outline = tip(crate::commands::outline_name(s), if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
     }

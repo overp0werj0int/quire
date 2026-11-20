@@ -151,11 +151,17 @@ or the outline. A test checks that every focusable element in the panes is in it
 - A text field on the page (`focus::FIELDS`: the search field, find's, the note's name, a
   new folder's) keeps its own editing keys. The writer's actions at the caret
   (`focus::at_caret`: a format, a heading, indent, a list's Enter, following a link) do
-  nothing from it, so Ctrl+B there never writes into the note. The window's shortcuts act.
+  nothing from a text field or when no unlocked note is being edited in Source mode, so
+  Ctrl+B never writes into the note from a field and Tab on an empty vault or no-tab screen
+  moves freely to controls such as `first-note`. The window's shortcuts act. Compound input
+  bars (`find-bar`, `search-box`) scope their focus ring strictly to `TextEdit::focused`
+  (`ui::widgets::input_focus_ring_when`), so sibling buttons draw their own single ring
+  without colliding with the bar.
 - When the element that holds focus goes away, for any reason, the keyboard goes to the
   note. Every stop and pane carries `focus_return(focus::NOTE)`. NOTE keys the editor's box
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
-  key to `keys::on_key`. Without it Rune hands the lost focus to the next control in the old
+  key to `keys::on_key`. Switching modes (`App::switch_mode`) calls `App::keys_to_note`, so
+  entering Preview rests focus on `note-keys` and entering Source focuses `editor`. Without it Rune hands the lost focus to the next control in the old
   tree. In the reader that was a paragraph with links, focused with no link in it, which ate
   Space and Enter. A search result's row is the exception: it returns focus to the search
   field (SB-72). Closing find, Esc in the empty docked search field and closing the shown

@@ -553,9 +553,9 @@ impl App {
             let block = doc.blocks.iter().rposition(|b| b.lines.start <= line).unwrap_or(0);
             self.wstate.back = Some((self.reader.scroll.get()[0], block));
             self.mode = Mode::Preview;
-            // The editor leaves with the keyboard: it goes to the reader's keys, not to the
-            // control Rune would hand it on to (the folder's name, which Space opens).
-            tx.blur();
+            // The editor leaves with the keyboard: hand focus to the reader's keyboard anchor
+            // (`focus::NOTE`) so Preview shortcuts and Tab into links stay wired (`FOCUSMODEL`).
+            self.keys_to_note(tx);
             if block == 0 {
                 // The first block leaves the preview at its top, where progress reads 0 (RD-38).
                 tx.scroll_to_instant(crate::reader::SCROLL, 0.0, 0.0);
@@ -573,7 +573,7 @@ impl App {
                 Some((y, block)) if block == top || (offset >= max - 1.0 && top <= block) => tx.scroll_to_instant(crate::reader::SCROLL, 0.0, y),
                 _ => self.place_line(line, tx),
             }
-            self.focus_editor(tx);
+            self.keys_to_note(tx);
         }
     }
 

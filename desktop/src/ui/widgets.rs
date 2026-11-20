@@ -102,6 +102,14 @@ pub fn input_focus_ring(e: El, p: &Pal) -> El {
     e.focus_within_ring(1.5, -1.0, Roles::panel(p).faint)
 }
 
+/// Scoped `SB-95` focus ring for compound bars that hold both a `text_input` and sibling
+/// buttons (`find-bar`, `search-box`, `FOCUSMODEL`): lights the container ring only while the
+/// text input itself is focused, preventing double-ring collisions when Tab reaches a sibling
+/// button.
+pub fn input_focus_ring_when(e: El, p: &Pal, active: bool) -> El {
+    if active { input_focus_ring(e, p) } else { e }
+}
+
 /// A floating bar's corner and edge, one for the formatting toolbar and the find bar: the
 /// radius and a 1 point hairline.
 pub fn bar_edge(e: El, c: &Roles) -> El {

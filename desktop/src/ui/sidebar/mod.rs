@@ -126,7 +126,7 @@ fn search_field(v: V) -> El {
     let c = Roles::panel(p);
     let s = v.s;
     let first = s.results().and_then(|r| r.first().map(|row| row.key()));
-    let (rw, rg, rc) = super::focus_ring(p);
+    let (_, _, rc) = super::focus_ring(p);
     let field = super::focus::stop(text_input(&s.query, nav(parts::ROW_TEXT, false)))
         .key("search")
         .single_line()
@@ -177,15 +177,17 @@ fn search_field(v: V) -> El {
                 .label("Clear search")
                 .help("Clear search")
                 .role("button")
-                .focus_ring(rw, rg, rc)
+                // Inset 2 pt ring stays completely inside the 28 pt search-box without protruding.
+                .focus_ring(2.0, -2.0, rc)
                 .control(|s: &mut App, tx| {
                     s.query = rune::TextEdit::new("");
+                    s.query.focused = true;
                     tx.focus("search", false);
                 })
                 .child(icon(&CLOSE, ICON).color(c.faint)),
         )
     };
-    super::widgets::input_focus_ring(
+    super::widgets::input_focus_ring_when(
         row()
             .key("search-box")
             .grow(1.0)
@@ -200,6 +202,7 @@ fn search_field(v: V) -> El {
             .border(1.0, p.line)
             .border_layout(),
         p,
+        s.query.focused,
     )
     .child(icon(&SEARCH, ICON).color(c.faint))
         .child(field)

@@ -1072,6 +1072,7 @@ impl App {
         f.open = true;
         let n = f.q.text.len();
         f.q.set_selection(0, n);
+        f.q.focused = true;
         tx.focus("find-input", false);
     }
 
@@ -1109,6 +1110,7 @@ impl App {
         }
         let f = &mut self.reader.find;
         f.open = false;
+        f.q.focused = false;
         f.due = None;
         true
     }

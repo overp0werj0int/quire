@@ -2256,6 +2256,147 @@ mod a11y_tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// FOCUSMODEL: unified focus ring & Tab routing matrix covering compound-bar ring scoping
+    /// (`search-box`, `find-bar`), 0-match Find stepper Tab skips, empty-vault initial Tab to
+    /// `first-note`, `mode` button click focus restoration (`note-keys` / `editor`), and 1-Esc
+    /// Welcome Create dismissal.
+    #[test]
+    fn focus_model_matrix() {
+        use rune::{Env, Key, KeyEvent, Mods, Runtime};
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-focusmodel-{}", std::process::id()));
+        let dt = 1.0 / 60.0;
+        let step = |rt: &mut Runtime<crate::app::App>, n: usize| {
+            for _ in 0..n {
+                rt.frame(dt);
+            }
+        };
+        let focused_key = |rt: &Runtime<crate::app::App>| {
+            rt.elements().into_iter().find(|e| !e.exiting && e.focused).and_then(|e| e.key)
+        };
+        let tab = KeyEvent { key: Key::Tab, mods: Mods::default() };
+
+        // 1 & 2. Compound bars (`search-box` & `find-bar`) scope input ring strictly to the text
+        // input, and 0-match Find skips `find-prev` / `find-next` straight to `find-close`.
+        let (mut rt, _) = crate::bench::open(&dir, "# Hello\n\nBody text with hello.\n", crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, tx| {
+            s.persist.left_open = true;
+            s.open_search(tx);
+        });
+        step(&mut rt, 6);
+        rt.key(KeyEvent { key: Key::Text("hello".into()), mods: Mods::default() });
+        step(&mut rt, 6);
+        let mut q_foc = false;
+        rt.update_if(|s, _| {
+            q_foc = s.query.focused;
+            false
+        });
+        assert!(q_foc, "search input reports focused before Tab");
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("search-clear"), "Tab moves from search to search-clear");
+        rt.update_if(|s, _| {
+            q_foc = s.query.focused;
+            false
+        });
+        assert!(!q_foc, "search-box drops input focus ring while search-clear has focus");
+
+        // Find with matches: Tab moves to find-prev and drops find-bar's input ring.
+        rt.update(|s, tx| {
+            s.writer_find(tx);
+            s.reader.find.q = rune::TextEdit::new("hello");
+            s.reader.find.q.focused = true;
+            s.find_changed(tx);
+            tx.focus("find-input", false);
+        });
+        step(&mut rt, 6);
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-prev"), "Tab moves from find-input to find-prev when matches exist");
+        let mut f_foc = true;
+        rt.update_if(|s, _| {
+            f_foc = s.reader.find.q.focused;
+            false
+        });
+        assert!(!f_foc, "find-bar drops input focus ring while find-prev has focus");
+
+        // Find with 0 matches: find-prev & find-next are non-focusable, Tab jumps straight to find-close.
+        rt.update(|s, tx| {
+            s.reader.find.q = rune::TextEdit::new("zzz_no_match_999");
+            s.reader.find.q.focused = true;
+            s.find_changed(tx);
+            tx.focus("find-input", false);
+        });
+        step(&mut rt, 6);
+        let els = rt.elements();
+        for k in ["find-prev", "find-next"] {
+            let e = els.iter().find(|e| !e.exiting && e.key.as_deref() == Some(k)).unwrap_or_else(|| panic!("{k}"));
+            assert!(!e.focusable, "{k} must not be focusable on 0 matches");
+        }
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "0-match Tab jumps directly to find-close");
+
+        // 4. Clicking `mode` into Preview restores focus to `note-keys`, and back to Source -> `editor`.
+        rt.update(|s, tx| s.close_find(tx));
+        step(&mut rt, 6);
+        let (mx, my) = rt.find("mode").expect("mode button");
+        rt.pointer_move(mx, my);
+        rt.pointer_down(mx, my);
+        rt.pointer_up(mx, my);
+        step(&mut rt, 8);
+        assert_eq!(focused_key(&rt).as_deref(), Some(crate::focus::NOTE), "clicking mode into Preview focuses note-keys");
+        let (mx, my) = rt.find("mode").expect("mode button in preview");
+        rt.pointer_move(mx, my);
+        rt.pointer_down(mx, my);
+        rt.pointer_up(mx, my);
+        step(&mut rt, 8);
+        assert_eq!(focused_key(&rt).as_deref(), Some("editor"), "clicking mode back to Source focuses editor");
+
+        // 3. Empty vault initial Tab reaches `first-note` within <= 5 presses.
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let mut rt_e = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt_e.on_key = Some(crate::keys::on_key);
+        rt_e.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        step(&mut rt_e, 3);
+        rt_e.update(move |s, tx| {
+            s.open_vault(empty, tx);
+            s.persist.left_open = true;
+        });
+        step(&mut rt_e, 6);
+        let mut reached = false;
+        for _ in 0..5 {
+            rt_e.key(tab.clone());
+            step(&mut rt_e, 3);
+            if focused_key(&rt_e).as_deref() == Some("first-note") {
+                reached = true;
+                break;
+            }
+        }
+        assert!(reached, "empty-vault Tab must reach first-note within <= 5 presses");
+
+        // 5. Welcome Create form dismisses in 1 Esc press and restores focus to `create`.
+        let mut rt_w = Runtime::new(crate::app::init(), crate::ui::view, (520.0, 400.0), Env { system_dark: false, scale: 1.0 });
+        rt_w.on_key = Some(crate::keys::on_key);
+        rt_w.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        rt_w.update(|s, tx| s.go_welcome(tx));
+        step(&mut rt_w, 6);
+        let (cx, cy) = rt_w.find("create").expect("create button");
+        rt_w.pointer_move(cx, cy);
+        rt_w.pointer_down(cx, cy);
+        rt_w.pointer_up(cx, cy);
+        step(&mut rt_w, 6);
+        assert!(rt_w.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some("new-vault")), "create form opened");
+        rt_w.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        step(&mut rt_w, 6);
+        assert!(rt_w.elements().iter().all(|e| e.exiting || e.key.as_deref() != Some("new-vault")), "1 Esc dismissed Welcome Create");
+        assert_eq!(focused_key(&rt_w).as_deref(), Some("create"), "1 Esc restored focus to create");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

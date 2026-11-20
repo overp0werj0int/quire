@@ -1712,6 +1712,7 @@ impl App {
         self.show_left(tx);
         let n = self.query.text.len();
         self.query.set_selection(0, n);
+        self.query.focused = true;
         tx.focus("search", false);
     }
 
@@ -1786,6 +1787,7 @@ impl App {
             return false;
         }
         self.query = TextEdit::new("");
+        self.query.focused = true;
         tx.focus("search", true);
         true
     }
@@ -1797,12 +1799,14 @@ impl App {
         if self.query.text.trim_start().starts_with('#') {
             self.query = TextEdit::new("");
             if tx.focused().is_some_and(|k| k.starts_with("res-")) {
+                self.query.focused = true;
                 tx.focus("search", true);
             }
             return;
         }
         self.query = TextEdit::new("#");
         self.query.set_selection(1, 1);
+        self.query.focused = true;
         tx.focus("search", false);
     }
 
