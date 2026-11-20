@@ -57,13 +57,14 @@ pub(super) fn top_clearance(b: f32) -> (f32, f32) {
     (top, pad_top)
 }
 
-/// The language badge: lower case, mono scaled with preview body size, readable on the code
-/// panel across every theme (BLK-50).
+/// The language badge: lower case, mono scaled with preview body size at medium-bold weight
+/// so 10 pt zoomed-out 1× glyphs stay crisp and match diff count legibility on the code panel
+/// across every theme (BLK-50, `RASTERCR`).
 fn badge(cx: &Cx, lang: &str) -> El {
     let b = cx.look.b;
     let sz = badge_size(b);
     let lh = r(chip_size(b) * 2.0);
-    text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 400.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.readable_dim())
+    text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 600.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.readable_dim())
 }
 
 pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {

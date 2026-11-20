@@ -86,7 +86,7 @@ pub fn find_bar(v: V) -> El {
     let (count, tone, steppers_enabled) = match state {
         crate::reader::FindState::Empty => (String::new(), quiet.faint, false),
         crate::reader::FindState::Pending => (String::new(), quiet.faint, true),
-        crate::reader::FindState::NoMatches => ("No matches".to_string(), c.red, false),
+        crate::reader::FindState::NoMatches => ("No matches".to_string(), c.readable_err(), false),
         crate::reader::FindState::Matches(n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint, true),
     };
     let preset = s.preset();
@@ -368,12 +368,16 @@ pub(super) fn help_sheet(v: V) -> Card {
         })
         .child(super::widgets::faded("help", c.bg, card.child(body)));
     // Keep clip_rounded on the inner wrapper so popup(&c)'s outer drop shadow renders outside
-    // the card bounds, matching Settings and the Command Palette.
-    let card = popup(&c)
+    // the card bounds, matching Settings and the Command Palette. On dark themes, raise the card
+    // edge above the dark scrim (`RASTERCR`).
+    let mut card = popup(&c)
         .key("help-card")
         .role("dialog")
         .label("Keyboard help")
         .child(col().w(w).radius(6.0).clip_rounded(6.0).child(header).child(scroll));
+    if v.p.dark {
+        card = card.border(1.0, crate::roles::mix(c.bg, c.text, 0.20));
+    }
     Card { el: card, plane: Some(col().center()) }
 }
 
@@ -579,7 +583,7 @@ pub(super) fn notice(v: V, msg: &str) -> El {
     let (w, h) = notice_fit(v, msg);
     let dismiss = pill_button(&c, "notice-x").label("Dismiss").on_press(|s: &mut App| s.notice = None).child(text("Dismiss").font(body).color(v.p.mute));
     // The text's first line centres on the button's 24 px.
-    let words = row().py(4.0).child(text(msg.to_string()).font(body).color(v.p.err).wrap().w(w));
+    let words = row().py(4.0).child(text(msg.to_string()).font(body).color(c.readable_err()).wrap().w(w));
     let pill = super::widgets::floating(row(), &c)
         .key("notice")
         .radius(if h > PILL_H { PILL_H / 2.0 } else { 999.0 })

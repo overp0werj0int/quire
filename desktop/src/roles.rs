@@ -131,34 +131,42 @@ impl Roles {
 
     /// `self.dim`, nudged toward `self.text` only when needed so small markers on the page
     /// or code panel (ordered-list numerals, language badges, unresolved wiki links) reach
-    /// WCAG AA with anti-aliasing headroom (`>= 5.0:1` nominal so 10 pt glyphs rasterize >= 4.5:1).
+    /// WCAG AA with anti-aliasing headroom (`>= 5.4:1` nominal so 10 pt 1× glyphs rasterize >= 4.5:1).
     pub fn readable_dim(&self) -> Color {
         let fills = [self.bg, self.panel];
         let mut out = self.dim;
         let mut t = 0.0;
-        while fills.iter().any(|&f| contrast(out, f) < 5.0) && t < 1.0 {
+        while fills.iter().any(|&f| contrast(out, f) < 5.4) && t < 1.0 {
             t += 0.02;
             out = mix(self.dim, self.text, t);
         }
         out
     }
 
-    /// Page link ink (`self.link`) lifted only when needed to reach `>= 4.9:1` on `self.bg` so
-    /// resolved wikilinks and web links rasterize >= 4.5:1 in every theme (`CONTRAST4`).
+    /// Page link ink (`self.link`) lifted only when needed to reach `>= 6.8:1` on `self.bg` so
+    /// resolved wikilinks and web links rasterize >= 4.5:1 even at 3× zoom-out and 1× DPI while
+    /// keeping Ink's native accent untouched (`CONTRAST4`, `RASTERCR`).
     pub fn readable_link(&self) -> Color {
-        Self::readable_on(self.link, self.bg, 4.9)
+        Self::readable_on(self.link, self.bg, 6.8)
     }
 
-    /// Diff addition total ink (`self.green`) lifted only when needed to reach `>= 4.6:1` on
-    /// `self.panel` across every theme (`CONTRAST4`).
+    /// Error / "No matches" ink (`self.red`) lifted only when needed to reach `>= 5.0:1` on
+    /// `self.bg` across every theme, keeping Find zero-match labels and error notices WCAG AA on
+    /// floating popups (`RASTERCR`).
+    pub fn readable_err(&self) -> Color {
+        Self::readable_on(self.red, self.bg, 5.0)
+    }
+
+    /// Diff addition total ink (`self.green`) lifted only when needed to reach `>= 4.8:1` on
+    /// `self.panel` across every theme so 8-bit quantization clears >= 4.60:1 (`CONTRAST4`, `RASTERCR`).
     pub fn readable_green(&self) -> Color {
-        Self::readable_on(self.green, self.panel, 4.6)
+        Self::readable_on(self.green, self.panel, 4.8)
     }
 
-    /// Diff deletion total ink (`self.red`) lifted only when needed to reach `>= 4.6:1` on
-    /// `self.panel` across every theme (`CONTRAST4`).
+    /// Diff deletion total ink (`self.red`) lifted only when needed to reach `>= 4.8:1` on
+    /// `self.panel` across every theme so 8-bit quantization clears >= 4.60:1 (`CONTRAST4`, `RASTERCR`).
     pub fn readable_red(&self) -> Color {
-        Self::readable_on(self.red, self.panel, 4.6)
+        Self::readable_on(self.red, self.panel, 4.8)
     }
 
     pub fn new(p: &Pal) -> Roles {
@@ -513,35 +521,47 @@ mod tests {
         assert!(found.is_empty(), "hardcoded #9a9184 found in: {found:?}");
     }
 
-    /// CONTRAST4: resolved links on page, diff +N/-N totals on panel, and zoomed-out code badges
-    /// reach WCAG AA (>= 4.5:1) across all 15 light/dark themes while preserving hue character.
+    /// CONTRAST4 / RASTERCR: resolved links on page, "No matches" / error ink on popup bg,
+    /// diff +N/-N totals on panel (after 8-bit sRGB quantization), and zoomed-out code badges
+    /// reach WCAG AA with raster headroom across all 15 light/dark themes while preserving hue.
     #[test]
     fn contrast4_links_and_diff_totals_meet_wcag_aa_across_all_themes() {
+        let quant = |c: Color| hex(&hx(c));
         let omarchy = omarchy_pal("background = \"#282828\"\nforeground = \"#d4be98\"\naccent = \"#7daea3\"").unwrap();
         let mut pals: Vec<(&str, &Pal)> = crate::theme::THEMES.iter().map(|t| (t.id, theme_pal(t.id, t.dark))).collect();
         pals.push(("omarchy", &omarchy));
         assert_eq!(pals.len(), 15);
         for (id, p) in pals {
             let r = Roles::new(p);
-            let link_cr = contrast(r.readable_link(), r.bg);
-            let green_cr = contrast(r.readable_green(), r.panel);
-            let red_cr = contrast(r.readable_red(), r.panel);
-            let dim_cr = contrast(r.readable_dim(), r.panel);
-            assert!(link_cr >= 4.5, "{id}: readable_link {link_cr:.2}:1 (< 4.5) on {}", hx(r.bg));
-            assert!(green_cr >= 4.5, "{id}: readable_green {green_cr:.2}:1 (< 4.5) on {}", hx(r.panel));
-            assert!(red_cr >= 4.5, "{id}: readable_red {red_cr:.2}:1 (< 4.5) on {}", hx(r.panel));
-            assert!(dim_cr >= 4.8, "{id}: readable_dim {dim_cr:.2}:1 (< 4.8) on {}", hx(r.panel));
+            let bg = quant(r.bg);
+            let panel = quant(r.panel);
+            let link_cr = contrast(quant(r.readable_link()), bg);
+            let err_cr = contrast(quant(r.readable_err()), bg);
+            let green_cr = contrast(quant(r.readable_green()), panel);
+            let red_cr = contrast(quant(r.readable_red()), panel);
+            let dim_cr = contrast(quant(r.readable_dim()), panel);
+            assert!(link_cr >= 6.7, "{id}: readable_link {link_cr:.2}:1 (< 6.7) on {}", hx(r.bg));
+            assert!(err_cr >= 4.9, "{id}: readable_err {err_cr:.2}:1 (< 4.9) on {}", hx(r.bg));
+            assert!(green_cr >= 4.7, "{id}: readable_green {green_cr:.2}:1 (< 4.7) on {}", hx(r.panel));
+            assert!(red_cr >= 4.7, "{id}: readable_red {red_cr:.2}:1 (< 4.7) on {}", hx(r.panel));
+            assert!(dim_cr >= 5.3, "{id}: readable_dim {dim_cr:.2}:1 (< 5.3) on {}", hx(r.panel));
         }
-        // Hue preservation on the three lifted themes (Solarized Light, Paper, Nord).
+        // Hue preservation on lifted light and dark themes.
         let sol = Roles::new(theme_pal("solarized-light", false));
         let sl = sol.readable_link();
         let sg = sol.readable_green();
         let sr = sol.readable_red();
+        let se = sol.readable_err();
         assert!(sl.b > sl.r && sl.b > sl.g, "Solarized Light link stays blue: {}", hx(sl));
         assert!(sg.g > sg.b, "Solarized Light diff +N stays green/olive: {}", hx(sg));
         assert!(sr.r > sr.g && sr.r > sr.b, "Solarized Light diff -N stays red: {}", hx(sr));
+        assert!(se.r > se.g && se.r > se.b, "Solarized Light No matches stays red: {}", hx(se));
         let nord = Roles::new(theme_pal("nord", true));
         let nr = nord.readable_red();
+        let ne = nord.readable_err();
         assert!(nr.r > nr.g && nr.r > nr.b, "Nord diff -N stays red: {}", hx(nr));
+        assert!(ne.r > ne.g && ne.r > ne.b, "Nord No matches stays red: {}", hx(ne));
+        let sd = Roles::new(theme_pal("solarized-dark", true));
+        assert!(contrast(quant(sd.readable_red()), quant(sd.panel)) >= 4.7, "Solarized Dark -N clears >= 4.7 after 8-bit quantization");
     }
 }
