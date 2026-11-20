@@ -59,7 +59,7 @@ or footnote. (`components/blocks/ListBlock.qml:16`)
 - **BLK-29** [in] [verify: geometry] The task box is round(T × 0.9) [13] square, with corner radius max(2, round(box × 0.24)) [3], centred on the x-height minus T × 0.04. (`components/blocks/ListBlock.qml:29`, `components/blocks/ListBlock.qml:119-120`)
 - **BLK-30** [in] [verify: golden] An open box has a border of max(1, round(T / 12)) [1] px in faint, and in accent while hovered when it can be clicked. A done box is filled accent with no border and a bg-coloured tick through (0.26, 0.53), (0.43, 0.70) and (0.75, 0.32) of the box, with stroke max(1.5, box / 7) [1.86]. (`components/blocks/ListBlock.qml:121-150`)
 - **BLK-31** [in] [verify: golden] A done item's text is dim. (`components/blocks/ListBlock.qml:174`)
-- **BLK-32** [adapted: 0005] [verify: geometry] The box's hit area is at least 24×24 px and extends at least round(T × 0.5) [7] beyond the box in total, keeping the drawn box centred inside it. omarky uses round(T × 0.5) alone (20 px at default size). Ticking is specified in `reader.md` from RD-73. (`components/blocks/ListBlock.qml:130-131`)
+- **BLK-32** [adapted: 0005] [verify: geometry] The box's hit area is at least 24 px wide and extends at least round(T × 0.5) [7] beyond the box in total, keeping the drawn box centred inside it. Its height matches its width (24×24 px at default size), clamped to the row stride floor(line height + item spacing) so adjacent zoomed-out task checkboxes never overlap vertically. omarky uses round(T × 0.5) alone (20 px at default size). Ticking is specified in `reader.md` from RD-73. (`components/blocks/ListBlock.qml:130-131`)
 
 ## 6. Quotes
 

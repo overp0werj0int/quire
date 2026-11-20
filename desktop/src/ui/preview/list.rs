@@ -30,7 +30,8 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     // The marker box's left edge, from the item's text edge (negative: in the margin).
     let mx = indent - gap - mw;
     let xc = look.x_mid(t, lh);
-    let mut out = col().w_full().gap(if l.tight { r(t * 0.3) } else { r(t * 0.75) }).role("list");
+    let item_gap = if l.tight { r(t * 0.3) } else { r(t * 0.75) };
+    let mut out = col().w_full().gap(item_gap).role("list");
     for it in &l.items {
         let done = it.task == Task::Done;
         let marker = match it.task {
@@ -50,10 +51,12 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                 }
             },
             _ => {
-                // The drawn box keeps BLK-29's size, centred inside a >= 24×24 pt hit target
-                // (at least round(T × 0.5) beyond the box at larger zooms, BLK-32).
-                let hit = (bx + r(t * 0.5)).max(24.0);
-                let pad = (hit - bx) / 2.0;
+                // The drawn box keeps BLK-29's size, centred inside a >= 24 pt wide hit target
+                // (24×24 pt at default body size, clamped vertically to the row stride so
+                // zoomed-out task checkboxes never overlap, BLK-32).
+                let (hit_w, hit_h) = task_hit(t, lh, item_gap);
+                let pad_x = (hit_w - bx) / 2.0;
+                let pad_y = (hit_h - bx) / 2.0;
                 let (rad, edge) = (2f32.max(r(bx * 0.24)), 1f32.max(r(t / 12.0)));
                 let mut b = el().size(bx, bx).radius(rad);
                 b = if done {
@@ -64,7 +67,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                     b.border(edge, c.faint).child(hot)
                 };
                 let line_no = it.line;
-                el().size(hit, hit)
+                el().size(hit_w, hit_h)
                     .center()
                     .hover_group()
                     .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
@@ -73,7 +76,7 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                     .cursor(rune::Cursor::Pointer)
                     .on_press(move |s: &mut App| s.toggle_task(line_no, !done))
                     .child(b)
-                    .pin(Some(mx + mw - bx - pad), Some(r(xc - bx / 2.0 - t * 0.04) - pad), None, None)
+                    .pin(Some(mx + mw - bx - pad_x), Some(r(xc - bx / 2.0 - t * 0.04) - pad_y), None, None)
             }
         };
         // A done item's text is dim (BLK-31).
@@ -82,4 +85,27 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
         out = out.child(el().key(format!("li-{}", it.line)).w_full().child(body).child(marker.key("marker")));
     }
     out
+}
+
+/// Hit target dimensions `(width, height)` for a task checkbox at text size `t`, line box `lh`,
+/// and inter-item `item_gap` (BLK-32). Width stays `>= 24 pt`; height clamps to the row stride
+/// `floor(lh + item_gap)` so adjacent zoomed-out task targets never overlap vertically.
+pub(super) fn task_hit(t: f32, lh: f32, item_gap: f32) -> (f32, f32) {
+    let bx = r(t * 0.9);
+    let w = (bx + r(t * 0.5)).max(24.0);
+    let h = w.min((lh + item_gap).floor()).max(bx);
+    (w, h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blk_32_task_hit_clamps_height_to_row_stride() {
+        assert_eq!(task_hit(14.0, line(14.0, 1.6), r(14.0 * 0.3)), (24.0, 24.0), "default body keeps 24x24");
+        assert_eq!(task_hit(10.0, line(10.0, 1.6), r(10.0 * 0.3)), (24.0, 19.0), "zoomed out clamps to 19 pt stride");
+        assert_eq!(task_hit(9.0, line(9.0, 1.6), r(9.0 * 0.3)), (24.0, 17.0), "minimum body clamps to 17 pt stride");
+        assert_eq!(task_hit(20.0, line(20.0, 1.6), r(20.0 * 0.3)), (28.0, 28.0), "zoomed in grows beyond 24");
+    }
 }

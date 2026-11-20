@@ -2498,6 +2498,46 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// TASKOVERLAP: after 3 zoom-out steps, adjacent preview task hit targets never overlap
+    /// vertically, and clicking the lower part of task 1 toggles only task 1.
+    #[test]
+    fn taskoverlap_zoomed_out_checkboxes_never_overlap() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-taskoverlap-{}", std::process::id()));
+        let md = "# Tasks\n\n- [ ] First task\n- [ ] Second task\n";
+        let (mut rt, _) = open(&dir, md, crate::app::Mode::Preview);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, _| {
+            for _ in 0..3 {
+                s.zoom(Some(false));
+            }
+        });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let marks: Vec<[f32; 4]> = rt.elements().into_iter().filter(|e| e.role == "checkbox").map(|e| e.rect).collect();
+        assert_eq!(marks.len(), 2, "two zoomed-out task checkboxes: {marks:?}");
+        let (r0, r1) = (marks[0], marks[1]);
+        assert!(r0[2] >= 24.0 && r1[2] >= 24.0, "hit width stays >= 24 pt: {r0:?}, {r1:?}");
+        let overlap = (r0[1] + r0[3]) - r1[1];
+        assert!(overlap <= 0.01, "adjacent zoomed-out task checkboxes must not overlap: overlap={overlap:.2}pt, r0={r0:?}, r1={r1:?}");
+        let (cx, cy) = (r0[0] + r0[2] / 2.0, r0[1] + r0[3] - 2.0);
+        rt.pointer_move(cx, cy);
+        rt.pointer_down(cx, cy);
+        rt.pointer_up(cx, cy);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let mut text = String::new();
+        rt.update_if(|s, _| {
+            text = s.active_text().to_string();
+            false
+        });
+        assert!(text.contains("- [x] First task"), "task 1 toggled: {text:?}");
+        assert!(text.contains("- [ ] Second task"), "task 2 stayed unchecked: {text:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
     /// a hover, above the page rather than over its text.
     #[test]
