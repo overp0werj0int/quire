@@ -1132,6 +1132,61 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// NARROWFIND: at narrow widths (<= 560 pt, e.g. 520×400), the find bar spans the usable
+    /// width with crisp 12 pt margins (no preview text slicing left of it), keeps >= 24×24 pt
+    /// action chips, and compacts the stacked Source toolbar + find bar to <= 92 pt below the
+    /// title bar.
+    #[test]
+    fn narrowfind_spans_width_and_compacts_source_stack() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-narrowfind-{}", std::process::id()));
+        let md = "# Rendering probes\n\nA long paragraph with the word the near the start.\n\n".repeat(12);
+        let mut rt = vault(&dir, &[("note.md", md.as_str())], crate::watch::EVERY);
+        rt.set_viewport((520.0, 400.0), 1.0);
+        // 1. Preview mode at 520×400
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Preview;
+            s.open_find(tx);
+            s.reader.find.q = rune::TextEdit::new("the");
+            s.find_changed(tx);
+        });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let get = |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("{k}")).rect;
+        let fb = get("find-bar");
+        assert!(fb[0] <= 16.0 && fb[2] >= 488.0, "preview narrow find-bar spans width: {fb:?}");
+        assert!(els.iter().any(|e| e.key.as_deref() == Some("find-narrow-band") && !e.exiting), "narrow preview backing band renders");
+        for k in ["find-prev", "find-next", "find-close"] {
+            let b = get(k);
+            assert!(b[2] >= 24.0 && b[3] >= 24.0, "{k} keeps >= 24×24 pt target: {b:?}");
+        }
+        for e in &els {
+            if e.text.is_some() && e.path.contains("/preview/") {
+                let r = e.rect;
+                assert!(!(r[1] < fb[1] + fb[3] - 1.0 && r[1] + r[3] > fb[1] + 1.0 && r[0] < fb[0] - 2.0), "no preview text slices left of find-bar: {:?} {r:?} vs {fb:?}", e.text);
+            }
+        }
+        // 2. Source mode at 520×400: toolbar + find-bar stack ends <= 92 pt below titlebar (41 pt).
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Source;
+            s.writer_find(tx);
+        });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        let get = |k: &str| els.iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).unwrap_or_else(|| panic!("{k}")).rect;
+        let (bar, fb) = (get("toolbar"), get("find-bar"));
+        let stack_h = fb[1] + fb[3] - 41.0;
+        assert!(fb[0] <= 16.0 && fb[2] >= 488.0, "source narrow find-bar spans width: {fb:?}");
+        assert!(fb[1] >= bar[1] + bar[3], "find-bar clears toolbar: bar={bar:?}, fb={fb:?}");
+        assert!(stack_h <= 92.0, "narrow source toolbar+find stack <= 92 pt below titlebar: {stack_h}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-122: with the find bar on its own row, the band over the text eases out across the
     /// bar's foot to 40 pt under it, and the caret moving up stays below the fade.
     #[test]

@@ -53,7 +53,7 @@ pub fn body(v: V) -> El {
         if focus {
             area = area.child(fade_top()).child(fade_foot());
         }
-        area = area.children(progress).child(super::reader::find_bar(v));
+        area = area.children(progress).children(super::reader::find_backing(v)).child(super::reader::find_bar(v));
     } else if writer {
         // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
         // (PAGE-84).
@@ -72,7 +72,7 @@ pub fn body(v: V) -> El {
             area = area.child(fade_top());
         }
         area = area.child(fade_foot());
-        area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
+        area = area.children(progress).child(thumb).children(super::reader::find_backing(v)).child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))
@@ -142,7 +142,7 @@ fn doc_scroll(v: V) -> El {
         // Above the text: the toolbar's room, or with typewriter scrolling half the view
         // (WR-86, WR-87). Below it: half the view in the writer (WR-86), the reader's room
         // (PAGE-29), and at least the toast band's height, given back a little each frame (RD-104).
-        let pad_t = if focus { v.vh * 0.16 } else if bar { TOOLBAR_TOP } else { crate::page::TOP_ROOM };
+        let pad_t = if focus { v.vh * 0.16 } else if bar { toolbar_top(v) } else { crate::page::TOP_ROOM };
         let pad_b = if reader || writer {
             let band = super::reader::band_h(v).unwrap_or(0.0).max(s.reader.reveal.room);
             crate::page::end_room(writer, v.vh, band)
@@ -174,7 +174,7 @@ fn doc_scroll(v: V) -> El {
             // A find bar too wide to sit beside the toolbar takes its own row under it, and the
             // text starts below that row.
             if find_row(v) {
-                column = column.child(el().key("find-row").h(FIND_GAP + super::reader::FIND_H));
+                column = column.child(el().key("find-row").h(find_gap(v) + find_h(v)));
             }
             column = column.child(el().key("toolbar-gap").h(TOOLBAR_GAP));
         }
@@ -241,7 +241,7 @@ fn doc_scroll(v: V) -> El {
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
         // float on a clear band. The caret stays below them while you type.
-        let below = if find_row(v) { find_top(v) + super::reader::FIND_H } else { TOOLBAR_TOP + TOOLBAR_H };
+        let below = if find_row(v) { find_top(v) + find_h(v) } else { toolbar_top(v) + toolbar_h(v) };
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
         margin = top_band(v);
     }
@@ -263,7 +263,7 @@ pub(super) fn top_band(v: V) -> f32 {
     if !shows_toolbar(v) {
         return 0.0;
     }
-    if find_row(v) { find_top(v) + super::reader::FIND_H + FIND_FADE_OUT } else { TOOLBAR_TOP + TOOLBAR_H + 12.0 }
+    if find_row(v) { find_top(v) + find_h(v) + FIND_FADE_OUT } else { toolbar_top(v) + toolbar_h(v) + 12.0 }
 }
 
 /// How far down the view a find match is covered from above: the toolbar's band, else the
@@ -272,18 +272,56 @@ pub(super) fn match_roof(v: V) -> f32 {
     if shows_toolbar(v) {
         top_band(v)
     } else if v.s.reader.find.open {
-        FIND_FOOT
+        find_top(v) + find_h(v)
     } else {
         0.0
     }
 }
 
-/// Where the find bar's top sits in the note area: 10 under the title bar, which is the
-/// formatting toolbar's top when it fits beside it, else on its own row under the toolbar
-/// (RD-53, WR-122).
+/// Width of the note area (excluding docked side panels).
+pub(super) fn doc_width(v: V) -> f32 {
+    let (left, right) = docked(v);
+    v.vw - left - right
+}
+
+/// Below this note-area width (e.g. 520×400), the find bar spans the full usable width so no
+/// line of the page slices beside it, and stacked Source chrome tightens vertically (`NARROWFIND`).
+pub(super) const NARROW_FIND_MAX: f32 = 560.0;
+pub(super) const FIND_NARROW_H: f32 = 36.0;
+pub(super) const FIND_NARROW_X: f32 = 12.0;
+
+pub(super) fn narrow_find(v: V) -> bool {
+    doc_width(v) <= NARROW_FIND_MAX
+}
+
+fn compact_toolbar(v: V) -> bool {
+    narrow_find(v) && v.s.reader.find.open && shows_toolbar(v)
+}
+
+fn toolbar_top(v: V) -> f32 {
+    if compact_toolbar(v) { 6.0 } else { TOOLBAR_TOP }
+}
+
+fn toolbar_h(v: V) -> f32 {
+    if compact_toolbar(v) { FIND_NARROW_H } else { TOOLBAR_H }
+}
+
+pub(super) fn find_h(v: V) -> f32 {
+    if narrow_find(v) { FIND_NARROW_H } else { super::reader::FIND_H }
+}
+
+fn find_gap(v: V) -> f32 {
+    if narrow_find(v) { 6.0 } else { FIND_GAP }
+}
+
+/// Where the find bar's top sits in the note area: 10 under the title bar (8 when narrow
+/// without a toolbar), which is the formatting toolbar's top when it fits beside it, else on
+/// its own row under the toolbar (RD-53, WR-122).
 pub(super) fn find_top(v: V) -> f32 {
     if find_row(v) {
-        TOOLBAR_TOP + TOOLBAR_H + FIND_GAP
+        toolbar_top(v) + toolbar_h(v) + find_gap(v)
+    } else if narrow_find(v) {
+        8.0
     } else {
         TOOLBAR_TOP
     }
@@ -291,14 +329,13 @@ pub(super) fn find_top(v: V) -> f32 {
 
 /// The open find bar takes its own row under the formatting toolbar: the window is too narrow
 /// for it to sit beside the toolbar with `FIND_CLEAR` between them.
-fn find_row(v: V) -> bool {
+pub(super) fn find_row(v: V) -> bool {
     use super::reader::{FIND_RIGHT, FIND_W};
     if !v.s.reader.find.open || !shows_toolbar(v) {
         return false;
     }
     let toolbar_right = source_column(v).gutter + TOOLBAR_X + TOOLBAR_W;
-    let (left, right) = docked(v);
-    toolbar_right + FIND_CLEAR > v.vw - left - right - FIND_RIGHT - FIND_W
+    toolbar_right + FIND_CLEAR > doc_width(v) - FIND_RIGHT - FIND_W
 }
 
 /// The least room between the toolbar and a find bar on its row.
@@ -381,12 +418,13 @@ fn toolbar(v: V) -> El {
         .backdrop_blur(12.0)
         .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })
         .stuck_reveal(8.0);
+    let tb_top = toolbar_top(v);
+    let tb_h = toolbar_h(v);
     // With the find bar on its own row, the stuck toolbar hangs a band of the page's colour
     // from the view's top edge to that row's foot, the width of the note area, which eases out
     // across the row's foot. Text scrolling up goes under the band, never beside the bar.
     let band = find_row(v).then(|| {
-        let (left, right) = docked(v);
-        let below = find_top(v) + super::reader::FIND_H;
+        let below = find_top(v) + find_h(v);
         let h = below + FIND_FADE_OUT;
         let start = below - FIND_FADE_IN;
         let mut stops = vec![(0.0, p.bg)];
@@ -396,8 +434,8 @@ fn toolbar(v: V) -> El {
             (y / h, p.bg.alpha(1.0 - t * t * (3.0 - 2.0 * t)))
         }));
         el().key("find-band")
-            .pin(Some(-(source_column(v).gutter + TOOLBAR_X)), Some(-TOOLBAR_TOP), None, None)
-            .size(v.vw - left - right, h)
+            .pin(Some(-(source_column(v).gutter + TOOLBAR_X)), Some(-tb_top), None, None)
+            .size(doc_width(v), h)
             .linear_gradient(std::f32::consts::PI, stops)
             .inert()
             .stuck_reveal(8.0)
@@ -405,15 +443,15 @@ fn toolbar(v: V) -> El {
     super::focus::stop(row())
         .key("toolbar")
         .self_start()
-        .h(TOOLBAR_H)
-        .mb(64.0 - TOOLBAR_TOP - TOOLBAR_H)
+        .h(tb_h)
+        .mb(if compact_toolbar(v) { 12.0 } else { 64.0 - TOOLBAR_TOP - TOOLBAR_H })
         // The first icon lines up with the text: 4 points of padding, then the 6 points from
         // a button's edge to its icon.
         .ml(TOOLBAR_X)
         .px(4.0)
         .gap(2.0)
         .center_y()
-        .sticky_top(TOOLBAR_TOP)
+        .sticky_top(tb_top)
         // A press between the buttons stays on the toolbar. The column under it would move
         // the caret to the end of the note.
         .on_press(|_: &mut App| {})

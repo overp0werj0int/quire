@@ -24,9 +24,32 @@ pub const FIND_H: f32 = 40.0;
 pub const FIND_W: f32 = 380.0;
 pub const FIND_RIGHT: f32 = 16.0;
 
+/// Top page-coloured backing behind the narrow Find bar when no toolbar `find-band` owns the
+/// top edge (Preview mode, or Source with the toolbar hidden), so scrolled lines never slice
+/// above or beside the bar (`NARROWFIND`).
+pub fn find_backing(v: V) -> Option<El> {
+    if !v.s.reader.find.open || !super::editor::narrow_find(v) || super::editor::find_row(v) {
+        return None;
+    }
+    let below = super::editor::find_top(v) + super::editor::find_h(v);
+    let fade = 6.0;
+    let h = below + fade;
+    let bg = Roles::new(v.p).bg;
+    let stops = [(0.0, bg), (below / h, bg), (1.0, bg.alpha(0.0))];
+    Some(
+        el().key("find-narrow-band")
+            .pin(Some(0.0), Some(0.0), Some(0.0), None)
+            .h(h)
+            .linear_gradient(std::f32::consts::PI, stops)
+            .inert()
+            .paint_order(35),
+    )
+}
+
 /// The find bar (RD-52 to RD-61): 380 by 40, 16 px from the note area's right edge, 10 px
 /// under its top, or on its own row under the formatting toolbar when it does not fit beside
-/// it (`editor::find_top`).
+/// it (`editor::find_top`). At narrow note-area widths (`<= 560 px`), spans the full usable
+/// width with 12 px side margins (`NARROWFIND`).
 pub fn find_bar(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
@@ -58,26 +81,30 @@ pub fn find_bar(v: V) -> El {
         .on_edit(|s: &mut App| &mut s.reader.find.q)
         .on_input_change(|s: &mut App, tx| s.find_changed(tx))
         .on_input_key(on_find_key);
-    super::widgets::bar_edge(popup(&c), &c)
-        .key("find-bar")
-        .pin(None, Some(super::editor::find_top(v)), Some(FIND_RIGHT), None)
-        .size(FIND_W, FIND_H)
-        .paint_order(40)
-        .child(
-            row()
-                .w_full()
-                .h_full()
-                .pl(12.0)
-                .pr(6.0)
-                .gap(8.0)
-                .center_y()
-                .child(icon(&SEARCH, 14.0).color(quiet.faint))
-                .child(field)
-                .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
-                .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))
-                .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), |s, tx| s.find_step(true, tx)))
-                .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), |s, tx| s.close_find(tx))),
-        )
+    let narrow = super::editor::narrow_find(v);
+    let top = super::editor::find_top(v);
+    let h = super::editor::find_h(v);
+    let mut bar = super::widgets::bar_edge(popup(&c), &c).key("find-bar").paint_order(40);
+    bar = if narrow {
+        bar.pin(Some(super::editor::FIND_NARROW_X), Some(top), Some(super::editor::FIND_NARROW_X), None).h(h)
+    } else {
+        bar.pin(None, Some(top), Some(FIND_RIGHT), None).size(FIND_W, h)
+    };
+    bar.child(
+        row()
+            .w_full()
+            .h_full()
+            .pl(12.0)
+            .pr(6.0)
+            .gap(8.0)
+            .center_y()
+            .child(icon(&SEARCH, 14.0).color(quiet.faint))
+            .child(field)
+            .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
+            .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), |s, tx| s.find_step(false, tx)))
+            .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), |s, tx| s.find_step(true, tx)))
+            .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), |s, tx| s.close_find(tx))),
+    )
 }
 
 /// Keys in the find field: Enter, Shift+Enter, Esc and Ctrl+F (KEY items 77 to 80). Esc
