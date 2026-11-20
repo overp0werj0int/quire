@@ -77,8 +77,19 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, head_h: f
             r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
         }
         if it.enabled {
-            let run = it.run;
-            r = r.focusable(true).focus_highlight(p.hover).on_press_tx(move |s: &mut App, tx| s.pick(&run, tx));
+            let run = std::rc::Rc::new(it.run);
+            let on_enter = run.clone();
+            r = r
+                .focusable(true)
+                .focus_highlight(p.hover)
+                .on_press_tx(move |s: &mut App, tx| s.pick(&*run, tx))
+                .on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
+                    if ev.key == rune::Key::Enter && ev.mods == rune::Mods::default() {
+                        s.pick(&*on_enter, tx);
+                        return true;
+                    }
+                    false
+                });
         } else {
             r = r.disabled(true);
         }

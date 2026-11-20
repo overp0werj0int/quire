@@ -1059,6 +1059,42 @@ pub(crate) mod scroll_tests {
             false
         });
         assert_eq!(after, before - 1, "menu-forget removes the recent folder");
+        // WELFOCUS: Cancel on narrow Welcome returns focus to `create` (in view, not clipped recent-0).
+        rt.set_viewport((520.0, 400.0), 1.0);
+        rt.update(|s, tx| {
+            s.go_welcome(tx);
+            tx.blur();
+        });
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+        settle(&mut rt);
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        settle(&mut rt);
+        let focused = rt.elements().into_iter().find(|e| e.focused && !e.exiting).expect("focused after Cancel");
+        assert_eq!(focused.key.as_deref(), Some("create"), "Cancel returns focus to create: {:?}", focused.key);
+        assert!(focused.rect[1] >= 0.0 && focused.rect[1] + focused.rect[3] <= 400.0, "create is in view: {:?}", focused.rect);
+        // WELFOCUS: pointer-opened recent-menu activates cleanly on Enter.
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, _| {
+            if s.persist.vaults.is_empty() {
+                s.persist.vaults.push(crate::store::VaultRef { name: "Vault".into(), path: dir.clone() });
+            }
+        });
+        settle(&mut rt);
+        let (rx, ry) = rt.find("recent-0").expect("recent-0");
+        rt.pointer_move(rx, ry);
+        rt.secondary_down(rx, ry);
+        rt.secondary_up(rx, ry);
+        settle(&mut rt);
+        assert!(rt.find("recent-menu").is_some(), "secondary click opens recent-menu");
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(rt.find("recent-menu").is_none(), "Enter closes recent-menu");
+        assert!(rt.find("recent-0").is_none(), "Enter removes recent-0");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1710,6 +1710,7 @@ impl App {
             self.cancel_rename(tx);
         } else if self.creating.is_some() {
             self.creating = None;
+            tx.focus("create", tx.by_keys());
         } else if self.focus {
             self.focus = false;
         } else {

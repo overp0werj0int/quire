@@ -98,7 +98,10 @@ pub fn welcome(v: V) -> El {
                                 .hover(p.hover)
                                 .role("button")
                                 .label("Cancel")
-                                .control(|s: &mut App, _| s.creating = None)
+                                .control(|s: &mut App, tx| {
+                                    s.creating = None;
+                                    tx.focus("create", tx.by_keys());
+                                })
                                 .child(label("Cancel", sans(13.0, 400.0), p.ink2)),
                         )
                         .child(primary_button(p, "create-go", "Create", 32.0, 16.0, 13.0, |s, tx| s.create_vault(tx))),
