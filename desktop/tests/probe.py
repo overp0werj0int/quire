@@ -49,6 +49,7 @@ or changes your own notes and settings. Run one probe at a time: each is a whole
 app.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -60,6 +61,7 @@ import time
 import tempfile
 
 DESKTOP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCK_PATH = "/tmp/quire-run.lock"
 
 
 def parse_events(arg):
@@ -128,7 +130,12 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
             with open(os.path.join(work, "state.json"), "w") as f:
                 f.write(state)
             env.update(QUIRE_STATE=os.path.join(work, "state.json"))
-        r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        with open(LOCK_PATH, "w") as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            try:
+                r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            finally:
+                fcntl.flock(lf, fcntl.LOCK_UN)
         if not r.returncode:
             return json.load(open(tree))["elements"], home
         if "Out of Memory" not in r.stderr:  # the GPU's memory runs out now and then: retry that, nothing else
