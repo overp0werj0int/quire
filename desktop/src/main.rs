@@ -2955,6 +2955,38 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// PREVFADE: Preview mode renders the matching subtle scroll thumb on overflowing notes
+    /// (showing while scrolling and fading after 700 ms) and deepens doc-scroll's top fade to
+    /// 40 pt outside zen mode without adding zen-only fade bands.
+    #[test]
+    fn prevfade_preview_scroll_fade_and_thumb_parity() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-prevfade-{}", std::process::id()));
+        let md = format!("# Top\n\n{}", "Dense line of readable prose for Preview fade and thumb parity.\n\n".repeat(45));
+        let (mut rt, _) = open(&dir, &md, crate::app::Mode::Preview);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        assert!(info(&rt, "fade-top").is_none() && info(&rt, "fade-foot").is_none(), "no zen fade bands outside zen mode");
+        let shown = |rt: &rune::Runtime<crate::app::App>| rt.presented("thumb").map_or(0.0, |p| p.1);
+        assert!(shown(&rt) < 0.01, "preview thumb rests hidden: {}", shown(&rt));
+        let (x, y) = rt.find("doc-scroll").unwrap();
+        rt.pointer_move(x, y);
+        rt.wheel(x, y, -360.0);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        assert!(shown(&rt) > 0.4, "preview thumb shows while scrolling: {}", shown(&rt));
+        let thumb = rt.presented("thumb").unwrap().0;
+        assert!((thumb[2] - 3.0).abs() < 0.1 && thumb[3] >= 24.0, "preview thumb geometry matches writer: {thumb:?}");
+        for _ in 0..90 {
+            rt.frame(DT);
+        }
+        assert!(shown(&rt) < 0.05, "preview thumb fades after 700 ms: {}", shown(&rt));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
     /// a hover, above the page rather than over its text.
     #[test]

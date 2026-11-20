@@ -70,31 +70,32 @@ pub fn body(v: V) -> El {
             .h(64.0)
             .linear_gradient(std::f32::consts::PI, foot)
     };
-    if reading {
-        // The reader has the writer's fades in zen mode, where no bar sits over the page.
-        if focus {
-            area = area.child(fade_top()).child(fade_foot());
-        }
-        area = area.children(progress).child(super::reader::find_bar(v));
-    } else if writer {
+    let scroll_thumb = || {
         // The thumb fades over 300 ms (WR-93), and shows and hides at once under reduced motion
-        // (PAGE-84).
+        // (PAGE-84). Shared by both Preview and Source (`PREVFADE`).
         let shown = &v.s.reader.thumb_shown;
         let shown = if crate::motion::reduced() { shown.into() } else { shown.smooth(rune::Spring::new(0.3, 0.0)) };
-        let thumb = el()
-            .key("thumb")
+        el().key("thumb")
             .pin(Some(0.0), Some(find_slot_h), None, None)
             .radius(1.5)
             .fill(c.faint)
             .paint_order(30)
             .live_rect(&v.s.reader.thumb)
-            .live_opacity(shown);
+            .live_opacity(shown)
+    };
+    if reading {
+        // The reader has the writer's fades in zen mode, where no bar sits over the page.
+        if focus {
+            area = area.child(fade_top()).child(fade_foot());
+        }
+        area = area.children(progress).child(scroll_thumb()).child(super::reader::find_bar(v));
+    } else if writer {
         // While the toolbar shows, its own fade does the top.
         if !shows_toolbar(v) {
             area = area.child(fade_top());
         }
         area = area.child(fade_foot());
-        area = area.children(progress).child(thumb).child(super::reader::find_bar(v));
+        area = area.children(progress).child(scroll_thumb()).child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))

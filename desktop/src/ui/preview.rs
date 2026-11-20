@@ -258,11 +258,11 @@ fn look(v: V) -> Look {
     }
 }
 
-/// Subtle top and bottom scroll-edge fades for Preview `doc-scroll` outside zen mode
-/// (`SCROLLFADE`), softening scrolled prose without obstructing the reading progress line or
-/// narrow Find backing.
+/// Top and bottom scroll-edge fades for Preview `doc-scroll` outside zen mode (`PREVFADE`),
+/// deep enough (40 pt linear) to visibly soften the first scrolled prose line below the titlebar
+/// without obstructing the reading progress line or Find backing.
 pub(super) fn scroll_fade() -> rune::ScrollFade {
-    rune::ScrollFade::strength(20.0).full_at(1.0).linear()
+    rune::ScrollFade::strength(40.0).full_at(1.0).linear()
 }
 
 /// The page (VER-32): a virtual list of the note's top-level blocks, so only the rows near the
