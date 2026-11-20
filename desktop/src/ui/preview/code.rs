@@ -47,12 +47,22 @@ pub(super) fn badge_size(b: f32) -> f32 {
     r((11.0 * (b / 14.0)).clamp(9.0, 18.0))
 }
 
-/// The language badge: lower case, mono scaled with preview body size, faint (BLK-50).
+/// Top inset for the badge / Copy chip and top padding for the code body (BLK-44, BLK-51).
+/// Keeps at least 4 pt of vertical clearance between the chip and line 1 at every zoom level.
+pub(super) fn top_clearance(b: f32) -> (f32, f32) {
+    let chip_h = r(chip_size(b) * 2.0);
+    let top = 4f32.max(r(b * 0.3));
+    let pad_top = r(b * 1.25).max(top + chip_h + 4.0);
+    (top, pad_top)
+}
+
+/// The language badge: lower case, mono scaled with preview body size, readable on the code
+/// panel across every theme (BLK-50).
 fn badge(cx: &Cx, lang: &str) -> El {
     let b = cx.look.b;
     let sz = badge_size(b);
     let lh = r(chip_size(b) * 2.0);
-    text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 400.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.faint)
+    text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 400.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.readable_dim())
 }
 
 pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
@@ -77,9 +87,10 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
         .collect();
     let n = src.split('\n').count();
     let pad_x = r(b * 1.1);
+    let (top, pad_top) = top_clearance(b);
     // The numbers stay put while the code scrolls; the scroll area sits inside the panel's
     // padding, and its right edge fades while there is more that way (BLK-46 to BLK-48).
-    let mut body = row().key("lines").w_full().pt(r(b * 1.25)).pb(r(b * 0.85)).px(pad_x).items_start();
+    let mut body = row().key("lines").w_full().pt(pad_top).pb(r(b * 0.85)).px(pad_x).items_start();
     if n > 8 {
         let nums = (1..=n).map(|i| i.to_string()).collect::<Vec<_>>().join("\n");
         let numw = rune::text::advance(&n.to_string(), style);
@@ -93,12 +104,10 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     body = body.child(el().key("scroll").grow(1.0).min_w(0.0).scroll_x().scroll_fade(fade).child(code));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
     let chip_sz = chip_size(b);
-    let chip_h = r(chip_sz * 2.0);
-    let top = 4f32.max(r((r(b * 1.25) - chip_h) / 2.0));
     // Over the block the badge gives way to a Copy chip, which says Copied in green for a
     // moment after a click, with or without the pointer (BLK-51).
     let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
-    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.green) } else { (&icons::COPY, "Copy", c.dim) };
+    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.green) } else { (&icons::COPY, "Copy", c.readable_dim()) };
     let chip = crate::ui::chip::Chip { key: "copy", glyph, size: chip_sz, icon: r(chip_sz * 1.1), label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
         .el(c)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
@@ -174,5 +183,14 @@ mod tests {
         assert!(super::badge_size(17.0) > super::badge_size(14.0), "language badge grows with zoom");
         assert_eq!(super::chip_size(6.0), 10.0, "lower clamp");
         assert_eq!(super::chip_size(40.0), 20.0, "upper clamp");
+    }
+
+    #[test]
+    fn codeclear_top_padding_clears_copy_chip() {
+        for b in [9.0, 10.0, 14.0, 18.0, 20.0, 28.0] {
+            let (top, pad_top) = super::top_clearance(b);
+            let chip_h = super::r(super::chip_size(b) * 2.0);
+            assert!(pad_top >= top + chip_h + 4.0, "b={b}: pad_top {pad_top} < top {top} + chip_h {chip_h} + 4");
+        }
     }
 }

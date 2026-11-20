@@ -2538,6 +2538,44 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// CODECLEAR: code block top clearance keeps the Copy chip off long first lines at 1x and 3x
+    /// zoom-in, and the language badge meets >= 4.5:1 contrast against the code panel.
+    #[test]
+    fn codeclear_copy_chip_clears_first_line_and_badge_reads() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-codeclear-{}", std::process::id()));
+        let md = "# Code\n\n```rust\nfn very_long_first_line_of_code_that_reaches_all_the_way_to_the_right_edge_of_the_block() -> usize { 42 }\nlet second = 2;\n```\n";
+        let (mut rt, _) = open(&dir, md, crate::app::Mode::Preview);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let copy1 = info(&rt, "copy").expect("copy chip at 1x").rect;
+        let code1 = info(&rt, "code").expect("code at 1x").rect;
+        assert!(copy1[1] + copy1[3] <= code1[1] + 0.01, "1x Copy chip {copy1:?} must clear line 1 {code1:?}");
+        let badge = info(&rt, "badge").expect("language badge");
+        let fg = badge.text_color.expect("badge color");
+        let mut panel = rune::Color::BLACK;
+        rt.update_if(|s, _| {
+            panel = crate::roles::Roles::new(s.palette(false)).panel;
+            false
+        });
+        let cr = crate::theme::contrast(fg, panel);
+        assert!(cr >= 4.5, "badge contrast on Paper panel: {cr:.2}:1 (< 4.5)");
+        rt.update(|s, _| {
+            for _ in 0..3 {
+                s.zoom(Some(true));
+            }
+        });
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        let copy3 = info(&rt, "copy").expect("copy chip at 3x").rect;
+        let code3 = info(&rt, "code").expect("code at 3x").rect;
+        assert!(copy3[1] + copy3[3] <= code3[1] + 0.01, "3x Copy chip {copy3:?} must clear line 1 {code3:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
     /// a hover, above the page rather than over its text.
     #[test]
