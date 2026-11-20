@@ -255,10 +255,23 @@ impl App {
         self.handed = None;
         // Opened by keys, a drawer's first stop takes the keyboard with its ring, so the next
         // key visibly acts on it. Rune's modal would focus it without one.
-        if let Layer::Drawer(d) = &layer
-            && tx.by_keys()
-        {
-            tx.focus(if *d == Drawer::Sidebar { "sidebar-over" } else { "outline-over" }, true);
+        if let Layer::Drawer(d) = &layer {
+            if tx.by_keys() {
+                tx.focus(if *d == Drawer::Sidebar { "sidebar-over" } else { "outline-over" }, true);
+            }
+            // When the sidebar drawer opens, scroll an expanded active note into view so deep
+            // notes are visible even inside short drawers (520×400, 640×480).
+            if *d == Drawer::Sidebar
+                && !self.note_mode()
+                && self.query.text.trim().is_empty()
+                && self.persist.sidebar.folded != Some(crate::sidebar::Section::Vault)
+                && let Some(a) = self.active.as_deref()
+                && self.files().contains_key(a)
+                && self.ancestors_expanded(a)
+            {
+                self.tree_reveal = None;
+                tx.scroll_into_view_in("side-scroll", crate::folders::row_key("file", a));
+            }
         }
         self.layers.push(Open { layer, back, over: self.context(), size: self.window_size() });
     }

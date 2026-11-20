@@ -188,6 +188,8 @@ pub struct App {
     pub dropped: bool,
     /// The tab the shelf last scrolled to, by its element key (SB-24).
     shelf_shown: Option<String>,
+    /// Active note path waiting to be scrolled into view in `side-scroll` once the sidebar shows.
+    pub(crate) tree_reveal: Option<String>,
     /// The tab whose outline is folded out under it. It shows only while that tab is active,
     /// and goes once another is (SB-25, SB-26). Not kept between sessions.
     pub outline_out: Option<Shelved>,
@@ -292,6 +294,7 @@ pub fn init() -> App {
         reorder: None,
         dropped: false,
         shelf_shown: None,
+        tree_reveal: None,
         outline_out: None,
         new_folder: None,
         sync: Default::default(),
@@ -530,6 +533,7 @@ impl App {
         changed |= self.expire_reader(t);
         self.lift_over_band(tx);
         self.reveal_tab(tx);
+        self.reveal_tree(tx);
         changed |= self.release_room(tx);
         changed |= self.expire_sheet(t);
         changed |= self.drop_stale_layers(tx);
@@ -925,8 +929,13 @@ impl App {
             }
         }
         let path = v.path.clone();
+        let saved = match v.scope {
+            Scope::Folder => self.persist.sessions.get(&*path.to_string_lossy()).cloned(),
+            Scope::Note => None,
+        };
+        let has_saved = saved.is_some();
         let ses = match v.scope {
-            Scope::Folder => self.persist.sessions.get(&*path.to_string_lossy()).cloned().unwrap_or_default(),
+            Scope::Folder => saved.unwrap_or_default(),
             Scope::Note => {
                 let only: Vec<String> = v.files().keys().cloned().collect();
                 Session { active: only.first().cloned(), tabs: only, ..Default::default() }
@@ -939,10 +948,15 @@ impl App {
             self.recent = self.tabs.clone();
         }
         self.expanded = ses.expanded.into_iter().collect();
-        if self.expanded.is_empty()
+        self.tree_reveal = None;
+        // Preserve a saved session's explicitly empty `expanded: []` (SB-134). Only auto-expand
+        // ancestors when no saved session exists for this vault (or via `open_startup` / `open_file`).
+        if !has_saved
+            && self.expanded.is_empty()
             && let Some(a) = self.active.clone()
         {
             self.expand_ancestors(&a);
+            self.tree_reveal = Some(a);
         }
         if v.scope == Scope::Folder {
             if !self.persist.vaults.iter().any(|r| r.path == path) {
@@ -1136,6 +1150,7 @@ impl App {
             }
             self.expand_ancestors(n);
             self.active = Some(n.to_string());
+            self.tree_reveal = Some(n.to_string());
             self.ensure_edit();
         }
     }
@@ -1146,6 +1161,39 @@ impl App {
         while !d.is_empty() {
             self.expanded.insert(d.clone());
             d = md::dir(&d).to_string();
+        }
+    }
+
+    /// Whether every ancestor folder of `path` is currently expanded in the vault tree.
+    pub(crate) fn ancestors_expanded(&self, path: &str) -> bool {
+        let mut d = md::dir(path);
+        while !d.is_empty() {
+            if !self.expanded.contains(d) {
+                return false;
+            }
+            d = md::dir(d);
+        }
+        true
+    }
+
+    /// Whether the vault tree (`side-scroll`) is currently visible in the sidebar or its drawer.
+    pub(crate) fn tree_visible(&self) -> bool {
+        self.screen == Screen::Vault
+            && !self.note_mode()
+            && !self.focus
+            && self.sidebar_open()
+            && self.query.text.trim().is_empty()
+            && self.persist.sidebar.folded != Some(crate::sidebar::Section::Vault)
+    }
+
+    /// Scrolls `side-scroll` to show `tree_reveal` once the vault tree is visible.
+    fn reveal_tree(&mut self, tx: &mut Tx) {
+        if !self.tree_visible() {
+            return;
+        }
+        let Some(path) = self.tree_reveal.take() else { return };
+        if self.files().contains_key(&path) && self.ancestors_expanded(&path) {
+            tx.scroll_into_view_in("side-scroll", crate::folders::row_key("file", &path));
         }
     }
 
@@ -1160,6 +1208,7 @@ impl App {
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
         self.expand_ancestors(path);
+        self.tree_reveal = Some(path.to_string());
         self.recent.retain(|x| x != path);
         self.recent.insert(0, path.to_string());
         self.recent.truncate(30);

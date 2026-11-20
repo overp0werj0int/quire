@@ -6359,6 +6359,72 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEEPFIX: restoring a saved session with `expanded: []` keeps folders collapsed (SB-134),
+    /// while opening the sidebar drawer on a deep expanded startup note scrolls it into view.
+    #[test]
+    fn deep_fix_preserves_collapsed_restore_and_scrolls_drawer() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-deepfix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let vault_dir = dir.join("vault");
+        let rel = (1..=12).map(|i| format!("d{i:02}")).collect::<Vec<_>>().join("/") + "/Leaf.md";
+        let full = vault_dir.join(&rel);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(&full, "# Deep Leaf\n\nBody.\n").unwrap();
+        let cfg = dir.join("cfg");
+        let quire_cfg = cfg.join("quire");
+        std::fs::create_dir_all(&quire_cfg).unwrap();
+        let state_json = serde_json::json!({
+            "seeded": true,
+            "last": vault_dir.to_string_lossy(),
+            "sessions": {
+                vault_dir.to_string_lossy().to_string(): {
+                    "tabs": [rel],
+                    "active": rel,
+                    "recent": [rel],
+                    "expanded": []
+                }
+            }
+        });
+        std::fs::write(quire_cfg.join("state.json"), state_json.to_string()).unwrap();
+        // SAFETY: ENV lock held.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", &cfg);
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::remove_var("QUIRE_FOLDER");
+            std::env::remove_var("QUIRE_NOTE");
+            std::env::remove_var("QUIRE_STATE");
+        }
+        let leaf_key = crate::folders::row_key("file", &rel);
+        // 1. Ordinary session restore keeps saved `expanded: []` collapsed.
+        let app_restore = crate::app::init();
+        let mut rt_restore = Runtime::new(app_restore, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt_restore.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+        settle(&mut rt_restore);
+        assert!(rt_restore.find("dir:d01").is_some(), "top folder d01 shows");
+        assert!(rt_restore.find("dir:d01|d02").is_none(), "saved collapsed d01 stays collapsed");
+        assert!(rt_restore.find(&leaf_key).is_none(), "deep leaf stays hidden when saved expanded is empty");
+        // 2. Explicit startup note expands ancestors and scrolls into view in short 520x400 and 640x480 drawers.
+        for (vw, vh) in [(520.0, 400.0), (640.0, 480.0)] {
+            let mut app = crate::app::init();
+            app.open_startup(&vault_dir, Some(&rel));
+            let mut rt = Runtime::new(app, crate::ui::view, (vw, vh), rune::Env { system_dark: false, scale: 1.0 });
+            rt.poll = Some(|s: &mut crate::app::App, t, tx| s.poll(t, tx));
+            rt.on_key = Some(crate::keys::on_key);
+            settle(&mut rt);
+            rt.key(KeyEvent { key: Key::Command('b'), mods: Mods { cmd: true, ctrl: true, shift: true, ..Mods::default() } });
+            settle(&mut rt);
+            let port = rect_of(&rt, "side-scroll");
+            let leaf = rect_of(&rt, &leaf_key);
+            assert!(
+                leaf[1] >= port[1] - 1.0 && leaf[1] + leaf[3] <= port[1] + port[3] + 1.0,
+                "at {vw}x{vh}, deep leaf {leaf:?} must sit inside side-scroll {port:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-49: a click on a folder's row opens or closes it, and its icon turns with it.
     #[test]
     fn a_click_opens_a_folder_and_turns_its_icon() {
