@@ -2304,7 +2304,7 @@ mod writer_chrome_tests {
             rt.frame(DT);
         }
         let inside = |r: [f32; 4], o: [f32; 4]| r[0] >= o[0] - 0.5 && r[1] >= o[1] - 0.5 && r[0] + r[2] <= o[0] + o[2] + 0.5 && r[1] + r[3] <= o[1] + o[3] + 0.5;
-        // The counts centre in the outline, on one line, and end where `below` begins.
+        // The counts left-align at the outline's 16 pt inset, on one line, and end where `below` begins.
         let counts_end_at = |rt: &rune::Runtime<crate::app::App>, below: f32| {
             let outline = rt.presented("outline").unwrap().0;
             let counts = rt.presented("counts").expect("the counts show").0;
@@ -2312,16 +2312,21 @@ mod writer_chrome_tests {
             assert!((counts[1] + counts[3] - below).abs() < 1.0, "the counts {counts:?} end at {below}");
             let (wc, rd) = (info(rt, "word-count").unwrap().rect, info(rt, "read-time").unwrap().rect);
             assert!((wc[1] - rd[1]).abs() < 0.5, "the count and the reading time share a line");
-            let mid = outline[0] + outline[2] / 2.0;
-            assert!(((wc[0] + rd[0] + rd[2]) / 2.0 - mid).abs() < 1.0, "centred: {wc:?} {rd:?}, middle {mid}");
+            let inset = wc[0] - counts[0];
+            assert!((inset - 16.0).abs() <= 2.0, "left-aligned at 16 pt inset: {wc:?}, counts {counts:?}");
             let bar = rt.presented("titlebar").unwrap().0;
             assert!(!inside(wc, bar));
         };
         let outline = rt.presented("outline").unwrap().0;
         let foot = rt.presented("status").expect("the writer's footer shows").0;
+        let side_foot = rt.presented("side-foot").expect("the sidebar footer shows").0;
         assert!(inside(foot, outline) && (foot[1] + foot[3] - (outline[1] + outline[3])).abs() < 1.0, "the footer {foot:?} sits at the outline's foot");
-        assert!((foot[3] - 29.0).abs() < 0.5, "the footer keeps its height: {}", foot[3]);
-        assert!(inside(info(&rt, "caret-pos").expect("the caret's position shows").rect, foot));
+        assert!((foot[3] - 41.0).abs() < 0.5, "the footer matches side-foot height: {}", foot[3]);
+        assert!((foot[1] - side_foot[1]).abs() <= 1.0 && (foot[3] - side_foot[3]).abs() <= 1.0, "status {foot:?} aligns with side-foot {side_foot:?}");
+        let caret_pos = info(&rt, "caret-pos").expect("the caret's position shows").rect;
+        assert!(inside(caret_pos, foot));
+        let wc = info(&rt, "word-count").unwrap().rect;
+        assert!((wc[0] - caret_pos[0]).abs() <= 1.0, "word-count {wc:?} aligns horizontally with caret-pos {caret_pos:?}");
         counts_end_at(&rt, foot[1]);
         rt.update(|s, tx| s.toggle_mode(tx));
         for _ in 0..30 {

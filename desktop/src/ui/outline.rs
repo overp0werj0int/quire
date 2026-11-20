@@ -15,6 +15,11 @@ use crate::roles::Roles;
 pub(super) const PANEL_W: f32 = 236.0;
 const PANEL_X: f32 = 16.0;
 
+/// Section caption matching the left sidebar's OPEN / NOTES headings (10 pt Instrument Sans 600).
+fn section_caption(title: &str, c: &Roles) -> El {
+    text(title.to_uppercase()).font(styles::sans(panel::CAPTION, 600.0).lh(panel::CAPTION).tracking(1.0)).color(c.faint)
+}
+
 pub fn outline(v: V) -> El {
     let p = v.p;
     let s = v.s;
@@ -47,7 +52,7 @@ pub fn outline(v: V) -> El {
         None
     };
     let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
-    let mut list = col().key("outline-list").w_full().pb(12.0).child(styles::caption("Contents", true, v.p).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
+    let mut list = col().key("outline-list").w_full().pb(12.0).child(section_caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
     let mut contents = lists::list(col().key("outline-heads").w_full(), "list");
     for (n, &i) in shown.iter().enumerate() {
         let h = &heads[i];
@@ -77,7 +82,7 @@ pub fn outline(v: V) -> El {
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
-    list = list.child(styles::caption("Linked from", true, v.p).pl(panel::TEXT_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
+    list = list.child(section_caption("Linked from", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
     let mut back = s.active.as_ref().map(|a| md::backlinks(s.files(), a)).unwrap_or_default();
     if let Some(vault) = &s.vault {
         back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
@@ -113,9 +118,9 @@ pub fn outline(v: V) -> El {
         .children(footer(v))
 }
 
-/// The word count and reading time, centred under the outline's list, above the footer when
-/// it shows (WR-189). The writer's count (WR-188): front matter, code fences and link targets
-/// left out.
+/// The word count and reading time, left-aligned under the outline's list at the same inset as
+/// the footer when it shows (WR-189). The writer's count (WR-188): front matter, code fences
+/// and link targets left out.
 fn counts(v: V) -> El {
     let p = v.p;
     let s = v.s;
@@ -137,7 +142,6 @@ fn counts(v: V) -> El {
         .w_full()
         .py(10.0)
         .px(PANEL_X)
-        .justify_center()
         .center_y()
         .child(label(words, style, p.mute).key("word-count").help(format!("{} characters", group(count.chars))))
         .child(label("·", style, p.mark).mx(6.0))
@@ -165,7 +169,7 @@ fn footer(v: V) -> Option<El> {
     };
     let mut r = row()
         .key("status")
-        .h(29.0)
+        .h(41.0)
         .w_full()
         .gap(12.0)
         .px(PANEL_X)

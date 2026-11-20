@@ -26,7 +26,7 @@ pub const TEXT_X: f32 = 22.0;
 pub const INDENT: f32 = 14.0;
 /// A row's text ends this far from the panel's right edge.
 pub const RIGHT: f32 = 18.0;
-const RADIUS: f32 = 3.0;
+const RADIUS: f32 = 6.0;
 
 /// A row is its text's line plus 12 px.
 pub fn row_h(size: f32) -> f32 {
