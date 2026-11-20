@@ -7638,12 +7638,13 @@ mod layer_matrix_tests {
             });
             glide(&mut rt);
             glide(&mut rt);
-            let view = rect(&rt, "doc-scroll").expect("the view");
+            let band = rect(&rt, "toast-band").expect("the band");
+            let target_y = band[1] - 24.0;
             // Rows that mount as the view moves measure, so the move is made until it holds, and
             // not again once it does: a row at the view's edge can mount for a move of nothing.
             for _ in 0..4 {
                 let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
-                let by = y - (view[1] + 0.7 * view[3]);
+                let by = y - target_y;
                 if by.abs() < 0.5 {
                     break;
                 }
@@ -7654,8 +7655,7 @@ mod layer_matrix_tests {
                 glide(&mut rt);
             }
             let (_, y) = rt.find(crate::reader::FIND_CUR).expect("the current match is drawn");
-            assert!((y - (view[1] + 0.7 * view[3])).abs() < 1.0, "{mode:?}: the case puts the match at 70%: {y}");
-            let band = rect(&rt, "toast-band").expect("the band");
+            assert!((y - target_y).abs() < 1.0, "{mode:?}: the case puts the match just above the first band: {y} vs {target_y}");
             assert!(y + 12.0 < band[1], "{mode:?}: the match starts above the message's band: {y}, band {band:?}");
             rt.update(|s, tx| s.toast("Copied the whole note", tx));
             glide(&mut rt);
