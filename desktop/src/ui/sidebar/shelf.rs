@@ -13,7 +13,7 @@ use super::super::styles::nav;
 use super::super::icons::CLOSE;
 use super::super::widgets::name_tip;
 use super::{BUTTON_END, ICON};
-use super::parts::{GAP, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
+use super::parts::{GAP, INNER_RADIUS, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
 use crate::app::{App, Mode, Shelved};
 use crate::md;
@@ -141,7 +141,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .key("x")
         .size(TARGET, TARGET)
         .center()
-        .radius(3.0)
+        .radius(INNER_RADIUS)
         .hover(c.hover)
         .label("Close tab")
         .help("Close tab")

@@ -9,7 +9,7 @@ use super::super::panel;
 use super::super::styles::{medium, nav};
 use super::super::icons::{FOLDER, FOLDER_OPEN, PLUS};
 use super::super::widgets::{floating, label, name_tip};
-use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
+use super::parts::{COUNT_TEXT, GAP, INNER_RADIUS, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
 use super::{BUTTON_END, ICON};
 use crate::app::App;
 use crate::folders::{Folder, MenuOn, row_key};
@@ -201,7 +201,7 @@ fn count_or_add(v: V, f: &Folder) -> El {
         .pin(None, Some(0.0), Some(-1.5), None)
         .size(TARGET, TARGET)
         .center()
-        .radius(5.0)
+        .radius(INNER_RADIUS)
         .hover(c.hover)
         .label("New note in this folder")
         .help("New note in this folder")
@@ -253,7 +253,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .child(icon(&FOLDER, ICON).color(p.acc))
         .child(
             super::super::widgets::input_focus_ring(
-                el().key("new-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(3.0).fill(c.hover),
+                el().key("new-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(INNER_RADIUS).fill(c.hover),
                 p,
             )
             .child(
@@ -296,7 +296,7 @@ pub fn drag_ghost(v: V) -> El {
         .px(10.0)
         .h(28.0)
         .center_y()
-        .radius(7.0)
+        .radius(RADIUS)
         .paint_order(70)
         .inert()
         .child(label(md::base(&d.path), nav(panel::BODY, true), p.ink));

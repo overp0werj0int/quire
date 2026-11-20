@@ -74,10 +74,11 @@ pub fn nav(size: f32, bold: bool) -> TextStyle {
     panel(size, if bold { 700.0 } else { 400.0 })
 }
 
-/// Navigation text at weight 500: a folder's name in the tree (SB-55). Quattro has no 500 and
-/// draws it regular; the system monospace draws its medium face.
+/// Navigation text at weight 600: a folder's name in the tree (SB-55, `TYPOPOLISH`). Weight 500
+/// fell back to 400 on Quattro S; 600 resolves to Bold on 400/700 families (and SemiBold where
+/// available), giving folders clear visual hierarchy over regular-weight note rows.
 pub fn medium(size: f32) -> TextStyle {
-    panel(size, 500.0)
+    panel(size, 600.0)
 }
 
 /// A key name, such as Ctrl+N, wherever it shows.

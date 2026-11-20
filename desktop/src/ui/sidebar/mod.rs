@@ -172,7 +172,7 @@ fn search_field(v: V) -> El {
                 .key("search-clear")
                 .size(24.0, 24.0)
                 .center()
-                .radius(5.0)
+                .radius(parts::INNER_RADIUS)
                 .hover(c.hover)
                 .label("Clear search")
                 .help("Clear search")
@@ -197,7 +197,7 @@ fn search_field(v: V) -> El {
             .pr(2.0)
             .gap(7.0)
             .center_y()
-            .radius(7.0)
+            .radius(parts::RADIUS)
             .fill(c.shelf)
             .border(1.0, p.line)
             .border_layout(),

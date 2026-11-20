@@ -177,9 +177,9 @@ fn edit(v: V) -> Vec<Item> {
         Box::new(move |_, tx| tx.send_key(rune::KeyEvent { key: rune::Key::Command(c), mods }))
     };
     vec![
-        Item { keys: Some("Ctrl+X".into()), enabled: selected, ..item("Cut", send('x')) },
-        Item { keys: Some("Ctrl+C".into()), enabled: selected, ..item("Copy", send('c')) },
-        Item { keys: Some("Ctrl+V".into()), ..item("Paste", send('v')) },
+        Item { keys: Some(keymap::cmd_label('x')), enabled: selected, ..item("Cut", send('x')) },
+        Item { keys: Some(keymap::cmd_label('c')), enabled: selected, ..item("Copy", send('c')) },
+        Item { keys: Some(keymap::cmd_label('v')), ..item("Paste", send('v')) },
     ]
 }
 

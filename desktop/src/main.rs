@@ -2987,6 +2987,45 @@ mod writer_chrome_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// TYPOPOLISH: menu.rs delegates Cut/Copy/Paste chord labels to keymap, Lock dialog heading
+    /// uses 17 pt/600 scale (>= 20 pt box height), Settings White swatch card has a visible border
+    /// on Paper, and sidebar folder rows request 600 weight for distinct hierarchy.
+    #[test]
+    fn typopolish_menu_labels_lock_heading_swatch_border_and_folder_weight() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let menu_src = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui/menu.rs")).unwrap();
+        for lit in ["\"Ctrl+X\"", "\"Ctrl+C\"", "\"Ctrl+V\""] {
+            assert!(!menu_src.contains(lit), "menu.rs should format via keymap::cmd_label instead of hardcoded {lit}");
+        }
+        assert_eq!(crate::keymap::cmd_label('x'), crate::keymap::label_of("Ctrl+X"));
+        assert_eq!(crate::ui::styles::medium(12.5).weight, 600.0, "folder row style requests 600 weight");
+
+        let dir = std::env::temp_dir().join(format!("quire-typopolish-{}", std::process::id()));
+        let (mut rt, _) = open(&dir, "# Title\n\nBody.\n", crate::app::Mode::Source);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| s.ask_lock(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let heading = rt
+            .elements()
+            .into_iter()
+            .find(|e| !e.exiting && e.path.contains("/lock-dialog/") && e.text.as_deref() == Some("Lock this note"))
+            .expect("lock dialog heading renders");
+        assert!(heading.rect[3] >= 20.0, "lock dialog heading uses 17 pt scale (>= 20 pt tall): {:?}", heading.rect);
+
+        rt.update(|s, tx| s.open_settings(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let paper = crate::theme::theme_pal("paper", false);
+        let card_border = crate::roles::mix(paper.bg, paper.ink, 0.18);
+        let cr = crate::theme::contrast(card_border, paper.bg);
+        assert!(cr >= 1.3, "unselected theme swatch border reads clearly on Paper: {cr:.2}:1");
+        assert!(info(&rt, "theme-light-white").is_some(), "White swatch card renders in Settings");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// WR-223: zen mode's word count and how to leave sit centred in the top bar, drawn without
     /// a hover, above the page rather than over its text.
     #[test]

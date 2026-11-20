@@ -49,14 +49,14 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 | Element | Mock | Quire |
 | --- | --- | --- |
 | Row: vault note, folder | 12.5 px mono, about 27 tall, padding 5 and 8, 1 px gap, radius 6 | `styles::nav(12.5, false)` (panel family: iA Writer Quattro S by default, SB-07); 27 pt tall; 8 pt outer inset, 8 pt side padding, 1 pt gap, radius 6 |
-| Folder name | weight 500, text strong | `styles::medium(12.5)` (weight 500) |
+| Folder name | weight 500, text strong | `styles::medium(12.5)` (weight 600, resolving to Bold on Quattro S) |
 | Active note in the vault | weight 600, text strong | `styles::nav(12.5, true)` |
 | Tab | title 12.5 px mono, caption 10.5 px sans, line 1.15, padding 4, about 35 tall | title `styles::nav(12.5, false).lh(14.0)`; caption `styles::sans(10.5, 400).lh(12.0)`; 1 pt gap, 4 pt top and bottom padding, 8 pt side padding, 8 pt outer inset; 35 pt tall |
 | Outline entry | 11.5 px, padding 3, about 22 tall, indent 16 with a guide | `styles::nav(11.5, false)`; 24 tall, the least pointer target (SB-08), 1 pt gap; the guide 16 pt in from the tab's edge (x = 24), the text 12 pt past the guide (x = 37) |
 | Section label | 10 px sans, 600, capitals, 0.1 em apart; 10 px chevron; count 10 px, not capitals | Instrument Sans 10/1, 600, capitals, 1 pt tracking, faint; `icons::CHEVRON_DOWN` at 10 in faint with 6 pt gap; count Instrument Sans 10/1, 500 in faint; 8 pt inset and side padding; 24 pt tall for clickable labels (SB-08), 25 pt (10 top, 5 bottom) in search |
 | Icons | 14 px, 1.5 px stroke, round caps | 14 pt; `icons::{FOLDER, FOLDER_OPEN, TAG, GEAR, PLUS, SEARCH, CLOSE}` from Phosphor Icons (`ui/icons.rs`); `icons::CHEVRON_DOWN` at 10 pt |
 | Tree indent | 21 px a level; guide 1 px at the parent icon's centre | 21 pt a level from x = 16; 1 pt guide 14 pt in from the parent row's left edge (x = 22 at level 1); `panel::INDENT` (14) stays for the outline panel |
-| Top bar, footer | padding 8; buttons 28 × 28, radius 6; field radius 7; 1 px divider | the mock's values; dividers in `Pal::line` |
+| Top bar, footer | padding 8; buttons 28 × 28, radius 6; field radius 6; 1 px divider | the mock's values with unified 6 pt outer / 4 pt inner corner tokens; dividers in `Pal::line` |
 | Handle | 9 px tall, a line above and below, grip 22 × 2 | the mock's values; lines `Pal::line`, grip in faint, radius 1 |
 | Key hint (`Ctrl /`, `Enter`) | 10 px sans, 500, 1 px border, radius 4 | `styles::keys(styles::CAPTION)` (panel family, PAGE-09), 1 pt `Pal::line` border, radius 4 |
 
@@ -127,7 +127,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 - **SB-52** [adapted: 0013] [verify: unit] [proposed] A folder's count includes the notes in its subfolders. The other choice was the folder's own notes only (spec's suggestion, taken by the orchestrator).
 - **SB-53** [adapted: 0013] [verify: script] While the pointer is over a folder row, a "+" replaces its count. A click on it makes a note in that folder, opened in a new tab at the end, with its name field as SB-12 (spec: S1, interactions).
 - **SB-54** [adapted: 0013] [verify: state] In a folder, subfolders come first, then notes, each in today's order: by name, ignoring case. Notes have no icon. The root follows the same rule (spec: S1; kept: `natural`).
-- **SB-55** [adapted: 0013] [verify: state] Folder names are in strong at weight 500. Note names are in Text. The active tab's note is bold and in strong, with no fill and no accent (spec: S1, design rules).
+- **SB-55** [adapted: 0013] [verify: state] Folder names are in strong at weight 600 (`styles::medium`, resolving cleanly on 400/700 families like Quattro S so folders stand out above regular note rows). Note names are in Text. The active tab's note is bold and in strong, with no fill and no accent (spec: S1, design rules).
 - **SB-56** [adapted: 0013] [verify: script] A click on a note switches to its tab if it has one, or opens it in a new tab at the end. Opening a note opens the folders above it (spec: interactions; kept: `App::open_file`).
 
 ## Search

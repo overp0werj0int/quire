@@ -217,18 +217,20 @@ fn theme_grid(v: V, dark: bool) -> El {
     let cw = ((body_width(v) - 10.0 * (cols as f32 - 1.0)) / cols as f32).floor();
     let slot = if dark { "dark" } else { "light" };
     let mut grid = col().key(format!("{slot}-themes")).w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
+    let card_border = crate::roles::mix(p.bg, p.ink, if p.dark { 0.16 } else { 0.18 });
     for chunk in items.chunks(cols) {
         let mut r = row().w_full().gap(10.0);
         for &(id, name) in chunk {
             let tp = theme::themed(id, dark, &accent);
             let on = picked == id;
+            let pic_border = crate::roles::mix(tp.bg, tp.ink, if tp.dark { 0.18 } else { 0.16 });
             let picture = row()
                 .key("picture")
                 .w_full()
                 .h(54.0)
                 .radius(6.0)
                 .fill(tp.bg)
-                .border(1.0, tp.line)
+                .border(1.0, pic_border)
                 .border_layout()
                 .clip_rounded(6.0)
                 .child(el().w(20.0).h_full().fill(tp.side))
@@ -250,7 +252,7 @@ fn theme_grid(v: V, dark: bool) -> El {
                 .padding(6.0)
                 .pb(8.0)
                 .radius(9.0)
-                .border(1.0, if on { p.acc } else { Color::TRANSPARENT })
+                .border(1.0, if on { p.acc } else { card_border })
                 .border_layout()
                 .hover(p.hover)
                 .label(name)

@@ -375,6 +375,12 @@ pub fn label_of(spec: &str) -> String {
     spec.replace("Ctrl+", "⌘").replace("Shift+", "⇧").replace("Alt+", "⌥")
 }
 
+/// A platform-formatted primary-modifier chord label for a built-in editing key (e.g. `'x'` ->
+/// `"Ctrl+X"` on Linux/Windows, `"⌘X"` on macOS) (`TYPOPOLISH`).
+pub fn cmd_label(ch: char) -> String {
+    label_of(&format!("Ctrl+{}", ch.to_ascii_uppercase()))
+}
+
 /// The first chord of `id` in preset `p`, labelled, or "" when it has none.
 pub fn label(p: Preset, id: &str) -> String {
     action(id).and_then(|a| a.chords(p).first()).map(|s| label_of(s)).unwrap_or_default()

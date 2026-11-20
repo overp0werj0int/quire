@@ -97,8 +97,8 @@ pub(super) fn dialog(v: V) -> Card {
         .child(
             col()
                 .gap(6.0)
-                // The same styles as a settings row, so the dialog matches the rest of the app.
-                .child(label("Lock this note", sans(14.0, 500.0), p.ink))
+                // Match the lock panel and modal heading scale (`TYPOPOLISH`).
+                .child(label("Lock this note", sans(17.0, 600.0), p.ink))
                 .child(label("Quire encrypts the note with this password. If you forget it, nobody can open the note.", sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
         )
         .child(field("lock-pass", "Password", "At least 8 characters"))

@@ -22,6 +22,8 @@ pub(super) const ROW_H: f32 = 27.0;
 pub(super) const TWO_ROWS_H: f32 = 35.0;
 /// A row's corners.
 pub(super) const RADIUS: f32 = 6.0;
+/// An inner control's corners inside a `RADIUS` row or field (`TYPOPOLISH`).
+pub(super) const INNER_RADIUS: f32 = 4.0;
 /// A section label's row: the least pointer target (SB-05, SB-08).
 pub(super) const LABEL_H: f32 = 24.0;
 /// Single-line row and tab title size (SB-07).
