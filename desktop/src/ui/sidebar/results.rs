@@ -12,6 +12,7 @@ use super::super::lists;
 use super::super::panel;
 use super::super::styles::nav;
 use super::super::icons::TAG;
+use super::super::widgets::name_tip;
 use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TAB_TITLE_LH, TEXT_X, caption_style, section_label, two_rows};
 use super::tree::last_part;
 use super::kbd;
@@ -83,7 +84,7 @@ fn list(v: V, r: &Results) -> El {
                 Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), on),
                 Row::Tag(t, n) => tag_row(v, &k, t, n, tag_q.as_deref().unwrap_or(&ql), on),
             };
-            let el = if on { el.child(kbd(v, "Enter".into())) } else { el };
+            let el = if on && !matches!(row, Row::Tag(..)) { el.child(kbd(v, "Enter".into())) } else { el };
             choose(v, el, k.clone(), on, first)
         }));
     }
@@ -120,15 +121,15 @@ fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), lin
     let s = v.s;
     let c = Roles::panel(v.p);
     let small = caption_style();
-    let title = rich(name, marks).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full();
+    let title = rich(name, marks).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(path));
     let open = s.tabs.iter().any(|t| t == path);
     let caption = match line {
-        Some((t, marks)) => rich(t, marks).font(small).color(c.faint).truncate().shrink().min_w(0.0),
+        Some((t, marks)) => rich(t.clone(), marks).font(small).color(c.faint).truncate().shrink().min_w(0.0).help_when_truncated(t),
         None => {
             let dir = md::dir(path);
             let folder = if dir.is_empty() { s.vault.as_ref().map_or_else(String::new, |v| v.name.clone()) } else { dir.to_string() };
             let room = last_part(&folder, small);
-            text(folder).font(small).color(c.faint).truncate_head().shrink().min_w(room)
+            text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(room).help_when_truncated(folder)
         }
     };
     let caption = row().w_full().child(caption).children(open.then(|| text(" · open").font(small).color(c.faint)));
@@ -153,7 +154,8 @@ fn tag_row(v: V, key: &str, tag: &str, n: usize, q: &str, on: bool) -> El {
         .role("button")
         .label(format!("#{tag}"))
         .child(icon(&TAG, 12.0).color(c.faint))
-        .child(rich(name, marks).font(nav(ROW_TEXT, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0))
+        .child(rich(name, marks).font(nav(ROW_TEXT, false)).color(if on { c.text } else { c.dim }).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(format!("#{tag}")))
+        .children(on.then(|| kbd(v, "Enter".into())))
         .child(text(notes).font(nav(COUNT_TEXT, false)).color(c.faint));
     if on { el.fill(c.selected) } else { el.hover(c.hover) }
 }

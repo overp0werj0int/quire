@@ -169,7 +169,9 @@ fn count_or_add(v: V, f: &Folder) -> El {
     let path = f.path.clone();
     let add = row()
         .key("add")
-        .pin(None, Some(0.0), Some(0.0), None)
+        // Phosphor's PLUS glyph ends 1.75 pt inside its 14 pt box (224/256), so nudging the
+        // 24 pt target 1.5 pt right aligns the drawn '+' right edge with the count it replaces.
+        .pin(None, Some(0.0), Some(-1.5), None)
         .size(TARGET, TARGET)
         .center()
         .radius(5.0)

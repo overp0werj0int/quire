@@ -6331,8 +6331,8 @@ mod layer_matrix_tests {
         let add = rect_in(&rt, "dir:Box", "add").unwrap();
         let count = rect_in(&rt, "dir:Box", "count").unwrap();
         assert_eq!((add[2], add[3]), (24.0, 24.0), "a 24 pt target");
-        assert_eq!(add[0] + add[2], row[0] + row[2] - 3.0, "at the row's end");
-        assert!((count[0] + count[2] - (add[0] + add[2] - 5.0)).abs() < 0.5, "the count ends where the + ends: {count:?} {add:?}");
+        assert_eq!(add[0] + add[2], row[0] + row[2] - 1.5, "nudged 1.5 pt right so the 14 pt + stroke ends with the count");
+        assert!((count[0] + count[2] - (add[0] + add[2] - 6.5)).abs() < 0.5, "the count ends where the + stroke ends: {count:?} {add:?}");
         let before = dir.join("notes/Box").read_dir().unwrap().count();
         press(&mut rt, (add[0] + 12.0, add[1] + 12.0), false);
         settle(&mut rt);
@@ -6349,6 +6349,43 @@ mod layer_matrix_tests {
         assert!(active.starts_with("Box/"), "the new note is in Box and shown: {active}");
         assert!(open, "the + does not close the folder");
         assert_eq!(notes, before + 1, "one note more in Box");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SIDEBARPOLISH: tag row counts stay right-aligned in one column, shelf dot has >=4pt gap,
+    /// and crumb-file has a >=24pt vertical hit target.
+    #[test]
+    fn sidebar_polish_tag_alignment_dot_gap_and_crumb_target() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-sbpolish-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| {
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, "# Title\n\nBody #alpha #beta\n".into());
+            s.open_file("Box/a.md", None, tx);
+            s.set_text("Box/a.md", "# Section\n\nText #alpha\n".into());
+        });
+        settle(&mut rt);
+        // 1. crumb-file height >= 24pt
+        let cf = rect_of(&rt, "crumb-file");
+        assert!(cf[3] >= 24.0, "crumb-file height >= 24pt: {cf:?}");
+        // 2. Shelf caption dot gap >= 4pt
+        let sec = rect_of(&rt, "sections");
+        let folder = rt.elements().into_iter().find(|e| e.text.as_deref() == Some("Box") && e.rect[0] < 248.0 && (e.rect[1] - sec[1]).abs() < 4.0).expect("shelf folder");
+        let gap = sec[0] - (folder.rect[0] + folder.rect[2]);
+        assert!(gap >= 4.0, "shelf dot gap >= 4pt: {gap:.2}");
+        // 3. Tag row counts align vertically on right edge (selected vs unselected)
+        rt.update(|s, tx| s.toggle_tags(tx));
+        settle(&mut rt);
+        let counts: Vec<f32> = rt
+            .elements()
+            .into_iter()
+            .filter(|e| e.rect[0] < 248.0 && e.text.as_deref().is_some_and(|t| t.ends_with(" note") || t.ends_with(" notes")))
+            .map(|e| e.rect[0] + e.rect[2])
+            .collect();
+        assert!(counts.len() >= 2, "at least two tag count labels: {counts:?}");
+        let spread = counts.iter().copied().fold(f32::NEG_INFINITY, f32::max) - counts.iter().copied().fold(f32::INFINITY, f32::min);
+        assert!(spread <= 2.0, "tag count right edges align: spread={spread:.2}, rights={counts:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

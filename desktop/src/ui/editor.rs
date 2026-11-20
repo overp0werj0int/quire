@@ -486,10 +486,11 @@ pub(super) fn crumb(v: V) -> El {
         None => r.child(
             row()
                 .key("crumb-file")
+                .h(24.0)
+                .center_y()
                 .shrink()
                 .min_w(0.0)
                 .px(5.0)
-                .py(2.0)
                 .mx(-5.0)
                 .radius(5.0)
                 .hover(p.hover)

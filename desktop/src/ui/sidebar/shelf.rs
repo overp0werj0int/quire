@@ -54,8 +54,8 @@ fn count_text(n: usize) -> Option<String> {
     }
 }
 
-/// The room before the caption's count: matches the space after `·` in Instrument Sans 10.5 pt.
-const COUNT_GAP: f32 = 2.0;
+/// The room before the caption's count: balances the breathing room around `·` in Instrument Sans 10.5 pt.
+const COUNT_GAP: f32 = 4.5;
 
 /// How many tabs the shelf has.
 pub(super) fn count(v: V) -> usize {
@@ -149,7 +149,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
         .child(icon(&CLOSE, ICON).color(if on { c.dim } else { c.faint }));
     let title_el = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
-    let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small));
+    let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small)).help_when_truncated(folder);
     let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| text(n).key("sections").font(small).color(c.faint).ml(COUNT_GAP)));
     let mut el = two_rows(t.key(), title_el, caption)
         .pr(BUTTON_END)
