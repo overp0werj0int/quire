@@ -56,7 +56,17 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
     }
     let (key, paint) = plane(kind);
     match card.plane {
-        Some(plane) => out.push(plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).child(el)),
+        Some(plane) => {
+            // Crisp modal entrance/exit fade (<= 120 ms) so opening the palette or dialog settles
+            // without prolonged double-text ghosting, and lands instantly under reduced motion.
+            let fade = if crate::motion::reduced() {
+                rune::Transition::none()
+            } else {
+                let s = rune::Spring::new(0.08, 0.0);
+                rune::Transition::opacity().springs(rune::SpringPair::new(s, s))
+            };
+            out.push(plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).transition(fade).child(el));
+        }
         None => {
             if matches!(kind, Kind::Drawer(_)) {
                 out.push(page_scrim(v, paint - 1));

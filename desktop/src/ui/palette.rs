@@ -14,6 +14,8 @@ use crate::theme;
 const HEAD_H: f32 = 53.0;
 const FOOT_H: f32 = 35.0;
 const LAYER_BOTTOM: f32 = 20.0;
+const ROW_H: f32 = 36.0;
+const LIST_PAD: f32 = 6.0;
 /// The widest a row's folder or key runs: about two fifths of the row, so the name keeps the rest.
 const SUB_W: f32 = 220.0;
 
@@ -53,7 +55,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
                 .on_input_key(on_pal_key),
         );
 
-    let mut list = col().key("pal-items").w_full().padding(6.0);
+    let mut list = col().key("pal-items").w_full().padding(LIST_PAD);
     for (i, it) in d.items.iter().enumerate() {
         let on = i == d.idx;
         let mut t = String::new();
@@ -69,7 +71,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
         list = list.child(
             row()
                 .key(format!("pal-{i}"))
-                .min_h(36.0)
+                .h(ROW_H)
                 .w_full()
                 .gap(12.0)
                 .px(12.0)
@@ -94,14 +96,22 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
     if d.items.is_empty() {
         list = list.child(label("Nothing matches.", sans(13.0, 400.0), p.mute).py(14.0).px(12.0));
     }
-    // The list is at most 392 tall, and less in a short window, so the head and the foot stay
-    // inside it: the layer's top and bottom padding, the head and the foot come off its height.
+    // The list is at most 392 tall, and less in a short window, snapped to whole rows so no
+    // command row is sliced in half across the bottom scrollport edge on open.
     let top = (v.vh * 0.11).round();
-    let room = v.vh - top - LAYER_BOTTOM - HEAD_H - FOOT_H;
+    let avail = (v.vh - top - LAYER_BOTTOM - HEAD_H - FOOT_H).clamp(0.0, 392.0);
+    let visible_rows = ((avail - LIST_PAD) / ROW_H).floor().max(0.0);
+    let scroll_max_h = if d.items.is_empty() {
+        avail
+    } else if d.items.len() as f32 > visible_rows {
+        (LIST_PAD + visible_rows * ROW_H).min(avail)
+    } else {
+        (2.0 * LIST_PAD + visible_rows * ROW_H).min(avail)
+    };
     let scroller = col()
         .key("pal-scroll")
         .w_full()
-        .max_h(room.clamp(0.0, 392.0))
+        .max_h(scroll_max_h)
         .min_h(0.0)
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)

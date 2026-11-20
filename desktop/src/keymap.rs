@@ -388,9 +388,24 @@ pub fn tip(p: Preset, name: &str, id: &str) -> String {
     }
 }
 
-/// Every chord of `id` in preset `p`, labelled and joined.
+/// Internal shifted-key aliases kept for key matching (`Ctrl+?` for `Ctrl+Shift+/`) that
+/// should not clutter displayed shortcut lists.
+fn is_display_alias(spec: &str) -> bool {
+    spec == "Ctrl+?"
+}
+
+/// Every user-facing chord of `id` in preset `p`, labelled individually (hiding internal
+/// shifted-key aliases like `Ctrl+?`).
+pub fn display_labels(p: Preset, id: &str) -> Vec<String> {
+    action(id)
+        .map(|a| a.chords(p).iter().filter(|s| !is_display_alias(s)).map(|s| label_of(s)).collect())
+        .unwrap_or_default()
+}
+
+/// Every user-facing chord of `id` in preset `p`, labelled and joined.
+#[cfg(test)]
 pub fn labels(p: Preset, id: &str) -> String {
-    action(id).map(|a| a.chords(p).iter().map(|s| label_of(s)).collect::<Vec<_>>().join(" or ")).unwrap_or_default()
+    display_labels(p, id).join(" or ")
 }
 
 #[cfg(test)]
@@ -583,6 +598,9 @@ mod tests {
         assert_eq!(label(Preset::Omarky, "app.command-palette"), if mac { "⌘⇧K" } else { "Ctrl+Shift+K" });
         assert_eq!(label(Preset::Quire, "app.command-palette"), if mac { "⌘P" } else { "Ctrl+P" });
         assert_eq!(labels(Preset::Omarky, "app.zoom-in"), if mac { "⌘= or ⌘+" } else { "Ctrl+= or Ctrl++" });
+        assert_eq!(display_labels(Preset::Omarky, "app.search-notes"), if mac { vec!["⌘/", "⌘⇧G"] } else { vec!["Ctrl+/", "Ctrl+Shift+G"] });
+        assert_eq!(display_labels(Preset::Quire, "app.search-notes"), if mac { vec!["⌘/", "⌘⇧F"] } else { vec!["Ctrl+/", "Ctrl+Shift+F"] });
+        assert!(!labels(Preset::Omarky, "app.search-notes").contains("?"));
         assert_eq!(label(Preset::Omarky, "no.such-action"), "");
     }
 }

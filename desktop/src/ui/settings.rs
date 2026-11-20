@@ -489,7 +489,16 @@ fn keys(v: V) -> El {
             a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape" && crate::keys::handler(a.id).is_some()
         });
         for a in shown {
-            let kb = keymap::labels(preset, a.id);
+            let mut chips = row().gap(5.0).center_y();
+            for kb in keymap::display_labels(preset, a.id) {
+                chips = chips.child(
+                    super::widgets::padded(kb, styles::keys(11.5), p.ink2, 7.0, 2.0, 2.0)
+                        .radius(5.0)
+                        .fill(p.bg)
+                        .border_sides([1.0, 1.0, 2.0, 1.0], p.line)
+                        .border_layout(),
+                );
+            }
             c = c.child(
                 row()
                     .key(format!("key-{}", a.id))
@@ -501,7 +510,7 @@ fn keys(v: V) -> El {
                     .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
                     .border_layout()
                     .child(label(a.name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
-                    .child(super::widgets::padded(kb, styles::keys(11.5), p.ink2, 7.0, 2.0, 2.0).radius(5.0).fill(p.bg).border_sides([1.0, 1.0, 2.0, 1.0], p.line).border_layout()),
+                    .child(chips),
             );
         }
     }

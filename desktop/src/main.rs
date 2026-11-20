@@ -6389,6 +6389,61 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// PALFOLD: Command Palette snaps its scrollport height to whole rows (zero sliced rows),
+    /// reaches opacity >= 0.95 within <= 140 ms, and Settings Shortcuts hides Ctrl+? and splits
+    /// multi-chord shortcuts into separate keycap chips.
+    #[test]
+    fn palette_fold_modal_speed_and_shortcut_chips() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-palfold-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        rt.update(|s, tx| s.open_palette(crate::app::PalMode::Commands, tx));
+        // Measure modal open fade time (each frame is DT = 1/60s ≈ 16.67ms).
+        let mut first_ms: Option<f64> = None;
+        let mut settled_ms: Option<f64> = None;
+        for step in 0..30 {
+            rt.frame(DT);
+            let t_ms = step as f64 * DT * 1000.0;
+            if let Some(layer) = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("pal-layer") && !e.exiting) {
+                if first_ms.is_none() && layer.opacity > 0.01 {
+                    first_ms = Some(t_ms);
+                }
+                if first_ms.is_some() && settled_ms.is_none() && layer.opacity >= 0.95 {
+                    settled_ms = Some(t_ms);
+                }
+            }
+        }
+        let dur = settled_ms.zip(first_ms).map_or(999.0, |(a, b)| a - b);
+        assert!(dur <= 140.0, "pal-layer settles to >=0.95 opacity in {dur:.1}ms (<=140ms)");
+        // Check no pal-* row is sliced across pal-scroll's bottom edge.
+        let ps = rect_of(&rt, "pal-scroll");
+        let bot = ps[1] + ps[3];
+        for e in rt.elements() {
+            if let Some(k) = &e.key
+                && k.starts_with("pal-")
+                && k[4..].chars().all(|c| c.is_ascii_digit())
+            {
+                let (ry, rh) = (e.rect[1], e.rect[3]);
+                assert!(!(ry < bot - 0.5 && ry + rh > bot + 0.5), "row {k} sliced at fold: {ry}..{} vs bot {bot}", ry + rh);
+            }
+        }
+        // Settings -> Shortcuts hides Ctrl+? and splits alternate chords into separate chips.
+        rt.update(|s, tx| {
+            s.open_settings(tx);
+            s.set_sec = crate::app::Sec::Keys;
+        });
+        settle(&mut rt);
+        for e in rt.elements() {
+            if let Some(t) = &e.text {
+                assert!(!t.contains("Ctrl+?"), "internal alias Ctrl+? leaked into Settings Shortcuts: {t:?}");
+                if t.len() < 45 && (t.contains("Ctrl+") || t.contains("Cmd+") || t.contains("Alt+") || t.contains("Shift+") || t.contains("F1")) {
+                    assert!(!t.contains(" or "), "multi-chord shortcut jammed into one chip: {t:?}");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// SB-03, SB-55, SB-107: the active tab's note is marked in the tree by bold text in
     /// strong, the active tab's title colour, with no fill. The active tab is the one filled row.
     #[test]
