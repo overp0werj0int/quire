@@ -21,85 +21,116 @@ fn section_caption(title: &str, c: &Roles) -> El {
 }
 
 pub fn outline(v: V) -> El {
+    use std::hash::{Hash, Hasher};
     let p = v.p;
     let s = v.s;
     let c = Roles::panel(p);
     let doc = s.active_text();
-    let heads = md::headings(doc);
-    let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
-    let (line, _) = md::line_col(doc, caret);
+    let (heads, _, heads_ver) = s.headings_cached();
+    let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
+    let pos = edit.map_or(0, |e| e.focus.min(doc.len()));
+    let line_col = (s.mode == Mode::Source).then(|| md::line_col(doc, pos));
     // omarky lists h1 to h4. Under a deeper heading, the h1 to h4 above it is current.
     let shown: Vec<usize> = (0..heads.len()).filter(|&i| heads[i].level <= 4).collect();
     let row_of = |i: usize| shown.iter().rposition(|&j| j <= i);
     // In the reader the scroll handler moves the highlight (`reader::PageMap::mark`), so a
     // scroll runs no view (VER-32).
-    let mut map = s.reader.map.borrow_mut();
-    let live = map.reading;
+    let (live, outline_gen) = {
+        let map = s.reader.map.borrow();
+        (map.reading, map.outline_gen)
+    };
     let cur = if s.mode == Mode::Source {
+        let line = line_col.map_or(0, |(l, _)| l);
         heads.iter().rposition(|h| h.line <= line).and_then(row_of)
-    } else if live && !heads.is_empty() {
-        let blocks = s.doc();
-        map.outline.heads = heads
-            .iter()
-            .enumerate()
-            .filter_map(|(i, h)| Some((blocks.blocks.iter().position(|b| b.lines.start == h.line)?, row_of(i))))
-            .collect();
-        map.outline.first_row = row_of(0);
-        let cur = map.head_row(&map.outline, s.reader.scroll.get()[0]);
-        map.outline.marked = cur;
-        cur
     } else {
         None
     };
-    let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
-    let mut list = col().key("outline-list").w_full().pb(12.0).child(section_caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP));
-    let mut contents = lists::list(col().key("outline-heads").w_full(), "list");
-    for (n, &i) in shown.iter().enumerate() {
-        let h = &heads[i];
-        let on = cur == Some(n);
-        let depth = h.level - min_lv;
-        let line = h.line;
-        let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
-        let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
-        // A heading cut short offers its whole text; one shown in full has no tooltip (C7).
-        let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_.clone());
-        let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on).label(text_);
-        // The current row is marked by its shade and its ink, nothing else (RD-47).
-        if live {
-            let mark = crate::reader::Mark {
-                on: [panel::shade_fill(&c, true), panel::ink(&c, depth, true)],
-                off: [panel::shade_fill(&c, false), panel::ink(&c, depth, false)],
-                fill: Live::new(panel::shade_fill(&c, on)),
-                ink: Live::new(panel::ink(&c, depth, on)),
-            };
-            shade = shade.live_fill(&mark.fill);
-            name = name.live_text_color(&mark.ink);
-            map.outline.marks.push(mark);
+    let pal_id = p as *const crate::theme::Pal as usize;
+    let panel_font = &s.settings().panel_font;
+    let heads_version = {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (heads_ver, live, outline_gen, if live { s.doc_hash() } else { None }, if live { None } else { cur }, pal_id, panel_font).hash(&mut h);
+        h.finish()
+    };
+    let contents = rune::memo("outline-heads", heads_version, || {
+        let mut map = s.reader.map.borrow_mut();
+        let cur = if live {
+            map.outline.clear();
+            if !heads.is_empty() {
+                let blocks = s.doc();
+                map.outline.heads = heads
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, h)| {
+                        let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
+                        (blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line)).then_some((k, row_of(i)))
+                    })
+                    .collect();
+                map.outline.first_row = row_of(0);
+                let cur = map.head_row(&map.outline, s.reader.scroll.get()[0]);
+                map.outline.marked = cur;
+                cur
+            } else {
+                None
+            }
+        } else {
+            cur
+        };
+        let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
+        let mut contents = lists::list(col().w_full(), "list");
+        for (n, &i) in shown.iter().enumerate() {
+            let h = &heads[i];
+            let on = cur == Some(n);
+            let depth = h.level - min_lv;
+            let line = h.line;
+            let text_ = if h.text.is_empty() { "Untitled".to_string() } else { h.text.clone() };
+            let size = if depth == 0 { panel::BODY } else { panel::BODY_SMALL };
+            // A heading cut short offers its whole text; one shown in full has no tooltip (C7).
+            let mut name = text(text_.clone()).font(panel::row_font(depth)).color(panel::ink(&c, depth, on)).truncate().shrink().min_w(0.0).help_when_truncated(text_.clone());
+            let mut shade = panel::shade(format!("ol-{i}"), size, depth, 0.0, &c, on).label(text_);
+            // The current row is marked by its shade and its ink, nothing else (RD-47).
+            if live {
+                let mark = crate::reader::Mark {
+                    on: [panel::shade_fill(&c, true), panel::ink(&c, depth, true)],
+                    off: [panel::shade_fill(&c, false), panel::ink(&c, depth, false)],
+                    fill: Live::new(panel::shade_fill(&c, on)),
+                    ink: Live::new(panel::ink(&c, depth, on)),
+                };
+                shade = shade.live_fill(&mark.fill);
+                name = name.live_text_color(&mark.ink);
+                map.outline.marks.push(mark);
+            }
+            contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(name));
         }
-        contents = contents.child(lists::opener(shade.role("button"), v.p, on, move |s: &mut App, tx| s.jump(line, tx)).child(name));
-    }
-    list = list.child(contents);
+        contents
+    });
+    let mut list = col().key("outline-list").w_full().pb(12.0).child(section_caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP)).child(contents);
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }
     list = list.child(section_caption("Linked from", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y + 6.0).pb(panel::CAPTION_GAP));
-    let mut back = s.active.as_ref().map(|a| md::backlinks(s.files(), a)).unwrap_or_default();
-    if let Some(vault) = &s.vault {
-        back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
-    }
-    let name_style = styles::nav(panel::BODY, false);
-    let small = styles::nav(panel::CAPTION, false);
-    let shift = super::baseline_shift(name_style, small);
-    let mut links = lists::list(col().key("outline-links").w_full(), "list");
-    for (i, (bp, _)) in back.iter().enumerate() {
-        let path = bp.clone();
-        let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button").label(md::base(bp).to_string());
-        links = links.child(
-            lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx))
-                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
-                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp))),
-        );
-    }
+    let (back, back_ver) = s.backlinks_cached();
+    let links_version = {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (back_ver, pal_id, panel_font).hash(&mut h);
+        h.finish()
+    };
+    let links = rune::memo("outline-links", links_version, || {
+        let name_style = styles::nav(panel::BODY, false);
+        let small = styles::nav(panel::CAPTION, false);
+        let shift = super::baseline_shift(name_style, small);
+        let mut links = lists::list(col().w_full(), "list");
+        for (i, (bp, _)) in back.iter().enumerate() {
+            let path = bp.clone();
+            let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button").label(md::base(bp).to_string());
+            links = links.child(
+                lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx))
+                    .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
+                    .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp))),
+            );
+        }
+        links
+    });
     list = list.child(links);
     if back.is_empty() {
         list = list.child(text("No notes link here yet.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
@@ -123,7 +154,7 @@ pub fn outline(v: V) -> El {
         .border_layout()
         .child(scroll)
         .child(counts(v))
-        .children(footer(v))
+        .children(footer(v, line_col))
 }
 
 /// The word count and reading time, left-aligned under the outline's list at the same inset as
@@ -166,7 +197,7 @@ fn counts(v: V) -> El {
 
 /// The writer's footer, one line of fixed height: the caret's line and column, or how many
 /// characters are selected, the link under the caret, and the sync state. None in preview.
-fn footer(v: V) -> Option<El> {
+fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
     let p = v.p;
     let s = v.s;
     if s.mode != Mode::Source {
@@ -178,7 +209,7 @@ fn footer(v: V) -> Option<El> {
     let edit = s.active.as_ref().and_then(|a| s.edits.get(a));
     let (a, b) = edit.map_or((0, 0), |e| (e.anchor.min(e.focus).min(doc.len()), e.anchor.max(e.focus).min(doc.len())));
     let pos = edit.map_or(0, |e| e.focus.min(doc.len()));
-    let (line, ls) = md::line_col(doc, pos);
+    let (line, ls) = line_col.unwrap_or_else(|| md::line_col(doc, pos));
     let at = if a == b {
         format!("Ln {}, Col {}", line + 1, doc[ls..pos].chars().count() + 1)
     } else {

@@ -224,6 +224,61 @@ pub struct App {
 pub struct Unlocked {
     pub key: crate::lock::Key,
     pub text: String,
+    /// Monotonic revision bumped whenever `text` is created or updated, so caches keyed on
+    /// `App::active_text_key` invalidate without hashing the note's text.
+    pub ver: u64,
+}
+
+impl Unlocked {
+    pub fn new(key: crate::lock::Key, text: String) -> Self {
+        Unlocked { key, text, ver: next_unlocked_ver() }
+    }
+
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
+        self.ver = next_unlocked_ver();
+    }
+}
+
+fn next_unlocked_ver() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Owned cache key identifying `App::active_text()` in O(1) without hashing the note body.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TextKey {
+    vault_id: u64,
+    path: String,
+    ver: u64,
+    unlocked: bool,
+    len: usize,
+}
+
+/// Borrowed view of `TextKey` for allocation-free cache hits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextKeyRef<'a> {
+    vault_id: u64,
+    path: &'a str,
+    ver: u64,
+    unlocked: bool,
+    len: usize,
+}
+
+impl TextKey {
+    pub fn matches(&self, r: TextKeyRef<'_>) -> bool {
+        self.vault_id == r.vault_id
+            && self.ver == r.ver
+            && self.unlocked == r.unlocked
+            && self.len == r.len
+            && self.path == r.path
+    }
+}
+
+impl TextKeyRef<'_> {
+    pub fn to_owned(self) -> TextKey {
+        TextKey { vault_id: self.vault_id, path: self.path.to_owned(), ver: self.ver, unlocked: self.unlocked, len: self.len }
+    }
 }
 
 /// A note in Note mode's Open list while another shows: its editor, with the caret and undo
@@ -393,6 +448,22 @@ impl App {
             return &u.text;
         }
         self.files().get(a).map_or("", |t| if crate::lock::is_locked(t) { "" } else { t.as_str() })
+    }
+
+    /// O(1) revision key for `active_text()`: changes whenever the vault, active note path, lock
+    /// state, or note text changes, avoiding per-frame full-text hashing.
+    pub fn active_text_key(&self) -> TextKeyRef<'_> {
+        let vault_id = self.vault.as_ref().map_or(0, |v| v.id());
+        let Some(a) = self.active.as_deref() else {
+            return TextKeyRef { vault_id, path: "", ver: 0, unlocked: false, len: 0 };
+        };
+        if let Some(u) = self.unlocked.get(a) {
+            return TextKeyRef { vault_id, path: a, ver: u.ver, unlocked: true, len: u.text.len() };
+        }
+        match self.vault.as_ref().and_then(|v| v.files().get(a).map(|t| (v, t))) {
+            Some((v, t)) if !crate::lock::is_locked(t) => TextKeyRef { vault_id, path: a, ver: v.ver(a), unlocked: false, len: t.len() },
+            _ => TextKeyRef { vault_id, path: "", ver: 0, unlocked: false, len: 0 },
+        }
     }
 
     /// The note at `p` is locked and not open: its text needs the password.
@@ -1127,16 +1198,19 @@ impl App {
         let typewriter = self.settings().typewriter_scroll;
         self.reader.reveal.on_editor_edit(writing_with_foot, typewriter);
         let Some(a) = self.active.clone() else { return };
-        let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) else { return };
         if self.unlocked.contains_key(&a) {
-            self.store_unlocked(&a, text);
+            let changed = self.edits.get(&a).is_some_and(|e| self.unlocked.get(&a).is_some_and(|u| u.text != e.text));
+            if changed && let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) {
+                self.store_unlocked(&a, text);
+            }
             return;
         }
         if self.note_locked(&a) {
             return;
         }
-        if let Some(v) = &mut self.vault {
-            if v.files().get(&a) != Some(&text) {
+        let changed = self.edits.get(&a).is_some_and(|e| self.vault.as_ref().is_some_and(|v| v.files().get(&a).map(String::as_str) != Some(e.text.as_str())));
+        if changed && let Some(text) = self.edits.get(&a).map(|e| e.text.clone()) {
+            if let Some(v) = &mut self.vault {
                 v.put(a.clone(), text);
                 self.mark_dirty(&a);
             }

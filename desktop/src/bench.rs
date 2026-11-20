@@ -320,3 +320,145 @@ fn bench_sb_search() {
     println!("  a keystroke in the writer with no search: median {:.2} ms, worst {:.2} ms", plain[plain.len() / 2], plain[plain.len() - 1]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// LIVEPACE: reproduces the long-note live workload (open in Preview, 4x Ctrl+P,
+/// Ctrl+Shift+K Command Palette open/close, typing "livecheck ", Ctrl+S Save) with per-phase
+/// timings under `--features profile`, both with panels closed (Note-mode geometry) and with
+/// sidebar + outline open (Folder-mode geometry).
+#[test]
+#[ignore]
+fn bench_livepace_long() {
+    let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let text_1753: String = LONG.lines().take(1753).map(|l| format!("{l}\n")).collect();
+    let run_case = |label: &str, text: &str, left_open: bool, right_open: bool| {
+        let dir = std::env::temp_dir().join(format!("quire-bench-livepace-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("notes");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Long.md"), text).unwrap();
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+        }
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1920.0, 1080.0), Env { system_dark: false, scale: 1.0 });
+        rt.on_key = Some(crate::keys::on_key);
+        rt.poll = Some(|s: &mut App, t, tx| s.poll(t, tx));
+        rt.frame(DT);
+        phases();
+        let t = Instant::now();
+        rt.update(move |s, tx| {
+            s.open_vault(root, tx);
+            s.persist.left_open = left_open;
+            s.persist.right_open = right_open;
+            s.mode = Mode::Preview;
+            s.open_file("Long.md", None, tx);
+            s.keys_to_note(tx);
+        });
+        rt.frame(DT);
+        let open_ms = ms(t);
+        let open_ph = phases();
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        let query_state = |rt: &mut Runtime<App>| -> (Mode, bool, usize, bool) {
+            let mut out = (Mode::Preview, false, 0, false);
+            rt.update_if(|s, _| {
+                out = (s.mode, s.pal().is_some(), s.active_text().len(), !s.dirty.is_empty());
+                false
+            });
+            out
+        };
+        assert_eq!(query_state(&mut rt).0, Mode::Preview);
+        eprintln!("\n=== LIVEPACE ({label}: left={left_open}, right={right_open}, {} lines, {} bytes) ===", text.lines().count(), text.len());
+        eprintln!("  open Preview:           {open_ms:6.2} ms{open_ph}");
+
+        let step_key = |rt: &mut Runtime<App>, name: &str, ev: KeyEvent| {
+            phases();
+            let t = Instant::now();
+            rt.key(ev);
+            rt.frame(DT);
+            let took = ms(t);
+            let ph = phases();
+            let t2 = Instant::now();
+            rt.frame(DT);
+            let tail = ms(t2);
+            let ph2 = phases();
+            eprintln!("  {name:<23} {took:6.2} ms{ph}  | +1f: {tail:5.2} ms{ph2}");
+            took
+        };
+
+        let ctrl_p = KeyEvent { key: Key::Command('p'), mods: Mods { cmd: true, ..Mods::default() } };
+        let ctrl_shift_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, shift: true, ..Mods::default() } };
+        let ctrl_s = KeyEvent { key: Key::Command('s'), mods: Mods { cmd: true, ..Mods::default() } };
+        let esc = KeyEvent { key: Key::Escape, mods: Mods::default() };
+
+        // 4x Ctrl+P: Preview->Source, Source->Preview, Preview->Source, Source->Preview
+        for i in 1..=4 {
+            let want = if i % 2 == 1 { Mode::Source } else { Mode::Preview };
+            let dir_lbl = if i % 2 == 1 { "Preview->Source" } else { "Source->Preview" };
+            step_key(&mut rt, &format!("Ctrl+P #{i} ({dir_lbl})"), ctrl_p.clone());
+            assert_eq!(query_state(&mut rt).0, want, "Ctrl+P #{i} switched mode");
+            for _ in 0..6 {
+                rt.frame(DT);
+            }
+        }
+
+        // Ctrl+Shift+K in Preview, then Esc
+        step_key(&mut rt, "Ctrl+Shift+K (Preview)", ctrl_shift_k.clone());
+        assert!(query_state(&mut rt).1, "palette opened in Preview");
+        step_key(&mut rt, "Esc palette (Preview)", esc.clone());
+        assert!(!query_state(&mut rt).1, "palette closed in Preview");
+
+        // Switch to Source, then Ctrl+Shift+K in Source, then Esc
+        step_key(&mut rt, "Ctrl+P #5 (Preview->Src)", ctrl_p.clone());
+        assert_eq!(query_state(&mut rt).0, Mode::Source);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        step_key(&mut rt, "Ctrl+Shift+K (Source)", ctrl_shift_k.clone());
+        assert!(query_state(&mut rt).1, "palette opened in Source");
+        step_key(&mut rt, "Esc palette (Source)", esc.clone());
+        assert!(!query_state(&mut rt).1, "palette closed in Source");
+
+        // Type "livecheck " in Source
+        let len_before = query_state(&mut rt).2;
+        let mut type_ms = Vec::new();
+        let mut type_first = String::new();
+        let mut type_mid = String::new();
+        for (i, ch) in "livecheck ".chars().enumerate() {
+            phases();
+            let t = Instant::now();
+            rt.key(KeyEvent { key: Key::Text(ch.to_string()), mods: Mods::default() });
+            rt.frame(DT);
+            let took = ms(t);
+            let ph = phases();
+            type_ms.push(took);
+            if i == 0 {
+                type_first = format!("{took:.2} ms{ph}");
+            } else if i == 5 {
+                type_mid = format!("{took:.2} ms{ph}");
+            }
+        }
+        let len_after = query_state(&mut rt).2;
+        assert_eq!(len_after - len_before, "livecheck ".len(), "every typed char landed in Source");
+        type_ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "  type \"livecheck \" (10): median {:5.2} ms, worst {:5.2} ms  (k0: {type_first}, k5: {type_mid})",
+            type_ms[type_ms.len() / 2],
+            type_ms[type_ms.len() - 1],
+        );
+
+        // Ctrl+S Save in Source
+        step_key(&mut rt, "Ctrl+S Save (dirty)", ctrl_s.clone());
+        assert!(!query_state(&mut rt).3, "Ctrl+S flushed dirty note");
+        step_key(&mut rt, "Ctrl+S Save (clean)", ctrl_s.clone());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    run_case("1753-panels-closed", &text_1753, false, false);
+    run_case("1753-panels-open", &text_1753, true, true);
+    run_case("5470-panels-open", LONG, true, true);
+}

@@ -22,15 +22,42 @@ const TARGET: f32 = 24.0;
 /// From a count's last digit to the end of the "+"'s 24 pt target, where the 14 pt "+" ends.
 const COUNT_END: f32 = 5.0;
 
-/// The tree: every folder and note, one Tab stop.
+/// The tree: every folder and note, one Tab stop. Memoized while idle so typing, saving, mode
+/// switches, and palette opens skip rebuilding the vault tree (`LIVEPACE`).
 pub(super) fn tree(v: V) -> El {
+    let s = v.s;
+    let live_edit = s.new_folder.is_some() || s.dragging.as_ref().is_some_and(|d| d.active);
+    if live_edit {
+        return build_tree(v, true);
+    }
+    let Some(vault) = &s.vault else { return col() };
+    let version = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (
+            vault.id(),
+            vault.paths(),
+            &vault.folders,
+            &s.expanded,
+            s.active.as_deref(),
+            v.p as *const crate::theme::Pal as usize,
+            &s.settings().panel_font,
+        )
+            .hash(&mut h);
+        h.finish()
+    };
+    rune::memo("tree", version, || build_tree(v, false))
+}
+
+fn build_tree(v: V, keyed: bool) -> El {
     let p = v.p;
     let s = v.s;
     let Some(root) = s.vault_tree() else { return col() };
     let mut rows = Vec::new();
     walk(v, &root, 0, &mut rows);
     let rows = guides(v, rows);
-    let mut c = lists::list(col().key("tree").w_full().gap(GAP), "tree")
+    let base = if keyed { col().key("tree") } else { col() };
+    let mut c = lists::list(base.w_full().gap(GAP), "tree")
         .on_secondary_press(|s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Root), (at.x, at.y), tx));
     if root.count == 0 && s.new_folder.is_none() {
         c = c.child(text("No notes yet.").font(nav(panel::BODY_SMALL, false)).color(Roles::panel(p).faint).py(6.0).pl(TEXT_X));

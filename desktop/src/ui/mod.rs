@@ -134,7 +134,12 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let trailing = cx.chrome_insets().trailing;
     s.view_h.set(vh);
     s.view_w.set(vw);
-    map_page(s);
+    let outline_shown = s.screen == Screen::Vault
+        && !s.focus
+        && s.active.as_ref().is_some_and(|a| s.files().contains_key(a))
+        && ((s.persist.right_open && vw >= crate::app::OUTLINE_DOCK_W)
+            || (s.drawer() == Some(crate::app::Drawer::Outline) && vw < crate::app::OUTLINE_DOCK_W));
+    map_page(s, outline_shown);
     let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
     let caret_view = (caret.is_some() && s.reader.reveal.awaiting_caret().is_some()).then(|| cx.layout(crate::reader::SCROLL)).flatten();
     let find_at = (s.foot_shows() && s.find_query().is_some()).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
@@ -219,24 +224,30 @@ pub(crate) fn reading(s: &App) -> bool {
 
 /// What the page map (`reader::PageMap`) takes from the view: whether the page shows, each
 /// block's first line, row key and gap above it. The rows' heights come in as they are laid
-/// out, so a scroll runs no view (VER-32).
-fn map_page(s: &App) {
+/// out, so a scroll runs no view (VER-32). Unchanged frames reuse `starts`, `gaps`, and
+/// memoized outline live handles (`LIVEPACE`).
+fn map_page(s: &App, outline_shown: bool) {
     let mut map = s.reader.map.borrow_mut();
     map.reading = reading(s);
-    map.starts.clear();
-    map.outline.clear();
     map.shelf.clear();
     if !map.reading {
+        map.clear_starts();
+        map.clear_outline();
         // The writer's progress takes the reader's measure (WR-178): it needs the line count.
-        map.lines = s.active.as_ref().map_or(0, |_| s.active_text().split('\n').count());
+        map.lines = s.line_count();
         return;
     }
+    if !outline_shown {
+        map.clear_outline();
+    }
     let doc = s.doc();
+    let note = s.doc_hash();
     map.lines = doc.line_count;
-    map.starts.extend(doc.blocks.iter().map(|b| b.lines.start));
+    map.set_starts(note, &doc.blocks);
     let b = s.settings().size as f32;
     let keys = || doc.blocks.iter().map(crate::reader::block_key).collect();
-    map.set_rows(s.doc_hash(), keys, crate::page::gaps(b, &doc.blocks), crate::page::row_estimate(b));
+    let gaps = || crate::page::gaps(b, &doc.blocks);
+    map.set_rows(note, b, keys, gaps, crate::page::row_estimate(b));
 }
 
 #[cfg(test)]

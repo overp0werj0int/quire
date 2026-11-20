@@ -39,9 +39,9 @@ const ENTRY_PAD: f32 = 5.0;
 
 /// The active note's H1 headings, in order: the outline under its tab (SB-17, SB-27). Setext
 /// headings and headings in code blocks are left out, as the outline panel leaves them out. A
-/// locked note has none (SB-133).
-pub(super) fn sections(v: V) -> Vec<md::Heading> {
-    md::headings(v.s.active_text()).into_iter().filter(|h| h.level == 1).collect()
+/// locked note has none (SB-133). Uses the cached heading index (`LIVEPACE`).
+pub(super) fn sections(v: V) -> std::rc::Rc<Vec<md::Heading>> {
+    v.s.headings_cached().1
 }
 
 /// "N sections", which the active tab's caption adds after its folder and a middle dot; nothing
@@ -228,7 +228,14 @@ fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
         heads.iter().rposition(|h| h.line <= line)
     } else if live {
         let blocks = s.doc();
-        map.shelf.heads = heads.iter().enumerate().filter_map(|(n, h)| Some((blocks.blocks.iter().position(|b| b.lines.start == h.line)?, Some(n)))).collect();
+        map.shelf.heads = heads
+            .iter()
+            .enumerate()
+            .filter_map(|(n, h)| {
+                let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
+                blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line).then_some((k, Some(n)))
+            })
+            .collect();
         map.shelf.first_row = None;
         let cur = map.head_row(&map.shelf, s.reader.scroll.get()[0]);
         map.shelf.marked = cur;

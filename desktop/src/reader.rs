@@ -68,8 +68,9 @@ pub struct Reader {
     glide: Option<(f32, f64)>,
     /// Each tab's reading position (RD-103).
     positions: HashMap<String, f32>,
-    /// The active note's blocks, kept until its text changes.
-    doc: RefCell<Option<(u64, Rc<Doc>)>>,
+    /// The active note's blocks, kept until its `TextKey` changes, with a monotonic version id.
+    doc: RefCell<Option<(crate::app::TextKey, u64, Rc<Doc>)>>,
+    doc_ver: std::cell::Cell<u64>,
 }
 
 impl Default for Reader {
@@ -92,6 +93,7 @@ impl Default for Reader {
             glide: None,
             positions: HashMap::new(),
             doc: RefCell::new(None),
+            doc_ver: std::cell::Cell::new(0),
         }
     }
 }
@@ -157,8 +159,11 @@ pub struct PageMap {
     heights: HashMap<String, f32>,
     /// The height the list gives a row not yet laid out.
     estimate: f32,
-    /// The gap above each block, from the view.
+    /// The gap above each block, from the view, and the body size bits those gaps came from.
     gaps: Vec<f32>,
+    gaps_size: u32,
+    /// Which `note` version `starts` currently reflects.
+    starts_note: Option<u64>,
     /// Each block's top with the rows added up from 0, and how far the rows really are from that.
     base: Vec<f32>,
     shift: f32,
@@ -175,6 +180,9 @@ pub struct PageMap {
     /// (SB-29), when they show.
     pub outline: Marks,
     pub shelf: Marks,
+    /// Bumped whenever `outline` is cleared outside its memoized builder so the memo rebuilds
+    /// fresh `Live` colour handles (`LIVEPACE`).
+    pub outline_gen: u64,
     /// A trip waiting for its row to be laid out, to land by where the row is.
     pending: Option<Pending>,
     /// A trip into a note whose page isn't mapped yet (a `[[note#Heading]]` link): the block's
@@ -253,11 +261,12 @@ pub struct Mark {
 
 impl PageMap {
     /// The note's blocks: their row keys (built only when the note changes), the gap above
-    /// each, and the list's estimate for a row not yet laid out. A key that leaves the page
-    /// forgets its height, as the list does.
-    pub fn set_rows(&mut self, note: Option<u64>, keys: impl FnOnce() -> Vec<String>, gaps: Vec<f32>, estimate: f32) {
+    /// each (built only when the note or body size changes), and the list's estimate for a row
+    /// not yet laid out. A key that leaves the page forgets its height, as the list does.
+    pub fn set_rows(&mut self, note: Option<u64>, body_size: f32, keys: impl FnOnce() -> Vec<String>, gaps: impl FnOnce() -> Vec<f32>, estimate: f32) {
         let mut changed = false;
-        if note != self.note || self.note.is_none() {
+        let note_changed = note != self.note || self.note.is_none();
+        if note_changed {
             self.note = note;
             self.keys = keys();
             self.index = self.keys.iter().enumerate().map(|(i, k)| (k.clone(), i)).collect();
@@ -265,13 +274,39 @@ impl PageMap {
             self.heights.retain(|k, _| index.contains_key(k));
             changed = true;
         }
-        if gaps != self.gaps || estimate != self.estimate {
-            self.gaps = gaps;
+        let size_bits = body_size.to_bits();
+        if note_changed || size_bits != self.gaps_size || estimate != self.estimate {
+            self.gaps = gaps();
+            self.gaps_size = size_bits;
             self.estimate = estimate;
             changed = true;
         }
         if changed {
             self.join();
+        }
+    }
+
+    /// Updates `starts` only when `note` changed (`LIVEPACE`).
+    pub fn set_starts(&mut self, note: Option<u64>, blocks: &[crate::blocks::Block]) {
+        if note != self.starts_note || self.starts_note.is_none() {
+            self.starts_note = note;
+            self.starts.clear();
+            self.starts.extend(blocks.iter().map(|b| b.lines.start));
+        }
+    }
+
+    /// Clears `starts` when leaving preview mode.
+    pub fn clear_starts(&mut self) {
+        self.starts_note = None;
+        self.starts.clear();
+    }
+
+    /// Clears the outline's live marks and bumps `outline_gen` so the memoized outline rebuilds
+    /// fresh live handles on next mount.
+    pub fn clear_outline(&mut self) {
+        if !self.outline.marks.is_empty() || !self.outline.heads.is_empty() {
+            self.outline.clear();
+            self.outline_gen = self.outline_gen.wrapping_add(1);
         }
     }
 
@@ -573,34 +608,26 @@ pub fn source_lines(text: &str, lines: std::ops::Range<usize>) -> String {
     text.split('\n').skip(lines.start).take(lines.len()).collect::<Vec<_>>().join("\n")
 }
 
-fn hash(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
-}
-
-// ---------- What the keys and the page do ----------
-
 impl App {
-    /// The active note's blocks, parsed once per text.
+    /// The active note's blocks, parsed once per `TextKey` (`LIVEPACE`).
     pub fn doc(&self) -> Rc<Doc> {
-        let text = self.active_text();
-        let h = hash(text);
+        let key = self.active_text_key();
         let mut cache = self.reader.doc.borrow_mut();
-        if let Some((k, d)) = &*cache
-            && *k == h
+        if let Some((k, _, d)) = &*cache
+            && k.matches(key)
         {
             return d.clone();
         }
-        let d = Rc::new(blocks::build(text));
-        *cache = Some((h, d.clone()));
+        let d = Rc::new(blocks::build(self.active_text()));
+        let ver = self.reader.doc_ver.get().wrapping_add(1).max(1);
+        self.reader.doc_ver.set(ver);
+        *cache = Some((key.to_owned(), ver, d.clone()));
         d
     }
 
-    /// The hash of the text `doc` was parsed from: it names the blocks' version.
+    /// The version of the text `doc` was parsed from: it names the blocks' version.
     pub fn doc_hash(&self) -> Option<u64> {
-        self.reader.doc.borrow().as_ref().map(|(h, _)| *h)
+        self.reader.doc.borrow().as_ref().map(|(_, v, _)| *v)
     }
 
     /// The index of the top-level block at the top of the view.
@@ -1325,7 +1352,7 @@ mod tests {
     #[test]
     fn both_outlines_follow_the_scroll() {
         let mut map = PageMap::default();
-        map.set_rows(Some(1), || (0..10).map(|i| format!("b{i}")).collect(), vec![0.0; 10], 100.0);
+        map.set_rows(Some(1), 14.0, || (0..10).map(|i| format!("b{i}")).collect(), || vec![0.0; 10], 100.0);
         let rows = |n: usize| (0..n).map(|_| Mark { fill: Live::new(Color::TRANSPARENT), ink: Live::new(Color::BLACK), on: [Color::WHITE, Color::WHITE], off: [Color::TRANSPARENT, Color::BLACK] }).collect::<Vec<_>>();
         map.outline = Marks { heads: vec![(2, Some(0)), (4, Some(1)), (7, Some(2))], first_row: Some(0), marks: rows(3), marked: None };
         map.shelf = Marks { heads: vec![(4, Some(0)), (7, Some(1))], first_row: None, marks: rows(2), marked: None };

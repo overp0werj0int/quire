@@ -4,13 +4,13 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
 
-use rune::{Color, Span, TextEdit, Tx};
+use rune::{Color, ParagraphStyle, Span, TextEdit, Tx};
 
-use crate::app::{App, Mode};
+use crate::app::{App, Mode, TextKey};
 use crate::layer::{Menu, MenuOf};
 use crate::format::Edit;
 use crate::md;
@@ -23,13 +23,74 @@ pub const LINE_AT: &str = "line-at";
 /// The source fonts Ctrl+Shift+M steps through (WR-125).
 const FONT_CYCLE: [&str; 3] = ["quattro", "duospace", "ia-mono"];
 
-type Key = (u64, State, bool, bool);
+/// Fast non-cryptographic hasher for internal per-line span cache lookups (`LIVEPACE`).
+#[derive(Default)]
+struct FxHasher(u64);
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        const K: u64 = 0x517c_c1b7_2722_0a95;
+        let mut h = self.0;
+        let mut chunks = bytes.chunks_exact(8);
+        for c in &mut chunks {
+            h = (h.rotate_left(5) ^ u64::from_le_bytes(c.try_into().unwrap())).wrapping_mul(K);
+        }
+        for &b in chunks.remainder() {
+            h = (h.rotate_left(5) ^ u64::from(b)).wrapping_mul(K);
+        }
+        self.0 = h;
+    }
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = (self.0.rotate_left(5) ^ i).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.write_u64(i as u64);
+    }
+}
+
+type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+type Key = (u64, usize, State, bool, bool);
 
 #[derive(Default)]
 struct Cache {
     /// What the cached lines were styled with: the size and colours, and the note index.
     with: Option<(u32, [u32; 40], u64)>,
-    lines: HashMap<Key, Rc<(Styled, State)>>,
+    lines: FxMap<Key, Rc<(Styled, State)>>,
+}
+
+/// Whole-note assembled spans, strikes, hangs, and paragraph styles reused across unchanged
+/// frames (`Ctrl+Shift+K`, `Ctrl+S`, repeated `Ctrl+P`, toasts, caret moves without focus fade).
+struct Assembled {
+    text_key: TextKey,
+    with: (u32, [u32; 40], u64),
+    focus: Option<(usize, usize)>,
+    spans: Vec<Span>,
+    strikes: Vec<(usize, usize, Option<Color>)>,
+    hangs: Vec<(usize, usize)>,
+    para_gutter: u32,
+    para_styles: Vec<ParagraphStyle>,
+}
+
+struct CachedHeadings {
+    text_key: TextKey,
+    ver: u64,
+    heads: Rc<Vec<md::Heading>>,
+    h1: Rc<Vec<md::Heading>>,
+}
+
+struct CachedBacklinks {
+    vault_id: u64,
+    active: String,
+    other_writes: u64,
+    ver: u64,
+    links: Rc<Vec<(String, usize)>>,
 }
 
 #[derive(Default)]
@@ -43,12 +104,17 @@ pub struct WriterState {
     /// Leaving source mode: the editor's scroll offset, and the preview block placed at the top.
     back: Option<(f32, usize)>,
     cache: RefCell<Cache>,
-    count: RefCell<Option<(u64, Count)>>,
+    assembled: RefCell<Option<Assembled>>,
+    count: RefCell<Option<(TextKey, Count)>>,
+    lines_count: RefCell<Option<(TextKey, usize)>>,
+    headings: RefCell<Option<CachedHeadings>>,
+    backlinks: RefCell<Option<CachedBacklinks>>,
 }
 
-fn hash<T: Hash + ?Sized>(t: &T) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    t.hash(&mut h);
+#[inline]
+fn hash_line(ln: &str) -> u64 {
+    let mut h = FxHasher::default();
+    h.write(ln.as_bytes());
     h.finish()
 }
 
@@ -93,10 +159,10 @@ pub type Spans = (Vec<Span>, Vec<(usize, usize, Option<Color>)>, Vec<(usize, usi
 
 /// Styles `text` line by line, carrying the block state from each line to the next, and
 /// places each line's spans at its offset.
-fn spans_by(text: &str, mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
-    let mut spans = Vec::new();
-    let mut strikes = Vec::new();
-    let mut hangs = Vec::new();
+fn spans_by(text: &str, cap: (usize, usize, usize), mut style: impl FnMut(usize, &str, State) -> Rc<(Styled, State)>) -> Spans {
+    let mut spans = Vec::with_capacity(cap.0);
+    let mut strikes = Vec::with_capacity(cap.1);
+    let mut hangs = Vec::with_capacity(cap.2);
     let mut st = State::default();
     let mut at = 0;
     for (i, ln) in text.split('\n').enumerate() {
@@ -122,11 +188,27 @@ impl App {
 }
 
 impl App {
-    /// The source's spans and strike lines for the whole note (section 1), with the lines
-    /// outside `focus` (first and last line) faded (WR-82).
-    pub fn source_spans(&self, e: f32, ink: &Ink, focus: Option<(usize, usize)>) -> Spans {
-        let text = self.active_text();
+    /// Ensures `wstate.assembled` holds the spans, strikes, hangs, and paragraph styles for the
+    /// active note under `(e, ink, focus, gutter)`, reusing the previous assembly on unchanged
+    /// frames (`LIVEPACE`).
+    fn ensure_assembled(&self, e: f32, ink: &Ink, focus: Option<(usize, usize)>, gutter: f32) {
+        let text_key = self.active_text_key();
         let with = (e.to_bits(), ink_bits(ink), self.names_gen as u64);
+        let gutter_bits = gutter.to_bits();
+        let mut assembled = self.wstate.assembled.borrow_mut();
+        if let Some(a) = assembled.as_mut()
+            && a.text_key.matches(text_key)
+            && a.with == with
+            && a.focus == focus
+        {
+            if a.para_gutter != gutter_bits {
+                a.para_styles = crate::ui::editor::paragraph_styles(&a.hangs, gutter);
+                a.para_gutter = gutter_bits;
+            }
+            return;
+        }
+        let cap = assembled.as_ref().map_or((0, 0, 0), |a| (a.spans.len(), a.strikes.len(), a.hangs.len()));
+        let text = self.active_text();
         let mut cache = self.wstate.cache.borrow_mut();
         if cache.with != Some(with) || cache.lines.len() > 50_000 {
             cache.lines.clear();
@@ -134,9 +216,9 @@ impl App {
         }
         let names = &self.names;
         let resolves = |t: &str| names.resolve(t).is_some();
-        spans_by(text, |i, ln, st| {
+        let (spans, strikes, hangs) = spans_by(text, cap, |i, ln, st| {
             let faded = focus.is_some_and(|(a, b)| i < a || i > b);
-            let key = (hash(ln), st, i == 0, faded);
+            let key = (hash_line(ln), ln.len(), st, i == 0, faded);
             if let Some(hit) = cache.lines.get(&key) {
                 return hit.clone();
             }
@@ -145,27 +227,103 @@ impl App {
             let v = Rc::new((s, next));
             cache.lines.insert(key, v.clone());
             v
-        })
+        });
+        let para_styles = crate::ui::editor::paragraph_styles(&hangs, gutter);
+        *assembled = Some(Assembled { text_key: text_key.to_owned(), with, focus, spans, strikes, hangs, para_gutter: gutter_bits, para_styles });
+    }
+
+    /// The source's spans, strike lines, and paragraph styles for the whole note, cached while
+    /// the note text and styling inputs are unchanged (`LIVEPACE`).
+    pub fn source_spans_and_styles(&self, e: f32, ink: &Ink, focus: Option<(usize, usize)>, gutter: f32) -> (Vec<Span>, Vec<(usize, usize, Option<Color>)>, Vec<ParagraphStyle>) {
+        self.ensure_assembled(e, ink, focus, gutter);
+        let a = self.wstate.assembled.borrow();
+        let a = a.as_ref().expect("just assembled");
+        (a.spans.clone(), a.strikes.clone(), a.para_styles.clone())
     }
 
     /// The same styling for the edit sheet's few lines, uncached (SHEET-027).
     pub fn sheet_spans(&self, text: &str, e: f32, ink: &Ink) -> Spans {
         let resolves = |t: &str| self.names.resolve(t).is_some();
-        spans_by(text, |i, ln, st| Rc::new(writer::line(ln, i == 0, st, e, ink, &resolves)))
+        spans_by(text, (0, 0, 0), |i, ln, st| Rc::new(writer::line(ln, i == 0, st, e, ink, &resolves)))
     }
 
     /// The word count of the open note, kept until its text changes (WR-188).
     pub fn word_count(&self) -> Count {
-        let text = self.active_text();
-        let h = hash(text);
-        if let Some((k, c)) = *self.wstate.count.borrow()
-            && k == h
+        let key = self.active_text_key();
+        if let Some((k, c)) = &*self.wstate.count.borrow()
+            && k.matches(key)
         {
-            return c;
+            return *c;
         }
-        let c = writer::count(text);
-        *self.wstate.count.borrow_mut() = Some((h, c));
+        let c = writer::count(self.active_text());
+        *self.wstate.count.borrow_mut() = Some((key.to_owned(), c));
         c
+    }
+
+    /// Line count of the active note, cached per `TextKey` (`LIVEPACE`).
+    pub fn line_count(&self) -> usize {
+        if self.active.is_none() {
+            return 0;
+        }
+        let key = self.active_text_key();
+        if let Some((k, n)) = &*self.wstate.lines_count.borrow()
+            && k.matches(key)
+        {
+            return *n;
+        }
+        let n = self.active_text().as_bytes().iter().filter(|&&b| b == b'\n').count() + 1;
+        *self.wstate.lines_count.borrow_mut() = Some((key.to_owned(), n));
+        n
+    }
+
+    /// The active note's headings and H1 sections, plus a version number that only advances when
+    /// the heading list actually changes (so typing prose leaves outline memos intact).
+    pub fn headings_cached(&self) -> (Rc<Vec<md::Heading>>, Rc<Vec<md::Heading>>, u64) {
+        let key = self.active_text_key();
+        let mut slot = self.wstate.headings.borrow_mut();
+        if let Some(c) = slot.as_ref()
+            && c.text_key.matches(key)
+        {
+            return (c.heads.clone(), c.h1.clone(), c.ver);
+        }
+        let fresh = md::headings(self.active_text());
+        if let Some(c) = slot.as_mut()
+            && *c.heads == fresh
+        {
+            c.text_key = key.to_owned();
+            return (c.heads.clone(), c.h1.clone(), c.ver);
+        }
+        let ver = slot.as_ref().map_or(1, |c| c.ver.wrapping_add(1).max(1));
+        let h1: Vec<md::Heading> = fresh.iter().filter(|h| h.level == 1).cloned().collect();
+        let heads = Rc::new(fresh);
+        let h1 = Rc::new(h1);
+        *slot = Some(CachedHeadings { text_key: key.to_owned(), ver, heads: heads.clone(), h1: h1.clone() });
+        (heads, h1, ver)
+    }
+
+    /// Sorted backlinks to the active note, cached while no *other* note in the vault changes
+    /// (`LIVEPACE`).
+    pub fn backlinks_cached(&self) -> (Rc<Vec<(String, usize)>>, u64) {
+        let Some(active) = self.active.as_deref() else {
+            return (Rc::new(Vec::new()), 0);
+        };
+        let (vault_id, other_writes) = self.vault.as_ref().map_or((0, 0), |v| (v.id(), v.other_writes(active)));
+        let mut slot = self.wstate.backlinks.borrow_mut();
+        if let Some(c) = slot.as_ref()
+            && c.vault_id == vault_id
+            && c.other_writes == other_writes
+            && c.active == active
+        {
+            return (c.links.clone(), c.ver);
+        }
+        let mut back = md::backlinks(self.files(), active);
+        if let Some(vault) = &self.vault {
+            back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
+        }
+        let ver = slot.as_ref().map_or(1, |c| c.ver.wrapping_add(1).max(1));
+        let links = Rc::new(back);
+        *slot = Some(CachedBacklinks { vault_id, active: active.to_owned(), other_writes, ver, links: links.clone() });
+        (links, ver)
     }
 
     /// The writer's editing keys act: in the edit sheet, or on an open note in source mode.

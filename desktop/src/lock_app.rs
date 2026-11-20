@@ -12,7 +12,7 @@ impl App {
         if u.text == text {
             return;
         }
-        u.text = text;
+        u.set_text(text);
         let sealed = lock::seal(&u.key, &u.text);
         if let Some(v) = &mut self.vault {
             v.put(rel.to_string(), sealed);
@@ -34,7 +34,7 @@ impl App {
         match opened {
             Ok(Some(plain)) => {
                 if let Some(u) = self.unlocked.get_mut(rel) {
-                    u.text = plain.clone();
+                    u.set_text(plain.clone());
                 }
                 if let Some(e) = self.edits.get_mut(rel) {
                     let (a, b) = (e.anchor.min(plain.len()), e.focus.min(plain.len()));
@@ -92,7 +92,7 @@ impl App {
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
         // The note stays open after the lock. It locks when its tab closes or with "Lock now".
-        self.unlocked.insert(a.clone(), Unlocked { key, text: String::new() });
+        self.unlocked.insert(a.clone(), Unlocked::new(key, String::new()));
         self.store_unlocked(&a, text);
         self.flush_notes();
         self.focus_editor(tx);
@@ -122,7 +122,7 @@ impl App {
                 self.unlock_error = None;
                 self.fields.remove("unlock-pass");
                 self.edits.remove(&a);
-                self.unlocked.insert(a, Unlocked { key, text: plain });
+                self.unlocked.insert(a, Unlocked::new(key, plain));
                 self.rebuild_names_pub();
                 self.focus_editor(tx);
             }

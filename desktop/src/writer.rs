@@ -210,8 +210,91 @@ fn footnote_def(ln: &str) -> Option<usize> {
 
 /// Formats one source line, given what the line before it carried (section 1). `first` says
 /// it is the note's first line, where front matter may open. `resolves` says whether a
-/// `[[link]]` target names a note.
+/// `[[link]]` target names a note. Emits strictly sorted, non-overlapping spans so Rune's
+/// per-paragraph layout and paint take their O(log N) binary-search path (`LIVEPACE`).
 pub fn line(ln: &str, first: bool, st: State, e: f32, ink: &Ink, resolves: &dyn Fn(&str) -> bool) -> (Styled, State) {
+    let (mut out, next) = line_raw(ln, first, st, e, ink, resolves);
+    out.spans = flatten_spans(out.spans);
+    (out, next)
+}
+
+fn same_span_style(a: &Span, b: &Span) -> bool {
+    a.weight == b.weight
+        && a.mono == b.mono
+        && a.size == b.size
+        && a.color == b.color
+        && a.bg == b.bg
+        && a.bg_pad == b.bg_pad
+        && a.underline == b.underline
+        && a.italic == b.italic
+}
+
+/// Flattens overlapping or unsorted spans within a single line into non-empty, sorted,
+/// non-overlapping intervals with identical later-span-wins semantics to Rune's `flatten_spans`.
+fn flatten_spans(mut spans: Vec<Span>) -> Vec<Span> {
+    spans.retain(|s| s.start < s.end);
+    if spans.len() <= 1 || spans.windows(2).all(|w| w[0].end <= w[1].start) {
+        return spans;
+    }
+    let mut bounds = Vec::with_capacity(spans.len() * 2);
+    let mut order: Vec<usize> = (0..spans.len()).collect();
+    for s in &spans {
+        bounds.push(s.start);
+        bounds.push(s.end);
+    }
+    bounds.sort_unstable();
+    bounds.dedup();
+    order.sort_by_key(|&i| spans[i].start);
+    let mut active: Vec<usize> = Vec::new();
+    let mut next = 0;
+    let mut out: Vec<Span> = Vec::with_capacity(bounds.len());
+    for w in bounds.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        active.retain(|&i| spans[i].end > a);
+        while next < order.len() && spans[order[next]].start <= a {
+            let i = order[next];
+            let at = active.partition_point(|&j| j < i);
+            active.insert(at, i);
+            next += 1;
+        }
+        if active.is_empty() {
+            continue;
+        }
+        let mut m = Span::new(a as usize, b as usize);
+        for &i in &active {
+            let s = &spans[i];
+            if s.weight.is_some() {
+                m.weight = s.weight;
+            }
+            m.mono |= s.mono;
+            if s.size.is_some() {
+                m.size = s.size;
+            }
+            if s.color.is_some() {
+                m.color = s.color;
+            }
+            if s.bg.is_some() {
+                m.bg = s.bg;
+                m.bg_pad = s.bg_pad;
+            }
+            if s.underline.is_some() {
+                m.underline = s.underline;
+            }
+            m.italic |= s.italic;
+        }
+        if let Some(last) = out.last_mut()
+            && last.end == m.start
+            && same_span_style(last, &m)
+        {
+            last.end = m.end;
+        } else {
+            out.push(m);
+        }
+    }
+    out
+}
+
+fn line_raw(ln: &str, first: bool, st: State, e: f32, ink: &Ink, resolves: &dyn Fn(&str) -> bool) -> (Styled, State) {
     let mut out = Styled::default();
     let n = ln.len();
     let has_text = !ln.trim().is_empty();
@@ -612,11 +695,38 @@ fn emphasis(ln: &str, from: usize, to: usize, m: &str, taken: &mut [bool], out: 
 }
 
 /// A line outside the current paragraph (WR-82): every colour becomes the fade colour, and
-/// backgrounds go. Sizes, faces and strike lines stay.
+/// backgrounds go. Sizes, faces and strike lines stay. Preserves strictly sorted, non-overlapping
+/// spans (`LIVEPACE`).
 pub fn fade(s: &Styled, len: usize, ghost: Color) -> Styled {
-    let mut spans = Vec::with_capacity(s.spans.len() + 1);
-    spans.push(colored(0, len, ghost));
-    spans.extend(s.spans.iter().map(|x| Span { color: Some(ghost), bg: None, ..x.clone() }));
+    let mut spans: Vec<Span> = Vec::with_capacity(s.spans.len() + 1);
+    let push_merged = |out: &mut Vec<Span>, m: Span| {
+        if m.start >= m.end {
+            return;
+        }
+        if let Some(last) = out.last_mut()
+            && last.end == m.start
+            && same_span_style(last, &m)
+        {
+            last.end = m.end;
+        } else {
+            out.push(m);
+        }
+    };
+    let mut at = 0usize;
+    for x in &s.spans {
+        let (a, b) = ((x.start as usize).min(len), (x.end as usize).min(len));
+        if a >= b {
+            continue;
+        }
+        if a > at {
+            push_merged(&mut spans, colored(at, a, ghost));
+        }
+        push_merged(&mut spans, Span { start: a as u32, end: b as u32, color: Some(ghost), bg: None, bg_pad: 0.0, ..x.clone() });
+        at = b;
+    }
+    if at < len {
+        push_merged(&mut spans, colored(at, len, ghost));
+    }
     Styled { spans, strikes: s.strikes.iter().map(|&(a, b, _)| (a, b, ghost)).collect(), hang: s.hang }
 }
 
@@ -654,9 +764,10 @@ fn strip_front(text: &str) -> &str {
 }
 
 /// Words in the text: fenced code, link targets, HTML tags, bare URLs and Markdown marks
-/// left out, then runs of letters or digits, joined by `'`, `’` or `.`.
+/// left out, then runs of letters or digits, joined by `'`, `’` or `.`. Streams directly over
+/// lines without allocating intermediate stripped strings (`LIVEPACE`).
 pub fn count_words(text: &str) -> usize {
-    let mut kept = String::with_capacity(text.len());
+    let mut n = 0usize;
     let mut fence: Option<(u8, usize)> = None;
     for ln in text.split('\n') {
         match fence {
@@ -673,68 +784,79 @@ pub fn count_words(text: &str) -> usize {
                 }
             }
         }
-        kept.push_str(&strip_inline(ln));
-        kept.push('\n');
-    }
-    let mut n = 0;
-    let mut chars = kept.chars().peekable();
-    let mut in_word = false;
-    let mut prev_joiner = false;
-    while let Some(c) = chars.next() {
-        if c.is_alphanumeric() {
-            if !in_word {
-                n += 1;
-                in_word = true;
-            }
-            prev_joiner = false;
-        } else if in_word && !prev_joiner && matches!(c, '\'' | '\u{2019}' | '.') && chars.peek().is_some_and(|x| x.is_alphanumeric()) {
-            prev_joiner = true;
-        } else {
-            in_word = false;
-            prev_joiner = false;
-        }
+        n += count_words_line(ln);
     }
     n
 }
 
-/// One line with link targets, HTML tags, bare URLs and Markdown marks replaced by spaces.
-fn strip_inline(ln: &str) -> String {
-    let mut s = String::with_capacity(ln.len());
+/// Zero-allocation word count for one non-fenced line, stripping link targets, HTML tags,
+/// bare URLs and Markdown marks on the fly.
+fn count_words_line(ln: &str) -> usize {
     let b = ln.as_bytes();
+    let mut n = 0usize;
+    let mut in_word = false;
+    let mut pending_joiner = false;
+    let feed_sep = |in_word: &mut bool, pending_joiner: &mut bool| {
+        *in_word = false;
+        *pending_joiner = false;
+    };
     let mut i = 0;
     while i < ln.len() {
-        let rest = &ln[i..];
-        // `](url)`: keep the link text, drop the target.
-        if rest.starts_with("](")
-            && let Some(k) = rest.find(')')
-        {
-            s.push(' ');
-            i += k + 1;
-            continue;
+        let ch = b[i];
+        if ch == b']' && b.get(i + 1) == Some(&b'(') {
+            if let Some(k) = ln[i..].find(')') {
+                feed_sep(&mut in_word, &mut pending_joiner);
+                i += k + 1;
+                continue;
+            }
         }
-        if b[i] == b'<'
-            && let Some(k) = html_tag(rest).or_else(|| rest.find('>').filter(|&k| rest[1..k].starts_with("http") || rest[1..k].starts_with("mailto:")).map(|k| k + 1))
-        {
-            s.push(' ');
-            i += k;
-            continue;
+        if ch == b'<' {
+            let rest = &ln[i..];
+            if let Some(k) = html_tag(rest).or_else(|| rest.find('>').filter(|&k| rest[1..k].starts_with("http") || rest[1..k].starts_with("mailto:")).map(|k| k + 1)) {
+                feed_sep(&mut in_word, &mut pending_joiner);
+                i += k;
+                continue;
+            }
         }
-        let url = rest.starts_with("http://") || rest.starts_with("https://") || rest.starts_with("www.");
-        if url && (i == 0 || !b[i - 1].is_ascii_alphanumeric()) {
-            let k = rest.find(char::is_whitespace).unwrap_or(rest.len());
-            s.push(' ');
-            i += k;
-            continue;
+        if (ch == b'h' || ch == b'w') && (i == 0 || !b[i - 1].is_ascii_alphanumeric()) {
+            let rest = &ln[i..];
+            if rest.starts_with("http://") || rest.starts_with("https://") || rest.starts_with("www.") {
+                let k = rest.find(char::is_whitespace).unwrap_or(rest.len());
+                feed_sep(&mut in_word, &mut pending_joiner);
+                i += k;
+                continue;
+            }
         }
-        let c = rest.chars().next().unwrap_or(' ');
-        if matches!(c, '#' | '>' | '*' | '_' | '`' | '~' | '=' | '|' | '[' | ']' | '-') {
-            s.push(' ');
+        if ch < 0x80 {
+            if ch.is_ascii_alphanumeric() {
+                if !in_word {
+                    n += 1;
+                    in_word = true;
+                }
+                pending_joiner = false;
+            } else if in_word && !pending_joiner && matches!(ch, b'\'' | b'.') {
+                pending_joiner = true;
+            } else {
+                feed_sep(&mut in_word, &mut pending_joiner);
+            }
+            i += 1;
         } else {
-            s.push(c);
+            let c = ln[i..].chars().next().unwrap_or(' ');
+            if c.is_alphanumeric() {
+                if !in_word {
+                    n += 1;
+                    in_word = true;
+                }
+                pending_joiner = false;
+            } else if in_word && !pending_joiner && c == '\u{2019}' {
+                pending_joiner = true;
+            } else {
+                feed_sep(&mut in_word, &mut pending_joiner);
+            }
+            i += c.len_utf8();
         }
-        i += c.len_utf8();
     }
-    s
+    n
 }
 
 // ---------- Editing keys (section 2) ----------
@@ -1097,6 +1219,37 @@ mod tests {
         assert_eq!(c.minutes, 1);
         assert_eq!(count("").minutes, 0);
         assert_eq!(count("a b").chars, 2);
+        // a'b, a, b, a, b, e.g, foo, bar -> 8 words.
+        assert_eq!(count_words("a'b a''b a.'b e.g. foo' bar."), 8);
+        assert_eq!(count_words("don\u{2019}t stop\u{2019}\u{2019}now"), 3);
+    }
+
+    #[test]
+    fn livepace_line_and_fade_spans_are_sorted_and_disjoint() {
+        let i = ink();
+        let long = crate::bench::LONG;
+        let mut st = State::default();
+        for (idx, ln) in long.split('\n').enumerate() {
+            let (raw, next_raw) = line_raw(ln, idx == 0, st, 14.0, &i, &|t| t == "Ideas");
+            let (flat, next_flat) = line(ln, idx == 0, st, 14.0, &i, &|t| t == "Ideas");
+            assert_eq!(next_raw, next_flat);
+            assert!(
+                flat.spans.iter().all(|s| s.start < s.end) && flat.spans.windows(2).all(|w| w[0].end <= w[1].start),
+                "line {idx} spans must be strictly non-empty, sorted, and disjoint: {:?}",
+                flat.spans
+            );
+            // Every byte resolves to the exact same merged attributes as unflattened spans.
+            for b in 0..ln.len() {
+                assert_eq!(span_at(&raw, b), span_at(&flat, b), "line {idx} byte {b}");
+            }
+            let faded = fade(&flat, ln.len(), i.ghost);
+            assert!(
+                faded.spans.iter().all(|s| s.start < s.end) && faded.spans.windows(2).all(|w| w[0].end <= w[1].start),
+                "line {idx} faded spans must be strictly non-empty, sorted, and disjoint: {:?}",
+                faded.spans
+            );
+            st = next_flat;
+        }
     }
 
     fn run(text: &str, at: usize, f: impl Fn(&str, usize, usize) -> Option<Edit>) -> Option<(String, usize)> {

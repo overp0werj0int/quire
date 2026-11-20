@@ -276,19 +276,22 @@ pub fn preview(v: V) -> El {
     });
     // A row is built again only when something it draws from changes.
     let set = s.settings();
+    let col_geom = column(v);
     let version = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (
-        s.doc_hash(),
-        s.active.as_deref(),
-        s.vault.as_ref().map(|v| &v.path),
-        (set.size, &set.preview_font, &set.code_font),
-        format!("{:?}{:?}", v.p, column(v)),
-        find.as_ref().map(|f| (&f.q, f.cur, f.place)),
-        &s.names,
-        s.images.epoch.get(),
-        s.reader.copied.map(|(l, _)| l),
+            s.doc_hash(),
+            s.active.as_deref(),
+            s.vault.as_ref().map(|v| &v.path),
+            (set.size, &set.preview_font, &set.code_font),
+            v.p as *const crate::theme::Pal as usize,
+            col_geom.width.to_bits(),
+            col_geom.gutter.to_bits(),
+            find.as_ref().map(|f| (&f.q, f.cur, f.place)),
+            s.names_gen,
+            s.images.epoch.get(),
+            s.reader.copied.map(|(l, _)| l),
         )
             .hash(&mut h);
         h.finish()
