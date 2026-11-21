@@ -1,0 +1,16 @@
+Ctrl+Y redoes a map delete that Ctrl+Z took back.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Delete@1.2 key:z+cmd@1.6 key:y+cmd@2.0 key:s+cmd@2.4
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+- Rent
+
+## Trip
+--- after
+# Plan
+
+## Trip

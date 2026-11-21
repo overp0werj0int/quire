@@ -1,0 +1,8 @@
+Ctrl+Shift+A on the map copies the whole note and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:a+cmd+shift@0.8
+expect: text:toast: 'Copied the whole note'
+--- before
+# Plan
+
+- a

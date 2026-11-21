@@ -1,0 +1,9 @@
+Ctrl+C copies the selected node's Markdown and says so; the note stays as it was.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:c+cmd@1.1
+expect: text:toast: 'Copied'
+--- before
+# Plan
+
+- a
+  - b

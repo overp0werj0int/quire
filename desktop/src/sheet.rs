@@ -95,6 +95,7 @@ pub fn line_bytes(text: &str, lines: &Range<usize>) -> Range<usize> {
 
 /// `text` with lines `lines` replaced by `with` (SHEET-045). Lines outside the range, and the
 /// final newline, stay as they are.
+#[cfg(test)]
 pub fn splice(text: &str, lines: &Range<usize>, with: &str) -> String {
     let r = line_bytes(text, lines);
     format!("{}{with}{}", &text[..r.start], &text[r.end..])
@@ -138,6 +139,20 @@ impl App {
             return;
         };
         let Some(pick) = pick_range(&doc, first, last, scope) else { return };
+        self.show_sheet(pick, scope, tx);
+    }
+
+    /// The sheet on source lines `lines` of the note shown, from the map (MAP-020).
+    pub fn open_sheet_lines(&mut self, lines: Range<usize>, scope: Scope, tx: &mut Tx) {
+        if self.mode != Mode::Map || self.active_locked() {
+            return;
+        }
+        self.show_sheet(Pick { lines, before: None, after: None }, scope, tx);
+    }
+
+    fn show_sheet(&mut self, pick: Pick, scope: Scope, tx: &mut Tx) {
+        let Some(rel) = self.active.clone() else { return };
+        let doc = self.doc();
         let base = self.active_text().to_string();
         let orig = base[line_bytes(&base, &pick.lines)].to_string();
         let mut edit = TextEdit::new(orig.clone());
@@ -166,11 +181,7 @@ impl App {
     pub fn sheet_save(&mut self, tx: &mut Tx) {
         let Some(rel) = self.sheet().map(|sh| sh.rel.clone()) else { return };
         let gone = !self.files().contains_key(&rel) || !self.tabs.contains(&rel);
-        let now = if let Some(u) = self.unlocked.get(&rel) {
-            Some(u.text.clone())
-        } else {
-            self.files().get(&rel).filter(|t| !crate::lock::is_locked(t)).cloned()
-        };
+        let now = self.note_text(&rel).map(str::to_string);
         let Some(sh) = self.sheet_mut() else { return };
         if gone {
             sh.problem = Some(GONE);
@@ -182,24 +193,17 @@ impl App {
         }
         let r = line_bytes(&sh.base, &sh.pick.lines);
         let with = sh.edit.text.clone();
-        let text = splice(&sh.base, &sh.pick.lines, &with);
         self.close_layer(tx);
         // One step in the note's source history (edit-sheet.md, open questions).
-        self.ensure_edit();
-        if let Some(e) = self.edits.get_mut(&rel) {
-            let (a, f) = (e.anchor, e.focus);
-            let shift = |p: usize| if p <= r.start { p } else if p >= r.end { p + with.len() - r.len() } else { r.start };
-            e.undo_group(|e| {
-                e.set_selection(r.start, r.end);
-                e.insert(&with);
-            });
-            e.set_selection(shift(a), shift(f));
-        }
-        self.set_text(&rel, text);
+        self.splice_note(&rel, r, &with);
         // Written at once, so "Saved" is true by the time anyone looks (open questions).
         self.flush_notes();
         self.toast("Saved", tx);
-        tx.blur();
+        if self.mode == Mode::Map {
+            self.keys_to_note(tx);
+        } else {
+            tx.blur();
+        }
     }
 
     /// Esc (SHEET-037 to SHEET-039): close an unchanged sheet, else arm a discard, else

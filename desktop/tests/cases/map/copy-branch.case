@@ -1,0 +1,9 @@
+Ctrl+Shift+C copies the selected node's branch and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:c+cmd+shift@1.1
+expect: text:toast: "Copied the branch's Markdown"
+--- before
+# Plan
+
+- a
+  - b

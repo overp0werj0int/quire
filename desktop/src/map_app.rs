@@ -630,3 +630,134 @@ impl App {
 pub fn hit_bucket(zoom: f32) -> i32 {
     zoom.log2().floor().clamp(-4.0, 2.0) as i32
 }
+
+// ---------- Edits: gestures that change the note (MAP-013 to MAP-025, MAP-053, MAP-059) ----------
+
+/// The bytes `old` and `new` share at the start and at the end, on char boundaries.
+fn shared(old: &str, new: &str) -> (usize, usize) {
+    let mut pre = old.bytes().zip(new.bytes()).take_while(|(a, b)| a == b).count();
+    while !old.is_char_boundary(pre) || !new.is_char_boundary(pre) {
+        pre -= 1;
+    }
+    let room = old.len().min(new.len()) - pre;
+    let mut post = old.bytes().rev().zip(new.bytes().rev()).take(room).take_while(|(a, b)| a == b).count();
+    while !old.is_char_boundary(old.len() - post) || !new.is_char_boundary(new.len() - post) {
+        post -= 1;
+    }
+    (pre, post)
+}
+
+impl App {
+    /// The map's gestures change only an open, unlocked note (MAP-015).
+    fn map_editable(&self) -> bool {
+        self.mode == Mode::Map && self.active.is_some() && !self.active_locked()
+    }
+
+    /// Splice `s` of the note shown, whose map was `old`, goes in as one undo step (MAP-013);
+    /// the folds follow their nodes and the node at the splice's focus line is selected.
+    fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
+        let Some(rel) = self.active.clone() else { return };
+        let base = self.active_text().to_string();
+        let new = s.apply(&base);
+        let (pre, post) = shared(&base, &new);
+        self.splice_note(&rel, pre..base.len() - post, &new[pre..new.len() - post]);
+        let t = self.map_follow(old, s);
+        let i = s.focus.map_or(ROOT, |l| t.at_line(l));
+        self.map_reveal(i, tx);
+    }
+
+    /// After change `s` to the note shown, whose map was `old`: the folds and the selection
+    /// follow their nodes into the new tree (MAP-010).
+    fn map_follow(&mut self, old: &Tree, s: &map::Splice) -> Rc<Tree> {
+        let t = self.map_tree();
+        if let Some(v) = self.map_view_mut() {
+            let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
+            v.folded = std::mem::take(&mut v.folded).into_iter().filter_map(|id| map::follow(old, &t, s, id)).filter(shut).collect();
+            v.fold_ver += 1;
+            v.selected = map::follow(old, &t, s, v.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
+        }
+        t
+    }
+
+    /// Node `i` is selected, the folds above it open, and the camera keeps it in view.
+    fn map_reveal(&mut self, i: usize, tx: &mut Tx) {
+        let t = self.map_tree();
+        let Some(v) = self.map_view_mut() else { return };
+        v.selected = t.nodes[i].id;
+        let mut a = i;
+        while let Some(p) = t.nodes[a].parent {
+            if v.folded.remove(&t.nodes[p].id) {
+                v.fold_ver += 1;
+            }
+            a = p;
+        }
+        self.ensure_visible(i, tx);
+    }
+
+    /// `Delete` and `Backspace` (MAP-025).
+    pub fn map_delete(&mut self, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        let t = self.map_tree();
+        let i = self.map_selected();
+        match map::delete(self.active_text(), &t, i) {
+            Ok((s, n)) => {
+                self.map_apply(&t, &s, tx);
+                if n > 1 || t.nodes[i].card {
+                    let nodes = if n == 1 { "1 node".to_string() } else { format!("{n} nodes") };
+                    let undo = crate::keymap::label(self.preset(), "map.undo");
+                    self.toast(&format!("Deleted {nodes} · {undo} to undo"), tx);
+                }
+            }
+            Err(Some(why)) => self.toast(why, tx),
+            Err(None) => {}
+        }
+    }
+
+    /// `x`, or a click on a task's box (MAP-053): one character, through the undo path.
+    pub fn map_toggle_task(&mut self, i: usize, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        let t = self.map_tree();
+        if let Some(s) = map::toggle_task(self.active_text(), &t, i) {
+            self.map_apply(&t, &s, tx);
+        }
+    }
+
+    /// `Ctrl+Z` and `Ctrl+Shift+Z` on the map: the note's own history, shared with Source
+    /// (MAP-014). The selection goes to the node the step changed, else stays on its node.
+    pub fn map_undo(&mut self, redo: bool, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        let old = self.map_tree();
+        let before = self.active_text().to_string();
+        let e = self.cur_edit();
+        if redo {
+            e.redo();
+        } else {
+            e.undo();
+        }
+        self.after_edit();
+        if self.active_text() == before {
+            return;
+        }
+        let s = map::diff(&before, self.active_text());
+        let t = self.map_follow(&old, &s);
+        let changed = t.nodes.iter().position(|n| !n.own.is_empty() && s.written().contains(&n.own.start));
+        let i = changed.unwrap_or_else(|| self.map_selected());
+        self.map_reveal(i, tx);
+    }
+
+    /// `Ctrl+C` and `Ctrl+Shift+C` (MAP-059).
+    pub fn map_copy(&mut self, branch: bool, tx: &mut Tx) {
+        if self.mode != Mode::Map || self.active_locked() {
+            return;
+        }
+        let t = self.map_tree();
+        tx.copy(map::markdown(self.active_text(), &t, self.map_selected(), branch));
+        self.toast(if branch { "Copied the branch's Markdown" } else { "Copied" }, tx);
+    }
+}

@@ -1,0 +1,14 @@
+Deleting the last section takes the blank line above it and keeps the final newline.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Backspace@1.3 key:s+cmd@1.8
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+## Trip
+--- after
+# Plan
+
+## Budget

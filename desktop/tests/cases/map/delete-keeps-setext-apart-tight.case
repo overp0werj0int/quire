@@ -1,0 +1,11 @@
+Deleting an item right under a paragraph and over a rule leaves a blank line, not a heading.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Delete@1.3 key:s+cmd@1.8
+--- before
+para
+- item
+---
+--- after
+para
+
+---

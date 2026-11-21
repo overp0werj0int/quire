@@ -1,0 +1,8 @@
+Delete on the root changes nothing and says why.
+note: Plan.md
+events: key:m+cmd@0.3 key:Delete@0.8
+expect: text:toast: "The map's root can't be deleted"
+--- before
+# Plan
+
+- a

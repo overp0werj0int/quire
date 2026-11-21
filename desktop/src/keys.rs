@@ -89,6 +89,10 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             if a.id == "map.escape" {
                 return s.map_escape(tx);
             }
+            // A locked note's map is hidden behind the lock panel: its keys select nothing.
+            if *ctx == Ctx::Map && s.active_locked() && !matches!(a.id, "map.close-tab" | "map.toggle-outline" | "map.help" | "map.read-from-disk") {
+                continue;
+            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
@@ -332,6 +336,12 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.center" => |s, tx| s.map_center(tx),
         "map.zoom-in" => |s, tx| s.map_zoom_step(1.25, tx),
         "map.zoom-out" => |s, tx| s.map_zoom_step(0.8, tx),
+        "map.delete" => |s, tx| s.map_delete(tx),
+        "map.toggle-task" => |s, tx| s.map_toggle_task(s.map_selected(), tx),
+        "map.undo" => |s, tx| s.map_undo(false, tx),
+        "map.redo" => |s, tx| s.map_undo(true, tx),
+        "map.copy-node" => |s, tx| s.map_copy(false, tx),
+        "map.copy-subtree" => |s, tx| s.map_copy(true, tx),
         "map.escape" => |s, tx| {
             s.map_escape(tx);
         },

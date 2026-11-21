@@ -1,0 +1,15 @@
+Delete takes a list item out of a tight list and selects the next item.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Delete@1.3 key:s+cmd@1.8
+expect: selected: map-node:4
+--- before
+# Plan
+
+- a
+- b
+- c
+--- after
+# Plan
+
+- a
+- c

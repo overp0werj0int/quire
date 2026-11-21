@@ -490,11 +490,15 @@ impl App {
 
     /// The active note's text. An unlocked note gives its plain text, and a locked note none.
     pub fn active_text(&self) -> &str {
-        let Some(a) = &self.active else { return "" };
-        if let Some(u) = self.unlocked.get(a) {
-            return &u.text;
+        self.active.as_deref().and_then(|a| self.note_text(a)).unwrap_or("")
+    }
+
+    /// Note `rel`'s plain text: None when it is gone, or locked and not unlocked.
+    pub fn note_text(&self, rel: &str) -> Option<&str> {
+        if let Some(u) = self.unlocked.get(rel) {
+            return Some(&u.text);
         }
-        self.files().get(a).map_or("", |t| if crate::lock::is_locked(t) { "" } else { t.as_str() })
+        self.files().get(rel).filter(|t| !crate::lock::is_locked(t)).map(String::as_str)
     }
 
     /// O(1) revision key for `active_text()`: changes whenever the vault, active note path, lock
@@ -1269,16 +1273,38 @@ impl App {
 
     pub fn ensure_edit(&mut self) {
         if let Some(a) = self.active.clone() {
-            let text = match self.unlocked.get(&a) {
-                Some(u) => u.text.clone(),
-                None => self.files().get(&a).filter(|t| !crate::lock::is_locked(t)).cloned().unwrap_or_default(),
-            };
-            self.edits.entry(a).or_insert_with(|| {
-                let mut e = TextEdit::new(text);
-                e.set_selection(0, 0);
-                e
-            });
+            self.ensure_edit_of(&a);
         }
+    }
+
+    fn ensure_edit_of(&mut self, rel: &str) {
+        if !self.edits.contains_key(rel) {
+            let mut e = TextEdit::new(self.note_text(rel).unwrap_or_default());
+            e.set_selection(0, 0);
+            self.edits.insert(rel.to_string(), e);
+        }
+    }
+
+    /// Note `rel`'s bytes `r` become `with` as one step of its editor's undo history, so undo
+    /// in any mode takes the change back, then the note saves as `set_text` does. The caret
+    /// keeps its place in the text around the change.
+    pub fn splice_note(&mut self, rel: &str, r: std::ops::Range<usize>, with: &str) {
+        let Some(base) = self.note_text(rel).map(str::to_string) else { return };
+        let text = format!("{}{with}{}", &base[..r.start], &base[r.end..]);
+        self.ensure_edit_of(rel);
+        if let Some(e) = self.edits.get_mut(rel) {
+            if e.text != base {
+                e.replace_text(base);
+            }
+            let (a, f) = (e.anchor, e.focus);
+            let shift = |p: usize| if p <= r.start { p } else if p >= r.end { p + with.len() - r.len() } else { r.start };
+            e.undo_group(|e| {
+                e.set_selection(r.start, r.end);
+                e.insert(with);
+            });
+            e.set_selection(shift(a), shift(f));
+        }
+        self.set_text(rel, text);
     }
 
     pub fn cur_edit_opt(&mut self) -> Option<&mut TextEdit> {

@@ -1,0 +1,22 @@
+Deleting a heading takes its whole branch and one blank line, and says how many nodes went.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Delete@1.3
+expect: text:toast: 'Deleted 3 nodes · Ctrl+Z to undo'
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Trip
+
+Train at nine.
+--- after
+# Plan
+
+## Trip
+
+Train at nine.

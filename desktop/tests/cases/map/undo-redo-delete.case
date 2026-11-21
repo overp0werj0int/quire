@@ -1,0 +1,20 @@
+Ctrl+Z on the map puts a deleted branch back, and Ctrl+Shift+Z takes it out again.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Delete@1.2 key:z+cmd@1.6 key:z+cmd+shift@2.0 key:z+cmd@2.4 key:s+cmd@2.8
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+- Rent
+
+## Trip
+--- after
+# Plan
+
+## Budget
+
+- Rent
+
+## Trip
