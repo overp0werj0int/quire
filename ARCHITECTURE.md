@@ -92,6 +92,17 @@ commit. The inline field is a text field over the node (`map_app::FIELD`), with 
 in `Ctx::MapEdit`. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
 its place.
 
+A move, by a drop or by Alt and the arrows, is `map::move_to`, one more of these functions.
+`map::zone` says which moves the rules allow, and the drop zones under a drag show only those
+(`map_drag.rs`). A move's splice also says where each old line went (`Splice::moved`), since
+its lines leave one place and land in another, so `map::follow` finds a moved node and its
+folds. After a fold, an edit or a move the nodes glide to their new places (`map_motion.rs`):
+`App::map_relayout` pairs each node of the new tree with where the last frame drew it, and
+`App::map_drawn`, which the view and `App::map_mounted` read, blends the two layouts for 180
+ms, a frame at a time from `App::poll`. That commit turns off Rune's own layout motion
+(`Tx::instant`), which pairs elements by key: a node's key is its source line, which a move
+changes.
+
 `main.rs` connects these parts. It builds a `rune::AppSpec` from `app::init`, `ui::view`,
 `keys::on_key`, `App::poll` and `App::set_waker`. It calls `App::flush_all` when the window
 closes. If the first argument is a subcommand, such as `quire mcp`, `cli::run_subcommand`
@@ -407,9 +418,11 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). `Folder` is the vault's tree in the tree's order (SB-54) with each folder's note count, its subfolders' included (SB-52); `Tree` keeps it on `App::tree` and builds it again only when the vault's `paths` count (a note added or taken out) or its folders change, never for an edit to a note's text. |
 | `images.rs` | Adding images to `attachments/`, and downloading web images. |
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
-| `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling (with lists renumbered and blank lines matched), delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. |
+| `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling (with lists renumbered and blank lines matched), delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. |
 | `map_layout.rs` | Where each shown node sits: a left-to-right tidy tree in world points, built bottom-up from each subtree's top and bottom profile, so a short branch tucks under a long one. Pure: it takes the tree, the folds and a size per node. |
-| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, the node menu's anchor and the Properties badge's sheet start here. |
+| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` pills' geometry, which the view draws and fit takes in (`App::map_extent`). |
+| `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
+| `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's right edge. Nothing glides under reduced motion. |
 | `theme.rs` | Themes, fonts, text measurements. |
 | `motion.rs` | Reduced motion: `QUIRE_REDUCED_MOTION`, Hyprland's animations setting and the system's, as one gate. |
 | `roles.rs` | The preview page's colours and code colours, derived from the active palette (`docs/reader-writer/`, decision 0005), and the side panels' text colours, made readable on the sidebar (`Roles::panel`, decision 0008). |
