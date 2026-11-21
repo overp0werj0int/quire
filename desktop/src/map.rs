@@ -102,12 +102,17 @@ impl Tree {
         self.nodes.iter().position(|n| n.id == id)
     }
 
-    /// The deepest node whose own lines hold `line`, else the deepest whose span does, else
-    /// the root (MAP-065).
+    /// The deepest node whose own lines hold `line`, else the deepest whose span does (MAP-065).
+    /// A line past every span, such as the blank line at the note's end, takes the nearest
+    /// node above it, so the caret at the end selects the last node, not the root.
     pub fn at_line(&self, line: usize) -> usize {
         let own = self.nodes.iter().rposition(|n| n.own.contains(&line));
         let span = || self.nodes.iter().rposition(|n| n.span.contains(&line) && !matches!(n.kind, NodeKind::Footnotes));
-        own.or_else(span).unwrap_or(ROOT)
+        let above = || {
+            let starts = self.nodes.iter().enumerate().filter(|(_, n)| !n.own.is_empty() && n.own.start <= line);
+            starts.max_by_key(|(_, n)| n.own.start).map(|(i, _)| i)
+        };
+        own.or_else(span).or_else(above).unwrap_or(ROOT)
     }
 
     /// The folds a note opens with: front matter's `initialExpandLevel`, `markmap:` directives
