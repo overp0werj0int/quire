@@ -47,13 +47,14 @@ fn list(v: V, r: &Results) -> El {
     };
     let first_key = first.key();
     let filled = v.s.res_focus.clone().filter(|k| r.rows().any(|row| row.key() == *k)).unwrap_or(first_key.clone());
+    let all_keys: std::rc::Rc<Vec<String>> = std::rc::Rc::new(r.rows().map(|row| row.key()).collect());
     let ql = r.query.to_lowercase();
     let tag_q = ql.strip_prefix('#').map(|t| t.trim().to_string());
     let section = |key: &str, name: &str, n: usize| section_label(v.p, key, name, n.to_string());
     let vault = v.s.vault.as_ref();
     let look = (format!("{:?}", v.p), &v.s.settings().panel_font, vault.map(|x| &x.name), &r.query);
     let mut last = None;
-    for row in r.rows() {
+    for (idx, row) in r.rows().enumerate() {
         let kind = std::mem::discriminant(&row);
         if last != Some(kind) {
             last = Some(kind);
@@ -75,8 +76,9 @@ fn list(v: V, r: &Results) -> El {
             Row::Tag(_, n) => (n, 0),
             _ => (0, 0),
         };
-        let version = (&look, on, first, what, note.map(|p| (vault.map_or(0, |x| x.ver(p)), v.s.tabs.iter().any(|t| t == p))));
+        let version = (&look, on, first, idx, all_keys.len(), what, note.map(|p| (vault.map_or(0, |x| x.ver(p)), v.s.tabs.iter().any(|t| t == p))));
         let k = key.clone();
+        let keys = all_keys.clone();
         out = out.child(rune::memo(key, version, || {
             let el = match row {
                 Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, on),
@@ -85,7 +87,7 @@ fn list(v: V, r: &Results) -> El {
                 Row::Tag(t, n) => tag_row(v, &k, t, n, tag_q.as_deref().unwrap_or(&ql), on),
             };
             let el = if on && !matches!(row, Row::Tag(..)) { el.child(kbd(v, "Enter".into())) } else { el };
-            choose(v, el, k.clone(), on, first)
+            choose(v, el, k.clone(), on, idx, keys)
         }));
     }
     out
@@ -93,9 +95,11 @@ fn list(v: V, r: &Results) -> El {
 
 /// A result row's keys: a click, Enter or Space chooses it (`App::choose_result`). Esc goes
 /// by `App::search_escape`, so it clears the search and lands in the field (SB-90); Up from
-/// the first row goes back to the field (SB-66). A row that goes away with the keyboard, as a
-/// note edited out of the results does, hands it to the field (SB-72).
-fn choose(v: V, el: El, key: String, on: bool, first: bool) -> El {
+/// the first row goes back to the field (SB-66). Arrows, Home and End update `App::res_focus`
+/// synchronously in the same commit so the filled row and Enter chip never lag behind the
+/// keyboard focus outline. A row that goes away with the keyboard, as a note edited out of the
+/// results does, hands it to the field (SB-72).
+fn choose(v: V, el: El, key: String, on: bool, idx: usize, keys: std::rc::Rc<Vec<String>>) -> El {
     let k = key.clone();
     lists::item(el, v.p, on, move |s: &mut App, tx| s.choose_result(&k, tx)).focus_return("search").on_key(move |s: &mut App, ev: &rune::KeyEvent, tx| {
         if crate::keys::esc_again(ev, tx) {
@@ -104,12 +108,28 @@ fn choose(v: V, el: El, key: String, on: bool, first: bool) -> El {
         if ev.mods != rune::Mods::default() {
             return false;
         }
+        let go = |s: &mut App, tx: &mut rune::Tx, target: usize| {
+            if let Some(next) = keys.get(target) {
+                s.res_focus = Some(next.clone());
+                tx.focus(next.clone(), true);
+                tx.scroll_into_view(next.clone());
+            }
+            true
+        };
         match ev.key {
-            rune::Key::Escape => s.search_escape(tx),
-            rune::Key::Up if first => {
+            rune::Key::Escape => {
+                s.res_focus = None;
+                s.search_escape(tx)
+            }
+            rune::Key::Up if idx == 0 => {
+                s.res_focus = None;
                 tx.focus("search", false);
                 true
             }
+            rune::Key::Up => go(s, tx, idx - 1),
+            rune::Key::Down => go(s, tx, (idx + 1).min(keys.len().saturating_sub(1))),
+            rune::Key::Home => go(s, tx, 0),
+            rune::Key::End => go(s, tx, keys.len().saturating_sub(1)),
             _ => false,
         }
     })

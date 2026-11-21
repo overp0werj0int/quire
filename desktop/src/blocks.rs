@@ -1169,6 +1169,54 @@ fn attributes(s: &str) -> Vec<(String, String)> {
 
 // ---------- Keys and index ----------
 
+/// Hashes a source line for `Block::key`, normalizing Markdown task checkboxes (`[x]` / `[X]`
+/// -> `[ ]`) so toggling a task in preview keeps the list block's identity and avoids unmount
+/// / growth-animation reflow of the blocks below it.
+fn hash_block_line<H: Hasher>(line: &str, h: &mut H) {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    loop {
+        while i < bytes.len() && bytes[i] == b' ' {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b'>' {
+            i += 1;
+            continue;
+        }
+        break;
+    }
+    let after_marker = if i + 1 < bytes.len() && matches!(bytes[i], b'-' | b'*' | b'+') && matches!(bytes[i + 1], b' ' | b'\t') {
+        Some(i + 1)
+    } else {
+        let mut d = i;
+        while d < bytes.len() && bytes[d].is_ascii_digit() {
+            d += 1;
+        }
+        if d > i && d + 1 < bytes.len() && matches!(bytes[d], b'.' | b')') && matches!(bytes[d + 1], b' ' | b'\t') {
+            Some(d + 1)
+        } else {
+            None
+        }
+    };
+    if let Some(mut j) = after_marker {
+        while j < bytes.len() && matches!(bytes[j], b' ' | b'\t') {
+            j += 1;
+        }
+        if j + 3 <= bytes.len()
+            && bytes[j] == b'['
+            && matches!(bytes[j + 1], b' ' | b'x' | b'X')
+            && bytes[j + 2] == b']'
+            && (j + 3 == bytes.len() || matches!(bytes[j + 3], b' ' | b'\t'))
+        {
+            line[..j].hash(h);
+            "[ ]".hash(h);
+            line[j + 3..].hash(h);
+            return;
+        }
+    }
+    line.hash(h);
+}
+
 /// Each top-level block's key: its source text's hash and how many blocks before it had the same.
 fn stamp_keys(src: &str, blocks: &mut [Block]) {
     let lines: Vec<&str> = src.split('\n').collect();
@@ -1176,7 +1224,10 @@ fn stamp_keys(src: &str, blocks: &mut [Block]) {
     for b in blocks {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         let (a, z) = (b.lines.start.min(lines.len()), b.lines.end.min(lines.len()));
-        lines[a..z].hash(&mut h);
+        (z - a).hash(&mut h);
+        for &ln in &lines[a..z] {
+            hash_block_line(ln, &mut h);
+        }
         std::mem::discriminant(&b.kind).hash(&mut h);
         let hash = h.finish();
         let n = seen.entry(hash).or_insert(0);

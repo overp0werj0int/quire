@@ -246,23 +246,29 @@ pub(crate) fn reading(s: &App) -> bool {
     s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
 }
 
+/// The writer is on screen: a note open in source mode, not locked.
+pub(crate) fn writing(s: &App) -> bool {
+    s.screen == Screen::Vault && s.mode == crate::app::Mode::Source && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
+}
+
 /// What the page map (`reader::PageMap`) takes from the view: whether the page shows, each
 /// block's first line, row key and gap above it. The rows' heights come in as they are laid
 /// out, so a scroll runs no view (VER-32). Unchanged frames reuse `starts`, `gaps`, and
 /// memoized outline live handles (`LIVEPACE`).
 fn map_page(s: &App, outline_shown: bool) {
     let mut map = s.reader.map.borrow_mut();
+    let was = (map.reading, map.writing);
     map.reading = reading(s);
+    map.writing = writing(s);
     map.shelf.clear();
+    if !outline_shown || (!map.reading && !map.writing) || was != (map.reading, map.writing) {
+        map.clear_outline();
+    }
     if !map.reading {
         map.clear_starts();
-        map.clear_outline();
         // The writer's progress takes the reader's measure (WR-178): it needs the line count.
         map.lines = s.line_count();
         return;
-    }
-    if !outline_shown {
-        map.clear_outline();
     }
     let doc = s.doc();
     let note = s.doc_hash();

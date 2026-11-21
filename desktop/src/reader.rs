@@ -149,10 +149,17 @@ impl HelpScroll {
 /// that a trip to them corrects as it arrives.
 #[derive(Default)]
 pub struct PageMap {
-    /// The page is on screen.
+    /// The reader page is on screen.
     pub reading: bool,
+    /// The writer source editor is on screen (unlocked).
+    pub writing: bool,
     /// The note the rows are for, by its text's hash.
     note: Option<u64>,
+    /// Last seen `(doc_hash, caret_byte)` in source mode so caret moves update the outline
+    /// while hand scrolling owns the outline until the caret moves again.
+    pub source_caret: Option<(Option<u64>, usize)>,
+    /// True after a source-mode caret move until a hand scroll takes over.
+    pub source_from_caret: bool,
     /// Each block's row key and its index, and each laid-out row's height by key.
     keys: Vec<String>,
     index: HashMap<String, usize>,
@@ -427,28 +434,100 @@ impl PageMap {
         self.base.partition_point(|&t| t + self.shift <= y).saturating_sub(1)
     }
 
-    /// The row of outline `m` current at `offset`: the last heading whose top is above the
-    /// viewport's top plus 100 points.
-    pub fn head_row(&self, m: &Marks, offset: f32) -> Option<usize> {
-        let y = offset + 100.0;
-        m.heads.iter().rev().find(|(k, _)| self.block_top(*k).is_some_and(|t| t <= y)).map_or(m.first_row, |(_, row)| *row)
+    /// The scan line in scroll-content coordinates for outline selection at `[offset, max, vh]`:
+    /// 100 pt below the viewport top while more than one screen remains, sweeping smoothly to
+    /// the viewport bottom over the final screen so headings near the end of the note are reached.
+    fn scan_y(offset: f32, max: f32, vh: f32) -> f32 {
+        if max <= 0.5 || offset <= 0.5 {
+            return offset + 100.0;
+        }
+        if max - offset <= 1.0 {
+            return offset + vh;
+        }
+        let last = vh.min(max);
+        let left = max - offset;
+        if last > 0.0 && left < last {
+            let t = (1.0 - left / last).clamp(0.0, 1.0);
+            offset + 100.0 + (vh - 100.0).max(0.0) * t
+        } else {
+            offset + 100.0
+        }
+    }
+
+    /// Heading `key`'s top in scroll-content coordinates: block index in preview, source line
+    /// index in source mode.
+    fn heading_y(&self, key: usize) -> Option<f32> {
+        if self.reading {
+            self.block_top(key)
+        } else if self.writing {
+            let [fy, fh] = self.field;
+            if fh <= 0.0 || self.lines == 0 {
+                return None;
+            }
+            let top = fy - self.content_y;
+            Some(top + (key as f32 / self.lines as f32) * fh)
+        } else {
+            None
+        }
+    }
+
+    /// The row of outline `m` current at scroll `now` (`[offset, max, vh, _]`): the last heading
+    /// whose top is at or above `scan_y`.
+    pub fn head_row(&self, m: &Marks, [offset, max, vh, _]: [f32; 4]) -> Option<usize> {
+        let y = if self.reading {
+            Self::scan_y(offset, max, vh)
+        } else if self.writing {
+            let [fy, fh] = self.field;
+            if fh <= 0.0 || self.lines == 0 {
+                return m.first_row;
+            }
+            let top = fy - self.content_y;
+            let end = (top + fh - vh).clamp(0.0, max.max(0.0));
+            if end > 0.5 && offset >= end - 1.0 {
+                top + fh
+            } else {
+                let eff_max = if end > 0.5 { end } else { max };
+                Self::scan_y(offset.min(eff_max), eff_max, vh)
+            }
+        } else {
+            return m.first_row;
+        };
+        m.heads.iter().rev().find(|(k, _)| self.heading_y(*k).is_some_and(|t| t <= y)).map_or(m.first_row, |(_, row)| *row)
+    }
+
+    /// The row of outline `m` current at source `line` (when `m.heads` stores `(h.line, row)`).
+    pub fn head_row_line(m: &Marks, line: usize) -> Option<usize> {
+        m.heads.iter().rev().find(|(l, _)| *l <= line).map_or(m.first_row, |(_, row)| *row)
     }
 
     /// The outline highlight and the reading progress line (RD-38) at the scroll `now`
     /// ([offset, max, height, width]), without a view run (VER-32).
-    pub fn follow(&mut self, now: [f32; 4], bar: &Live<[f32; 4]>) {
+    pub fn follow(&mut self, now: [f32; 4], by_hand: bool, bar: &Live<[f32; 4]>) {
         let k = if self.reading {
-            self.mark(now[0]);
+            self.mark(now);
             self.progress(now)
         } else {
+            if self.writing && (by_hand || !self.source_from_caret) {
+                if by_hand {
+                    self.source_from_caret = false;
+                }
+                self.mark(now);
+            }
             self.source_progress(now)
         };
         bar.set([0.0, 0.0, now[3] * k.clamp(0.0, 1.0), 2.0]);
     }
 
-    /// Moves both outlines' highlights to the rows current at `offset`, without a view run.
-    pub fn mark(&mut self, offset: f32) {
-        let rows = [self.head_row(&self.outline, offset), self.head_row(&self.shelf, offset)];
+    /// Moves both outlines' highlights to the rows current at scroll `now`, without a view run.
+    pub fn mark(&mut self, now: [f32; 4]) {
+        let rows = [self.head_row(&self.outline, now), self.head_row(&self.shelf, now)];
+        self.outline.mark(rows[0]);
+        self.shelf.mark(rows[1]);
+    }
+
+    /// Moves both outlines' highlights to the rows at source `line`, without a view run.
+    pub fn mark_line(&mut self, line: usize) {
+        let rows = [Self::head_row_line(&self.outline, line), Self::head_row_line(&self.shelf, line)];
         self.outline.mark(rows[0]);
         self.shelf.mark(rows[1]);
     }
@@ -883,7 +962,7 @@ impl App {
         let now = self.reader.scroll.get();
         let mut map = self.reader.map.borrow_mut();
         if map.field_laid_out(y, h) {
-            map.follow(now, &self.reader.bar);
+            map.follow(now, false, &self.reader.bar);
         }
         tx.live_only();
     }
@@ -894,7 +973,7 @@ impl App {
         let now = self.reader.scroll.get();
         let mut map = self.reader.map.borrow_mut();
         if map.row_laid_out(key, x, y, h) {
-            map.follow(now, &self.reader.bar);
+            map.follow(now, false, &self.reader.bar);
         }
         if let Some((k, travel, since)) = map.later.take() {
             match map.index.get(&k).copied() {
@@ -1453,18 +1532,49 @@ mod tests {
     #[test]
     fn both_outlines_follow_the_scroll() {
         let mut map = PageMap::default();
+        map.reading = true;
         map.set_rows(Some(1), 14.0, || (0..10).map(|i| format!("b{i}")).collect(), || vec![0.0; 10], 100.0);
         let rows = |n: usize| (0..n).map(|_| Mark { fill: Live::new(Color::TRANSPARENT), ink: Live::new(Color::BLACK), on: [Color::WHITE, Color::WHITE], off: [Color::TRANSPARENT, Color::BLACK] }).collect::<Vec<_>>();
         map.outline = Marks { heads: vec![(2, Some(0)), (4, Some(1)), (7, Some(2))], first_row: Some(0), marks: rows(3), marked: None };
         map.shelf = Marks { heads: vec![(4, Some(0)), (7, Some(1))], first_row: None, marks: rows(2), marked: None };
         let inks = |m: &Marks| m.marks.iter().map(|r| r.ink.get() == Color::WHITE).collect::<Vec<_>>();
-        map.mark(0.0);
+        map.mark([0.0, 900.0, 400.0, 800.0]);
         assert_eq!((map.outline.marked, map.shelf.marked), (Some(0), None), "above the first H1 the shelf marks nothing");
         assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![true, false, false], vec![false, false]));
-        map.mark(350.0);
+        map.mark([350.0, 900.0, 400.0, 800.0]);
         assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![false, true, false], vec![true, false]), "block 4 is at the view's top");
-        map.mark(900.0);
+        map.mark([900.0, 900.0, 400.0, 800.0]);
         assert_eq!((inks(&map.outline), inks(&map.shelf)), (vec![false, false, true], vec![false, true]));
+    }
+
+    #[test]
+    fn outline_reaches_last_heading_at_bottom_in_preview_and_source() {
+        let rows = |n: usize| (0..n).map(|_| Mark { fill: Live::new(Color::TRANSPARENT), ink: Live::new(Color::BLACK), on: [Color::WHITE, Color::WHITE], off: [Color::TRANSPARENT, Color::BLACK] }).collect::<Vec<_>>();
+
+        // Preview: last heading sits in the lower half of the final viewport (y=1200 with max=900, vh=600).
+        let mut map = PageMap::default();
+        map.reading = true;
+        map.set_rows(Some(1), 14.0, || (0..15).map(|i| format!("b{i}")).collect(), || vec![0.0; 15], 100.0);
+        map.outline = Marks { heads: vec![(0, Some(0)), (6, Some(1)), (12, Some(2))], first_row: Some(0), marks: rows(3), marked: None };
+        map.mark([0.0, 900.0, 600.0, 800.0]);
+        assert_eq!(map.outline.marked, Some(0));
+        map.mark([900.0, 900.0, 600.0, 800.0]);
+        assert_eq!(map.outline.marked, Some(2), "scrolling to bottom selects the last heading even below offset+100");
+
+        // Source mode: live outline updates smoothly on hand scroll all the way to the last heading.
+        let mut smap = PageMap::default();
+        smap.writing = true;
+        smap.lines = 100;
+        smap.content_laid_out(40.0);
+        smap.field_laid_out(100.0, 2000.0); // top=60, h=2000 -> text ends at 2060
+        smap.outline = Marks { heads: vec![(0, Some(0)), (50, Some(1)), (92, Some(2))], first_row: Some(0), marks: rows(3), marked: None };
+        let bar = Live::new([0.0; 4]);
+        smap.follow([0.0, 1760.0, 600.0, 800.0], true, &bar);
+        assert_eq!(smap.outline.marked, Some(0));
+        smap.follow([1000.0, 1760.0, 600.0, 800.0], true, &bar);
+        assert_eq!(smap.outline.marked, Some(1));
+        smap.follow([1460.0, 1760.0, 600.0, 800.0], true, &bar);
+        assert_eq!(smap.outline.marked, Some(2), "scrolling to end of source text selects the last heading");
     }
 
     #[test]

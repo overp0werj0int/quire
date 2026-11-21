@@ -110,6 +110,17 @@ pub const TABLE: &[Action] = &[
     same(94, "app.undo-delete", "Undo the delete", &[Global], Quire, &["Ctrl+Shift+R"]),
     same(96, "app.next-pane", "Next pane", &[Global], Quire, &["F6"]),
     same(97, "app.previous-pane", "Previous pane", &[Global], Quire, &["Shift+F6"]),
+    same(99, "app.tab-1", "Tab 1", &[Global], Quire, &["Ctrl+1"]),
+    same(99, "app.tab-2", "Tab 2", &[Global], Quire, &["Ctrl+2"]),
+    same(99, "app.tab-3", "Tab 3", &[Global], Quire, &["Ctrl+3"]),
+    same(99, "app.tab-4", "Tab 4", &[Global], Quire, &["Ctrl+4"]),
+    same(99, "app.tab-5", "Tab 5", &[Global], Quire, &["Ctrl+5"]),
+    same(99, "app.tab-6", "Tab 6", &[Global], Quire, &["Ctrl+6"]),
+    same(99, "app.tab-7", "Tab 7", &[Global], Quire, &["Ctrl+7"]),
+    same(99, "app.tab-8", "Tab 8", &[Global], Quire, &["Ctrl+8"]),
+    same(99, "app.tab-9", "Tab 9", &[Global], Quire, &["Ctrl+9"]),
+    same(100, "app.next-tab", "Next tab", &[Global], Quire, &["Ctrl+Tab"]),
+    same(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
     // Reader.
     same(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
     same(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),
@@ -143,12 +154,12 @@ pub const TABLE: &[Action] = &[
     a(52, "writer.inline-code", "Inline code", W, Adapted, &["Ctrl+E"], &["Ctrl+Shift+E"]),
     same(53, "writer.strikethrough", "Strikethrough", W, In, &["Ctrl+Shift+X"]),
     same(54, "writer.link", "Link", W, In, &["Ctrl+K"]),
-    same(55, "writer.heading-1", "Heading 1", W, In, &["Ctrl+1"]),
-    same(55, "writer.heading-2", "Heading 2", W, In, &["Ctrl+2"]),
-    same(55, "writer.heading-3", "Heading 3", W, In, &["Ctrl+3"]),
-    same(55, "writer.heading-4", "Heading 4", W, In, &["Ctrl+4"]),
-    same(55, "writer.heading-5", "Heading 5", W, In, &["Ctrl+5"]),
-    same(55, "writer.heading-6", "Heading 6", W, In, &["Ctrl+6"]),
+    same(55, "writer.heading-1", "Heading 1", W, Adapted, &["Ctrl+Alt+1"]),
+    same(55, "writer.heading-2", "Heading 2", W, Adapted, &["Ctrl+Alt+2"]),
+    same(55, "writer.heading-3", "Heading 3", W, Adapted, &["Ctrl+Alt+3"]),
+    same(55, "writer.heading-4", "Heading 4", W, Adapted, &["Ctrl+Alt+4"]),
+    same(55, "writer.heading-5", "Heading 5", W, Adapted, &["Ctrl+Alt+5"]),
+    same(55, "writer.heading-6", "Heading 6", W, Adapted, &["Ctrl+Alt+6"]),
     same(56, "writer.plain-paragraph", "Plain paragraph", W, In, &["Ctrl+0"]),
     same(57, "writer.indent", "Indent", W, In, &["Tab"]),
     same(58, "writer.outdent", "Outdent", W, In, &["Shift+Tab"]),
@@ -312,7 +323,8 @@ pub fn matches(c: &Chord, ev: &KeyEvent) -> bool {
     if m.alt != c.alt || (m.logo && !cfg!(target_os = "macos")) {
         return false;
     }
-    if m.cmd != c.ctrl {
+    let ctrl_ok = m.cmd == c.ctrl || (cfg!(target_os = "macos") && c.key == K::Tab && c.ctrl && m.ctrl && !m.cmd);
+    if !ctrl_ok {
         return false;
     }
     match c.key {
@@ -522,7 +534,7 @@ mod tests {
         let spec = std::fs::read_to_string(path).unwrap();
         let mut seen = 0;
         for line in spec.lines().filter(|l| l.starts_with("- **KEY-")) {
-            let item: u16 = line[8..10].parse().unwrap();
+            let item: u16 = line.strip_prefix("- **KEY-").unwrap().split_once("**").unwrap().0.parse().unwrap();
             let Some(rest) = line.split_once("omarky preset ").map(|x| x.1) else { continue };
             seen += 1;
             let (om, rest) = rest.split_once("; quire preset ").unwrap();
@@ -533,10 +545,20 @@ mod tests {
             let acts: Vec<&Action> = TABLE.iter().filter(|a| a.item == item).collect();
             assert!(!acts.is_empty(), "KEY-{item} is not in the table");
             if item == 55 {
-                // Six actions, Ctrl+1 to Ctrl+6.
+                // Six actions, Ctrl+Alt+1 to Ctrl+Alt+6.
                 assert_eq!(acts.len(), 6);
                 for (i, a) in acts.iter().enumerate() {
+                    assert_eq!(a.omarky, &[format!("Ctrl+Alt+{}", i + 1).as_str()][..]);
+                    assert_eq!(a.quire, &[format!("Ctrl+Alt+{}", i + 1).as_str()][..]);
+                }
+                continue;
+            }
+            if item == 99 {
+                // Nine actions, Ctrl+1 to Ctrl+9.
+                assert_eq!(acts.len(), 9);
+                for (i, a) in acts.iter().enumerate() {
                     assert_eq!(a.omarky, &[format!("Ctrl+{}", i + 1).as_str()][..]);
+                    assert_eq!(a.quire, &[format!("Ctrl+{}", i + 1).as_str()][..]);
                 }
                 continue;
             }
@@ -554,7 +576,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 89, "every KEY item with chords was read");
+        assert_eq!(seen, 92, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }

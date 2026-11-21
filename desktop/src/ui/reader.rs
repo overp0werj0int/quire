@@ -230,7 +230,17 @@ const HELP: &[(&str, &[HelpRow])] = &[
             h("Save to the file / cancel", &["sheet.save", "sheet.cancel"]),
         ],
     ),
-    ("File", &[h("Open a note", &["app.quick-switcher"]), h("Read from disk", &["reader.read-from-disk"]), h("Close the tab", &["reader.close-tab"]), h("This sheet", &["reader.help"])]),
+    (
+        "File",
+        &[
+            h("Open a note", &["app.quick-switcher"]),
+            h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
+            h("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
+            h("Read from disk", &["reader.read-from-disk"]),
+            h("Close the tab", &["reader.close-tab"]),
+            h("This sheet", &["reader.help"]),
+        ],
+    ),
 ];
 
 /// The writer's help groups (WR-166), in omarky's order and wording.
@@ -267,6 +277,8 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
             h("New note", &["app.new-note"]),
             h("Open a note", &["app.quick-switcher"]),
             h("Recent notes", &["writer.recent-notes"]),
+            h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
+            h("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
             h("Close the tab", &["app.close-tab"]),
             h("This sheet", &["writer.help"]),
         ],

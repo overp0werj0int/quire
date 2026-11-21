@@ -15,7 +15,7 @@ use super::super::widgets::name_tip;
 use super::{BUTTON_END, ICON};
 use super::parts::{GAP, INNER_RADIUS, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
-use crate::app::{App, Mode, Shelved};
+use crate::app::{App, Shelved};
 use crate::md;
 use crate::roles::Roles;
 use crate::sidebar::Reorder;
@@ -220,24 +220,30 @@ fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
     let s = v.s;
     let c = Roles::panel(v.p);
     let mut map = s.reader.map.borrow_mut();
-    let live = map.reading && s.mode != Mode::Source;
-    let cur = if s.mode == Mode::Source {
-        let doc = s.active_text();
-        let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
-        let line = md::line_col(doc, caret).0;
-        heads.iter().rposition(|h| h.line <= line)
-    } else if live {
-        let blocks = s.doc();
-        map.shelf.heads = heads
-            .iter()
-            .enumerate()
-            .filter_map(|(n, h)| {
-                let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
-                blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line).then_some((k, Some(n)))
-            })
-            .collect();
+    let live = map.reading || map.writing;
+    let cur = if live {
+        if map.reading {
+            let blocks = s.doc();
+            map.shelf.heads = heads
+                .iter()
+                .enumerate()
+                .filter_map(|(n, h)| {
+                    let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
+                    blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line).then_some((k, Some(n)))
+                })
+                .collect();
+        } else {
+            map.shelf.heads = heads.iter().enumerate().map(|(n, h)| (h.line, Some(n))).collect();
+        }
         map.shelf.first_row = None;
-        let cur = map.head_row(&map.shelf, s.reader.scroll.get()[0]);
+        let cur = if map.writing && map.source_from_caret {
+            let doc = s.active_text();
+            let caret = s.active.as_ref().and_then(|a| s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
+            let line = md::line_col(doc, caret).0;
+            crate::reader::PageMap::head_row_line(&map.shelf, line)
+        } else {
+            map.head_row(&map.shelf, s.reader.scroll.get())
+        };
         map.shelf.marked = cur;
         cur
     } else {

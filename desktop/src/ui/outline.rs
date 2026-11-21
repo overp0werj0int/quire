@@ -33,23 +33,26 @@ pub fn outline(v: V) -> El {
     // omarky lists h1 to h4. Under a deeper heading, the h1 to h4 above it is current.
     let shown: Vec<usize> = (0..heads.len()).filter(|&i| heads[i].level <= 4).collect();
     let row_of = |i: usize| shown.iter().rposition(|&j| j <= i);
-    // In the reader the scroll handler moves the highlight (`reader::PageMap::mark`), so a
-    // scroll runs no view (VER-32).
-    let (live, outline_gen) = {
-        let map = s.reader.map.borrow();
-        (map.reading, map.outline_gen)
-    };
-    let cur = if s.mode == Mode::Source {
-        let line = line_col.map_or(0, |(l, _)| l);
-        heads.iter().rposition(|h| h.line <= line).and_then(row_of)
-    } else {
-        None
+    // In both reader and writer the scroll handler moves the highlight (`reader::PageMap::mark`),
+    // so a scroll runs no view (VER-32). In source mode, caret moves also update the live mark
+    // without rebuilding the outline memo.
+    let (live, reading, outline_gen) = {
+        let mut map = s.reader.map.borrow_mut();
+        let caret_key = (s.doc_hash(), pos);
+        if map.writing && map.source_caret != Some(caret_key) {
+            map.source_caret = Some(caret_key);
+            map.source_from_caret = true;
+            if let Some((line, _)) = line_col {
+                map.mark_line(line);
+            }
+        }
+        (map.reading || map.writing, map.reading, map.outline_gen)
     };
     let pal_id = p as *const crate::theme::Pal as usize;
     let panel_font = &s.settings().panel_font;
     let heads_version = {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (heads_ver, live, outline_gen, if live { s.doc_hash() } else { None }, if live { None } else { cur }, pal_id, panel_font).hash(&mut h);
+        (heads_ver, live, reading, outline_gen, if reading { s.doc_hash() } else { None }, pal_id, panel_font).hash(&mut h);
         h.finish()
     };
     let contents = rune::memo("outline-heads", heads_version, || {
@@ -57,24 +60,32 @@ pub fn outline(v: V) -> El {
         let cur = if live {
             map.outline.clear();
             if !heads.is_empty() {
-                let blocks = s.doc();
-                map.outline.heads = heads
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, h)| {
-                        let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
-                        (blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line)).then_some((k, row_of(i)))
-                    })
-                    .collect();
+                if map.reading {
+                    let blocks = s.doc();
+                    map.outline.heads = heads
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, h)| {
+                            let k = blocks.blocks.partition_point(|b| b.lines.start < h.line);
+                            (blocks.blocks.get(k).is_some_and(|b| b.lines.start == h.line)).then_some((k, row_of(i)))
+                        })
+                        .collect();
+                } else {
+                    map.outline.heads = heads.iter().enumerate().map(|(i, h)| (h.line, row_of(i))).collect();
+                }
                 map.outline.first_row = row_of(0);
-                let cur = map.head_row(&map.outline, s.reader.scroll.get()[0]);
+                let cur = if map.writing && map.source_from_caret {
+                    crate::reader::PageMap::head_row_line(&map.outline, line_col.map_or(0, |(l, _)| l))
+                } else {
+                    map.head_row(&map.outline, s.reader.scroll.get())
+                };
                 map.outline.marked = cur;
                 cur
             } else {
                 None
             }
         } else {
-            cur
+            None
         };
         let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
         let mut contents = lists::list(col().w_full(), "list");

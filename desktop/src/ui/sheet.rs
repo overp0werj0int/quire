@@ -90,6 +90,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .min_h(90.0)
         .max_h(limit)
         .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_margin(6.0)
         .child(el().key("sheet-pad").w_full().py(6.0).child(input));
 
     // SHEET-030, SHEET-038, SHEET-047: the key row, or the problem in its place.

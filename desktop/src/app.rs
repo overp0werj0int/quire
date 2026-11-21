@@ -1021,6 +1021,19 @@ impl App {
         Some(v.path.join(self.active.as_ref()?))
     }
 
+    /// The full on-disk path of the active note, in Folder or Note mode.
+    pub fn active_path(&self) -> Option<PathBuf> {
+        let v = self.vault.as_ref()?;
+        Some(v.path.join(self.active.as_ref()?))
+    }
+
+    /// Copies the active note's full path to the clipboard and shows a toast.
+    pub fn copy_path(&mut self, tx: &mut Tx) {
+        let Some(path) = self.active_path() else { return };
+        tx.copy(path.to_string_lossy().into_owned());
+        self.toast("Copied path", tx);
+    }
+
     /// Ctrl+O: the quick switcher, or in Note mode the system's file picker.
     pub fn quick_open(&mut self, tx: &mut Tx) {
         if !self.note_mode() {
@@ -1430,6 +1443,39 @@ impl App {
             Shelved::Tab(p) => self.close_tab(p),
             Shelved::File(f) => self.close_note(f),
         }
+    }
+
+    /// Switches to `t` from the Open shelf, closes any drawer, and hands keys to the note.
+    fn activate_shelved(&mut self, t: &Shelved, tx: &mut Tx) {
+        if self.shelved().as_ref() != Some(t) {
+            match t {
+                Shelved::Tab(p) => self.open_file(p, None, tx),
+                Shelved::File(f) => {
+                    self.open_note(f);
+                }
+            }
+        }
+        self.close_drawer();
+        self.keys_to_note(tx);
+    }
+
+    /// Switches to the 0-based tab `index` in the Open shelf (`Ctrl+1`..`Ctrl+9`).
+    pub fn switch_tab_index(&mut self, index: usize, tx: &mut Tx) {
+        let shelf = self.shelf();
+        let Some(target) = shelf.get(index).cloned() else { return };
+        self.activate_shelved(&target, tx);
+    }
+
+    /// Switches to the next (`forward`) or previous tab in the Open shelf, wrapping around
+    /// (`Ctrl+Tab` / `Ctrl+Shift+Tab`).
+    pub fn step_tab(&mut self, forward: bool, tx: &mut Tx) {
+        let shelf = self.shelf();
+        if shelf.len() < 2 {
+            return;
+        }
+        let cur = self.shelved().and_then(|on| shelf.iter().position(|t| t == &on)).unwrap_or(0);
+        let next = if forward { (cur + 1) % shelf.len() } else { (cur + shelf.len() - 1) % shelf.len() };
+        self.activate_shelved(&shelf[next], tx);
     }
 
     /// Moves the shelf's tab at `from` to `to`, both places among the tabs it shows (SB-21,

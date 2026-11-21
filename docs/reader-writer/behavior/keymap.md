@@ -55,6 +55,9 @@ Notes on reading this file:
 - **KEY-94** [quire] [verify: -] app.undo-delete (global): omarky preset `Ctrl+Shift+R`; quire preset `Ctrl+Shift+R`. While a delete's toast offers Undo, puts the note or folder back (`folders::Deleted`). The toast names the key. Text fields keep `Ctrl+Z`, so the delete takes a chord of its own. R is for restore.
 - **KEY-96** [quire] [verify: -] app.next-pane (global): omarky preset `F6`; quire preset `F6`. Moves the keyboard to the next pane that shows, left to right, and round: the sidebar's current list, the note, the outline's current heading (KEY-98). The note's links and the toolbar are not panes, so F6 skips them.
 - **KEY-97** [quire] [verify: -] app.previous-pane (global): omarky preset `Shift+F6`; quire preset `Shift+F6`. Moves the keyboard to the pane before, as KEY-96 does the other way.
+- **KEY-99** [quire] [verify: -] app.tab-1 to app.tab-9 (global): omarky preset `Ctrl+1` to `Ctrl+9`; quire preset `Ctrl+1` to `Ctrl+9`. Switches to the first through ninth tab in the Open shelf.
+- **KEY-100** [quire] [verify: -] app.next-tab (global): omarky preset `Ctrl+Tab`; quire preset `Ctrl+Tab`. Switches to the next tab in the Open shelf, wrapping from last to first.
+- **KEY-101** [quire] [verify: -] app.previous-tab (global): omarky preset `Ctrl+Shift+Tab`; quire preset `Ctrl+Shift+Tab`. Switches to the previous tab in the Open shelf, wrapping from first to last.
 
 ## Reader
 
@@ -95,7 +98,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-52** [adapted: 0003] [verify: unit, script] writer.inline-code (writer, sheet): omarky preset `Ctrl+E`; quire preset `Ctrl+Shift+E`. Toggles a backtick pair, or a fence across lines (WR-51, WR-56). In the quire preset `Ctrl+E` is the mode switch.
 - **KEY-53** [in] [verify: unit, script] writer.strikethrough (writer, sheet): omarky preset `Ctrl+Shift+X`; quire preset `Ctrl+Shift+X`. Toggles `~~` (WR-51).
 - **KEY-54** [in] [verify: unit, script] writer.link (writer, sheet): omarky preset `Ctrl+K`; quire preset `Ctrl+K`. Makes a link from the selection, ready for the URL or the text (WR-57, WR-58).
-- **KEY-55** [in] [verify: unit, script] writer.heading-1 to writer.heading-6 (writer, sheet): omarky preset `Ctrl+1` to `Ctrl+6`; quire preset `Ctrl+1` to `Ctrl+6`. Six actions that set the line's heading level, or clear it when it is already that level (WR-59, WR-60, WR-61).
+- **KEY-55** [adapted: 0003] [verify: unit, script] writer.heading-1 to writer.heading-6 (writer, sheet): omarky preset `Ctrl+Alt+1` to `Ctrl+Alt+6`; quire preset `Ctrl+Alt+1` to `Ctrl+Alt+6`. Six actions that set the line's heading level, or clear it when it is already that level (WR-59, WR-60, WR-61). Moved from `Ctrl+1` to `Ctrl+6` so `Ctrl+1` to `Ctrl+9` switch open tabs globally (KEY-99).
 - **KEY-56** [in] [verify: unit, script] writer.plain-paragraph (writer, sheet): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Clears the line's heading (WR-60, WR-62).
 - **KEY-57** [in] [verify: unit, script] writer.indent (writer, sheet): omarky preset `Tab`; quire preset `Tab`. Indents a list item by its marker's step, else inserts 4 spaces (WR-47, WR-48, WR-49).
 - **KEY-58** [in] [verify: unit, script] writer.outdent (writer, sheet): omarky preset `Shift+Tab`; quire preset `Shift+Tab`. Outdents a list item, else does nothing and is consumed (WR-50).

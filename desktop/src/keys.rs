@@ -240,6 +240,17 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.undo-delete" => |s, tx| s.undo_delete(tx),
         "app.next-pane" => |s, tx| s.step_pane(false, tx),
         "app.previous-pane" => |s, tx| s.step_pane(true, tx),
+        "app.tab-1" => |s, tx| s.switch_tab_index(0, tx),
+        "app.tab-2" => |s, tx| s.switch_tab_index(1, tx),
+        "app.tab-3" => |s, tx| s.switch_tab_index(2, tx),
+        "app.tab-4" => |s, tx| s.switch_tab_index(3, tx),
+        "app.tab-5" => |s, tx| s.switch_tab_index(4, tx),
+        "app.tab-6" => |s, tx| s.switch_tab_index(5, tx),
+        "app.tab-7" => |s, tx| s.switch_tab_index(6, tx),
+        "app.tab-8" => |s, tx| s.switch_tab_index(7, tx),
+        "app.tab-9" => |s, tx| s.switch_tab_index(8, tx),
+        "app.next-tab" => |s, tx| s.step_tab(true, tx),
+        "app.previous-tab" => |s, tx| s.step_tab(false, tx),
         "app.escape" => |s, tx| {
             s.escape(tx);
         },

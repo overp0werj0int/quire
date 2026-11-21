@@ -250,8 +250,8 @@ fn doc_scroll(v: V) -> El {
             let mut sig = signal.get();
             sig.on_scroll_offset(moved, by_hand, t);
             signal.set(sig);
-            // The progress line (RD-38, WR-178).
-            map.borrow_mut().follow(now, &bar);
+            // The progress line (RD-38, WR-178) and live outline mark.
+            map.borrow_mut().follow(now, by_hand, &bar);
             thumb.set(thumb_rect(now));
             if moved {
                 // Each scroll shows the thumb for 700 ms past the last move (WR-93).
@@ -528,12 +528,29 @@ pub(super) fn crumb(v: V) -> El {
     // and keeps at least "…". Once the title has a width, the cuts are made here (`crumb_fit`).
     let name = md::base(&active).to_string();
     let reloaded = s.reader.reloaded.is_some() && s.mode == Mode::Preview;
+    let copy_w = 24.0 + 6.0;
     let fit = s.renaming.is_none().then(|| rune::memo::layout_size("title")).flatten().map(|[w, _]| {
         let pad = if v.left_visible() { 20.0 } else { 6.0 } + 8.0;
         let mark = if reloaded { 6.0 + super::reader::reloaded_w() } else { 0.0 };
-        crumb_fit(&dir, &name, w - pad - mark, style)
+        crumb_fit(&dir, &name, (w - pad - mark - copy_w).max(0.0), style)
     });
-    let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y();
+    let (rw, rg, rc) = super::focus_ring(p);
+    let copy_btn = super::focus::stop(row())
+        .key("copy-path")
+        .size(24.0, 24.0)
+        .center()
+        .radius(5.0)
+        .hover(p.hover)
+        .hover_group()
+        .no_window_drag()
+        .role("button")
+        .label("Copy file path")
+        .help("Copy full path")
+        .focus_ring(rw, rg, rc)
+        .keeps_text_selection()
+        .control(super::titlebar::act(|s, tx| s.copy_path(tx)))
+        .child(icon(&super::icons::COPY, 15.0).color(quiet.faint).group_color(p.ink));
+    let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y().child(copy_btn);
     if !dir.is_empty() {
         let folder = match &fit {
             Some((folder, _)) => text(folder.clone()).font(style).color(quiet.faint).truncate_head().shrink().min_w(0.0),
@@ -549,7 +566,6 @@ pub(super) fn crumb(v: V) -> El {
     let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);
     let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
     name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
-    let (rw, rg, rc) = super::focus_ring(p);
     let r = match &s.renaming {
         None => r.child(
             super::focus::stop(row())

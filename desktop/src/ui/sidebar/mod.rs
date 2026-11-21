@@ -154,7 +154,10 @@ fn search_field(v: V) -> El {
             match (&ev.key, &first) {
                 (rune::Key::Escape, _) if s.search_escape(tx) => {}
                 (rune::Key::Escape, _) if s.layer().is_none() => s.keys_to_note(tx),
-                (rune::Key::Down, Some(k)) => tx.focus(k.clone(), true),
+                (rune::Key::Down, Some(k)) => {
+                    s.res_focus = Some(k.clone());
+                    tx.focus(k.clone(), true);
+                }
                 (rune::Key::Enter, Some(k)) => s.choose_result(k, tx),
                 (rune::Key::Enter, None) => {}
                 _ => return false,

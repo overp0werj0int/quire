@@ -3296,19 +3296,12 @@ mod writer_chrome_tests {
         });
         assert!(text_now.contains("- [x] First task"), "Space must toggle focused task checkbox: {text_now:?}");
 
-        // Tab to first checkbox again and Enter untoggles it.
-        let mut reached_again = false;
-        for _ in 0..12 {
-            rt.key(tab.clone());
-            for _ in 0..3 {
-                rt.frame(DT);
-            }
-            if rt.elements().into_iter().any(|e| !e.exiting && e.role == "checkbox" && e.focused) {
-                reached_again = true;
-                break;
-            }
-        }
-        assert!(reached_again, "Tab reaches checkbox after toggle");
+        // Because toggling a task keeps the list's block key stable (zero unmount/reflow),
+        // the first checkbox keeps focus and Enter untoggles it directly.
+        assert!(
+            rt.elements().into_iter().any(|e| !e.exiting && e.role == "checkbox" && e.focused),
+            "checkbox keeps keyboard focus after toggle"
+        );
         rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
         for _ in 0..8 {
             rt.frame(DT);
@@ -8788,6 +8781,7 @@ mod layer_matrix_tests {
             K::Char(ch) if c.ctrl => Key::Command(ch),
             K::Char(ch) => Key::Text(ch.to_string()),
             K::Enter => Key::Enter,
+            K::Tab => Key::Tab,
             K::Up => Key::Up,
             K::Down => Key::Down,
             K::F(n) => Key::Function(n),
@@ -9441,7 +9435,7 @@ mod layer_matrix_tests {
                 }
             }
             let before = seen(&mut rt);
-            for c in ['b', 'k', 'e', 'i', '1'] {
+            for c in ['b', 'k', 'e', 'i', '0'] {
                 key(&mut rt, Key::Command(c), ctrl(false));
                 let after = seen(&mut rt);
                 if after.text != before.text || focused(&rt).as_deref() != Some(field) {
@@ -9576,6 +9570,118 @@ mod layer_matrix_tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         assert!(fails.is_empty(), "{} failed:\n{}", fails.len(), fails.join("\n"));
+    }
+
+    #[test]
+    fn task_toggle_keeps_block_key_copy_path_tabs_and_search_sync() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        // 1. Toggling a task checkbox keeps the list's block key stable (no unmount/reflow).
+        let before = crate::blocks::build("- [ ] Alpha\n- [ ] Beta\n\nAfter.\n");
+        let after = crate::blocks::build("- [x] Alpha\n- [ ] Beta\n\nAfter.\n");
+        assert_eq!(before.blocks[0].key, after.blocks[0].key, "toggling a task must keep the list's block key");
+
+        // 2. Copy-path button, tab switching (Ctrl+1..9, Ctrl+Tab, Ctrl+Shift+Tab), and Search selection sync.
+        let dir = std::env::temp_dir().join(format!("quire-ux-fixes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut rt = garden(&dir, Mode::Preview);
+        rt.update(|s, tx| {
+            s.open_file("note.md", None, tx);
+            s.open_file("Box/a.md", None, tx);
+            s.open_file("Box/b.md", None, tx);
+        });
+        settle(&mut rt);
+
+        // Copy path button in titlebar breadcrumb copies full path and toasts.
+        let copy_xy = rt.find("copy-path").expect("copy-path button in crumb");
+        rt.pointer_move(copy_xy.0, copy_xy.1);
+        rt.pointer_down(copy_xy.0, copy_xy.1);
+        rt.pointer_up(copy_xy.0, copy_xy.1);
+        settle(&mut rt);
+        let mut toast_msg = None;
+        rt.update_if(|s, _| {
+            toast_msg = s.reader.toast.as_ref().map(|(m, _)| m.clone());
+            false
+        });
+        assert_eq!(toast_msg.as_deref(), Some("Copied path"));
+
+        // Ctrl+1..3 and Ctrl+Tab / Ctrl+Shift+Tab switch tabs in Open.
+        let active = |rt: &mut Runtime<App>| -> Option<String> {
+            let mut a = None;
+            rt.update_if(|s, _| {
+                a = s.active.clone();
+                false
+            });
+            a
+        };
+        key(&mut rt, Key::Command('1'), ctrl(false));
+        assert_eq!(active(&mut rt).as_deref(), Some("note.md"), "Ctrl+1 switches to tab 1");
+        key(&mut rt, Key::Tab, ctrl(false));
+        assert_eq!(active(&mut rt).as_deref(), Some("Box/a.md"), "Ctrl+Tab switches to next tab");
+        key(&mut rt, Key::Tab, ctrl(false));
+        assert_eq!(active(&mut rt).as_deref(), Some("Box/b.md"), "Ctrl+Tab advances to tab 3");
+        key(&mut rt, Key::Tab, ctrl(false));
+        assert_eq!(active(&mut rt).as_deref(), Some("note.md"), "Ctrl+Tab wraps to tab 1");
+        key(&mut rt, Key::Tab, ctrl(true));
+        assert_eq!(active(&mut rt).as_deref(), Some("Box/b.md"), "Ctrl+Shift+Tab wraps backward to tab 3");
+        key(&mut rt, Key::Command('2'), ctrl(false));
+        assert_eq!(active(&mut rt).as_deref(), Some("Box/a.md"), "Ctrl+2 switches to tab 2");
+
+        // Search selection follows keyboard outline on the exact same frame (no 1-step poll lag).
+        rt.update(|s, tx| s.open_search(tx));
+        settle(&mut rt);
+        for ch in ["#", "k", "e", "p", "t"] {
+            text_key(&mut rt, ch);
+        }
+        settle(&mut rt);
+        // Single-frame Down from search -> first result, then Down -> second result.
+        rt.key(KeyEvent { key: Key::Down, mods: Mods::default() });
+        rt.frame(1.0 / 60.0);
+        let f1 = focused(&rt);
+        let mut rf1 = None;
+        rt.update_if(|s, _| {
+            rf1 = s.res_focus.clone();
+            false
+        });
+        assert_eq!(rf1, f1, "res_focus matches focused row immediately on Down from search");
+        rt.key(KeyEvent { key: Key::Down, mods: Mods::default() });
+        rt.frame(1.0 / 60.0);
+        let f2 = focused(&rt);
+        let mut rf2 = None;
+        rt.update_if(|s, _| {
+            rf2 = s.res_focus.clone();
+            false
+        });
+        assert_ne!(f2, f1, "second Down moved focus to next result");
+        assert_eq!(rf2, f2, "res_focus follows keyboard outline in the exact same frame");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sheet_enter_on_last_line_scrolls_caret_into_view() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-sheet-scroll-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let body = (1..=45).map(|i| format!("Line {i:02} of the note inside the edit modal.")).collect::<Vec<_>>().join("\n");
+        let (mut rt, _) = crate::bench::open(&dir, &format!("# Long\n\n{body}\n"), Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        settle(&mut rt);
+
+        // Open section edit sheet (Shift+E), jump to end, and press Enter 3 times.
+        text_key(&mut rt, "E");
+        key(&mut rt, Key::End, ctrl(false));
+        for step in 0..3 {
+            key(&mut rt, Key::Enter, Mods::default());
+            let els = rt.elements();
+            let scroll = els.iter().find(|e| e.key.as_deref() == Some("sheet-scroll")).expect("sheet-scroll").rect;
+            let caret = els.iter().find(|e| e.key.as_deref() == Some("sheet-editor")).expect("sheet-editor").caret.expect("sheet caret");
+            assert!(
+                caret[1] >= scroll[1] - 0.5 && caret[1] + caret[3] <= scroll[1] + scroll[3] + 0.5,
+                "enter {step}: caret {caret:?} hidden outside sheet-scroll {scroll:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
 }
