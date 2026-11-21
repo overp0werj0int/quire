@@ -106,7 +106,6 @@ pub(super) fn canvas(v: V) -> El {
     if nodes.contains(&sel)
         && let Some(p) = l.at[sel]
     {
-        // While the node's text is edited, the outline holds the field, however it grows.
         let [w, h] = match field_at {
             Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
             _ => [p.w, p.h],
