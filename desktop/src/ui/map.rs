@@ -7,12 +7,13 @@ use std::hash::{Hash, Hasher};
 
 use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, Tx, WheelEvent, el, text};
 
-use super::V;
+use super::{V, styles};
 use crate::app::App;
 use crate::map::{NodeKind, ROOT, Tree};
 use crate::map_app::{self, Tier};
 use crate::map_layout::{Laid, Place, line_width};
 use crate::roles::Roles;
+use crate::theme::normal_lh;
 
 /// Half the world element's side. The world is centred on the canvas's top-left, so its live
 /// offset is the camera's pan and nodes sit at their world coordinates plus this.
@@ -111,7 +112,7 @@ pub(super) fn canvas(v: V) -> El {
             world = world.child(
                 text(format!("Properties · {}", t.props))
                     .key("map-props")
-                    .font(rune::TextStyle::new(small, 400.0).family(mono))
+                    .font(styles::note(mono, small, normal_lh(mono, small)))
                     .color(c.faint)
                     .pin(Some(p.x + l.metrics.pad_x + W), Some(below + W), None, None),
             );
@@ -121,7 +122,7 @@ pub(super) fn canvas(v: V) -> El {
             world = world.child(
                 text("Press Tab to add a branch, or F2 to name the root")
                     .key("map-hint")
-                    .font(rune::TextStyle::new(12.0, 400.0))
+                    .font(styles::sans(12.0, 400.0))
                     .color(c.faint)
                     .pin(Some(p.x + l.metrics.pad_x + W), Some(y + W), None, None),
             );
@@ -270,7 +271,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         out.push(
             text(format!("+{}", n.end - i - 1))
                 .key(format!("map-pill:{tail}"))
-                .font(rune::TextStyle::new(size, 400.0).family(mono))
+                .font(styles::note(mono, size, normal_lh(mono, size)))
                 .color(c.readable_dim())
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)
