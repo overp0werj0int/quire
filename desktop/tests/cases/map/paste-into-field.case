@@ -1,0 +1,20 @@
+Ctrl+V while a node's text is being edited goes into the field, not onto the map.
+note: Menu.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:e@1.0 paste:free_range@1.3 key:Enter@1.6 key:s+cmd@2.0
+expect: selected: map-node:5
+--- before
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.
+--- after
+# Plan
+
+- milk
+  - oat
+- free range
+
+Para.

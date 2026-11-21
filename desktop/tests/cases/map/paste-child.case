@@ -1,0 +1,21 @@
+Ctrl+V of one line on a list item adds it as the item's last child, without the trailing line break.
+note: Menu.md
+events: key:m+cmd@0.3 key:Right@0.6 paste:oat_milk\n@1.0 key:s+cmd@1.4
+expect: selected: map-node:5
+--- before
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.
+--- after
+# Plan
+
+- milk
+  - oat
+  - oat milk
+- eggs
+
+Para.

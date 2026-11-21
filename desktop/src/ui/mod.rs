@@ -161,6 +161,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };
     let mut root = col().key("root").w_full().h_full().fill(win_bg);
+    if s.map_editable() {
+        root = root.on_paste(|s: &mut App, text: &str, tx: &mut rune::Tx| s.map_paste(text, tx));
+    }
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),
         Screen::Vault => {

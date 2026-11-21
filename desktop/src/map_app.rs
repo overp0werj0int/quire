@@ -719,7 +719,7 @@ fn shared(old: &str, new: &str) -> (usize, usize) {
 
 impl App {
     /// The map's gestures change only an open, unlocked note (MAP-015).
-    fn map_editable(&self) -> bool {
+    pub fn map_editable(&self) -> bool {
         self.mode == Mode::Map && self.active.is_some() && !self.active_locked()
     }
 
@@ -863,6 +863,8 @@ impl App {
     }
 }
 
+const MULTI_LINE: &str = "Paste multi-line Markdown in Source or the Edit Sheet";
+
 /// The inline field's key: a text field, so the note's caret keys stay out of it.
 pub const FIELD: &str = "map-inline-edit";
 
@@ -948,6 +950,34 @@ impl App {
             }
             Err(Some(why)) => self.toast(why, tx),
             Err(None) => {}
+        }
+    }
+
+    /// Ctrl+V with no field focused (MAP-048): one line of text goes in as a new node, a child
+    /// of a container or a sibling after a leaf, with one trailing line break dropped.
+    pub fn map_paste(&mut self, text: &str, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        let line = text.strip_suffix('\n').map_or(text, |l| l.strip_suffix('\r').unwrap_or(l));
+        if line.contains(['\n', '\r']) {
+            self.toast(MULTI_LINE, tx);
+            return;
+        }
+        if line.trim().is_empty() {
+            return;
+        }
+        let t = self.map_tree();
+        let i = self.map_selected();
+        let at = if map::takes_children(&t, i) { map::Add::Child(i) } else { map::Add::After(i) };
+        let footnote = matches!(t.nodes[i].kind, NodeKind::Footnotes | NodeKind::Footnote { .. });
+        match map::add(self.active_text(), &t, at, line.trim()) {
+            Ok(s) => self.map_apply(&t, &s, tx),
+            Err(why) => {
+                if let Some(why) = why.or(footnote.then_some(map::FOOTNOTES)) {
+                    self.toast(why, tx);
+                }
+            }
         }
     }
 
