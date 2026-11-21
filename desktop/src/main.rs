@@ -22,6 +22,7 @@ mod map;
 mod map_app;
 mod map_drag;
 mod map_layout;
+mod map_motion;
 mod mcp;
 mod highlight;
 mod motion;

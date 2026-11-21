@@ -130,7 +130,7 @@ def parse_events(arg):
     return events
 
 
-def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None):
+def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None):
     """One headless run; returns the element tree (a list of dicts) and the home folder."""
     home = os.path.join(work, "home")
     script = os.path.join(work, "events.json")
@@ -148,6 +148,7 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
         shutil.rmtree(home, ignore_errors=True)
         os.makedirs(home)
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home + "/.config", XDG_DATA_HOME=home + "/.local/share", RUNE_PERF_WARN="0")
+        env.update(env_add or {})
         if note:
             notes = os.path.join(work, "notes")
             shutil.rmtree(notes, ignore_errors=True)

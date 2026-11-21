@@ -76,6 +76,8 @@ pub struct MapState {
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
     pub(crate) glide: Option<Glide>,
+    pub(crate) relayout: Option<crate::map_motion::Relayout>,
+    pub(crate) frame: RefCell<Option<crate::map_motion::Frame>>,
     /// The pan when the canvas's drag began.
     pub drag_from: Option<[f32; 2]>,
     pub node_drag: Option<crate::map_drag::NodeDrag>,
@@ -123,6 +125,8 @@ impl Default for MapState {
             laid: RefCell::new(None),
             sizes: RefCell::new((0, "", "", HashMap::new())),
             glide: None,
+            relayout: None,
+            frame: RefCell::new(None),
             drag_from: None,
             node_drag: None,
             dropped: false,
@@ -283,7 +287,7 @@ impl App {
     /// overscan. Links are by child.
     pub fn map_mounted(&self, cam: ([f32; 2], f32)) -> (Vec<usize>, Vec<usize>) {
         let t = self.map_tree();
-        let l = self.map_laid();
+        let l = self.map_drawn().laid.clone();
         let ([px, py], z) = cam;
         let [w, h] = self.map_size();
         let (x0, y0, x1, y1) = ((-px - OVERSCAN) / z, (-py - OVERSCAN) / z, (w - px + OVERSCAN) / z, (h - py + OVERSCAN) / z);
@@ -347,7 +351,7 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let committed = self.poll_field(tx) | self.poll_drag(t, tx);
+        let committed = self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
         let Some(g) = &self.map.glide else { return committed };
         let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
         let e = 1.0 - (1.0 - u).powi(3);
@@ -460,6 +464,7 @@ impl App {
             v.fold_ver += 1;
         }
         self.map_select(c, tx);
+        self.map_relayout(None, tx);
     }
 
     /// The previous or next sibling, else the nearest shown node at the same depth that way.
@@ -499,7 +504,7 @@ impl App {
         }
         v.fold_ver += 1;
         self.keep_selection_shown();
-        let _ = tx;
+        self.map_relayout(None, tx);
     }
 
     pub fn map_toggle_selected(&mut self, all: bool, tx: &mut Tx) {
@@ -508,18 +513,19 @@ impl App {
     }
 
     /// `]`: every fold opens (MAP-058).
-    pub fn map_expand_all(&mut self) {
+    pub fn map_expand_all(&mut self, tx: &mut Tx) {
         if let Some(v) = self.map_view_mut()
             && !v.folded.is_empty()
         {
             v.folded.clear();
             v.fold_ver += 1;
         }
+        self.map_relayout(None, tx);
     }
 
     /// `[`: folds every branch at depth 2 and below, or from depth 1 when those are folded
     /// already (MAP-058; depths are 1-based, the root at 1).
-    pub fn map_collapse_to_level(&mut self) {
+    pub fn map_collapse_to_level(&mut self, tx: &mut Tx) {
         let t = self.map_tree();
         let branches = |from: usize| t.nodes.iter().filter(move |n| n.depth + 1 >= from && !n.children.is_empty()).map(|n| n.id);
         let Some(v) = self.map_view_mut() else { return };
@@ -527,6 +533,7 @@ impl App {
         v.folded.extend(branches(from));
         v.fold_ver += 1;
         self.keep_selection_shown();
+        self.map_relayout(None, tx);
     }
 
     /// A fold that hides the selected node selects the fold instead (MAP-055).
@@ -739,6 +746,7 @@ impl App {
         let t = self.map_follow(old, s);
         let i = s.focus.map_or(ROOT, |l| t.at_line(l));
         self.map_reveal(i, tx);
+        self.map_relayout(Some((old, s)), tx);
     }
 
     /// A right-click on node `i`, or the Menu key or Shift+F10 on the selected node with `at`
@@ -893,6 +901,7 @@ impl App {
         let changed = t.nodes.iter().position(|n| !n.own.is_empty() && s.written().contains(&n.own.start));
         let i = changed.unwrap_or_else(|| self.map_selected());
         self.map_reveal(i, tx);
+        self.map_relayout(Some((&*old, &s)), tx);
     }
 
     /// `Ctrl+C` and `Ctrl+Shift+C` (MAP-059).
@@ -990,6 +999,7 @@ impl App {
                     e.multi = !matches!(shown.nodes[n].kind, NodeKind::Heading { .. } | NodeKind::Root);
                 }
                 self.map_reveal(n, tx);
+                self.map_relayout(Some((&*t, &s)), tx);
             }
             Err(Some(why)) => self.toast(why, tx),
             Err(None) => {}
@@ -1042,12 +1052,12 @@ impl App {
             Editing::New(at) => map::add(&e.base, &e.tree, at, &e.edit.text).ok(),
         };
         let Some(s) = s else {
-            self.map_back_to(&e);
+            self.map_back_to(&e, tx);
             return true;
         };
         if self.note_text(&e.rel) != Some(e.base.as_str()) {
             self.notice = Some(crate::sheet::CHANGED.into());
-            self.map_back_to(&e);
+            self.map_back_to(&e, tx);
             return true;
         }
         if Some(e.rel.as_str()) == self.active.as_deref() {
@@ -1063,15 +1073,17 @@ impl App {
     /// Esc in the field (MAP-017): nothing is written, and a new node goes.
     pub fn map_cancel(&mut self, tx: &mut Tx) {
         if let Some(e) = self.map.inline.take() {
-            self.map_back_to(&e);
+            self.map_back_to(&e, tx);
         }
         self.keys_to_note(tx);
     }
 
-    /// After an edit that wrote nothing: the selection is where it was before a new node.
-    fn map_back_to(&mut self, e: &Inline) {
+    /// After an edit that wrote nothing: the selection is where it was before a new node, and
+    /// the new node goes.
+    fn map_back_to(&mut self, e: &Inline, tx: &mut Tx) {
         if let (Editing::New(_), Some(v)) = (e.what, self.map.views.get_mut(&e.rel)) {
             v.selected = e.anchor;
+            self.map_relayout(None, tx);
         }
     }
 

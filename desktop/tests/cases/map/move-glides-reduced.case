@@ -1,0 +1,28 @@
+Under reduced motion a moved heading is in its new place at once: 60 ms in, it is there.
+note: Plan.md
+env: QUIRE_REDUCED_MOTION=1
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Up+alt@1.5 key:s+cmd@1.53
+at: 1.56
+expect: rect:map-node:3: [693.0, 353.75, 104.0, 59.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Trip
+
+- Train
+--- after
+# Plan
+
+## Trip
+
+- Train
+
+## Budget
+
+- Rent
+- Food

@@ -66,7 +66,8 @@ pub(super) fn canvas(v: V) -> El {
     let s = v.s;
     let c = Roles::new(v.p);
     let t = s.map_tree();
-    let l = s.map_laid();
+    let drawn = s.map_drawn();
+    let l = drawn.laid.clone();
     let cam = s.map_camera();
     let (nodes, links) = s.map_mounted(cam);
     let sel = s.map_selected();
@@ -85,7 +86,7 @@ pub(super) fn canvas(v: V) -> El {
     // The subtree a drag carries dims where it was (MAP-026).
     let drag = s.map.node_drag.as_ref().filter(|g| g.active);
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
-    let dim = |i: usize| if moved.contains(&i) { 0.35 } else { 1.0 };
+    let dim = |i: usize| drawn.alpha(i) * if moved.contains(&i) { 0.35 } else { 1.0 };
     for &i in &links {
         world = world.child(link(&t, &l, i, &c).opacity(dim(i)));
     }
