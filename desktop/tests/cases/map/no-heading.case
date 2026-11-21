@@ -1,0 +1,10 @@
+A note with no heading gets a root named after the note.
+note: Groceries.md
+events: key:m+cmd@0.3
+expect: nodes: root 1 2 3
+expect: label:map-node:root: 'Groceries, level 1, expanded'
+expect: label:map-node:2: 'Bread, level 2'
+--- before
+- Milk
+- Bread
+- Eggs

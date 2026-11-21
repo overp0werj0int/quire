@@ -1,0 +1,397 @@
+A long pan builds the nodes it brings near and drops the root.
+note: Long.md
+events: key:m+cmd@0.3 wheel:0,-2000,700,400@0.9
+expect: scale:map-node:1: None
+expect: nodes: 258 259 260 261 263 265 266 267 268 269 270 271 272 273 274 276 278 279 280 281 282 283 284 285 286 287 289 291 292 293 294 295 296 297 298 299 300 304 305
+--- before
+# Long
+
+## Part 0
+
+- item 0.0
+- item 0.1
+- item 0.2
+- item 0.3
+- item 0.4
+- item 0.5
+- item 0.6
+- item 0.7
+- item 0.8
+- item 0.9
+
+## Part 1
+
+- item 1.0
+- item 1.1
+- item 1.2
+- item 1.3
+- item 1.4
+- item 1.5
+- item 1.6
+- item 1.7
+- item 1.8
+- item 1.9
+
+## Part 2
+
+- item 2.0
+- item 2.1
+- item 2.2
+- item 2.3
+- item 2.4
+- item 2.5
+- item 2.6
+- item 2.7
+- item 2.8
+- item 2.9
+
+## Part 3
+
+- item 3.0
+- item 3.1
+- item 3.2
+- item 3.3
+- item 3.4
+- item 3.5
+- item 3.6
+- item 3.7
+- item 3.8
+- item 3.9
+
+## Part 4
+
+- item 4.0
+- item 4.1
+- item 4.2
+- item 4.3
+- item 4.4
+- item 4.5
+- item 4.6
+- item 4.7
+- item 4.8
+- item 4.9
+
+## Part 5
+
+- item 5.0
+- item 5.1
+- item 5.2
+- item 5.3
+- item 5.4
+- item 5.5
+- item 5.6
+- item 5.7
+- item 5.8
+- item 5.9
+
+## Part 6
+
+- item 6.0
+- item 6.1
+- item 6.2
+- item 6.3
+- item 6.4
+- item 6.5
+- item 6.6
+- item 6.7
+- item 6.8
+- item 6.9
+
+## Part 7
+
+- item 7.0
+- item 7.1
+- item 7.2
+- item 7.3
+- item 7.4
+- item 7.5
+- item 7.6
+- item 7.7
+- item 7.8
+- item 7.9
+
+## Part 8
+
+- item 8.0
+- item 8.1
+- item 8.2
+- item 8.3
+- item 8.4
+- item 8.5
+- item 8.6
+- item 8.7
+- item 8.8
+- item 8.9
+
+## Part 9
+
+- item 9.0
+- item 9.1
+- item 9.2
+- item 9.3
+- item 9.4
+- item 9.5
+- item 9.6
+- item 9.7
+- item 9.8
+- item 9.9
+
+## Part 10
+
+- item 10.0
+- item 10.1
+- item 10.2
+- item 10.3
+- item 10.4
+- item 10.5
+- item 10.6
+- item 10.7
+- item 10.8
+- item 10.9
+
+## Part 11
+
+- item 11.0
+- item 11.1
+- item 11.2
+- item 11.3
+- item 11.4
+- item 11.5
+- item 11.6
+- item 11.7
+- item 11.8
+- item 11.9
+
+## Part 12
+
+- item 12.0
+- item 12.1
+- item 12.2
+- item 12.3
+- item 12.4
+- item 12.5
+- item 12.6
+- item 12.7
+- item 12.8
+- item 12.9
+
+## Part 13
+
+- item 13.0
+- item 13.1
+- item 13.2
+- item 13.3
+- item 13.4
+- item 13.5
+- item 13.6
+- item 13.7
+- item 13.8
+- item 13.9
+
+## Part 14
+
+- item 14.0
+- item 14.1
+- item 14.2
+- item 14.3
+- item 14.4
+- item 14.5
+- item 14.6
+- item 14.7
+- item 14.8
+- item 14.9
+
+## Part 15
+
+- item 15.0
+- item 15.1
+- item 15.2
+- item 15.3
+- item 15.4
+- item 15.5
+- item 15.6
+- item 15.7
+- item 15.8
+- item 15.9
+
+## Part 16
+
+- item 16.0
+- item 16.1
+- item 16.2
+- item 16.3
+- item 16.4
+- item 16.5
+- item 16.6
+- item 16.7
+- item 16.8
+- item 16.9
+
+## Part 17
+
+- item 17.0
+- item 17.1
+- item 17.2
+- item 17.3
+- item 17.4
+- item 17.5
+- item 17.6
+- item 17.7
+- item 17.8
+- item 17.9
+
+## Part 18
+
+- item 18.0
+- item 18.1
+- item 18.2
+- item 18.3
+- item 18.4
+- item 18.5
+- item 18.6
+- item 18.7
+- item 18.8
+- item 18.9
+
+## Part 19
+
+- item 19.0
+- item 19.1
+- item 19.2
+- item 19.3
+- item 19.4
+- item 19.5
+- item 19.6
+- item 19.7
+- item 19.8
+- item 19.9
+
+## Part 20
+
+- item 20.0
+- item 20.1
+- item 20.2
+- item 20.3
+- item 20.4
+- item 20.5
+- item 20.6
+- item 20.7
+- item 20.8
+- item 20.9
+
+## Part 21
+
+- item 21.0
+- item 21.1
+- item 21.2
+- item 21.3
+- item 21.4
+- item 21.5
+- item 21.6
+- item 21.7
+- item 21.8
+- item 21.9
+
+## Part 22
+
+- item 22.0
+- item 22.1
+- item 22.2
+- item 22.3
+- item 22.4
+- item 22.5
+- item 22.6
+- item 22.7
+- item 22.8
+- item 22.9
+
+## Part 23
+
+- item 23.0
+- item 23.1
+- item 23.2
+- item 23.3
+- item 23.4
+- item 23.5
+- item 23.6
+- item 23.7
+- item 23.8
+- item 23.9
+
+## Part 24
+
+- item 24.0
+- item 24.1
+- item 24.2
+- item 24.3
+- item 24.4
+- item 24.5
+- item 24.6
+- item 24.7
+- item 24.8
+- item 24.9
+
+## Part 25
+
+- item 25.0
+- item 25.1
+- item 25.2
+- item 25.3
+- item 25.4
+- item 25.5
+- item 25.6
+- item 25.7
+- item 25.8
+- item 25.9
+
+## Part 26
+
+- item 26.0
+- item 26.1
+- item 26.2
+- item 26.3
+- item 26.4
+- item 26.5
+- item 26.6
+- item 26.7
+- item 26.8
+- item 26.9
+
+## Part 27
+
+- item 27.0
+- item 27.1
+- item 27.2
+- item 27.3
+- item 27.4
+- item 27.5
+- item 27.6
+- item 27.7
+- item 27.8
+- item 27.9
+
+## Part 28
+
+- item 28.0
+- item 28.1
+- item 28.2
+- item 28.3
+- item 28.4
+- item 28.5
+- item 28.6
+- item 28.7
+- item 28.8
+- item 28.9
+
+## Part 29
+
+- item 29.0
+- item 29.1
+- item 29.2
+- item 29.3
+- item 29.4
+- item 29.5
+- item 29.6
+- item 29.7
+- item 29.8
+- item 29.9

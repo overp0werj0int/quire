@@ -1,0 +1,13 @@
+With no single leading H1, the root takes the front matter's title.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: label:map-node:root: 'Weekend, level 1, expanded'
+expect: rect:map-props: None
+--- before
+---
+title: Weekend
+---
+
+## Saturday
+
+## Sunday

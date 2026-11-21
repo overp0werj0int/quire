@@ -1,0 +1,15 @@
+A heading that skips levels hangs from the nearest shallower heading.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: nodes: 1 3 5 7
+expect: label:map-node:3: 'C, level 2, expanded'
+expect: label:map-node:5: 'D, level 3'
+expect: label:map-node:7: 'B, level 2'
+--- before
+# A
+
+### C
+
+##### D
+
+## B

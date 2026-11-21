@@ -1,0 +1,15 @@
+g g goes back to the root.
+note: Trip.md
+events: key:m+cmd@0.3 key:l@0.8 key:l@1.0 key:g@1.4 key:g@1.5
+expect: selected: map-node:1
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

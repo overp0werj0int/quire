@@ -1,0 +1,40 @@
+A pinch zooms about the pointer.
+note: Trip.md
+events: key:m+cmd@0.3 pinch:0.1,300,420@0.9
+expect: rect:map-node:6: [271.2, 386.14, 116.53, 72.03]
+expect: scale:map-node:6: 2.1187000274658203
+--- before
+---
+title: Trip
+tags: [a, b]
+---
+
+# Trip
+
+Intro paragraph.
+
+## Packing
+
+- Clothes
+  - Shirts
+  - Socks
+- [x] Passport
+- [ ] Tickets
+
+```sh
+echo hi
+```
+
+![Map](map.png)
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+## Route
+
+Some text with a note.[^1]
+
+#### Deep
+
+[^1]: The footnote.

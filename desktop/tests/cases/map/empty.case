@@ -1,0 +1,7 @@
+An empty note's map is its root alone, at 100% and selected, with a hint.
+note: Empty.md
+events: key:m+cmd@0.3
+expect: selected: map-node:root
+expect: scale:map-node:root: 1.0
+expect: text:map-hint: 'Press Tab to add a branch, or F2 to name the root'
+--- before

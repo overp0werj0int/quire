@@ -1,0 +1,40 @@
+The wheel pans the map.
+note: Trip.md
+events: key:m+cmd@0.3 wheel:-30,-100,700,400@0.9
+expect: rect:map-node:6: [243.8, 289.2, 105.94, 65.48]
+expect: scale:map-node:6: 1.9261000156402588
+--- before
+---
+title: Trip
+tags: [a, b]
+---
+
+# Trip
+
+Intro paragraph.
+
+## Packing
+
+- Clothes
+  - Shirts
+  - Socks
+- [x] Passport
+- [ ] Tickets
+
+```sh
+echo hi
+```
+
+![Map](map.png)
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+## Route
+
+Some text with a note.[^1]
+
+#### Deep
+
+[^1]: The footnote.

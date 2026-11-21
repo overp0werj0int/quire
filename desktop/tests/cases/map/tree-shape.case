@@ -1,0 +1,49 @@
+Headings nest by level, list items by list, other blocks are leaves, footnotes group.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: nodes: 6 8 10 12 13 14 15 16 18 22 24 28 30 32 footnotes
+expect: label:map-node:6: 'Trip, level 1, expanded'
+expect: label:map-node:12: 'Clothes, level 3, expanded'
+expect: label:map-node:15: 'Passport, level 3, checked'
+expect: label:map-node:16: 'Tickets, level 3, not checked'
+expect: label:map-node:18: 'code · sh · 1 line, level 3'
+expect: label:map-node:22: 'Map, level 3'
+expect: label:map-node:24: 'table · 2 columns · 1 row, level 3'
+expect: label:map-node:32: 'Deep, level 3'
+expect: label:map-node:footnotes: 'Footnotes, level 2, collapsed, 1 hidden'
+expect: text:map-props: 'Properties · 1'
+--- before
+---
+title: Trip
+tags: [a, b]
+---
+
+# Trip
+
+Intro paragraph.
+
+## Packing
+
+- Clothes
+  - Shirts
+  - Socks
+- [x] Passport
+- [ ] Tickets
+
+```sh
+echo hi
+```
+
+![Map](map.png)
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+## Route
+
+Some text with a note.[^1]
+
+#### Deep
+
+[^1]: The footnote.

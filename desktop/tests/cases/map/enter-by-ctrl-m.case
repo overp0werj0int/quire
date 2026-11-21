@@ -1,0 +1,18 @@
+Ctrl+M shows the note as a map, root selected, keyboard on the note.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: focus: note-keys (no ring)
+expect: selected: map-node:1
+expect: label:mode-map: 'Map'
+expect: rect:doc-col: None
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

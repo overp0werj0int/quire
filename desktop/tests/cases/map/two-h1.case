@@ -1,0 +1,10 @@
+Two top-level H1 headings hang from a root named after the note.
+note: Notes.md
+events: key:m+cmd@0.3
+expect: nodes: root 1 3
+expect: label:map-node:root: 'Notes, level 1, expanded'
+expect: label:map-node:3: 'Two, level 2'
+--- before
+# One
+
+# Two

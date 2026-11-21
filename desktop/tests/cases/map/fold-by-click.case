@@ -1,0 +1,17 @@
+A click on a fold circle folds that node and leaves the selection.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-fold:3@1.0
+expect: selected: map-node:1
+expect: nodes: 1 3 8 10
+expect: text:map-pill:3: '+2'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

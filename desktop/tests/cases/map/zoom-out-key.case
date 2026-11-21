@@ -1,0 +1,40 @@
+- zooms out by a fifth about the canvas's middle.
+note: Trip.md
+events: key:m+cmd@0.3 key:-@0.9
+expect: rect:map-node:6: [371.84, 395.47, 84.75, 52.39]
+expect: scale:map-node:6: 1.5408999919891357
+--- before
+---
+title: Trip
+tags: [a, b]
+---
+
+# Trip
+
+Intro paragraph.
+
+## Packing
+
+- Clothes
+  - Shirts
+  - Socks
+- [x] Passport
+- [ ] Tickets
+
+```sh
+echo hi
+```
+
+![Map](map.png)
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+## Route
+
+Some text with a note.[^1]
+
+#### Deep
+
+[^1]: The footnote.

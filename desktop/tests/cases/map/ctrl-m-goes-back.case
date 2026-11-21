@@ -1,0 +1,17 @@
+Ctrl+M again goes back to Preview when the map was entered from Preview.
+note: Trip.md
+events: tap:mode-preview@0.3 key:m+cmd@0.9 key:m+cmd@1.5
+expect: focus: note-keys (no ring)
+expect: rect:map-canvas: None
+expect: label:mode-preview: 'Preview'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

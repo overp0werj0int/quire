@@ -1,0 +1,17 @@
+An unknown stored mode opens Source.
+note: Trip.md
+state: {"mode": "mindmap"}
+events: hover:700,300@0.3
+expect: rect:map-canvas: None
+expect: label:mode-source: 'Source'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

@@ -1,0 +1,40 @@
+0 fits the map again after a zoom.
+note: Trip.md
+events: key:m+cmd@0.3 key:0+cmd@0.9 key:0@1.5
+expect: rect:map-node:6: [273.8, 389.2, 105.94, 65.48]
+expect: scale:map-node:6: 1.9261000156402588
+--- before
+---
+title: Trip
+tags: [a, b]
+---
+
+# Trip
+
+Intro paragraph.
+
+## Packing
+
+- Clothes
+  - Shirts
+  - Socks
+- [x] Passport
+- [ ] Tickets
+
+```sh
+echo hi
+```
+
+![Map](map.png)
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+## Route
+
+Some text with a note.[^1]
+
+#### Deep
+
+[^1]: The footnote.

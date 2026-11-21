@@ -1,0 +1,17 @@
+The note's markmap initialExpandLevel folds what lies deeper.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: nodes: 6 8
+--- before
+---
+markmap:
+  initialExpandLevel: 2
+---
+
+# A
+
+## B
+
+### C
+
+- d

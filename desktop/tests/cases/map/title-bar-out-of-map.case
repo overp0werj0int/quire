@@ -1,0 +1,17 @@
+The title bar's Preview button leaves the map for Preview.
+note: Trip.md
+events: tap:mode-map@0.3 tap:mode-preview@1.0
+expect: focus: note-keys (no ring)
+expect: rect:map-canvas: None
+expect: label:mode-preview: 'Preview'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

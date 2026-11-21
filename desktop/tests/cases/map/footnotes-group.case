@@ -1,0 +1,12 @@
+Footnotes gather in one group at the root's end, folded at first.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: nodes: 1 3 footnotes
+expect: label:map-node:footnotes: 'Footnotes, level 2, collapsed, 2 hidden'
+--- before
+# A
+
+Text.[^x] More.[^y]
+
+[^x]: First.
+[^y]: Second.

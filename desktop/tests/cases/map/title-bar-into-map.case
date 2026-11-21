@@ -1,0 +1,18 @@
+The title bar's Map button shows the map and marks itself.
+note: Trip.md
+events: tap:mode-map@0.3
+expect: selected: map-node:1
+expect: label:mode-map: 'Map'
+expect: label:mode-source: 'Show source (Ctrl+M)'
+expect: label:mode-preview: 'Show preview (Ctrl+P)'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

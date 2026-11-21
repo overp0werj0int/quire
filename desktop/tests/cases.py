@@ -22,7 +22,8 @@ contains any of the words. A case file:
 The first line says what the case checks. `note` names the file (default Note.md), `state`
 is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
-that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`), compared exactly. The text after
+that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
+`selected`, `nodes`), compared exactly. The text after
 `--- before` is the note as it starts. The text after `--- after` is the note expected on disk
 after the replay; without that section the note must be unchanged. Each line of a section is a
 line of the note, ended by a newline, so both notes end in one.
@@ -42,7 +43,7 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "selected", "nodes")
 
 
 class Case:
@@ -86,7 +87,8 @@ class Case:
 
 
 def reading(line):
-    what = line.split(":", 1)[0] if not line.startswith(("rect:", "text:")) else ":".join(line.split(":", 2)[:2])
+    # A key may hold a colon (`map-node:12`), never a space: the reading ends at the first ": ".
+    what = line.split(": ", 1)[0]
     if not what.startswith(READINGS):
         raise SystemExit("cases: cannot read an expectation from %r" % line)
     return what

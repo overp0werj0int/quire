@@ -1,0 +1,15 @@
+A markmap fold comment starts its node folded.
+note: Trip.md
+events: key:m+cmd@0.3
+expect: nodes: 1 3 8 10
+--- before
+# A
+
+## B <!-- markmap: fold -->
+
+- c
+- d
+
+## E
+
+- f

@@ -1,0 +1,15 @@
+The arrows walk the tree: Right to a first child, Down to a sibling.
+note: Trip.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Right@1.2
+expect: selected: map-node:10
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

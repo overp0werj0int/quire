@@ -1,0 +1,15 @@
+The map selects the node that holds the Source caret's line.
+note: Trip.md
+events: tap:editor@0.2 key:End+cmd@0.5 key:m+cmd@1.0
+expect: selected: map-node:10
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

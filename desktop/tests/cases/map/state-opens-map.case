@@ -1,0 +1,17 @@
+A stored mode of map opens the note as a map.
+note: Trip.md
+state: {"mode": "map"}
+events: hover:700,300@0.3
+expect: selected: map-node:1
+expect: label:mode-map: 'Map'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

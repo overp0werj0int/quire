@@ -1,0 +1,17 @@
+Esc on the map goes back to Source, the mode it came from.
+note: Trip.md
+events: key:m+cmd@0.3 key:Escape@1.0
+expect: focus: editor (no ring)
+expect: rect:map-canvas: None
+expect: label:mode-source: 'Source'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

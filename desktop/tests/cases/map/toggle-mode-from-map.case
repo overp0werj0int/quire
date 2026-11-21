@@ -1,0 +1,17 @@
+The mode toggle on the map goes to the linear mode it did not come from.
+note: Trip.md
+events: key:m+cmd@0.3 key:p+cmd@1.0
+expect: focus: note-keys (no ring)
+expect: rect:map-canvas: None
+expect: label:mode-preview: 'Preview'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
