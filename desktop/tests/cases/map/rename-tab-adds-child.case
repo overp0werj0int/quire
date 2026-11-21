@@ -1,0 +1,14 @@
+Tab in the field commits the text and starts a child under the node.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Tab@1.8 type:Rent@2.0 key:Enter@2.5 key:s+cmd@2.9
+expect: selected: map-node:5
+--- before
+# Plan
+
+## Budget
+--- after
+# Plan
+
+## Money
+
+- Rent

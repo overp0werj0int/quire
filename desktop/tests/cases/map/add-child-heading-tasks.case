@@ -1,0 +1,25 @@
+A new item in a task list gets an empty box, and a counted list the next number.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:Car@1.0 key:Enter@1.4 key:Left@1.6 key:Down@1.8 key:Tab@2.0 type:Go@2.2 key:Enter@2.6 key:s+cmd@3.0
+--- before
+# Plan
+
+## Budget
+
+- [x] Rent
+
+## Trip
+
+1. Pack
+--- after
+# Plan
+
+## Budget
+
+- [x] Rent
+- [ ] Car
+
+## Trip
+
+1. Pack
+2. Go

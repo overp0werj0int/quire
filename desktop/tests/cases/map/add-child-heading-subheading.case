@@ -1,0 +1,28 @@
+Tab on a heading whose last child is a subheading adds a heading of that level after the branch.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:C@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+# Plan
+
+## A
+
+- x
+
+#### B
+
+text
+## Z
+--- after
+# Plan
+
+## A
+
+- x
+
+#### B
+
+text
+
+#### C
+
+## Z

@@ -1,0 +1,11 @@
+A double click on a node's label edits it in place.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-node:3@0.8 tap:map-node:3@0.9 type:Money@1.2 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+## Budget
+--- after
+# Plan
+
+## Money

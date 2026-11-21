@@ -1,0 +1,14 @@
+Shift+Enter on the first of a counted list renumbers the rest; a wider marker moves the item's lines.
+note: Plan.md
+events: key:m+cmd@0.3 key:Enter+shift@0.8 type:T@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+8. a
+9. b
+
+   note
+--- after
+8. T
+9. a
+10. b
+
+    note

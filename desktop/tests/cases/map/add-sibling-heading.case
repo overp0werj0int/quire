@@ -1,0 +1,17 @@
+Enter on a heading adds one of its level after its branch; Shift+Enter one before it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Enter@0.8 type:B@1.0 key:Enter@1.4 key:Enter+shift@1.7 type:A2@1.9 key:Enter@2.3 key:s+cmd@2.7
+--- before
+# Plan
+
+## A
+- x
+--- after
+# Plan
+
+## A
+- x
+
+## A2
+
+## B

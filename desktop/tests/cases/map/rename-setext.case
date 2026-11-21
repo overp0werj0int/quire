@@ -1,0 +1,17 @@
+Editing a one-line setext heading changes its text line and keeps the underline.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+Budget
+------
+
+Rent
+--- after
+# Plan
+
+Money
+------
+
+Rent

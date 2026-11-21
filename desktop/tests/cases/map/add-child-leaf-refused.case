@@ -1,0 +1,8 @@
+Tab on a paragraph changes nothing and says why.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8
+expect: text:toast: 'Only headings and list items can have children'
+--- before
+# Plan
+
+text

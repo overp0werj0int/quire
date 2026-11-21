@@ -1867,6 +1867,9 @@ impl App {
 
     /// A toolbar action on the active note's selection, as one undo step.
     pub fn format(&mut self, f: crate::format::Fmt, tx: &mut Tx) {
+        if self.map_format(f) {
+            return;
+        }
         if !self.writing() {
             return;
         }

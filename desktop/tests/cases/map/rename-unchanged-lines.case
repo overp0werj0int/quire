@@ -1,0 +1,19 @@
+A paragraph's unchanged lines stay byte for byte; a changed one keeps its column, in spaces.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Right@1.0 key:e@1.2 key:End+cmd@1.4 type:!@1.6 key:Enter@1.9 key:s+cmd@2.3
+--- before
+# Plan
+
+- a
+
+	first
+	 second
+- b
+--- after
+# Plan
+
+- a
+
+	first
+     second!
+- b

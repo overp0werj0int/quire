@@ -1,0 +1,20 @@
+Enter on a paragraph inside an item adds a paragraph at the item's content column, set apart by blank lines.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Right@0.8 key:Enter@1.0 type:new@1.2 key:Enter@1.6 key:s+cmd@2.0
+--- before
+# Plan
+
+1.  a
+
+    text
+2.  b
+--- after
+# Plan
+
+1.  a
+
+    text
+
+    new
+
+2.  b

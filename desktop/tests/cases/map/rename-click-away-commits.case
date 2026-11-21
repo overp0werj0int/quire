@@ -1,0 +1,12 @@
+A click on another node commits the field, then selects that node.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 tap:map-node:1@1.8 key:s+cmd@2.2
+expect: selected: map-node:1
+--- before
+# Plan
+
+## Budget
+--- after
+# Plan
+
+## Money

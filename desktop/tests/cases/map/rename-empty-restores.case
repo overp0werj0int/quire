@@ -1,0 +1,7 @@
+Committing an empty field leaves the node as it was.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 key:Backspace@1.2 type:___@1.4 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+## Budget

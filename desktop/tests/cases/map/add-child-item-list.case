@@ -1,0 +1,22 @@
+Tab on an item with a nested ordered list adds the next number after its branch.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:three@1.0 key:Enter@1.6 key:s+cmd@2.0
+--- before
+# Plan
+
+- a
+  1. one
+  2. two
+
+     more
+- b
+--- after
+# Plan
+
+- a
+  1. one
+  2. two
+
+     more
+  3. three
+- b

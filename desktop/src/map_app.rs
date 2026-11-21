@@ -11,7 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{Family, Live, TextStyle, Tx};
+use rune::{Family, Live, TextEdit, TextStyle, Tx};
 
 use crate::app::{App, Mode};
 use crate::map::{self, NodeId, NodeKind, ROOT, Tree};
@@ -76,6 +76,35 @@ pub struct MapState {
     glide: Option<Glide>,
     /// The pan when the canvas's drag began.
     pub drag_from: Option<[f32; 2]>,
+    pub inline: Option<Inline>,
+    /// What the field edits for the moment between its edit ending and its view going.
+    pub spare: TextEdit,
+}
+
+/// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
+pub struct Inline {
+    pub rel: String,
+    /// The note's text when the edit began: a commit splices into this text only.
+    base: String,
+    /// `base`'s map, whose indices the edit names.
+    tree: Rc<Tree>,
+    what: Editing,
+    pub edit: TextEdit,
+    /// Shift+Enter starts a new line, rather than committing.
+    pub multi: bool,
+    /// The note's text with the new node in it, and that text's hash: the map shows it until
+    /// the first commit, and the file never holds it.
+    preview: Option<(u64, String)>,
+    /// The node selected before a new one, which Esc goes back to.
+    anchor: NodeId,
+    /// The field has had focus, so losing it commits (MAP-017).
+    held: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Editing {
+    Node(usize),
+    New(map::Add),
 }
 
 impl Default for MapState {
@@ -89,6 +118,8 @@ impl Default for MapState {
             sizes: RefCell::new((0, "", "", HashMap::new())),
             glide: None,
             drag_from: None,
+            inline: None,
+            spare: TextEdit::new(""),
         }
     }
 }
@@ -116,6 +147,14 @@ pub fn style(tier: Tier, b: f32, prose: Family, mono: Family) -> TextStyle {
     TextStyle::new(size, weight).family(family).lh(page::line(size, lead))
 }
 
+/// The room a task's box takes left of its label at body size `b` (MAP-053): the box and a gap.
+pub fn task_room(n: &map::Node, b: f32) -> f32 {
+    match n.kind {
+        NodeKind::Item { task: crate::blocks::Task::Todo | crate::blocks::Task::Done, .. } if !n.card => page::r(b * 0.9) + page::r(b * 0.45),
+        _ => 0.0,
+    }
+}
+
 /// What a node shows: an ordered item's number before its text.
 pub fn shown_label(n: &map::Node) -> String {
     match &n.kind {
@@ -132,18 +171,29 @@ impl App {
         (prose.family, mono.family, prose.id, mono.id)
     }
 
-    /// The note shown, as a map tree, built once per text.
+    /// The note shown, as a map tree, built once per text: with a new node in it while one is
+    /// being named.
     pub fn map_tree(&self) -> Rc<Tree> {
-        let doc = self.doc();
-        let ver = self.doc_hash().unwrap_or(0);
+        let name = self.active.as_deref().unwrap_or("");
+        let preview = self.map.inline.as_ref().filter(|e| e.rel == name).and_then(|e| e.preview.as_ref());
+        let (doc, ver) = match preview {
+            Some((h, text)) => (Rc::new(crate::blocks::build(text)), *h),
+            None => (self.doc(), self.doc_hash().unwrap_or(0)),
+        };
         if let Some((v, t)) = &*self.map.tree.borrow()
             && *v == ver
         {
             return t.clone();
         }
-        let t = Rc::new(map::build(&doc, self.active_text(), self.active.as_deref().unwrap_or("")));
+        let text = preview.map_or(self.active_text(), |p| p.1.as_str());
+        let t = Rc::new(map::build(&doc, text, name));
         *self.map.tree.borrow_mut() = Some((ver, t.clone()));
         t
+    }
+
+    /// The version of the text `map_tree` was built from.
+    fn map_ver(&self) -> u64 {
+        self.map.tree.borrow().as_ref().map_or(0, |(v, _)| *v)
     }
 
     /// The active tab's map, or None with no note shown.
@@ -177,7 +227,7 @@ impl App {
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
         let (folded, fold_ver) = self.map_view().map_or((&empty, 0), |v| (&v.folded, v.fold_ver));
-        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.doc_hash().unwrap_or(0), fold_ver, b.to_bits(), epoch, prose_id, mono_id);
+        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id);
         if let Some((k, l)) = &*self.map.laid.borrow()
             && *k == key
         {
@@ -192,7 +242,8 @@ impl App {
         let laid = Rc::new(crate::map_layout::layout(&t, folded, m, |i| {
             let tier = tier(&t, i);
             let label = shown_label(&t.nodes[i]);
-            *cache.entry((label.clone(), tier, b.to_bits(), m.max_w.to_bits())).or_insert_with(|| {
+            let room = task_room(&t.nodes[i], b);
+            let [w, h] = *cache.entry((label.clone(), tier, b.to_bits(), m.max_w.to_bits())).or_insert_with(|| {
                 let st = style(tier, b, prose, mono);
                 let lh = page::line(st.size, if matches!(tier, Tier::Root | Tier::Head1) { 1.3 } else { 1.45 });
                 if label.is_empty() {
@@ -200,7 +251,8 @@ impl App {
                 }
                 let (w, h) = rune::text::measure(&label, &[], st, Some(m.max_w));
                 [w.min(m.max_w).ceil(), h.max(lh).ceil()]
-            })
+            });
+            [w + room, h]
         }));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
         laid
@@ -287,7 +339,8 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let Some(g) = &self.map.glide else { return false };
+        let committed = self.poll_field(tx);
+        let Some(g) = &self.map.glide else { return committed };
         let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
         let e = 1.0 - (1.0 - u).powi(3);
         let (from, to) = (g.from, g.to);
@@ -299,7 +352,7 @@ impl App {
         } else {
             self.map.glide = None;
         }
-        self.map_signature() != before
+        committed || self.map_signature() != before
     }
 
     /// Scales the camera by `f` about canvas point `(x, y)`: the world point under it stays.
@@ -420,6 +473,7 @@ impl App {
 
     /// Folds or unfolds node `i`, or its whole branch with `all` (MAP-041, MAP-058).
     pub fn map_toggle(&mut self, i: usize, all: bool, tx: &mut Tx) {
+        let Some(i) = self.map_press_node(i, tx) else { return };
         let t = self.map_tree();
         let n = &t.nodes[i];
         if n.children.is_empty() {
@@ -483,13 +537,24 @@ impl App {
         v.selected = t.nodes[shown].id;
     }
 
-    /// A node clicked on the canvas: it is selected, where it is.
-    pub fn map_click(&mut self, i: usize) {
-        let id = self.map_tree().nodes.get(i).map(|n| n.id);
-        if let (Some(id), Some(v)) = (id, self.map_view_mut()) {
+    /// A node clicked on the canvas: an open field commits, then the node is selected, where
+    /// it is. A double click edits it (MAP-016).
+    pub fn map_click(&mut self, i: usize, double: bool, tx: &mut Tx) {
+        if self.map_editing() == Some(i) {
+            return;
+        }
+        let Some(i) = self.map_press_node(i, tx) else { return };
+        let id = self.map_tree().nodes[i].id;
+        if let Some(v) = self.map_view_mut() {
             v.selected = id;
         }
+        if double {
+            self.map_edit(tx);
+        } else {
+            self.keys_to_note(tx);
+        }
     }
+
 
     // ---------- The camera and the mode ----------
 
@@ -759,5 +824,233 @@ impl App {
         let t = self.map_tree();
         tx.copy(map::markdown(self.active_text(), &t, self.map_selected(), branch));
         self.toast(if branch { "Copied the branch's Markdown" } else { "Copied" }, tx);
+    }
+}
+
+/// The inline field's key: a text field, so the note's caret keys stay out of it.
+pub const FIELD: &str = "map-inline-edit";
+
+/// What a new node is placed by: Tab, Enter, Shift+Enter (MAP-021, MAP-023).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    Child,
+    After,
+    Before,
+}
+
+impl App {
+    /// The node being edited in place, by index in the tree shown.
+    pub fn map_editing(&self) -> Option<usize> {
+        let e = self.map.inline.as_ref().filter(|e| Some(e.rel.as_str()) == self.active.as_deref())?;
+        Some(match e.what {
+            Editing::Node(i) => i,
+            Editing::New(_) => self.map_selected(),
+        })
+    }
+
+    /// `F2`, `e` or a double click (MAP-016, MAP-019, MAP-020): the inline field on a text
+    /// node, the Edit Sheet on a card, the title bar on a root named by the file.
+    pub fn map_edit(&mut self, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        let t = self.map_tree();
+        let i = self.map_selected();
+        match map::in_place(self.active_text(), &t, i) {
+            map::InPlace::Field { text, multi } => {
+                let mut edit = TextEdit::new(text);
+                let n = edit.text.len();
+                edit.set_selection(0, n);
+                self.map_open_field(Editing::Node(i), edit, multi, None, tx);
+            }
+            map::InPlace::Sheet(lines) => self.open_sheet_lines(lines, crate::sheet::Scope::Block, tx),
+            map::InPlace::FileName => self.start_rename(tx),
+            map::InPlace::Nothing => {}
+        }
+    }
+
+    /// `E` (MAP-020): the Edit Sheet on the selected node's whole branch.
+    pub fn map_edit_branch(&mut self, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        let t = self.map_tree();
+        let n = &t.nodes[self.map_selected()];
+        match n.kind {
+            NodeKind::Footnotes => self.toast(map::FOOTNOTES, tx),
+            NodeKind::Root if n.own.is_empty() => {}
+            _ => self.open_sheet_lines(n.span.clone(), crate::sheet::Scope::Section, tx),
+        }
+    }
+
+    /// Tab, Enter and Shift+Enter (MAP-021 to MAP-023): a new node, named in the inline field
+    /// before anything is written.
+    pub fn map_add(&mut self, place: Place, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        let t = self.map_tree();
+        let i = self.map_selected();
+        let at = match place {
+            Place::Child => map::Add::Child(i),
+            Place::After => map::Add::After(i),
+            Place::Before => map::Add::Before(i),
+        };
+        // A zero-width space names the new node until the first commit, so it parses as one.
+        match map::add(self.active_text(), &t, at, "\u{200b}") {
+            Ok(s) => {
+                let text = s.apply(self.active_text());
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                ("preview", &text).hash(&mut h);
+                self.map_open_field(Editing::New(at), TextEdit::new(""), true, Some((h.finish(), text)), tx);
+                let shown = self.map_tree();
+                let n = s.focus.map_or(ROOT, |l| shown.at_line(l));
+                if let Some(e) = &mut self.map.inline {
+                    e.multi = !matches!(shown.nodes[n].kind, NodeKind::Heading { .. } | NodeKind::Root);
+                }
+                self.map_reveal(n, tx);
+            }
+            Err(Some(why)) => self.toast(why, tx),
+            Err(None) => {}
+        }
+    }
+
+    fn map_open_field(&mut self, what: Editing, edit: TextEdit, multi: bool, preview: Option<(u64, String)>, tx: &mut Tx) {
+        let Some(rel) = self.active.clone() else { return };
+        let tree = self.map_tree();
+        let base = self.active_text().to_string();
+        let anchor = tree.nodes[self.map_selected()].id;
+        self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false });
+        tx.focus(FIELD, false);
+    }
+
+    /// Enter, Tab, a click away (MAP-017): the field's text goes into the note, unless it is
+    /// empty or unchanged (MAP-018). True when a field was open.
+    pub fn map_commit(&mut self, tx: &mut Tx) -> bool {
+        let Some(e) = self.map.inline.take() else { return false };
+        let s = match e.what {
+            Editing::Node(i) => map::rename(&e.base, &e.tree, i, &e.edit.text),
+            Editing::New(at) => map::add(&e.base, &e.tree, at, &e.edit.text).ok(),
+        };
+        let Some(s) = s else {
+            self.map_back_to(&e);
+            return true;
+        };
+        if self.note_text(&e.rel) != Some(e.base.as_str()) {
+            self.notice = Some(crate::sheet::CHANGED.into());
+            self.map_back_to(&e);
+            return true;
+        }
+        if Some(e.rel.as_str()) == self.active.as_deref() {
+            self.map_apply(&e.tree, &s, tx);
+        } else {
+            let new = s.apply(&e.base);
+            let (pre, post) = shared(&e.base, &new);
+            self.splice_note(&e.rel, pre..e.base.len() - post, &new[pre..new.len() - post]);
+        }
+        true
+    }
+
+    /// Esc in the field (MAP-017): nothing is written, and a new node goes.
+    pub fn map_cancel(&mut self, tx: &mut Tx) {
+        if let Some(e) = self.map.inline.take() {
+            self.map_back_to(&e);
+        }
+        self.keys_to_note(tx);
+    }
+
+    /// After an edit that wrote nothing: the selection is where it was before a new node.
+    fn map_back_to(&mut self, e: &Inline) {
+        if let (Editing::New(_), Some(v)) = (e.what, self.map.views.get_mut(&e.rel)) {
+            v.selected = e.anchor;
+        }
+    }
+
+    /// A key in the inline field before the field's own (KEY-145 to KEY-149, MAP-016).
+    pub fn map_field_key(&mut self, ev: &rune::KeyEvent, tx: &mut Tx) -> bool {
+        let multi = self.map.inline.as_ref().is_some_and(|e| e.multi);
+        for a in crate::keymap::lookup(self.preset(), crate::keymap::Ctx::MapEdit, ev) {
+            match a.id {
+                "mapedit.commit" => {
+                    self.map_commit(tx);
+                    self.keys_to_note(tx);
+                }
+                "mapedit.newline" if multi => return false,
+                "mapedit.newline" | "mapedit.commit-outdent" => {
+                    self.map_commit(tx);
+                    self.keys_to_note(tx);
+                }
+                "mapedit.cancel" => {
+                    if !self.esc_takes_notice() {
+                        self.map_cancel(tx);
+                    }
+                }
+                "mapedit.commit-add-child" => {
+                    self.map_commit(tx);
+                    self.keys_to_note(tx);
+                    self.map_add(Place::Child, tx);
+                }
+                id => match crate::keys::handler(id) {
+                    Some(run) => run(self, tx),
+                    None => continue,
+                },
+            }
+            return true;
+        }
+        false
+    }
+
+    /// A formatting chord while the field holds focus acts on its text (MAP-016).
+    pub fn map_format(&mut self, f: crate::format::Fmt) -> bool {
+        let Some(e) = &mut self.map.inline else { return false };
+        let ed = crate::format::apply(&e.edit.text, e.edit.anchor, e.edit.focus, f);
+        e.edit.undo_group(|e| {
+            e.set_selection(ed.start, ed.end);
+            e.insert(&ed.insert);
+            e.set_selection(ed.sel.0, ed.sel.1);
+        });
+        true
+    }
+
+    /// Before each frame: a field that lost focus, or whose note or mode went, commits.
+    fn poll_field(&mut self, tx: &mut Tx) -> bool {
+        let Some(e) = &mut self.map.inline else { return false };
+        if tx.focused() == Some(FIELD) && self.mode == Mode::Map {
+            e.held = true;
+            return false;
+        }
+        if !e.held && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref() {
+            return false;
+        }
+        self.map_commit(tx)
+    }
+
+    /// A click on node `i`'s task box (MAP-053).
+    pub fn map_task_click(&mut self, i: usize, tx: &mut Tx) {
+        let Some(i) = self.map_press_node(i, tx) else { return };
+        self.map_toggle_task(i, tx);
+        self.keys_to_note(tx);
+    }
+
+    /// A click on the Properties badge (MAP-006): the Edit Sheet on the front matter.
+    pub fn map_props(&mut self, tx: &mut Tx) {
+        self.map_commit(tx);
+        if self.map_editable() {
+            let lines = map::front_lines(self.active_text());
+            self.open_sheet_lines(lines, crate::sheet::Scope::Block, tx);
+        }
+    }
+
+    /// A press on node `i` of the tree shown: an open field commits first, and the press then
+    /// lands on the same node in the new tree.
+    fn map_press_node(&mut self, i: usize, tx: &mut Tx) -> Option<usize> {
+        let shown = self.map_tree();
+        let text = self.map.inline.as_ref().and_then(|e| e.preview.as_ref()).map_or_else(|| self.active_text().to_string(), |p| p.1.clone());
+        if !self.map_commit(tx) {
+            return Some(i);
+        }
+        let t = self.map_tree();
+        let s = map::diff(&text, self.active_text());
+        map::follow(&shown, &t, &s, shown.nodes.get(i)?.id).and_then(|id| t.find(id))
     }
 }

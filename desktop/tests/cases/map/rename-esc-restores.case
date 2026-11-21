@@ -1,0 +1,9 @@
+Esc in the field puts the text back and writes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Escape@1.8 key:s+cmd@2.2
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget

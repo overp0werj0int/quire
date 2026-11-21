@@ -1,0 +1,8 @@
+Enter on a new node with no text takes it away and writes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Enter@0.8 key:Enter@1.2 key:s+cmd@1.6
+expect: selected: map-node:3
+--- before
+# Plan
+
+## A

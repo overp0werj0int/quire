@@ -1,0 +1,17 @@
+A sibling in a loose list keeps the blank lines between items.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Enter@0.8 type:b@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+# Plan
+
+- a
+
+- c
+--- after
+# Plan
+
+- a
+
+- b
+
+- c

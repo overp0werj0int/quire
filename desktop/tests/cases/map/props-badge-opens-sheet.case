@@ -1,0 +1,23 @@
+A click on the Properties badge opens the Edit Sheet on the front matter; saving it writes the note and keys go back to the map.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-props@0.8 key:Down@1.2 key:End@1.3 type:s@1.4 key:s+cmd@1.8 key:Right@2.4
+expect: selected: map-node:6
+expect: focus: note-keys (ring shown)
+--- before
+---
+title: Trip
+tags: [a]
+---
+
+## Day one
+
+## Day two
+--- after
+---
+title: Trips
+tags: [a]
+---
+
+## Day one
+
+## Day two

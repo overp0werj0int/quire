@@ -358,6 +358,11 @@ fn options(lines: &[&str]) -> Options {
     o
 }
 
+/// The lines of a note's fenced front matter, empty when it has none.
+pub fn front_lines(src: &str) -> Range<usize> {
+    0..front_end(&src.split('\n').collect::<Vec<_>>())
+}
+
 /// The line after fenced front matter's closing fence, or 0 when the note has none.
 fn front_end(lines: &[&str]) -> usize {
     if lines.first().map(|l| l.trim_start_matches('\u{feff}').trim_end_matches('\r')) != Some("---") {
@@ -866,8 +871,8 @@ fn renumber(lines: &mut [String], t: &Tree, j: usize, by: i64) {
     let new = (num + by).max(0).to_string();
     let delta = new.len() as isize - digits as isize;
     lines[n.own.start] = format!("{}{new}{}", &l[..b], &l[b + digits..]);
-    for k in n.span.start + 1..n.span.end {
-        lines[k] = shift(&lines[k], delta);
+    for l in &mut lines[n.span.start + 1..n.span.end] {
+        *l = shift(l, delta);
     }
 }
 

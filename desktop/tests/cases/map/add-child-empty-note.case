@@ -1,0 +1,7 @@
+Tab on an empty note's root writes a bullet.
+note: Plan.md
+events: key:m+cmd@0.3 key:Tab@0.8 type:First@1.0 key:Enter@1.5 key:s+cmd@1.9
+expect: selected: map-node:1
+--- before
+--- after
+- First

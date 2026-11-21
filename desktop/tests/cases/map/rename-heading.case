@@ -1,0 +1,17 @@
+e on a heading edits its text in place; the # run and the fold directive stay as written.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Enter@1.8 key:s+cmd@2.2
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# Plan
+
+##   Budget <!-- markmap: fold -->
+
+- Rent
+--- after
+# Plan
+
+##   Money <!-- markmap: fold -->
+
+- Rent

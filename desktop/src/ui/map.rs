@@ -85,8 +85,9 @@ pub(super) fn canvas(v: V) -> El {
     for &i in &links {
         world = world.child(link(&t, &l, i, &c));
     }
+    let editing = s.map_editing();
     for &i in &nodes {
-        world = world.child(node(&t, &l, i, folded(i), i == sel, &c, b, prose, mono));
+        world = world.child(node(&t, &l, i, folded(i), i == sel, editing == Some(i), &c, b, prose, mono));
         if !t.nodes[i].children.is_empty() {
             world = world.children(fold(&t, &l, i, folded(i), hit, &c, b, mono));
         }
@@ -103,18 +104,32 @@ pub(super) fn canvas(v: V) -> El {
                 .inert(),
         );
     }
+    if let Some(i) = editing
+        && let Some(p) = l.at[i]
+    {
+        let room = map_app::task_room(&t.nodes[i], b);
+        world = world.child(field(v, p, room, map_app::style(map_app::tier(&t, i), b, prose, mono), l.metrics));
+    }
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
     {
         let below = p.bottom() + 6.0;
         let small = (b * 0.72).round();
         if t.props > 0 {
+            // Right-aligned under the root: its links leave from its right edge, and nothing
+            // is left of it, so the badge never meets one.
+            let badge = format!("Properties · {}", t.props);
+            let font = styles::note(mono, small, normal_lh(mono, small));
+            let w = rune::text::measure(&badge, &[], font, None).0.ceil();
             world = world.child(
-                text(format!("Properties · {}", t.props))
+                text(badge)
                     .key("map-props")
-                    .font(styles::note(mono, small, normal_lh(mono, small)))
+                    .font(font)
                     .color(c.faint)
-                    .pin(Some(p.x + l.metrics.pad_x + W), Some(below + W), None, None),
+                    .role("button")
+                    .cursor(rune::Cursor::Pointer)
+                    .on_press_tx(|s: &mut App, tx: &mut Tx| s.map_props(tx))
+                    .pin(Some(p.right() - l.metrics.pad_x - w + W), Some(below + W), None, None),
             );
         }
         if t.nodes.len() == 1 {
@@ -196,8 +211,32 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
         .inert()
 }
 
+/// The inline field over the node being edited, in the label's place and style (MAP-016).
+fn field(v: V, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::Metrics) -> El {
+    let Some(e) = &v.s.map.inline else { return el() };
+    let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
+    let w = rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0;
+    let mut f = rune::text_input(&e.edit, st)
+        .key(map_app::FIELD)
+        .label("Node text")
+        .color(v.p.ink)
+        .caret(v.p.ink, v.p.sel)
+        .on_edit(|s: &mut App| match &mut s.map.inline {
+            Some(e) => &mut e.edit,
+            None => &mut s.map.spare,
+        })
+        .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
+        .pin(Some(p.x + m.pad_x + room + W), Some(p.y + W), None, None)
+        .w(w.max(p.w - 2.0 * m.pad_x - room).min(m.max_w))
+        .fill(Roles::new(v.p).bg);
+    if !e.multi {
+        f = f.single_line();
+    }
+    f
+}
+
 #[allow(clippy::too_many_arguments)]
-fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, c: &Roles, b: f32, prose: rune::Family, mono: rune::Family) -> El {
+fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, c: &Roles, b: f32, prose: rune::Family, mono: rune::Family) -> El {
     let Some(p) = l.at[i] else { return el() };
     let n = &t.nodes[i];
     let tier = map_app::tier(t, i);
@@ -209,8 +248,9 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, c: &Roles, b
     };
     let branch = branch_color(c, n.branch);
     let key = node_key(t, i);
+    let room = map_app::task_room(n, b);
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&n.label, n.depth, folded, selected, b.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
+    (i, &n.label, n.depth, folded, selected, editing, b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pad_x = l.metrics.pad_x;
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
@@ -225,21 +265,41 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, c: &Roles, b
         if !n.children.is_empty() {
             e = e.expanded(!folded);
         }
-        e.on_press_tx(move |s: &mut App, tx: &mut Tx| {
-                s.map_click(i);
-                s.keys_to_note(tx);
-            })
-            .child(
+        e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
+            .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
+            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
+            .children((!editing).then(|| {
                 text(label)
                     .font(map_app::style(tier, b, prose, mono))
                     .color(color)
                     .wrap()
-                    .pin(Some(pad_x), Some(0.0), None, None)
-                    .w(p.w - 2.0 * pad_x)
-                    .clip_soft(0.0),
-            )
+                    .pin(Some(pad_x + room), Some(0.0), None, None)
+                    .w(p.w - 2.0 * pad_x - room)
+                    .clip_soft(0.0)
+            }))
             .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
     })
+}
+
+/// A task's box left of its label, in a 24-point target, centred on the first line (MAP-053).
+fn task_box(n: &crate::map::Node, i: usize, b: f32, pad_x: f32, c: &Roles) -> El {
+    let done = matches!(n.kind, NodeKind::Item { task: crate::blocks::Task::Done, .. });
+    let bx = crate::page::r(b * 0.9);
+    let lh = crate::page::line(b, 1.45);
+    let hit = 24f32.max(bx);
+    let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
+    let mut bx_el = el().size(bx, bx).radius(rad);
+    bx_el = if done { bx_el.center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)) } else { bx_el.border(edge, c.faint) };
+    el().key(format!("map-task:{}", n.own.start + 1))
+        .size(hit, hit)
+        .center()
+        .role("checkbox")
+        .checked(done)
+        .label(if done { "Done" } else { "To do" })
+        .cursor(rune::Cursor::Pointer)
+        .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_task_click(i, tx))
+        .pin(Some(pad_x + (bx - hit) / 2.0), Some((lh - hit) / 2.0), None, None)
+        .child(bx_el)
 }
 
 #[allow(clippy::too_many_arguments)]

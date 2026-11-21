@@ -1,0 +1,11 @@
+F2 on a heading with a closing # run keeps the run.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:F2@1.0 type:Money@1.2 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+## Budget ##
+--- after
+# Plan
+
+## Money ##

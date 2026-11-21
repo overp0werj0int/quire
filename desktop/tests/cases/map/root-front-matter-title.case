@@ -1,0 +1,17 @@
+Editing a root named by front matter writes the title quoted and escaped.
+note: Plan.md
+events: key:m+cmd@0.3 key:F2@0.8 type:Say_"hi"_\o/@1.0 key:Enter@1.8 key:s+cmd@2.2
+--- before
+---
+title: Plan
+tags: a
+---
+
+text
+--- after
+---
+title: "Say \"hi\" \\o/"
+tags: a
+---
+
+text

@@ -206,6 +206,8 @@ pub(crate) fn page_stack(s: &App) -> &'static [Ctx] {
         &[Ctx::Global]
     } else if s.mode == crate::app::Mode::Preview {
         &[Ctx::Reader, Ctx::Global]
+    } else if s.mode == crate::app::Mode::Map && s.map.inline.is_some() {
+        &[Ctx::MapEdit, Ctx::Global]
     } else if s.mode == crate::app::Mode::Map {
         &[Ctx::Map, Ctx::Global]
     } else {
@@ -337,6 +339,11 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.zoom-in" => |s, tx| s.map_zoom_step(1.25, tx),
         "map.zoom-out" => |s, tx| s.map_zoom_step(0.8, tx),
         "map.delete" => |s, tx| s.map_delete(tx),
+        "map.edit" => |s, tx| s.map_edit(tx),
+        "map.edit-subtree" => |s, tx| s.map_edit_branch(tx),
+        "map.add-child" => |s, tx| s.map_add(crate::map_app::Place::Child, tx),
+        "map.add-sibling" => |s, tx| s.map_add(crate::map_app::Place::After, tx),
+        "map.add-sibling-before" => |s, tx| s.map_add(crate::map_app::Place::Before, tx),
         "map.toggle-task" => |s, tx| s.map_toggle_task(s.map_selected(), tx),
         "map.undo" => |s, tx| s.map_undo(false, tx),
         "map.redo" => |s, tx| s.map_undo(true, tx),

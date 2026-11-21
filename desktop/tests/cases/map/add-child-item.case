@@ -1,0 +1,14 @@
+Tab on a list item nests an item at its content column, with its bullet.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+# Plan
+
+*   a
+*   b
+--- after
+# Plan
+
+*   a
+    * x
+*   b

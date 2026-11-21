@@ -1,0 +1,14 @@
+Naming a root that comes from the file name, in a note with no H1, writes an H1 at the top.
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.6 key:F2@0.8 key:Backspace@1.0 type:Trip@1.2 key:Enter@1.7 key:s+cmd@2.1
+expect: selected: map-node:1
+--- before
+## A
+
+text
+--- after
+# Trip
+
+## A
+
+text

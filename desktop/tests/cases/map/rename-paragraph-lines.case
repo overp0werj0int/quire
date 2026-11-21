@@ -1,0 +1,19 @@
+Shift+Enter in a paragraph starts a line, written back at the item's content column.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Right@1.0 key:e@1.2 type:one@1.4 key:Enter+shift@1.7 type:two@1.9 key:Enter@2.3 key:s+cmd@2.7
+--- before
+# Plan
+
+- a
+
+  old	text
+	more
+- b
+--- after
+# Plan
+
+- a
+
+  one
+  two
+- b

@@ -1,0 +1,13 @@
+Editing an ordered item keeps its number and delimiter.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Pack@1.2 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+3) Book
+4) Go
+--- after
+# Plan
+
+3) Pack
+4) Go

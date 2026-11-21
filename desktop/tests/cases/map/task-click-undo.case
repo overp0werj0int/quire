@@ -1,0 +1,16 @@
+Ctrl+Z after a click on a box takes back that click only.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-task:4@0.8 tap:map-task:3@1.2 key:z+cmd@1.6 key:s+cmd@2.0
+expect: selected: map-node:3
+--- before
+# Plan
+
+- [ ] milk
+- [x] eggs
+- bread
+--- after
+# Plan
+
+- [ ] milk
+- [ ] eggs
+- bread

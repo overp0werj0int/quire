@@ -1,0 +1,9 @@
+Enter on the root adds a child; Shift+Enter on the root does nothing.
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.5 key:Enter+shift@0.7 key:Enter@0.9 type:x@1.1 key:Enter@1.5 key:s+cmd@1.9
+--- before
+# Plan
+--- after
+# Plan
+
+## x

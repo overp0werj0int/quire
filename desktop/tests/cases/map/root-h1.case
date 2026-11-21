@@ -1,0 +1,11 @@
+F2 on a root that is the note's H1 edits that line.
+note: Plan.md
+events: key:m+cmd@0.3 key:F2@0.8 type:Trip@1.0 key:Enter@1.5 key:s+cmd@1.9
+--- before
+# Plan
+
+text
+--- after
+# Trip
+
+text

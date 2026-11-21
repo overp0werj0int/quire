@@ -1,0 +1,27 @@
+Tab on a virtual root matches the least top-level heading level, after the last section.
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.6 key:Tab@0.8 type:C@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+intro
+
+## A
+
+### A1
+
+## B
+text
+
+[^1]: a note
+--- after
+intro
+
+## A
+
+### A1
+
+## B
+text
+
+## C
+
+[^1]: a note

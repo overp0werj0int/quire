@@ -1,0 +1,12 @@
+Enter on an item with children adds the sibling after them, so they stay under it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Enter@0.8 type:T@1.0 key:Enter@1.4 key:s+cmd@1.8
+--- before
+- a
+  - x
+- b
+--- after
+- a
+  - x
+- T
+- b

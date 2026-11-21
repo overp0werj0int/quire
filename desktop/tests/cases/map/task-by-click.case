@@ -1,0 +1,16 @@
+A click on a task's box ticks it and selects its node; a done box unticks the same way.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-task:3@0.8 tap:map-task:4@1.2 key:s+cmd@1.6
+expect: selected: map-node:4
+--- before
+# Plan
+
+- [ ] milk
+- [x] eggs
+- bread
+--- after
+# Plan
+
+- [x] milk
+- [ ] eggs
+- bread
