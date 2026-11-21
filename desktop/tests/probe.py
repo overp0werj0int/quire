@@ -17,6 +17,10 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
     hover:KEY@T       move the pointer over KEY                 hover:700,300@T move to a point
     key:NAME[+cmd][+shift][+alt]@T                               type:TEXT@T     (use _ for a space)
     scroll:DY,X,Y@T   a wheel turn (positive DY moves towards the note's top)
+    drag:FROM>DX,DY[,DUR][+MOD]@T   a press at FROM (a KEY or X,Y), moved by DX,DY over DUR
+                      seconds (default 0.3), then released; MOD is middle or a key modifier
+    wheel:DX,DY[,X,Y][+MOD]@T       one raw wheel delta, at X,Y or where the pointer is
+    pinch:DELTA[,X,Y]@T             a touchpad pinch (0.1 zooms in by about a tenth)
 
 T is seconds on the app's own clock. `cmd` is Ctrl on Linux and Windows. Typed text arrives at
 about 30 letters a second, so leave it time before the next event.
@@ -64,6 +68,14 @@ DESKTOP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCK_PATH = "/tmp/quire-run.lock"
 
 
+def at(where):
+    """A short form's place: X,Y in points, or an element's key."""
+    if re.fullmatch(r"[0-9.]+,[0-9.]+", where):
+        x, y = where.split(",")
+        return {"x": float(x), "y": float(y)}
+    return {"key": where}
+
+
 def parse_events(arg):
     if arg == "-":
         return json.load(sys.stdin)
@@ -72,20 +84,37 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|hover|key|type|scroll):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|hover|key|type|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
         if kind in ("tap", "hover"):
-            ev_type = "tap" if kind == "tap" else "move"
-            if re.fullmatch(r"[0-9.]+,[0-9.]+", body):
-                x, y = body.split(",")
-                events.append({"t": t, "type": ev_type, "x": float(x), "y": float(y)})
-            else:
-                events.append({"t": t, "type": ev_type, "key": body})
+            events.append(dict({"t": t, "type": "tap" if kind == "tap" else "move"}, **at(body)))
         elif kind == "key":
             name, *mods = body.split("+")
             events.append(dict({"t": t, "type": "key", "name": name}, **{m: True for m in mods}))
+        elif kind == "drag":
+            body, *mods = body.split("+")
+            src, _, by = body.partition(">")
+            dx, dy, dur = (by.split(",") + ["0.3"])[:3]
+            ev = {"t": t, "type": "drag", "dx": float(dx), "dy": float(dy), "dur": float(dur)}
+            ev.update(at(src))
+            for m in mods:
+                ev.update({"button": "middle"} if m == "middle" else {m: True})
+            events.append(ev)
+        elif kind == "wheel":
+            body, *mods = body.split("+")
+            dx, dy, *xy = body.split(",")
+            ev = dict({"t": t, "type": "wheel", "dx": float(dx), "dy": float(dy)}, **{m: True for m in mods})
+            if xy:
+                ev.update(x=float(xy[0]), y=float(xy[1]))
+            events.append(ev)
+        elif kind == "pinch":
+            delta, *xy = body.split(",")
+            ev = {"t": t, "type": "magnify", "delta": float(delta)}
+            if xy:
+                ev.update(x=float(xy[0]), y=float(xy[1]))
+            events.append(ev)
         elif kind == "type":
             events.append({"t": t, "type": "type", "text": body.replace("_", " ")})
         else:
