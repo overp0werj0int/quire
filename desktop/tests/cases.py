@@ -23,7 +23,8 @@ The first line says what the case checks. `note` names the file (default Note.md
 is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
 that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`selected`, `nodes`), compared exactly. The text after
+`selected`, `nodes`), compared exactly. With `password`, the note on disk must be a locked
+note (SYNC.md), and its text opened with that password is what `--- after` holds. The text after
 `--- before` is the note as it starts. The text after `--- after` is the note expected on disk
 after the replay; without that section the note must be unchanged. Each line of a section is a
 line of the note, ended by a newline, so both notes end in one.
@@ -50,7 +51,7 @@ class Case:
     def __init__(self, path):
         self.path = path
         self.name = os.path.relpath(path, os.path.join(HERE, "cases"))
-        self.note, self.state, self.size = "Note.md", None, "1280x800"
+        self.note, self.state, self.size, self.password = "Note.md", None, "1280x800", None
         self.events, self.expect, self.before, self.after = [], [], None, None
         text = open(path).read()
         lines = (text[:-1] if text.endswith("\n") else text).split("\n")
@@ -71,6 +72,8 @@ class Case:
                     self.state = value
                 elif key == "size":
                     self.size = value
+                elif key == "password":
+                    self.password = value
                 elif key == "events":
                     self.events.append(value)
                 elif key == "expect":
@@ -84,6 +87,22 @@ class Case:
     def _close(self, section, body):
         if section:
             setattr(self, section, "".join(line + "\n" for line in body))
+
+
+def unlock(text, password):
+    """A locked note's text (SYNC.md, "Locked notes"), or a line saying it is not locked."""
+    import base64
+    import hashlib
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    lines = text.split("\n")
+    head = lines[0].split()
+    if head[:3] != ["%QUIRE-LOCKED-NOTE", "v1", "pbkdf2-sha256"]:
+        return "(not locked)\n" + text
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), base64.b64decode(head[4]), int(head[3]), 64)[:32]
+    blob = base64.b64decode("".join(lines[3:]))
+    return AESGCM(key).decrypt(blob[6:18], blob[18:], None).decode()
 
 
 def reading(line):
@@ -105,6 +124,8 @@ def run(case, binary, keep):
         els, home = probe.replay(binary, events, None, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state)
         problems = []
         saved = open(os.path.join(work, "notes", case.note)).read()
+        if case.password:
+            saved = unlock(saved, case.password)
         want = case.before if case.after is None else case.after
         if saved != want:
             diff = difflib.unified_diff(want.splitlines(True), saved.splitlines(True), "expected", "on disk")

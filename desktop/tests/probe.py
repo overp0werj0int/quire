@@ -29,7 +29,7 @@ WHAT is any of (default `focus,doc-y`):
 
     focus             the focused element's key, and whether its ring shows
     rect:KEY          an element's rectangle [x, y, w, h] in points
-    text:KEY          an element's text
+    text:KEY          an element's text, or the text inside it joined by spaces
     doc-y             the page's top edge, which tells you how far it has scrolled
     label:KEY         an element's accessible label (a map node's reads its text and state)
     scale:KEY         how much an element is drawn scaled (a map node's is the map's zoom)
@@ -88,7 +88,7 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|hover|key|type|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|hover|key|type|paste|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
@@ -121,6 +121,8 @@ def parse_events(arg):
             events.append(ev)
         elif kind == "type":
             events.append({"t": t, "type": "type", "text": body.replace("_", " ")})
+        elif kind == "paste":
+            events.append({"t": t, "type": "paste", "text": body.replace("_", " ").replace("\\n", "\n")})
         else:
             dy, x, y = (body.split(",") + ["700", "400"])[:3]
             events.append({"t": t, "type": "scroll", "dy": float(dy), "x": float(x), "y": float(y)})
@@ -190,6 +192,9 @@ def answer(what, els, home):
         return "%s: %s" % (what, rect(els, what[5:]))
     if what.startswith("text:"):
         e = next((e for e in els if e.get("key") == what[5:]), None)
+        if e and e.get("text") is None:
+            inner = [d["text"] for d in els if d.get("text") is not None and d.get("path", "").startswith(e.get("path", "") + "/")]
+            return "%s: %r" % (what, " ".join(inner) if inner else None)
         return "%s: %r" % (what, e.get("text") if e else None)
     if what.startswith("label:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
