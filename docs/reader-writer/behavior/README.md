@@ -12,6 +12,7 @@ is checked.
 | `reader.md` | `RD` | Preview mode: reload, scrolling, outline, find, links, copy, tasks, help sheet |
 | `writer.md` | `WR` | Source mode: live formatting, editing keys, focus, typewriter, chrome, help sheet |
 | `edit-sheet.md` | `SHEET` | Editing one block or section from the reader |
+| `map.md` | `MAP` | Map mode: live mindmap editor, canvas, node cards, drag-and-drop and Quire integration |
 | `keymap.md` | `KEY` | Every key binding, in the omarky and quire presets |
 | `sidebar.md` | `SB` | The left sidebar: the top bar, the Open shelf, the vault, search, tags, the footer, Note mode and the drawer |
 | `verification.md` | `VER` | How the items are checked |

@@ -16,3 +16,19 @@ own pass that writes its behaviour file and decisions, the way `behavior/` was w
   `deferred`. To settle first: a spell backend on Linux (Hunspell or similar), a Rune change
   for app-drawn underlines, and in-app context menus, since Rune has no native menus on Linux.
 - **A user keymap file.** Single bindings that override a preset (decision 0003).
+
+## Map mode
+
+Deferred items from `behavior/map.md` (decision 0014):
+
+- **Map multi-select.** Select multiple nodes by Shift/Ctrl+click or marquee drag to move, delete, copy or fold them together (`MAP-076`).
+- **Map SVG and PNG export.** Export a note's full mindmap to an SVG or high-DPI PNG file (`MAP-077`).
+- **Map minimap.** Floating corner overview showing the viewport over large maps (`MAP-078`).
+- **Map alternative layouts.** Two-sided balanced mindmap and top-down org-chart layouts (`MAP-079`).
+- **Math rendering in maps.** Render `$...$` and `$$...$$` LaTeX formulas in map nodes once Preview supports math (`MAP-080`).
+- **Map free-position pinning.** Pin nodes off the tidy tree layout once a metadata format is decided (`MAP-081`).
+- **Map collaborative cursors.** Live multi-user presence and cursors on the map canvas (`MAP-082`).
+- **Map cross-kind conversions.** Convert between headings and list items on drag or keyboard moves, fall back headings shifted past `H6` to nested bullets, offer Convert in the node menu, and run `Ctrl+Alt+1` to `Ctrl+Alt+6` on list items and paragraphs (`MAP-083`).
+- **Map multi-line Markdown paste.** Paste multi-line Markdown trees directly onto the canvas while not inline-editing (`MAP-084`).
+- **Map internal card scrolling.** Scroll inside overflowing code, diff and table cards with wheel hand-off to the canvas (`MAP-085`).
+- **Map Space+drag pan.** Pan anywhere on the canvas with `Space` plus left-drag without triggering `Space` fold on key-down (`MAP-086`).
