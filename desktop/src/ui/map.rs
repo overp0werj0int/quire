@@ -10,7 +10,7 @@ use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, T
 use super::{V, styles};
 use crate::app::App;
 use crate::map::{NodeKind, ROOT, Tree};
-use crate::map_app::{self, Tier};
+use crate::map_app::{self, FOLD_R, Tier};
 use crate::map_layout::{Laid, Place, line_width};
 use crate::roles::Roles;
 use crate::theme::normal_lh;
@@ -18,7 +18,6 @@ use crate::theme::normal_lh;
 /// Half the world element's side. The world is centred on the canvas's top-left, so its live
 /// offset is the camera's pan and nodes sit at their world coordinates plus this.
 const W: f32 = 131_072.0;
-const FOLD_R: f32 = 6.0;
 
 /// A node's key: its first source line, 1-based, or the root or footnotes group by name.
 pub fn node_key(t: &Tree, i: usize) -> String {
@@ -97,23 +96,32 @@ pub(super) fn canvas(v: V) -> El {
             world = world.children(fold(&t, &l, i, folded(i), hit, &c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
     }
+    // The field over the node being edited: its place, room left of the text, style and size.
+    let field_at = editing.and_then(|i| {
+        let (e, p) = (s.map.inline.as_ref()?, l.at[i]?);
+        let room = map_app::task_room(&t.nodes[i], b);
+        let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
+        Some((i, p, room, st, field_size(e, p, room, st, l.metrics)))
+    });
     if nodes.contains(&sel)
         && let Some(p) = l.at[sel]
     {
+        // While the node's text is edited, the outline holds the field, however it grows.
+        let [w, h] = match field_at {
+            Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
+            _ => [p.w, p.h],
+        };
         world = world.child(
             el().key("map-selection")
                 .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
-                .size(p.w + 6.0, p.h + line_width(p.depth) + 6.0)
+                .size(w + 6.0, h + line_width(p.depth) + 6.0)
                 .radius(4.0)
                 .border(2.0, c.accent)
                 .inert(),
         );
     }
-    if let Some(i) = editing
-        && let Some(p) = l.at[i]
-    {
-        let room = map_app::task_room(&t.nodes[i], b);
-        world = world.child(field(v, p, room, map_app::style(map_app::tier(&t, i), b, prose, mono), l.metrics));
+    if let Some((_, p, room, st, [w, _])) = field_at {
+        world = world.child(field(v, p, room, st, w, l.metrics.pad_x));
     }
     if let Some(g) = drag {
         if let Some(at) = g.drop {
@@ -130,14 +138,9 @@ pub(super) fn canvas(v: V) -> El {
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
     {
-        let below = p.bottom() + 6.0;
-        let small = (b * 0.72).round();
+        let font = map_app::chip_font(b, mono);
         if t.props > 0 {
-            // Right-aligned under the root: its links leave from its right edge, and nothing
-            // is left of it, so the badge never meets one.
-            let badge = format!("Properties · {}", t.props);
-            let font = styles::note(mono, small, normal_lh(mono, small));
-            let w = rune::text::measure(&badge, &[], font, None).0.ceil();
+            let (badge, [x, y, ..]) = map_app::badge(t.props, p, l.metrics.pad_x, font);
             world = world.child(
                 text(badge)
                     .key("map-props")
@@ -146,11 +149,11 @@ pub(super) fn canvas(v: V) -> El {
                     .role("button")
                     .cursor(rune::Cursor::Pointer)
                     .on_press_tx(|s: &mut App, tx: &mut Tx| s.map_props(tx))
-                    .pin(Some(p.right() - l.metrics.pad_x - w + W), Some(below + W), None, None),
+                    .pin(Some(x + W), Some(y + W), None, None),
             );
         }
         if t.nodes.len() == 1 {
-            let y = below + if t.props > 0 { small * 1.6 } else { 0.0 };
+            let y = p.bottom() + 6.0 + if t.props > 0 { font.size * 1.6 } else { 0.0 };
             world = world.child(
                 text("Press Tab to add a branch, or F2 to name the root")
                     .key("map-hint")
@@ -208,11 +211,17 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
         .inert()
 }
 
-/// The inline field over the node being edited, in the label's place and style (MAP-016).
-fn field(v: V, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::Metrics) -> El {
-    let Some(e) = &v.s.map.inline else { return el() };
+/// The inline field's size for its text: as wide as the text, at least the label's width and
+/// at most a node's widest, and as tall as the text wraps to at that width.
+fn field_size(e: &map_app::Inline, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::Metrics) -> [f32; 2] {
     let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
-    let w = rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0;
+    let w = (rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0).max(p.w - 2.0 * m.pad_x - room).min(m.max_w);
+    [w, rune::text::measure(shown, &[], st, e.multi.then_some(w)).1.ceil()]
+}
+
+/// The inline field over the node being edited, in the label's place and style (MAP-016).
+fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> El {
+    let Some(e) = &v.s.map.inline else { return el() };
     let mut f = rune::text_input(&e.edit, st)
         .key(map_app::FIELD)
         .label("Node text")
@@ -223,8 +232,8 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::M
             None => &mut s.map.spare,
         })
         .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
-        .pin(Some(p.x + m.pad_x + room + W), Some(p.y + W), None, None)
-        .w(w.max(p.w - 2.0 * m.pad_x - room).min(m.max_w))
+        .pin(Some(p.x + pad_x + room + W), Some(p.y + W), None, None)
+        .w(w)
         .fill(Roles::new(v.p).bg);
     if !e.multi {
         f = f.single_line();
@@ -326,19 +335,19 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
             .child(dot),
     ];
     if folded {
-        let size = (b * 0.72).round();
-        let pill_h = size + 6.0;
+        let font = map_app::chip_font(b, mono);
+        let (pill, [x, y, _, h]) = map_app::pill(n.end - i - 1, p, font);
         out.push(
-            text(format!("+{}", n.end - i - 1))
+            text(pill)
                 .key(format!("map-pill:{tail}"))
-                .font(styles::note(mono, size, normal_lh(mono, size)))
+                .font(font)
                 .color(c.readable_dim())
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)
-                .radius(pill_h / 2.0)
-                .px(5.0)
-                .h(pill_h)
-                .pin(Some(cx + FOLD_R + 6.0 + W), Some(cy - pill_h / 2.0 + W), None, None)
+                .radius(h / 2.0)
+                .px(map_app::PILL_PAD)
+                .h(h)
+                .pin(Some(x + W), Some(y + W), None, None)
                 .on_press_tx(toggle),
         );
     }

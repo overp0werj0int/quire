@@ -1,7 +1,7 @@
 A drag on the root, which can't move, pans the map instead.
 note: Plan.md
 events: key:m+cmd@0.3 drag:map-node:1>50,30,0.4@1.0
-expect: rect:map-node:3: [640.0, 383.0, 158.0, 59.0]
+expect: rect:map-node:3: [640.0, 378.25, 158.0, 59.0]
 --- before
 # Plan
 

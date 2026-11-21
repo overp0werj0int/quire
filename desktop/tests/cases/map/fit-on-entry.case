@@ -1,8 +1,8 @@
 The map opens fitted to the canvas when that is at least 70%.
 note: Trip.md
 events: key:m+cmd@0.3
-expect: rect:map-node:6: [273.8, 389.2, 105.94, 65.48]
-expect: scale:map-node:6: 1.9261000156402588
+expect: rect:map-node:6: [340.23, 385.27, 98.77, 61.06]
+expect: scale:map-node:6: 1.7956000566482544
 --- before
 ---
 title: Trip

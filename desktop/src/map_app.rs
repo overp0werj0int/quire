@@ -15,7 +15,7 @@ use rune::{Family, Live, TextEdit, TextStyle, Tx};
 
 use crate::app::{App, Mode};
 use crate::map::{self, NodeId, NodeKind, ROOT, Tree};
-use crate::map_layout::{Laid, Metrics};
+use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
 pub const ZOOM_MIN: f32 = 0.1;
@@ -28,6 +28,8 @@ const MARGIN: f32 = 40.0;
 const GLIDE: f64 = 0.2;
 /// Room right of a node for its fold circle and count pill, in world points.
 pub const FOLD_ROOM: f32 = 64.0;
+/// A fold circle's radius, at a branching node's right anchor (MAP-041).
+pub const FOLD_R: f32 = 6.0;
 
 /// One tab's map: kept for the session, dropped with the tab (MAP-044).
 pub struct MapView {
@@ -166,6 +168,33 @@ pub fn task_room(n: &map::Node, b: f32) -> f32 {
         _ => 0.0,
     }
 }
+
+/// The text of the Properties badge and the `+N` pills at body size `b`.
+pub fn chip_font(b: f32, mono: Family) -> TextStyle {
+    let size = (b * 0.72).round();
+    crate::ui::styles::note(mono, size, crate::theme::normal_lh(mono, size))
+}
+
+/// The Properties badge under the root's box `p` (MAP-006): its text and `[x, y, w, h]`.
+/// Right-aligned under the root: its links leave from its right edge, and nothing is left of
+/// it, so the badge never meets one.
+pub fn badge(props: usize, p: map_layout::Place, pad_x: f32, font: TextStyle) -> (String, [f32; 4]) {
+    let text = format!("Properties · {props}");
+    let w = rune::text::measure(&text, &[], font, None).0.ceil();
+    (text, [p.right() - pad_x - w, p.bottom() + 6.0, w, font.line_height])
+}
+
+/// The `+N` pill right of a folded node's circle, for box `p` (MAP-041): its text and
+/// `[x, y, w, h]`.
+pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f32; 4]) {
+    let text = format!("+{hidden}");
+    let h = font.size + 6.0;
+    let w = rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * PILL_PAD;
+    (text, [p.right() + FOLD_R + 6.0, p.line_y() - h / 2.0, w, h])
+}
+
+/// A pill's padding either side of its text.
+pub const PILL_PAD: f32 = 5.0;
 
 /// What a node shows: an ordered item's number before its text.
 pub fn shown_label(n: &map::Node) -> String {
@@ -381,9 +410,32 @@ impl App {
         self.map_zoom_about(w / 2.0, h / 2.0, f, tx);
     }
 
-    /// The camera that fits every shown node (MAP-035).
+    /// What the map draws, `[x0, y0, x1, y1]`: every shown node with its fold circle, its
+    /// `+N` pill when folded, and the Properties badge.
+    fn map_extent(&self) -> [f32; 4] {
+        let t = self.map_tree();
+        let l = self.map_laid();
+        let font = chip_font(self.settings().size as f32, self.fonts().1);
+        let folded = |i: usize| self.map_view().is_some_and(|v| v.folded.contains(&t.nodes[i].id));
+        let mut boxes = Vec::new();
+        for &i in l.shown.iter().filter(|&&i| !t.nodes[i].children.is_empty()) {
+            let Some(p) = l.at[i] else { continue };
+            boxes.push([p.right() - FOLD_R, p.line_y() - FOLD_R, 2.0 * FOLD_R, 2.0 * FOLD_R]);
+            if folded(i) {
+                boxes.push(pill(t.nodes[i].end - i - 1, p, font).1);
+            }
+        }
+        if t.props > 0
+            && let Some(p) = l.at[ROOT]
+        {
+            boxes.push(badge(t.props, p, l.metrics.pad_x, font).1);
+        }
+        boxes.into_iter().fold(l.bounds, |[x0, y0, x1, y1], [x, y, w, h]| [x0.min(x), y0.min(y), x1.max(x + w), y1.max(y + h)])
+    }
+
+    /// The camera that fits everything the map draws (MAP-035).
     fn fit_camera(&self) -> ([f32; 2], f32) {
-        let [x0, y0, x1, y1] = self.map_laid().bounds;
+        let [x0, y0, x1, y1] = self.map_extent();
         let [w, h] = self.map_size();
         let (bw, bh) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
         let z = (w / bw * 0.95).min(h / bh * 0.95).min(2.0).clamp(ZOOM_MIN, ZOOM_MAX);

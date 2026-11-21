@@ -1,0 +1,20 @@
+Fit takes in the Properties badge under the root and a folded node's +N pill, which reach past the nodes: both are inside the canvas after it.
+note: Plan.md
+size: 700x400
+events: key:m+cmd@0.3 key:Right@0.6 key:f@0.8 key:0@1.0
+expect: rect:map-canvas: [248.0, 41.0, 452.0, 359.0]
+expect: rect:map-props: [259.3, 236.81, 74.08, 11.47]
+expect: rect:map-pill:9: [669.31, 230.86, 19.39, 14.11]
+--- before
+---
+title: Plan
+owner: Ann
+due: May
+---
+
+# Plan
+
+## Budget and the costs of the whole long trip
+
+- Rent
+- Food
