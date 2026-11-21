@@ -1,0 +1,17 @@
+Alt+Down takes an item past the next: it adopts the ordered list's marker, its text moves to the new content column, and the list renumbers.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down+alt@0.9
+expect: selected: map-node:2
+--- before
+- x
+
+  detail
+
+1. a
+2. b
+--- after
+1. a
+2. x
+
+   detail
+3. b

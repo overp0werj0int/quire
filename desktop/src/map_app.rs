@@ -763,7 +763,7 @@ impl App {
     /// keeps its place on the node the sheet began at (MAP-020).
     pub fn map_replace(&mut self, lines: std::ops::Range<usize>, with: &str, tx: &mut Tx) {
         let old = self.map_tree();
-        let s = map::Splice { focus: Some(lines.start), lines, with: with.split('\n').map(str::to_string).collect() };
+        let s = map::Splice { focus: Some(lines.start), lines, with: with.split('\n').map(str::to_string).collect(), moved: None };
         self.map_apply(&old, &s, tx);
     }
 
@@ -824,6 +824,44 @@ impl App {
         let t = self.map_tree();
         if let Some(s) = map::toggle_task(self.active_text(), &t, i) {
             self.map_apply(&t, &s, tx);
+        }
+    }
+
+    /// Node `s` moves to `at`, by a drop or a key (MAP-026 to MAP-031).
+    pub fn map_move_node(&mut self, s: usize, at: map::Add, tx: &mut Tx) {
+        if self.map_editable() {
+            let t = self.map_tree();
+            let r = map::move_to(self.active_text(), &t, s, at);
+            self.map_try(&t, r, tx);
+        }
+    }
+
+    /// Alt+arrows, Shift+Tab (MAP-031).
+    pub fn map_step(&mut self, dir: map::Step, tx: &mut Tx) {
+        if self.map_editable() {
+            let t = self.map_tree();
+            let s = self.map_selected();
+            match map::step(&t, s, dir) {
+                Ok(at) => self.map_move_node(s, at, tx),
+                Err(why) => self.map_try(&t, Err(why), tx),
+            }
+        }
+    }
+
+    /// Ctrl+Alt+1 to 6 (MAP-031).
+    pub fn map_level(&mut self, to: usize, tx: &mut Tx) {
+        if self.map_editable() {
+            let t = self.map_tree();
+            let r = map::set_level(self.active_text(), &t, self.map_selected(), to);
+            self.map_try(&t, r, tx);
+        }
+    }
+
+    fn map_try(&mut self, t: &Tree, r: Result<map::Splice, map::Refused>, tx: &mut Tx) {
+        match r {
+            Ok(s) => self.map_apply(t, &s, tx),
+            Err(Some(why)) => self.toast(why, tx),
+            Err(None) => {}
         }
     }
 
@@ -1042,9 +1080,17 @@ impl App {
                     self.keys_to_note(tx);
                 }
                 "mapedit.newline" if multi => return false,
-                "mapedit.newline" | "mapedit.commit-outdent" => {
+                "mapedit.newline" => {
                     self.map_commit(tx);
                     self.keys_to_note(tx);
+                }
+                "mapedit.commit-outdent" => {
+                    let unnamed = self.map.inline.as_ref().is_some_and(|e| matches!(e.what, Editing::New(_)) && e.edit.text.trim().is_empty());
+                    self.map_commit(tx);
+                    self.keys_to_note(tx);
+                    if !unnamed {
+                        self.map_step(map::Step::Out, tx);
+                    }
                 }
                 "mapedit.cancel" => {
                     if !self.esc_takes_notice() {

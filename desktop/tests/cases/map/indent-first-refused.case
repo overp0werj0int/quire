@@ -1,0 +1,7 @@
+Alt+Right with no sibling above to go under stops and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right+alt@0.9
+expect: text:toast: 'Nothing above to go under'
+--- before
+- a
+- b

@@ -1,0 +1,16 @@
+Ctrl+Shift+Z after undoing a move does the move again.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Down@1.0 key:Up+alt@1.4 key:z+cmd@1.9 key:z+cmd+shift@2.4
+expect: selected: map-node:2
+--- before
+8. a
+9. b
+10. c
+
+    note
+--- after
+8. a
+9. c
+
+   note
+10. b

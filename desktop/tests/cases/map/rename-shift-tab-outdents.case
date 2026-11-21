@@ -1,0 +1,13 @@
+Shift+Tab in the inline field commits the text and outdents the node.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.2 type:y@1.5 key:Tab+shift@1.9
+expect: selected: map-node:2
+expect: focus: note-keys (no ring)
+--- before
+- a
+  - x
+- b
+--- after
+- a
+- y
+- b

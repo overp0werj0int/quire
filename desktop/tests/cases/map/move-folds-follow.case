@@ -1,0 +1,27 @@
+A folded heading moved up stays folded and selected, and the one it passed keeps its children shown.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:f@1.2 key:Up+alt@1.6
+expect: selected: map-node:3
+expect: nodes: 1 3 7 9 10
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Trip
+
+- Train
+--- after
+# Plan
+
+## Trip
+
+- Train
+
+## Budget
+
+- Rent
+- Food

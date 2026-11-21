@@ -1,0 +1,17 @@
+Alt+Up on a paragraph below a tight list puts it before the last item, set apart by blank lines.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Down@1.0 key:Down@1.2 key:Up+alt@1.6
+expect: selected: map-node:4
+--- before
+- a
+- b
+- c
+
+para
+--- after
+- a
+- b
+
+para
+
+- c

@@ -1,0 +1,6 @@
+Ctrl+Alt+2 on a list item does nothing and says only headings have a level.
+note: Plan.md
+events: key:m+cmd@0.3 key:2+cmd+alt@0.9
+expect: text:toast: 'Only headings have a level'
+--- before
+- a

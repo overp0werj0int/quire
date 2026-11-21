@@ -1,0 +1,20 @@
+Alt+Right on a heading puts it under the heading above, a level deeper, and its subheadings go deeper with it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Right+alt@1.4
+expect: selected: map-node:5
+--- before
+# Plan
+
+## Budget
+
+## Trip
+
+### Train
+--- after
+# Plan
+
+## Budget
+
+### Trip
+
+#### Train

@@ -1,0 +1,12 @@
+Alt+Right on an item puts it at the end of the nested list of the item above.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Right+alt@1.2
+expect: selected: map-node:3
+--- before
+- a
+  - x
+- b
+--- after
+- a
+  - x
+  - b

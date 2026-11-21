@@ -1,0 +1,9 @@
+Ctrl+Z after a move gives back the note exactly, in one step.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Down@1.0 key:Up+alt@1.4 key:z+cmd@1.9
+--- before
+8. a
+9. b
+10. c
+
+    note

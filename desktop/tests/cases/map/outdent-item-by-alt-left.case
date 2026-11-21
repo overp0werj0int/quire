@@ -1,0 +1,10 @@
+Alt+Left outdents like Shift+Tab: the nested item goes after its parent.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Left+alt@1.2
+expect: selected: map-node:2
+--- before
+- a
+  - x
+--- after
+- a
+- x

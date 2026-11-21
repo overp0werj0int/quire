@@ -459,6 +459,8 @@ pub struct Splice {
     pub lines: Range<usize>,
     pub with: Vec<String>,
     pub focus: Option<usize>,
+    /// Where each old line went, for a move: its lines leave one place and land in another.
+    pub moved: Option<Vec<Option<usize>>>,
 }
 
 impl Splice {
@@ -472,6 +474,9 @@ impl Splice {
 
     /// Where old line `l` is in the new text, or None when the splice dropped it.
     pub fn line_after(&self, l: usize) -> Option<usize> {
+        if let Some(m) = &self.moved {
+            return m.get(l).copied().flatten();
+        }
         if l < self.lines.start {
             Some(l)
         } else if l >= self.lines.end {
@@ -492,7 +497,7 @@ fn splice_of(old: &[&str], new: &[String], focus: Option<usize>) -> Splice {
     let pre = old.iter().zip(new).take_while(|(a, b)| **a == b.as_str()).count();
     let room = old.len().min(new.len()) - pre;
     let post = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| **a == b.as_str()).count();
-    Splice { lines: pre..old.len() - post, with: new[pre..new.len() - post].to_vec(), focus }
+    Splice { lines: pre..old.len() - post, with: new[pre..new.len() - post].to_vec(), focus, moved: None }
 }
 
 /// The splice between two texts, for undo and redo (MAP-014).
@@ -774,6 +779,15 @@ pub enum Add {
     Before(usize),
 }
 
+impl Add {
+    /// The node the place is relative to.
+    pub fn node(self) -> usize {
+        match self {
+            Add::Child(j) | Add::After(j) | Add::Before(j) => j,
+        }
+    }
+}
+
 /// A new node: its first line's `head`, the indent of its other lines (None: one line only),
 /// the line it goes in at, whether blank lines set it apart, and the ordered items after it
 /// whose numbers go up by one.
@@ -1028,6 +1042,385 @@ pub fn toggle_task(src: &str, t: &Tree, i: usize) -> Option<Splice> {
     let old: Vec<&str> = src.split('\n').collect();
     let new: Vec<String> = new.split('\n').map(str::to_string).collect();
     Some(splice_of(&old, &new, Some(n.own.start)))
+}
+
+// ---------- Moves: a node and everything under it go elsewhere (MAP-026 to MAP-031) ----------
+
+pub const HEADINGS_ONLY: &str = "A heading moves only among headings";
+pub const TEXT_ABOVE: &str = "Text and lists stay above subheadings";
+pub const NOT_IN_ITEM: &str = "A heading can't go inside a list item";
+pub const PAST_H6: &str = "Headings stop at H6";
+pub const ROOT_MOVE: &str = "The map's root can't move";
+pub const STRUCTURE: &str = "That move would change the note's structure";
+pub const NOT_HEADING: &str = "Only headings have a level";
+const FIRST: &str = "Already first";
+const LAST: &str = "Already last";
+const OUTERMOST: &str = "Already at the top level";
+const NONE_ABOVE: &str = "Nothing above to go under";
+
+/// A heading that starts a section, not one written inside a list item.
+fn section(t: &Tree, i: usize) -> bool {
+    matches!(t.nodes[i].kind, NodeKind::Heading { .. }) && !t.nodes[i].parent.is_some_and(|p| is_item(t, p))
+}
+
+fn level(t: &Tree, i: usize) -> usize {
+    match t.nodes[i].kind {
+        NodeKind::Heading { level, .. } => level,
+        _ => 0,
+    }
+}
+
+/// Node `p`'s children but `s` and the footnotes group.
+fn kids_but(t: &Tree, p: usize, s: usize) -> Vec<usize> {
+    t.nodes[p].children.iter().copied().filter(|&c| c != s && t.nodes[c].kind != NodeKind::Footnotes).collect()
+}
+
+fn movable(t: &Tree, s: usize) -> Result<(), Refused> {
+    match t.nodes[s].kind {
+        _ if s == ROOT => Err(Some(ROOT_MOVE)),
+        NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(Some(FOOTNOTES)),
+        _ => Ok(()),
+    }
+}
+
+/// Whether node `s` may go to `at` (MAP-027 to MAP-030), and the levels its headings shift by.
+/// None for a place a drop cancels at: on the node itself or under it.
+pub fn zone(t: &Tree, s: usize, at: Add) -> Result<isize, Refused> {
+    movable(t, s)?;
+    let j = at.node();
+    if (s..t.nodes[s].end).contains(&j) || matches!(at, Add::Before(ROOT) | Add::After(ROOT)) {
+        return Err(None);
+    }
+    if matches!(t.nodes[j].kind, NodeKind::Footnotes | NodeKind::Footnote { .. }) {
+        return Err(Some(FOOTNOTES));
+    }
+    if !section(t, s) {
+        let first = |j: usize| kids_but(t, t.nodes[j].parent.unwrap_or(ROOT), s).into_iter().find(|&c| section(t, c)) == Some(j);
+        return match at {
+            Add::Child(j) if !takes_children(t, j) => Err(Some(LEAF_CHILD)),
+            Add::Before(j) if section(t, j) && !first(j) => Err(Some(TEXT_ABOVE)),
+            Add::After(j) if section(t, j) => Err(Some(TEXT_ABOVE)),
+            _ => Ok(0),
+        };
+    }
+    let to = match at {
+        Add::Child(j) if is_item(t, j) => return Err(Some(NOT_IN_ITEM)),
+        Add::Child(j) if !takes_children(t, j) => return Err(Some(LEAF_CHILD)),
+        Add::Child(ROOT) if t.nodes[ROOT].kind == NodeKind::Root => kids_but(t, ROOT, s).into_iter().filter(|&c| section(t, c)).map(|c| level(t, c)).min().unwrap_or(level(t, s)),
+        Add::Child(j) => level(t, j) + 1,
+        Add::Before(j) | Add::After(j) if !section(t, j) => return Err(Some(HEADINGS_ONLY)),
+        Add::Before(j) | Add::After(j) => level(t, j),
+    };
+    let delta = to as isize - level(t, s) as isize;
+    shifts(t, s, delta)?;
+    Ok(delta)
+}
+
+/// Refused when heading `s` or a section heading under it would go past H6.
+fn shifts(t: &Tree, s: usize, delta: isize) -> Result<(), Refused> {
+    let deepest = (s..t.nodes[s].end).filter(|&k| k == s || section(t, k)).map(|k| level(t, k)).max().unwrap_or(0);
+    if deepest as isize + delta > 6 { Err(Some(PAST_H6)) } else { Ok(()) }
+}
+
+/// A keyboard move (MAP-031).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Step {
+    Up,
+    Down,
+    Out,
+    In,
+}
+
+/// Where a keyboard move takes node `s`: before the sibling above, after the one below, after
+/// its parent, or under the sibling above (MAP-031).
+pub fn step(t: &Tree, s: usize, dir: Step) -> Result<Add, Refused> {
+    movable(t, s)?;
+    let p = t.nodes[s].parent.unwrap_or(ROOT);
+    let sibs: Vec<usize> = t.nodes[p].children.iter().copied().filter(|&c| t.nodes[c].kind != NodeKind::Footnotes).collect();
+    let k = sibs.iter().position(|&c| c == s).unwrap_or(0);
+    let above = k.checked_sub(1).map(|k| sibs[k]);
+    match dir {
+        Step::Up => above.map(Add::Before).ok_or(Some(FIRST)),
+        Step::Down => sibs.get(k + 1).map(|&c| Add::After(c)).ok_or(Some(LAST)),
+        Step::Out if p == ROOT => Err(Some(OUTERMOST)),
+        Step::Out => Ok(Add::After(p)),
+        Step::In => above.map(Add::Child).ok_or(Some(NONE_ABOVE)),
+    }
+}
+
+/// An item's line read as its parts: the indent and its columns, the marker, the gap after it
+/// (1 to 4 spaces, as CommonMark takes it) and the text from there.
+struct Head<'a> {
+    indent: &'a str,
+    cols: usize,
+    marker: &'a str,
+    gap: usize,
+    text: &'a str,
+}
+
+impl Head<'_> {
+    fn read(l: &str) -> Head<'_> {
+        let (cols, b) = lead(l);
+        let rest = &l[b..];
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        let m = (if digits > 0 { digits + 1 } else { 1 }).min(rest.len());
+        let sp = rest[m..].bytes().take_while(|&c| c == b' ').count();
+        let gap = if (1..=4).contains(&sp) { sp } else { 1 };
+        Head { indent: &l[..b], cols, marker: &rest[..m], gap, text: &rest[m + gap.min(sp)..] }
+    }
+
+    fn content_col(&self) -> usize {
+        self.cols + self.marker.len() + self.gap
+    }
+
+    fn ordered(&self) -> bool {
+        self.marker.starts_with(|c: char| c.is_ascii_digit())
+    }
+}
+
+/// The column node `i`'s children are written at: an item's content column, else 0.
+fn content_col(lines: &[String], t: &Tree, i: usize) -> usize {
+    if is_item(t, i) { Head::read(&lines[t.nodes[i].own.start]).content_col() } else { 0 }
+}
+
+/// Where a moved node lands: its new parent, the siblings it lands between, the old line it
+/// goes in at, and the index in the old tree its subtree takes.
+struct Slot {
+    parent: usize,
+    prev: Option<usize>,
+    next: Option<usize>,
+    at: usize,
+    pos: usize,
+}
+
+fn slot(old: &[&str], t: &Tree, s: usize, at: Add) -> Slot {
+    let j = at.node();
+    let n = &t.nodes[j];
+    match at {
+        Add::Before(_) | Add::After(_) => {
+            let parent = n.parent.unwrap_or(ROOT);
+            let ks = kids_but(t, parent, s);
+            let k = ks.iter().position(|&c| c == j).unwrap_or(0);
+            match at {
+                Add::Before(_) => Slot { parent, prev: k.checked_sub(1).map(|k| ks[k]), next: Some(j), at: n.own.start, pos: j },
+                _ => Slot { parent, prev: Some(j), next: ks.get(k + 1).copied(), at: n.span.end, pos: n.end },
+            }
+        }
+        Add::Child(_) => {
+            let ks = kids_but(t, j, s);
+            let sub = if section(t, s) || is_item(t, j) { None } else { ks.iter().position(|&c| section(t, c)) };
+            match sub {
+                Some(k) => Slot { parent: j, prev: k.checked_sub(1).map(|k| ks[k]), next: Some(ks[k]), at: t.nodes[ks[k]].own.start, pos: ks[k] },
+                None => {
+                    let at = ks.last().map_or(if n.own.is_empty() { front_end(old) } else { n.own.end }, |&c| t.nodes[c].span.end);
+                    let pos = n.children.iter().copied().find(|&c| t.nodes[c].kind == NodeKind::Footnotes).unwrap_or(n.end);
+                    Slot { parent: j, prev: ks.last().copied(), next: None, at, pos }
+                }
+            }
+        }
+    }
+}
+
+/// Lines with the old line each came from, None for a line the rewrite added.
+type Traced = Vec<(String, Option<usize>)>;
+
+/// Heading `s`'s lines with it and the section headings under it `delta` levels deeper: ATX
+/// keeps its form, setext becomes ATX unless `delta` is 0, and every other line stays as it is.
+fn relevel(lines: &[String], t: &Tree, s: usize, delta: isize) -> Traced {
+    let n = &t.nodes[s];
+    let heads: Vec<usize> = (s..n.end).filter(|&k| k == s || section(t, k)).collect();
+    let mut out = Vec::new();
+    let mut l = n.span.start;
+    while l < n.span.end {
+        let Some(&k) = heads.iter().find(|&&k| t.nodes[k].own.start == l && delta != 0) else {
+            out.push((lines[l].clone(), Some(l)));
+            l += 1;
+            continue;
+        };
+        let h = &t.nodes[k];
+        let to = "#".repeat((level(t, k) as isize + delta) as usize);
+        let first = &lines[l];
+        let line = match h.kind {
+            NodeKind::Heading { setext: false, .. } => {
+                let (_, b) = lead(first);
+                let hashes = first[b..].bytes().take_while(|&c| c == b'#').count();
+                format!("{}{to}{}", &first[..b], &first[b + hashes..])
+            }
+            _ => format!("{to} {}", lines[l..h.own.end - 1].iter().map(|l| l.trim()).collect::<Vec<_>>().join(" ")),
+        };
+        out.push((line, Some(l)));
+        l = h.own.end;
+    }
+    out
+}
+
+/// Item `s` as it lands at `slot`: its marker line takes the list it joins (or starts), its
+/// other lines move with the content column, and the ordered lists on both sides renumber
+/// (MAP-024, MAP-028). Also whether blank lines set it apart.
+fn item_lines(base: &mut [String], old: &[&str], t: &Tree, s: usize, at: Add, slot: &Slot) -> (Traced, bool) {
+    let n = &t.nodes[s];
+    let item = |i: Option<usize>| i.filter(|&i| is_item(t, i));
+    let last_item = || if is_item(t, slot.parent) { kids_but(t, slot.parent, s).into_iter().rev().find(|&c| is_item(t, c)) } else { None };
+    let join = match at {
+        Add::Before(j) if is_item(t, j) => Some((j, false)),
+        Add::After(j) if is_item(t, j) => Some((j, true)),
+        _ => item(slot.prev).map(|k| (k, true)).or_else(|| item(slot.next).map(|k| (k, false))).or_else(|| last_item().map(|k| (k, true))),
+    };
+    let ordered = |items: &[usize]| matches!(t.nodes[items[0]].kind, NodeKind::Item { ordered: true, .. }) && counts(old, t, items);
+    let mut renumber_to = |items: &[usize], fin: &[usize]| {
+        let start = number(old[t.nodes[items[0]].own.start]).unwrap_or(1);
+        for (k, &c) in fin.iter().enumerate().filter(|&(_, &c)| c != s) {
+            let have = number(old[t.nodes[c].own.start]).unwrap_or(start);
+            renumber(base, t, c, (start + k as u64) as i64 - have as i64);
+        }
+        start
+    };
+    let mut num = None;
+    let own = list_of(t, s);
+    if let Some((k, after)) = join {
+        let items = list_of(t, k);
+        let mut fin: Vec<usize> = items.iter().copied().filter(|&c| c != s).collect();
+        let p = fin.iter().position(|&c| c == k).map_or(fin.len(), |p| p + usize::from(after));
+        fin.insert(p, s);
+        if ordered(&items) {
+            num = Some(renumber_to(&items, &fin) + p as u64);
+        }
+    }
+    if !join.is_some_and(|(k, _)| own.contains(&k)) && ordered(&own) {
+        let fin: Vec<usize> = own.iter().copied().filter(|&c| c != s).collect();
+        renumber_to(&own, &fin);
+    }
+    let me = Head::read(&base[n.own.start]);
+    let (indent, marker, gap) = match join {
+        Some((k, _)) => {
+            let h = Head::read(&base[t.nodes[k].own.start]);
+            let marker = num.map_or_else(|| h.marker.to_string(), |v| format!("{v}{}", &h.marker[h.marker.len() - 1..]));
+            (h.indent.to_string(), marker, h.gap)
+        }
+        None if is_item(t, slot.parent) => {
+            let h = Head::read(&base[t.nodes[slot.parent].own.start]);
+            (" ".repeat(h.content_col()), if h.ordered() { "-".to_string() } else { h.marker.to_string() }, 1)
+        }
+        None if me.ordered() => (String::new(), format!("1{}", &me.marker[me.marker.len() - 1..]), me.gap),
+        None => (String::new(), me.marker.to_string(), me.gap),
+    };
+    let by = (lead(&indent).0 + marker.len() + gap) as isize - me.content_col() as isize;
+    let first = if me.text.is_empty() { format!("{indent}{marker}") } else { format!("{indent}{marker}{}{}", " ".repeat(gap), me.text) };
+    let mut out = vec![(first, Some(n.own.start))];
+    out.extend((n.own.start + 1..n.span.end).map(|l| (shift(&base[l], by), Some(l))));
+    let apart = join.is_none_or(|(k, after)| {
+        let next_to = if after { slot.at == t.nodes[k].span.end } else { slot.at == t.nodes[k].own.start };
+        !next_to || loose(old, t, &list_of(t, k))
+    });
+    (out, apart)
+}
+
+/// Node `s` and everything under it move to `at` (MAP-026 to MAP-030), as one splice whose
+/// `moved` says where each line went, so folds and the selection follow (MAP-010).
+pub fn move_to(src: &str, t: &Tree, s: usize, at: Add) -> Result<Splice, Refused> {
+    let delta = zone(t, s, at)?;
+    let old: Vec<&str> = src.split('\n').collect();
+    let real = old.len() - usize::from(src.ends_with('\n'));
+    let n = &t.nodes[s];
+    let slot = slot(&old, t, s, at);
+    let mut base: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    let (body, apart) = match n.kind {
+        NodeKind::Heading { .. } if section(t, s) => (relevel(&base, t, s, delta), true),
+        NodeKind::Item { .. } => item_lines(&mut base, &old, t, s, at, &slot),
+        _ => {
+            let by = content_col(&base, t, slot.parent) as isize - content_col(&base, t, n.parent.unwrap_or(ROOT)) as isize;
+            (n.span.clone().map(|l| (shift(&base[l], by), Some(l))).collect(), true)
+        }
+    };
+    let mut want = shape(t);
+    let sub: Vec<_> = want.drain(s - 1..n.end - 1).collect();
+    let down = t.nodes[slot.parent].depth as isize + 1 - n.depth as isize;
+    let pos = if slot.pos >= n.end { slot.pos - (n.end - s) } else { slot.pos };
+    want.splice(pos - 1..pos - 1, sub.into_iter().map(|(k, d, l)| (k, (d as isize + down) as usize, l)));
+    let build = |r: &Range<usize>, keep: bool, apart: bool| {
+        let at = if r.contains(&slot.at) { r.start } else { slot.at };
+        let mut out: Traced = Vec::with_capacity(base.len() + body.len() + 2);
+        let mut ins = 0;
+        for l in 0..=base.len() {
+            if l == at {
+                ins = out.len();
+                out.extend(body.iter().cloned());
+            }
+            if l == base.len() {
+                break;
+            }
+            if r.contains(&l) {
+                if keep && l == r.start {
+                    out.push((String::new(), None));
+                }
+                continue;
+            }
+            out.push((base[l].clone(), Some(l)));
+        }
+        let end = ins + body.len();
+        if apart && end < out.len() - usize::from(src.ends_with('\n')) && !blank(&out[end].0) {
+            out.insert(end, (String::new(), None));
+        }
+        if apart && ins > 0 && !blank(&out[ins - 1].0) {
+            out.insert(ins, (String::new(), None));
+            ins += 1;
+        }
+        (out, ins)
+    };
+    let span = n.span.clone();
+    let mut r = span.clone();
+    if (r.start == 0 || blank(old[r.start - 1])) && (r.end >= real || blank(old[r.end])) {
+        if r.end < real {
+            r.end += 1;
+        } else if r.start > 0 {
+            r.start -= 1;
+        }
+    }
+    let tries = [(r, false), (span.clone(), false), (span, true)];
+    let seps: &[bool] = if apart { &[true] } else { &[false, true] };
+    let (out, focus) = tries
+        .iter()
+        .flat_map(|(r, keep)| seps.iter().map(move |&apart| (r, *keep, apart)))
+        .map(|(r, keep, apart)| build(r, keep, apart))
+        .find(|(out, _)| shape(&reparse(&out.iter().map(|l| l.0.clone()).collect::<Vec<_>>())) == want)
+        .ok_or(Some(STRUCTURE))?;
+    let new: Vec<String> = out.iter().map(|l| l.0.clone()).collect();
+    if new.iter().map(String::as_str).eq(old.iter().copied()) {
+        return Err(None);
+    }
+    Ok(traced(&old, &new, &out, focus))
+}
+
+/// The splice from `old` to `new`, which carries the old line each of its lines came from.
+fn traced(old: &[&str], new: &[String], out: &Traced, focus: usize) -> Splice {
+    let mut moved = vec![None; old.len()];
+    for (k, (_, from)) in out.iter().enumerate() {
+        if let Some(l) = from {
+            moved[*l] = Some(k);
+        }
+    }
+    Splice { moved: Some(moved), ..splice_of(old, new, Some(focus)) }
+}
+
+/// Ctrl+Alt+1 to 6 (MAP-031): heading `i` takes level `to`, and the section headings under it
+/// shift with it.
+pub fn set_level(src: &str, t: &Tree, i: usize, to: usize) -> Result<Splice, Refused> {
+    if !matches!(t.nodes[i].kind, NodeKind::Heading { .. }) {
+        return Err(Some(NOT_HEADING));
+    }
+    let delta = to as isize - level(t, i) as isize;
+    if delta == 0 {
+        return Err(None);
+    }
+    shifts(t, i, delta)?;
+    let old: Vec<&str> = src.split('\n').collect();
+    let base: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    let span = t.nodes[i].span.clone();
+    let mut out: Traced = (0..span.start).map(|l| (base[l].clone(), Some(l))).collect();
+    out.extend(relevel(&base, t, i, delta));
+    out.extend((span.end..base.len()).map(|l| (base[l].clone(), Some(l))));
+    let new: Vec<String> = out.iter().map(|l| l.0.clone()).collect();
+    Ok(traced(&old, &new, &out, span.start))
 }
 
 /// Node `i`'s Markdown as written: its own lines, or with `branch` everything under it too

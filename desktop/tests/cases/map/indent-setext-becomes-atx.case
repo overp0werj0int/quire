@@ -1,0 +1,21 @@
+Alt+Right on a setext heading makes it a level deeper, which only ATX can write.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Right+alt@1.4
+expect: selected: map-node:7
+--- before
+Plan
+====
+
+Budget
+------
+
+Trip
+----
+--- after
+Plan
+====
+
+Budget
+------
+
+### Trip

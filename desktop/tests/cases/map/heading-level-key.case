@@ -1,0 +1,20 @@
+Ctrl+Alt+3 makes an H2 an H3, and its subheading goes a level deeper with it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:3+cmd+alt@1.2
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+### Rent
+
+## Trip
+--- after
+# Plan
+
+### Budget
+
+#### Rent
+
+## Trip

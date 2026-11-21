@@ -1,0 +1,13 @@
+Alt+Down takes a task from a bullet list into the ordered list below: it adopts the number and keeps its box.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down+alt@1.2
+expect: selected: map-node:2
+--- before
+- [ ] task
+
+1. one
+2. two
+--- after
+1. one
+2. [ ] task
+3. two

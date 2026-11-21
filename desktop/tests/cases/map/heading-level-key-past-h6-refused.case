@@ -1,0 +1,10 @@
+Ctrl+Alt+4 on an H2 whose subheading is H5 stops: no heading goes past H6.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:4+cmd+alt@1.2
+expect: text:toast: 'Headings stop at H6'
+--- before
+# Plan
+
+## Budget
+
+##### Rent

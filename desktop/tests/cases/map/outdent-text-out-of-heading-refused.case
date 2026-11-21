@@ -1,0 +1,13 @@
+Shift+Tab on a paragraph under a heading stops: text stays above the subheadings.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Right@1.0 key:Tab+shift@1.4
+expect: text:toast: 'Text and lists stay above subheadings'
+expect: selected: map-node:5
+--- before
+# T
+
+## A
+
+para
+
+## B

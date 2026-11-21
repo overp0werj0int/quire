@@ -1,0 +1,24 @@
+Alt+Up on a setext heading past another at its level keeps both setext.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Up+alt@1.2
+expect: selected: map-node:1
+--- before
+Budget
+------
+
+- Rent
+
+Trip
+----
+
+- Train
+--- after
+Trip
+----
+
+- Train
+
+Budget
+------
+
+- Rent

@@ -1,0 +1,7 @@
+Shift+Tab on a node right under the root stops and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:Tab+shift@0.9
+expect: text:toast: 'Already at the top level'
+--- before
+- a
+- b
