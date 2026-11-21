@@ -1,0 +1,16 @@
+A node held near the canvas's right edge mid-drag pans the map that way: the root, at x 386 before, has moved left.
+note: Trip.md
+events: key:m+cmd@0.3 drag:map-node:8>560,0,1.0@1.0
+at: 2.0
+expect: rect:map-node:1: [326.11, 397.13, 116.0, 68.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
