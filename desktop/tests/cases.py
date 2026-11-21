@@ -23,7 +23,8 @@ The first line says what the case checks. `note` names the file (default Note.md
 is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
 that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`selected`, `nodes`), compared exactly. With `password`, the note on disk must be a locked
+`selected`, `nodes`), compared exactly. `at` takes the readings at that time instead of 0.8 s
+after the last event, to read the app mid-gesture: a drag's drop zone before the release. With `password`, the note on disk must be a locked
 note (SYNC.md), and its text opened with that password is what `--- after` holds. The text after
 `--- before` is the note as it starts. The text after `--- after` is the note expected on disk
 after the replay; without that section the note must be unchanged. Each line of a section is a
@@ -51,7 +52,7 @@ class Case:
     def __init__(self, path):
         self.path = path
         self.name = os.path.relpath(path, os.path.join(HERE, "cases"))
-        self.note, self.state, self.size, self.password = "Note.md", None, "1280x800", None
+        self.note, self.state, self.size, self.password, self.at = "Note.md", None, "1280x800", None, None
         self.events, self.expect, self.before, self.after = [], [], None, None
         text = open(path).read()
         lines = (text[:-1] if text.endswith("\n") else text).split("\n")
@@ -74,6 +75,8 @@ class Case:
                     self.size = value
                 elif key == "password":
                     self.password = value
+                elif key == "at":
+                    self.at = float(value)
                 elif key == "events":
                     self.events.append(value)
                 elif key == "expect":
@@ -121,7 +124,7 @@ def run(case, binary, keep):
         with open(os.path.join(src, case.note), "w") as f:
             f.write(case.before)
         events = probe.parse_events(" ".join(case.events))
-        els, home = probe.replay(binary, events, None, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state)
+        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state)
         problems = []
         saved = open(os.path.join(work, "notes", case.note)).read()
         if case.password:

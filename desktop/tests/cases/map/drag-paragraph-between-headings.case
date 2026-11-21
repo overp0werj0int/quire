@@ -1,0 +1,24 @@
+A paragraph dropped on another heading goes to the end of that heading's text, its lines as they were.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:5>-371,76.25,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:9
+--- before
+# Plan
+
+## Budget
+
+Rent is due.
+
+## Trip
+
+Train at nine.
+--- after
+# Plan
+
+## Budget
+
+## Trip
+
+Train at nine.
+
+Rent is due.

@@ -1,0 +1,13 @@
+Mid-drag, a heading over a paragraph finds no zone to show.
+note: Plan.md
+at: 1.55
+events: key:m+cmd@0.3 drag:map-node:7>21,-151.5,0.6@1.0
+expect: label:map-drop: None
+--- before
+# T
+
+intro
+
+- a
+
+## S

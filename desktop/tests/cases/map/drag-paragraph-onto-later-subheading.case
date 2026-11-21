@@ -1,0 +1,20 @@
+A paragraph dropped at the top of a subheading that is not the first goes under it, at the end of its text, never under the subheading above.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:5>-235,44.75,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:7
+--- before
+# T
+
+## A
+
+para
+
+## B
+--- after
+# T
+
+## A
+
+## B
+
+para

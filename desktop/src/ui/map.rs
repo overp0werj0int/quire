@@ -82,14 +82,18 @@ pub(super) fn canvas(v: V) -> El {
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);
     }
+    // The subtree a drag carries dims where it was (MAP-026).
+    let drag = s.map.node_drag.as_ref().filter(|g| g.active);
+    let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
+    let dim = |i: usize| if moved.contains(&i) { 0.35 } else { 1.0 };
     for &i in &links {
-        world = world.child(link(&t, &l, i, &c));
+        world = world.child(link(&t, &l, i, &c).opacity(dim(i)));
     }
     let editing = s.map_editing();
     for &i in &nodes {
-        world = world.child(node(&t, &l, i, folded(i), i == sel, editing == Some(i), &c, b, prose, mono));
+        world = world.child(node(&t, &l, i, folded(i), i == sel, editing == Some(i), dim(i), &c, b, prose, mono));
         if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), hit, &c, b, mono));
+            world = world.children(fold(&t, &l, i, folded(i), hit, &c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
     }
     if nodes.contains(&sel)
@@ -109,6 +113,18 @@ pub(super) fn canvas(v: V) -> El {
     {
         let room = map_app::task_room(&t.nodes[i], b);
         world = world.child(field(v, p, room, map_app::style(map_app::tier(&t, i), b, prose, mono), l.metrics));
+    }
+    if let Some(g) = drag {
+        if let Some(at) = g.drop {
+            world = world.child(drop_mark(&t, &l, at, &c));
+        }
+        if let Some(m) = t.find(g.node)
+            && let Some(p) = l.at[m]
+        {
+            let ([px, py], z) = cam;
+            let at = [(g.at[0] - px) / z - g.grab[0], (g.at[1] - py) / z - g.grab[1]];
+            world = world.child(ghost(&t, m, p, at, &c, b, prose, mono, l.metrics.pad_x));
+        }
     }
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
@@ -171,27 +187,7 @@ pub(super) fn canvas(v: V) -> El {
             true
         })
         .pointer_buttons([PointerButton::Middle])
-        .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| {
-            let (pan, z) = s.map_camera();
-            match d.phase {
-                rune::Phase::Down => {
-                    s.map.drag_from = Some(pan);
-                    tx.live_only();
-                }
-                rune::Phase::Move => {
-                    if let Some([x, y]) = s.map.drag_from {
-                        s.map_move([x + d.dx, y + d.dy], z, tx);
-                    }
-                }
-                rune::Phase::Up => {
-                    if let Some(from) = s.map.drag_from.take()
-                        && d.cancelled()
-                    {
-                        s.map_move(from, z, tx);
-                    }
-                }
-            }
-        })
+        .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_pan_drag(d, tx))
 }
 
 fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
@@ -236,7 +232,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::M
 }
 
 #[allow(clippy::too_many_arguments)]
-fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, c: &Roles, b: f32, prose: rune::Family, mono: rune::Family) -> El {
+fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32, c: &Roles, b: f32, prose: rune::Family, mono: rune::Family) -> El {
     let Some(p) = l.at[i] else { return el() };
     let n = &t.nodes[i];
     let tier = map_app::tier(t, i);
@@ -250,7 +246,7 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: boo
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (i, &n.label, n.depth, folded, selected, editing, b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
+    (i, &n.label, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pad_x = l.metrics.pad_x;
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
@@ -261,13 +257,15 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: boo
             .role("treeitem")
             .label(spoken(t, i, folded))
             .level(n.depth as u32 + 1)
-            .focus_selected(selected);
+            .focus_selected(selected)
+            .opacity(alpha);
         if !n.children.is_empty() {
             e = e.expanded(!folded);
         }
         e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
             .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
+            .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
             .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
             .children((!editing).then(|| {
                 text(label)
@@ -344,6 +342,67 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         );
     }
     out
+}
+
+/// The node a drag carries, at the pointer: a translucent copy with a count of what goes
+/// with it (MAP-026).
+#[allow(clippy::too_many_arguments)]
+fn ghost(t: &Tree, i: usize, p: Place, at: [f32; 2], c: &Roles, b: f32, prose: rune::Family, mono: rune::Family, pad_x: f32) -> El {
+    let n = &t.nodes[i];
+    let small = (b * 0.72).round();
+    let pill_h = small + 6.0;
+    let below = n.end - i - 1;
+    el().key("map-ghost")
+        .pin(Some(at[0] + W), Some(at[1] + W), None, None)
+        .size(p.w, p.h)
+        .radius(4.0)
+        .fill(c.bg)
+        .border(1.0, branch_color(c, n.branch))
+        .opacity(0.8)
+        .child(
+            text(map_app::shown_label(n))
+                .font(map_app::style(map_app::tier(t, i), b, prose, mono))
+                .color(c.text)
+                .wrap()
+                .pin(Some(pad_x), Some(0.0), None, None)
+                .w((p.w - 2.0 * pad_x).max(1.0))
+                .clip_soft(0.0),
+        )
+        .children((below > 0).then(|| {
+            text(format!("+{below}"))
+                .font(styles::note(mono, small, normal_lh(mono, small)))
+                .color(c.readable_dim())
+                .fill(c.chip_fill)
+                .border(1.0, c.chip_edge)
+                .radius(pill_h / 2.0)
+                .px(5.0)
+                .h(pill_h)
+                .pin(Some(p.w + 6.0), Some((p.h - pill_h) / 2.0), None, None)
+        }))
+        .inert()
+}
+
+/// Where a drop would put the node: an accent bar above or below the target for Before and
+/// After, or a box round it with a stub of a branch for Child (MAP-026). Its label names the
+/// zone and the target's key.
+fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles) -> El {
+    use crate::map::Add;
+    let j = at.node();
+    let Some(p) = l.at[j] else { return el() };
+    let accent = Roles::readable_on(c.accent, c.bg, 3.0);
+    let (zone, e) = match at {
+        Add::Before(_) | Add::After(_) => {
+            let y = if matches!(at, Add::Before(_)) { p.y - 4.0 } else { p.bottom() + 1.0 };
+            let name = if matches!(at, Add::Before(_)) { "Before" } else { "After" };
+            (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, 3.0).radius(1.5).fill(accent))
+        }
+        Add::Child(_) => {
+            let stub = el().pin(Some(p.w + 6.0), Some(p.line_y() - p.y + 2.0), None, None).size(24.0, 2.0).fill(accent);
+            let e = el().pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None).size(p.w + 6.0, p.bottom() - p.y + 6.0).radius(4.0).border(2.0, accent).child(stub);
+            ("Child", e)
+        }
+    };
+    e.key("map-drop").label(format!("{zone} {}", node_key(t, j))).inert()
 }
 
 fn color_bits(c: Color) -> [u32; 4] {

@@ -1,0 +1,12 @@
+Esc during a drag cancels it: no drop zone shows after, the note stays as it was and the map stays open.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:1>24,94,1.0@1.0 key:Escape@1.6 key:s+cmd@2.4
+expect: label:map-drop: None
+expect: selected: map-node:1
+--- before
+- x
+
+  detail
+
+1. a
+2. b

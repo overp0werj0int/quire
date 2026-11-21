@@ -1,0 +1,13 @@
+Mid-drag, a paragraph at the top of a subheading that is not the first shows the Child zone, since Before is not allowed there.
+note: Plan.md
+at: 1.55
+events: key:m+cmd@0.3 drag:map-node:5>-235,44.75,0.6@1.0
+expect: label:map-drop: 'Child map-node:7'
+--- before
+# T
+
+## A
+
+para
+
+## B

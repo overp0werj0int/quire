@@ -20,6 +20,7 @@ mod lock;
 mod lock_app;
 mod map;
 mod map_app;
+mod map_drag;
 mod map_layout;
 mod mcp;
 mod highlight;

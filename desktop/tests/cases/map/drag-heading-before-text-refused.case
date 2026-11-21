@@ -1,0 +1,12 @@
+A heading dragged over a paragraph shows no drop zone, and dropping it there changes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:7>21,-151.5,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:1
+--- before
+# T
+
+intro
+
+- a
+
+## S

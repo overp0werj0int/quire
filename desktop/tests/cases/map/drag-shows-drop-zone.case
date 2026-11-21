@@ -1,0 +1,13 @@
+Mid-drag, the zone under the pointer shows and names where the drop would go, and the ghost follows the pointer.
+note: Plan.md
+at: 1.55
+events: key:m+cmd@0.3 drag:map-node:1>24,94,0.6@1.0
+expect: label:map-drop: 'After map-node:5'
+expect: rect:map-ghost: [764.53, 418.91, 50.0, 48.0]
+--- before
+- x
+
+  detail
+
+1. a
+2. b

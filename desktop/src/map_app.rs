@@ -43,7 +43,7 @@ pub struct MapView {
     pub placed: bool,
 }
 
-struct Glide {
+pub(crate) struct Glide {
     from: ([f32; 2], f32),
     to: ([f32; 2], f32),
     start: f64,
@@ -71,13 +71,16 @@ pub struct MapState {
     /// The canvas's size as last laid out, 0 before it has been.
     pub size: Cell<[f32; 2]>,
     /// The canvas's top-left corner in the window.
-    origin: Cell<[f32; 2]>,
+    pub(crate) origin: Cell<[f32; 2]>,
     tree: RefCell<Option<(u64, Rc<Tree>)>>,
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
-    glide: Option<Glide>,
+    pub(crate) glide: Option<Glide>,
     /// The pan when the canvas's drag began.
     pub drag_from: Option<[f32; 2]>,
+    pub node_drag: Option<crate::map_drag::NodeDrag>,
+    /// A drag just dropped, so the press its release makes is not a click.
+    pub dropped: bool,
     pub inline: Option<Inline>,
     /// What the field edits for the moment between its edit ending and its view going.
     pub spare: TextEdit,
@@ -121,6 +124,8 @@ impl Default for MapState {
             sizes: RefCell::new((0, "", "", HashMap::new())),
             glide: None,
             drag_from: None,
+            node_drag: None,
+            dropped: false,
             inline: None,
             spare: TextEdit::new(""),
         }
@@ -317,7 +322,7 @@ impl App {
         }
     }
 
-    fn set_camera(&mut self, pan: [f32; 2], zoom: f32) {
+    pub(crate) fn set_camera(&mut self, pan: [f32; 2], zoom: f32) {
         let zoom = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
         if let Some(v) = self.map_view_mut() {
             v.pan = pan;
@@ -342,7 +347,7 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let committed = self.poll_field(tx);
+        let committed = self.poll_field(tx) | self.poll_drag(t, tx);
         let Some(g) = &self.map.glide else { return committed };
         let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
         let e = 1.0 - (1.0 - u).powi(3);
@@ -543,7 +548,7 @@ impl App {
     /// A node clicked on the canvas: an open field commits, then the node is selected, where
     /// it is. A double click edits it (MAP-016).
     pub fn map_click(&mut self, i: usize, double: bool, tx: &mut Tx) {
-        if self.map_editing() == Some(i) {
+        if std::mem::take(&mut self.map.dropped) || self.map_editing() == Some(i) {
             return;
         }
         let Some(i) = self.map_press_node(i, tx) else { return };
@@ -1155,7 +1160,7 @@ impl App {
 
     /// A press on node `i` of the tree shown: an open field commits first, and the press then
     /// lands on the same node in the new tree.
-    fn map_press_node(&mut self, i: usize, tx: &mut Tx) -> Option<usize> {
+    pub(crate) fn map_press_node(&mut self, i: usize, tx: &mut Tx) -> Option<usize> {
         let shown = self.map_tree();
         let text = self.map.inline.as_ref().and_then(|e| e.preview.as_ref()).map_or_else(|| self.active_text().to_string(), |p| p.1.clone());
         if !self.map_commit(tx) {

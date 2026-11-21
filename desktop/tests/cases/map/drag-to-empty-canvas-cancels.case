@@ -1,0 +1,11 @@
+A node dropped on the empty canvas goes nowhere.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:1>300,200,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:1
+--- before
+- x
+
+  detail
+
+1. a
+2. b
