@@ -5,13 +5,16 @@
 
 use std::hash::{Hash, Hasher};
 
-use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, Tx, WheelEvent, el, text};
+use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextStyle, Tx, WheelEvent, el, text};
 
+use super::preview::{Cx, Look, Rich, Tone, look_at};
 use super::{V, styles};
 use crate::app::App;
-use crate::map::{NodeKind, ROOT, Tree};
+use crate::blocks::Run;
+use crate::map::{Body, Node, NodeKind, ROOT, Tree};
 use crate::map_app::{self, FOLD_R, Tier};
 use crate::map_layout::{Laid, Place, line_width};
+use crate::page;
 use crate::roles::Roles;
 use crate::theme::normal_lh;
 
@@ -45,6 +48,49 @@ fn branch_color(c: &Roles, branch: usize) -> Color {
     Roles::readable_on(pal[(branch - 1) % pal.len()], c.bg, 3.0)
 }
 
+/// The look the map's labels and cards draw in: the page's, at a card's widest (MAP-038).
+fn map_look(v: V) -> Look {
+    look_at(v, page::r(v.s.settings().size as f32 * 30.0))
+}
+
+/// Node `n`'s text as the reader sets it, in `st` (MAP-038): its inline runs after an ordered
+/// item's number, or its label as it is.
+fn label(cx: &Cx, n: &Node, st: TextStyle, color: Color) -> Rich {
+    let plain = |t: String| Run { t, ..Run::default() };
+    let runs = match (&n.body, &n.kind) {
+        (Body::Runs(r), NodeKind::Item { marker, ordered: true, .. }) => std::iter::once(plain(format!("{marker} "))).chain(r.iter().cloned()).collect(),
+        (Body::Runs(r), _) => r.clone(),
+        _ => vec![plain(map_app::shown_label(n))],
+    };
+    cx.rich(&runs, Tone::top(color, st.size, 1.45))
+}
+
+/// Sizes nodes as `node` draws them, for the layout (`App::map_laid`).
+pub(crate) struct Sizer<'a> {
+    v: V<'a>,
+    look: Look,
+}
+
+impl<'a> Sizer<'a> {
+    pub(crate) fn new(s: &'a App) -> Sizer<'a> {
+        let v = V::bare(s);
+        Sizer { v, look: map_look(v) }
+    }
+
+    /// Node `i`'s content size: its label wrapped at `max_w`, at least a line tall.
+    pub(crate) fn size(&self, t: &Tree, i: usize, max_w: f32) -> [f32; 2] {
+        let tier = map_app::tier(t, i);
+        let st = map_app::style(tier, self.look.b, self.look.family, self.look.mono);
+        let lh = page::line(st.size, if matches!(tier, Tier::Root | Tier::Head1) { 1.3 } else { 1.45 });
+        let rich = label(&Cx::map(self.v, &self.look), &t.nodes[i], st, self.look.c.text);
+        if rich.text.is_empty() {
+            return [0.0, lh];
+        }
+        let (w, h) = rune::text::measure(&rich.text, &rich.spans, st, Some(max_w));
+        [w.min(max_w).ceil(), h.max(lh).ceil()]
+    }
+}
+
 /// What a screen reader hears for node `i` (MAP-075).
 fn spoken(t: &Tree, i: usize, folded: bool) -> String {
     let n = &t.nodes[i];
@@ -66,7 +112,9 @@ fn spoken(t: &Tree, i: usize, folded: bool) -> String {
 
 pub(super) fn canvas(v: V) -> El {
     let s = v.s;
-    let c = Roles::new(v.p);
+    let look = map_look(v);
+    let cx = Cx::map(v, &look);
+    let c = &look.c;
     let t = s.map_tree();
     let drawn = s.map_drawn();
     let l = drawn.laid.clone();
@@ -75,10 +123,7 @@ pub(super) fn canvas(v: V) -> El {
     let sel = s.map_selected();
     let view = s.map_view();
     let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));
-    let b = s.settings().size as f32;
-    let set = s.settings();
-    let prose = crate::theme::pick(&crate::theme::PROSE_FONTS, &set.preview_font).family;
-    let mono = crate::theme::pick(&crate::theme::CODE_FONTS, &set.code_font).family;
+    let (b, prose, mono) = (look.b, look.family, look.mono);
     // A fold circle's target is at least 24 points on screen (MAP-041).
     let hit = (24.0 / 2f32.powi(map_app::hit_bucket(cam.1))).max(2.0 * FOLD_R);
     let mut world = el().key("map-world").pin(Some(-W), Some(-W), None, None).size(2.0 * W, 2.0 * W);
@@ -93,13 +138,13 @@ pub(super) fn canvas(v: V) -> El {
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
     let dim = |i: usize| drawn.alpha(i) * if moved.contains(&i) { 0.35 } else { 1.0 };
     for &i in &links {
-        world = world.child(link(&t, &l, i, &c).opacity(dim(i)));
+        world = world.child(link(&t, &l, i, c).opacity(dim(i)));
     }
     let editing = s.map_editing();
     for &i in &nodes {
-        world = world.child(node(&t, &l, i, folded(i), i == sel, editing == Some(i), dim(i), &c, b, prose, mono));
+        world = world.child(node(&cx, &t, &l, i, folded(i), i == sel, editing == Some(i), dim(i)));
         if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), hit, &c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
+            world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
     }
     // The field over the node being edited: its place, room left of the text, style and size.
@@ -130,7 +175,7 @@ pub(super) fn canvas(v: V) -> El {
     }
     if let Some(g) = drag {
         if let Some(at) = g.drop {
-            world = world.child(drop_mark(&t, &l, at, &c));
+            world = world.child(drop_mark(&t, &l, at, c));
         }
         if let Some(m) = t.find(g.node)
             && let Some(p) = l.at[m]
@@ -139,7 +184,7 @@ pub(super) fn canvas(v: V) -> El {
             // Below and right of the pointer, as the tree's ghost sits, so the target under the
             // pointer stays readable.
             let at = [(g.at[0] - px + GHOST_DX) / z, (g.at[1] - py + GHOST_DY) / z];
-            world = world.child(ghost(&t, m, p, at, &c, b, prose, mono, l.metrics.pad_x));
+            world = world.child(ghost(&cx, &t, m, p, at, l.metrics.pad_x));
         }
     }
     if nodes.contains(&ROOT)
@@ -249,8 +294,9 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32, c: &Roles, b: f32, prose: rune::Family, mono: rune::Family) -> El {
+fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32) -> El {
     let Some(p) = l.at[i] else { return el() };
+    let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
     let tier = map_app::tier(t, i);
     let color = match (tier, &n.kind) {
@@ -263,11 +309,13 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: boo
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (i, &n.label, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
+    // The palette and the names a wiki link resolves against colour the runs.
+    (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono).hash(&mut h);
     let pad_x = l.metrics.pad_x;
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
-        let label = map_app::shown_label(n);
+        let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let mut e = el().key(key)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
             .size(p.w, p.h + lw)
@@ -285,10 +333,8 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: boo
             .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
             .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
             .children((!editing).then(|| {
-                text(label)
-                    .font(map_app::style(tier, b, prose, mono))
-                    .color(color)
-                    .wrap()
+                label(cx, n, st, color)
+                    .el(st, color, None)
                     .pin(Some(pad_x + room), Some(0.0), None, None)
                     .w(p.w - 2.0 * pad_x - room)
                     .clip_soft(0.0)
@@ -363,9 +409,10 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
 
 /// The node a drag carries, at the pointer: a translucent copy with a count of what goes
 /// with it (MAP-026).
-#[allow(clippy::too_many_arguments)]
-fn ghost(t: &Tree, i: usize, p: Place, at: [f32; 2], c: &Roles, b: f32, prose: rune::Family, mono: rune::Family, pad_x: f32) -> El {
+fn ghost(cx: &Cx, t: &Tree, i: usize, p: Place, at: [f32; 2], pad_x: f32) -> El {
+    let (c, b, mono) = (&cx.look.c, cx.look.b, cx.look.mono);
     let n = &t.nodes[i];
+    let st = map_app::style(map_app::tier(t, i), b, cx.look.family, mono);
     let small = (b * 0.72).round();
     let pill_h = small + 6.0;
     let below = n.end - i - 1;
@@ -377,10 +424,8 @@ fn ghost(t: &Tree, i: usize, p: Place, at: [f32; 2], c: &Roles, b: f32, prose: r
         .border(1.0, branch_color(c, n.branch))
         .opacity(0.8)
         .child(
-            text(map_app::shown_label(n))
-                .font(map_app::style(map_app::tier(t, i), b, prose, mono))
-                .color(c.text)
-                .wrap()
+            label(cx, n, st, c.text)
+                .el(st, c.text, None)
                 .pin(Some(pad_x), Some(0.0), None, None)
                 .w((p.w - 2.0 * pad_x).max(1.0))
                 .clip_soft(0.0),

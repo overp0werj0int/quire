@@ -8,7 +8,7 @@
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
-use crate::blocks::{self, Block, Doc, Kind, Task};
+use crate::blocks::{self, Block, Doc, Kind, Run, Task};
 
 pub type NodeId = u64;
 
@@ -41,6 +41,17 @@ pub enum BlockKind {
     Html,
 }
 
+/// What a node draws (MAP-038, MAP-046 to MAP-052).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Body {
+    /// Its label as it is: a root named by its file or front matter, the footnotes group.
+    Plain,
+    /// Inline runs: a heading's, a paragraph's, a list item's or a footnote's text.
+    Runs(Vec<Run>),
+    /// A card: its block, drawn as the reader draws it.
+    Card(Block),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fold {
     No,
@@ -68,8 +79,17 @@ pub struct Node {
     /// The colour the node's branch draws in: 0 is the accent, k > 0 is palette entry k - 1.
     pub branch: usize,
     pub fold: Fold,
-    /// The label is a summary of a card rather than text from the note.
-    pub card: bool,
+    pub body: Body,
+    /// A hash of what the node draws: its own source lines and its label. Two nodes with the
+    /// same `src` and tier are the same size.
+    pub src: u64,
+}
+
+impl Node {
+    /// A card, whose label is a summary of it rather than text from the note.
+    pub fn card(&self) -> bool {
+        matches!(self.body, Body::Card(_))
+    }
 }
 
 /// The `markmap:` options in fenced front matter that Quire honours (MAP-011), clamped.
@@ -154,7 +174,7 @@ pub fn build(doc: &Doc, src: &str, name: &str) -> Tree {
         }
         None => {
             let label = front.as_ref().map(|f| f.0.clone()).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| crate::md::base(name).to_string());
-            b.push(NodeKind::Root, label, 0..0, None, false);
+            b.push(NodeKind::Root, label, 0..0, None, Body::Plain);
         }
     }
     for (i, bl) in doc.blocks.iter().enumerate() {
@@ -182,10 +202,12 @@ pub fn build(doc: &Doc, src: &str, name: &str) -> Tree {
         _ => None,
     }) {
         let start = items.iter().map(|f| f.lines.start).min().unwrap_or(0);
-        let g = b.push(NodeKind::Footnotes, "Footnotes".into(), start..start, Some(ROOT), false);
+        let g = b.push(NodeKind::Footnotes, "Footnotes".into(), start..start, Some(ROOT), Body::Plain);
         for f in items {
             let text = f.blocks.iter().find_map(text_of).unwrap_or_default();
-            b.push(NodeKind::Footnote { number: f.number }, format!("[^{}] {}", f.label, text).trim_end().to_string(), f.lines.clone(), Some(g), false);
+            let mut runs = vec![Run { t: format!("[^{}] ", f.label), ..Run::default() }];
+            runs.extend(f.blocks.iter().find_map(runs_of).unwrap_or_default().iter().cloned());
+            b.push(NodeKind::Footnote { number: f.number }, format!("[^{}] {}", f.label, text).trim_end().to_string(), f.lines.clone(), Some(g), Body::Runs(runs));
         }
     }
     let mut t = Tree { nodes: b.nodes, opts: options(&lines), props: front.map_or(0, |f| f.1) };
@@ -199,14 +221,14 @@ struct Builder<'a> {
 }
 
 impl Builder<'_> {
-    fn push(&mut self, kind: NodeKind, label: String, own: Range<usize>, parent: Option<usize>, card: bool) -> usize {
+    fn push(&mut self, kind: NodeKind, label: String, own: Range<usize>, parent: Option<usize>, body: Body) -> usize {
         let i = self.nodes.len();
         let depth = parent.map_or(0, |p| self.nodes[p].depth + 1);
         let fold = match kind {
             NodeKind::Heading { .. } | NodeKind::Item { .. } => directive(&self.lines[own.start.min(self.lines.len())..own.end.min(self.lines.len())]),
             _ => Fold::No,
         };
-        self.nodes.push(Node { id: 0, kind, label, span: own.clone(), own, parent, children: Vec::new(), end: i + 1, depth, branch: 0, fold, card });
+        self.nodes.push(Node { id: 0, kind, label, span: own.clone(), own, parent, children: Vec::new(), end: i + 1, depth, branch: 0, fold, body, src: 0 });
         if let Some(p) = parent {
             self.nodes[p].children.push(i);
         }
@@ -214,10 +236,10 @@ impl Builder<'_> {
     }
 
     fn heading(&mut self, bl: &Block, parent: Option<usize>) -> usize {
-        let Kind::Heading { level, text, .. } = &bl.kind else { unreachable!("a heading block") };
+        let Kind::Heading { level, text, runs, .. } = &bl.kind else { unreachable!("a heading block") };
         let first = self.lines.get(bl.lines.start).copied().unwrap_or("");
         let setext = !first.trim_start().starts_with('#');
-        self.push(NodeKind::Heading { level: *level, setext }, text.clone(), bl.lines.clone(), parent, false)
+        self.push(NodeKind::Heading { level: *level, setext }, text.clone(), bl.lines.clone(), parent, Body::Runs(runs.clone()))
     }
 
     /// A block under a heading, the root or a list item: a list's items, or one leaf.
@@ -234,8 +256,8 @@ impl Builder<'_> {
                 self.heading(bl, Some(parent));
             }
             _ => {
-                let (kind, label, card) = leaf(bl);
-                self.push(NodeKind::Block(kind), label, bl.lines.clone(), Some(parent), card);
+                let (kind, label, body) = leaf(bl);
+                self.push(NodeKind::Block(kind), label, bl.lines.clone(), Some(parent), body);
             }
         }
     }
@@ -248,19 +270,19 @@ impl Builder<'_> {
         let marker = rest.get(..mlen).unwrap_or("-").to_string();
         let gap = rest.get(mlen..).map_or(1, |r| r.chars().take_while(|c| *c == ' ').count().clamp(1, 4));
         let content_col = indent + mlen + gap;
-        let (label, own_end, rest_from, card) = match it.blocks.first() {
+        let (label, own_end, rest_from, body) = match it.blocks.first() {
             Some(first) => match text_of(first) {
-                Some(t) => (t, first.lines.end, 1, false),
-                None if matches!(first.kind, Kind::List(_)) => (String::new(), it.line + 1, 0, false),
+                Some(t) => (t, first.lines.end, 1, Body::Runs(runs_of(first).unwrap_or_default().to_vec())),
+                None if matches!(first.kind, Kind::List(_)) => (String::new(), it.line + 1, 0, Body::Plain),
                 None => {
-                    let (_, l, _) = leaf(first);
-                    (l, first.lines.end, 1, true)
+                    let (_, l, body) = leaf(first);
+                    (l, first.lines.end, 1, body)
                 }
             },
-            None => (String::new(), it.line + 1, 0, false),
+            None => (String::new(), it.line + 1, 0, Body::Plain),
         };
         let own = it.line..own_end.max(it.line + 1);
-        let n = self.push(NodeKind::Item { marker, ordered, task: it.task, indent, content_col, list }, label, own, Some(parent), card);
+        let n = self.push(NodeKind::Item { marker, ordered, task: it.task, indent, content_col, list }, label, own, Some(parent), body);
         for bl in &it.blocks[rest_from..] {
             self.content(bl, n);
         }
@@ -276,28 +298,46 @@ fn text_of(bl: &Block) -> Option<String> {
     }
 }
 
-/// A leaf's kind, label and whether the label is a summary of a card.
-fn leaf(bl: &Block) -> (BlockKind, String, bool) {
+/// A heading's or paragraph's inline runs, or None for a card.
+fn runs_of(bl: &Block) -> Option<&[Run]> {
+    match &bl.kind {
+        Kind::Paragraph { runs } | Kind::Heading { runs, .. } => Some(runs),
+        _ => None,
+    }
+}
+
+/// A leaf's kind, its label (a summary for a card) and what it draws.
+fn leaf(bl: &Block) -> (BlockKind, String, Body) {
+    let (kind, label) = summary(bl);
+    let body = match &bl.kind {
+        Kind::Paragraph { runs } => Body::Runs(runs.clone()),
+        Kind::List(_) | Kind::Heading { .. } | Kind::FrontMatter { .. } | Kind::Rule | Kind::Footnotes { .. } => Body::Plain,
+        _ => Body::Card(bl.clone()),
+    };
+    (kind, label, body)
+}
+
+fn summary(bl: &Block) -> (BlockKind, String) {
     let first_text = |bs: &[Block]| bs.iter().find_map(text_of).unwrap_or_default();
     let n_lines = |t: &str| t.lines().count().max(1);
     let plural = |n: usize, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
     match &bl.kind {
-        Kind::Paragraph { runs } => (BlockKind::Paragraph, blocks::plain(runs).trim().to_string(), false),
+        Kind::Paragraph { runs } => (BlockKind::Paragraph, blocks::plain(runs).trim().to_string()),
         Kind::Code { lang, text } => {
             let lang = if lang.is_empty() { String::new() } else { format!(" · {lang}") };
-            (BlockKind::Code, format!("code{lang} · {}", plural(n_lines(text), "line")), true)
+            (BlockKind::Code, format!("code{lang} · {}", plural(n_lines(text), "line")))
         }
         Kind::Diff { lang, added, removed, .. } => {
             let lang = if lang.is_empty() { String::new() } else { format!(" · {lang}") };
-            (BlockKind::Diff, format!("diff{lang} · +{added} −{removed}"), true)
+            (BlockKind::Diff, format!("diff{lang} · +{added} −{removed}"))
         }
-        Kind::Table(t) => (BlockKind::Table, format!("table · {} · {}", plural(t.header.len(), "column"), plural(t.rows.len(), "row")), true),
-        Kind::Image { img, .. } => (BlockKind::Image, image_label(img), true),
-        Kind::Gallery { items } => (BlockKind::Gallery, format!("gallery · {}", plural(items.len(), "image")), true),
-        Kind::Quote { blocks } => (BlockKind::Quote, format!("quote · {}", first_text(blocks)).trim_end_matches([' ', '·']).to_string(), true),
-        Kind::Alert { kind, blocks } => (BlockKind::Alert, format!("{} · {}", kind.title(), first_text(blocks)).trim_end_matches([' ', '·']).to_string(), true),
-        Kind::Html { text } => (BlockKind::Html, format!("html · {}", plural(n_lines(text), "line")), true),
-        Kind::List(_) | Kind::Heading { .. } | Kind::FrontMatter { .. } | Kind::Rule | Kind::Footnotes { .. } => (BlockKind::Paragraph, String::new(), false),
+        Kind::Table(t) => (BlockKind::Table, format!("table · {} · {}", plural(t.header.len(), "column"), plural(t.rows.len(), "row"))),
+        Kind::Image { img, .. } => (BlockKind::Image, image_label(img)),
+        Kind::Gallery { items } => (BlockKind::Gallery, format!("gallery · {}", plural(items.len(), "image"))),
+        Kind::Quote { blocks } => (BlockKind::Quote, format!("quote · {}", first_text(blocks)).trim_end_matches([' ', '·']).to_string()),
+        Kind::Alert { kind, blocks } => (BlockKind::Alert, format!("{} · {}", kind.title(), first_text(blocks)).trim_end_matches([' ', '·']).to_string()),
+        Kind::Html { text } => (BlockKind::Html, format!("html · {}", plural(n_lines(text), "line"))),
+        Kind::List(_) | Kind::Heading { .. } | Kind::FrontMatter { .. } | Kind::Rule | Kind::Footnotes { .. } => (BlockKind::Paragraph, String::new()),
     }
 }
 
@@ -386,6 +426,10 @@ fn finish(t: &mut Tree, lines: &[&str]) {
         if node.kind == NodeKind::Root || node.kind == NodeKind::Footnotes {
             node.span.start = node.own.start.min(node.span.end);
         }
+    }
+    for node in &mut t.nodes {
+        let text = lines.get(node.own.clone()).unwrap_or(&[]);
+        node.src = hash(&(&node.label, text));
     }
     // Ids: the parent's id, the node's kind and content, and its ordinal among equal siblings.
     t.nodes[ROOT].id = hash(&("root", 0u8));
@@ -662,7 +706,7 @@ pub fn in_place(src: &str, t: &Tree, i: usize) -> InPlace {
         NodeKind::Root => InPlace::FileName,
         NodeKind::Footnotes => InPlace::Nothing,
         NodeKind::Footnote { .. } => InPlace::Sheet(n.own.clone()),
-        _ if n.card => InPlace::Sheet(n.own.clone()),
+        _ if n.card() => InPlace::Sheet(n.own.clone()),
         NodeKind::Block(_) | NodeKind::Heading { .. } | NodeKind::Item { .. } => match text(&old, t, i) {
             Some(x) => InPlace::Field { text: x.bodies.join("\n"), multi: !matches!(n.kind, NodeKind::Heading { .. }) },
             None => InPlace::Sheet(n.own.clone()),

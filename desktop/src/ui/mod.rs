@@ -25,6 +25,7 @@ mod welcome;
 pub mod widgets;
 
 pub use editor::follow_link_at_caret;
+pub(crate) use map::Sizer as MapSizer;
 
 use rune::{Cx, El, TextStyle, col, el, row};
 
@@ -53,6 +54,14 @@ pub struct V<'a> {
     /// The current match waiting to be brought into view, as its `place` number, where the
     /// page laid it out, unscrolled, and where the view is (`App::place_match`).
     pub place_at: Option<(u32, [f32; 4], [f32; 4])>,
+}
+
+impl<'a> V<'a> {
+    /// A view of `s` outside a frame, to measure what a frame will draw.
+    pub(crate) fn bare(s: &'a App) -> V<'a> {
+        let p = s.palette(s.sys_dark.get());
+        V { s, p, dark: p.dark, vw: s.view_w.get(), vh: s.view_h.get(), trailing: 0.0, caret: None, caret_view: None, find_at: None, place_at: None }
+    }
 }
 
 impl V<'_> {

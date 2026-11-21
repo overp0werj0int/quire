@@ -21,11 +21,11 @@ use crate::roles::{Roles, mix};
 use crate::theme;
 
 /// The page's fonts, sizes and colours.
-struct Look {
+pub(super) struct Look {
     /// The body size `B` (PAGE-10).
-    b: f32,
-    family: Family,
-    mono: Family,
+    pub(super) b: f32,
+    pub(super) family: Family,
+    pub(super) mono: Family,
     /// The mono font's advance, in em.
     mono_w: f32,
     asc: f32,
@@ -34,18 +34,18 @@ struct Look {
     mono_desc: f32,
     /// The prose font's x-height, in em.
     xh: f32,
-    /// The column width (PAGE-24).
-    width: f32,
+    /// The column width (PAGE-24), or a map card's widest.
+    pub(super) width: f32,
     dark: bool,
     /// The page's colours (`crate::roles`), named by `behavior/blocks.md`.
-    c: Roles,
+    pub(super) c: Roles,
 }
 
 impl Look {
-    fn prose(&self, size: f32, lead: f32) -> TextStyle {
+    pub(super) fn prose(&self, size: f32, lead: f32) -> TextStyle {
         TextStyle::new(size, 400.0).family(self.family).lh(line(size, lead))
     }
-    fn mono_at(&self, size: f32, lead: f32) -> TextStyle {
+    pub(super) fn mono_at(&self, size: f32, lead: f32) -> TextStyle {
         TextStyle::new(size, 400.0).family(self.mono).lh(line(size, lead)).features("'liga' 0, 'clig' 0, 'calt' 0")
     }
     /// A prose baseline below the top of a line box `lh` tall.
@@ -57,21 +57,28 @@ impl Look {
         self.baseline(size, lh) - self.xh * size / 2.0
     }
     /// A light or dark factor.
-    fn ld(&self, light: f32, dark: f32) -> f32 {
+    pub(super) fn ld(&self, light: f32, dark: f32) -> f32 {
         if self.dark { dark } else { light }
     }
 }
 
 /// How a container sets what it holds: size, colour tier and leading (BLK-10).
 #[derive(Clone, Copy)]
-struct Tone {
-    color: Color,
+pub(super) struct Tone {
+    pub(super) color: Color,
     /// The text size `T`.
-    size: f32,
-    lead: f32,
+    pub(super) size: f32,
+    pub(super) lead: f32,
     /// Inside a quote, alert or footnote: lists indent rather than hang (BLK-21).
     contained: bool,
     quote_depth: u8,
+}
+
+impl Tone {
+    /// Top-level text in `color` at `size` and `lead`.
+    pub(super) fn top(color: Color, size: f32, lead: f32) -> Tone {
+        Tone { color, size, lead, contained: false, quote_depth: 0 }
+    }
 }
 
 /// The column the page sits in (PAGE-21 to PAGE-27). The editor lays the page out with it.
@@ -85,9 +92,9 @@ pub fn column(v: V) -> page::Column {
 
 /// Rich text for one block: its string, spans, struck ranges and links.
 #[derive(Default)]
-struct Rich {
-    text: String,
-    spans: Vec<Span>,
+pub(super) struct Rich {
+    pub(super) text: String,
+    pub(super) spans: Vec<Span>,
     strikes: Vec<(usize, usize, Option<Color>)>,
     links: Vec<(std::ops::Range<usize>, String, Color)>,
     /// Find matches painted over the text (RD-59).
@@ -161,7 +168,9 @@ impl Rich {
                     let color = c.readable_link();
                     let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), ..base } } else { base };
                     self.push(&run.t, Span { color: Some(color), ..sup });
-                    if let Some(l) = cx.anchor_line(an) {
+                    if cx.doc.is_none() {
+                        self.links.push((a..self.text.len(), format!("anchor:{an}"), color));
+                    } else if let Some(l) = cx.anchor_line(an) {
                         self.links.push((a..self.text.len(), format!("line:{l}"), color));
                     }
                 }
@@ -202,7 +211,7 @@ impl Rich {
         self.uncopied.push(c..d);
     }
 
-    fn el(self, style: TextStyle, color: Color, sel: Option<Color>) -> El {
+    pub(super) fn el(self, style: TextStyle, color: Color, sel: Option<Color>) -> El {
         let mut e = rich(if self.text.is_empty() { " ".to_string() } else { self.text }, self.spans).font(style).color(color).wrap().span_radius(4.0);
         for (a, b, c) in self.strikes {
             e = e.strike(a, b, c);
@@ -227,11 +236,18 @@ fn on_link(s: &mut App, id: &str, tx: &mut Tx) {
         s.open_link(t, tx);
     } else if let Some(l) = id.strip_prefix("line:").and_then(|l| l.parse().ok()) {
         s.jump(l, tx);
+    } else if let Some(a) = id.strip_prefix("anchor:") {
+        s.go_anchor(a, tx);
     } else if let Some(t) = id.strip_prefix("tag:") {
         s.search_tag(t, tx);
     } else if let Some(u) = id.strip_prefix("url:") {
         s.follow(u, tx);
     }
+}
+
+/// The page's look at a map card's widest (MAP-049 to MAP-052).
+pub(super) fn look_at(v: V, width: f32) -> Look {
+    Look { width, ..look(v) }
 }
 
 /// The page's look at the reader's size and column.
@@ -323,7 +339,7 @@ pub fn preview(v: V) -> El {
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
                 let key = crate::reader::block_key(bl);
                 rune::memo(key.clone(), version, || {
-                    let cx = Cx { v, look: &look, doc: &doc, find: (*find).as_ref(), selectable: true };
+                    let cx = Cx { v, look: &look, doc: Some(&doc), find: (*find).as_ref(), selectable: true };
                     let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
                     // A right-click on the row, its gap above included, opens its block's menu (RD-68).
                     let line = bl.lines.start;
@@ -343,7 +359,7 @@ pub fn preview(v: V) -> El {
 pub fn context(v: V, doc: &Doc, i: usize) -> El {
     let look = look(v);
     let Some(bl) = doc.blocks.get(i) else { return el() };
-    let cx = Cx { v, look: &look, doc, find: None, selectable: false };
+    let cx = Cx { v, look: &look, doc: Some(doc), find: None, selectable: false };
     let tone = Tone { color: look.c.dim, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
     cx.block(bl, tone).w_full()
 }
@@ -361,15 +377,30 @@ struct Hl {
 /// What every block needs: the view, the page's look, the whole document (for anchors) and
 /// the find query.
 #[derive(Clone, Copy)]
-struct Cx<'a> {
-    v: V<'a>,
-    look: &'a Look,
-    doc: &'a Doc,
+pub(super) struct Cx<'a> {
+    pub(super) v: V<'a>,
+    pub(super) look: &'a Look,
+    /// Links to anchors go to their block's line. Without it, as on the map, they name the
+    /// anchor, so a footnote reference finds the footnote's own node (MAP-054).
+    doc: Option<&'a Doc>,
     find: Option<&'a Hl>,
     selectable: bool,
 }
 
+impl<'a> Cx<'a> {
+    /// The reader's renderer for the map's labels and cards.
+    pub(super) fn map(v: V<'a>, look: &'a Look) -> Cx<'a> {
+        Cx { v, look, doc: None, find: None, selectable: false }
+    }
+}
+
 impl Cx<'_> {
+    /// The first source line of the block an anchor names.
+    fn anchor_line(&self, anchor: &str) -> Option<usize> {
+        let doc = self.doc?;
+        doc.anchors.get(anchor).and_then(|&i| doc.blocks.get(i)).map(|b| b.lines.start)
+    }
+
     pub(super) fn sel(&self) -> Option<Color> {
         self.selectable.then_some(self.look.c.selection)
     }
@@ -380,12 +411,8 @@ impl Cx<'_> {
             None => e,
         }
     }
-    /// The first source line of the block an anchor names.
-    fn anchor_line(&self, anchor: &str) -> Option<usize> {
-        self.doc.anchors.get(anchor).and_then(|&i| self.doc.blocks.get(i)).map(|b| b.lines.start)
-    }
 
-    fn rich(&self, runs: &[Run], tone: Tone) -> Rich {
+    pub(super) fn rich(&self, runs: &[Run], tone: Tone) -> Rich {
         let mut r = Rich::default();
         r.runs(runs, self, tone);
         r
@@ -445,7 +472,7 @@ impl Cx<'_> {
 
     /// Blocks one under another inside a block (a quote, an alert, a list item), each with the
     /// gap the rhythm gives it (PAGE-66, PAGE-67).
-    fn stack(&self, blocks: &[Block], tone: Tone, tight: bool) -> El {
+    pub(super) fn stack(&self, blocks: &[Block], tone: Tone, tight: bool) -> El {
         let b = self.look.b;
         let mut out = col();
         let mut prev = None;
@@ -525,7 +552,7 @@ impl Cx<'_> {
     }
 
     /// BLK-33 to BLK-36.
-    fn quote(&self, blocks: &[Block], tone: Tone) -> El {
+    pub(super) fn quote(&self, blocks: &[Block], tone: Tone) -> El {
         let look = self.look;
         let b = look.b;
         let bar = 2f32.max(r(b / 6.0));
@@ -539,7 +566,7 @@ impl Cx<'_> {
     }
 
     /// BLK-37 to BLK-42.
-    fn alert(&self, kind: Alert, blocks: &[Block], tone: Tone) -> El {
+    pub(super) fn alert(&self, kind: Alert, blocks: &[Block], tone: Tone) -> El {
         let look = self.look;
         let c = &look.c;
         let b = look.b;
@@ -575,7 +602,7 @@ impl Cx<'_> {
     }
 
     /// Raw HTML, shown literally (BLK-76).
-    fn html(&self, t: &str) -> El {
+    pub(super) fn html(&self, t: &str) -> El {
         let look = self.look;
         let b = look.b;
         row()
@@ -587,7 +614,7 @@ impl Cx<'_> {
 
     /// An image's pixels, or the placeholder card (BLK-70, BLK-72). `size` is a gallery's shown
     /// size; without one the image keeps its natural size, capped at the column.
-    fn picture(&self, img: &Img, size: Option<(f32, f32)>) -> El {
+    pub(super) fn picture(&self, img: &Img, size: Option<(f32, f32)>) -> El {
         let look = self.look;
         let s = self.v.s;
         let handle = match s.image_source(img) {
@@ -620,7 +647,7 @@ impl Cx<'_> {
         }
     }
 
-    fn placeholder(&self, msg: String, size: Option<(f32, f32)>) -> El {
+    pub(super) fn placeholder(&self, msg: String, size: Option<(f32, f32)>) -> El {
         let look = self.look;
         let b = look.b;
         let ts = r(b * 0.76);
@@ -643,7 +670,7 @@ impl Cx<'_> {
     }
 
     /// The natural size of an image once it has loaded.
-    fn natural(&self, img: &Img) -> Option<[f32; 2]> {
+    pub(super) fn natural(&self, img: &Img) -> Option<[f32; 2]> {
         let s = self.v.s;
         let i = match s.image_source(img) {
             crate::images::Source::File(path) => s.images.file(&path)?,

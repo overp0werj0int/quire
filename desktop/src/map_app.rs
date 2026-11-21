@@ -61,7 +61,8 @@ pub enum Tier {
     Card,
 }
 
-type SizeKey = (String, Tier, u32, u32);
+/// A node's source hash (`Node::src`), tier, body size and wrap width.
+type SizeKey = (u64, Tier, u32, u32);
 type LaidKey = (String, u64, u64, u32, u64, &'static str, &'static str);
 /// Label sizes, kept while the font epoch and the two fonts stay the same.
 type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
@@ -144,7 +145,7 @@ pub fn tier(t: &Tree, i: usize) -> Tier {
         _ if i == ROOT => Tier::Root,
         NodeKind::Heading { .. } if n.depth == 1 => Tier::Head1,
         NodeKind::Heading { .. } | NodeKind::Footnotes => Tier::Head,
-        _ if n.card => Tier::Card,
+        _ if n.card() => Tier::Card,
         _ => Tier::Body,
     }
 }
@@ -164,7 +165,7 @@ pub fn style(tier: Tier, b: f32, prose: Family, mono: Family) -> TextStyle {
 /// The room a task's box takes left of its label at body size `b` (MAP-053): the box and a gap.
 pub fn task_room(n: &map::Node, b: f32) -> f32 {
     match n.kind {
-        NodeKind::Item { task: crate::blocks::Task::Todo | crate::blocks::Task::Done, .. } if !n.card => page::r(b * 0.9) + page::r(b * 0.45),
+        NodeKind::Item { task: crate::blocks::Task::Todo | crate::blocks::Task::Done, .. } if !n.card() => page::r(b * 0.9) + page::r(b * 0.45),
         _ => 0.0,
     }
 }
@@ -199,7 +200,7 @@ pub const PILL_PAD: f32 = 5.0;
 /// What a node shows: an ordered item's number before its text.
 pub fn shown_label(n: &map::Node) -> String {
     match &n.kind {
-        NodeKind::Item { marker, ordered: true, .. } if !n.card => format!("{marker} {}", n.label),
+        NodeKind::Item { marker, ordered: true, .. } if !n.card() => format!("{marker} {}", n.label),
         _ => n.label.clone(),
     }
 }
@@ -264,7 +265,7 @@ impl App {
     pub fn map_laid(&self) -> Rc<Laid> {
         let t = self.map_tree();
         let b = self.settings().size as f32;
-        let (prose, mono, prose_id, mono_id) = self.fonts();
+        let (_, _, prose_id, mono_id) = self.fonts();
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
         let (folded, fold_ver) = self.map_view().map_or((&empty, 0), |v| (&v.folded, v.fold_ver));
@@ -280,20 +281,11 @@ impl App {
             *sizes = (epoch, prose_id, mono_id, HashMap::new());
         }
         let cache = &mut sizes.3;
+        let sizer = crate::ui::MapSizer::new(self);
         let laid = Rc::new(crate::map_layout::layout(&t, folded, m, |i| {
-            let tier = tier(&t, i);
-            let label = shown_label(&t.nodes[i]);
-            let room = task_room(&t.nodes[i], b);
-            let [w, h] = *cache.entry((label.clone(), tier, b.to_bits(), m.max_w.to_bits())).or_insert_with(|| {
-                let st = style(tier, b, prose, mono);
-                let lh = page::line(st.size, if matches!(tier, Tier::Root | Tier::Head1) { 1.3 } else { 1.45 });
-                if label.is_empty() {
-                    return [0.0, lh];
-                }
-                let (w, h) = rune::text::measure(&label, &[], st, Some(m.max_w));
-                [w.min(m.max_w).ceil(), h.max(lh).ceil()]
-            });
-            [w + room, h]
+            let n = &t.nodes[i];
+            let [w, h] = *cache.entry((n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits())).or_insert_with(|| sizer.size(&t, i, m.max_w));
+            [w + task_room(n, b), h]
         }));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
         laid
@@ -870,7 +862,7 @@ impl App {
         match map::delete(self.active_text(), &t, i) {
             Ok((s, n)) => {
                 self.map_apply(&t, &s, tx);
-                if n > 1 || t.nodes[i].card {
+                if n > 1 || t.nodes[i].card() {
                     let nodes = if n == 1 { "1 node".to_string() } else { format!("{n} nodes") };
                     let undo = crate::keymap::label(self.preset(), "map.undo");
                     self.toast(&format!("Deleted {nodes} · {undo} to undo"), tx);

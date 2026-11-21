@@ -35,6 +35,7 @@ WHAT is any of (default `focus,doc-y`):
     label:KEY         an element's accessible label (a map node's reads its text and state)
     scale:KEY         how much an element is drawn scaled (a map node's is the map's zoom)
     opacity:KEY       how opaque an element is drawn: sample it with --series to see a fade
+    color:KEY         an element's text colour, or that of the first text inside it
     selected          the map's selected node, by key
     nodes             the map nodes built now, by key, in the order drawn: what culling kept
     keys              every keyed element with its rectangle: the way to find a KEY
@@ -205,6 +206,11 @@ def answer(what, els, home):
     if what.startswith("scale:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %s" % (what, e.get("scale") if e else None)
+    if what.startswith("color:"):
+        e = next((e for e in els if e.get("key") == what[6:]), None)
+        if e and e.get("color") is None:
+            e = next((d for d in els if d.get("color") and d.get("text") is not None and d.get("path", "").startswith(e.get("path", "") + "/")), None)
+        return "%s: %s" % (what, e.get("color") if e else None)
     if what.startswith("opacity:"):
         e = next((e for e in els if e.get("key") == what[8:]), None)
         return "%s: %s" % (what, e.get("opacity") if e else None)

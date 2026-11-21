@@ -1,0 +1,19 @@
+A label draws its inline runs as the reader does: no Markdown marks, inline code on a chip sized into the node, a done task's text dim.
+note: Runs.md
+events: key:m+cmd@0.3
+expect: text:map-node:3: 'Some bold and italic words'
+expect: text:map-node:5: 'A \xa0code span\xa0 and struck text'
+expect: rect:map-node:5: [942.38, 340.17, 303.66, 35.06]
+expect: color:map-node:7: #a4a097ff
+expect: color:map-node:8: #e9e3d8ff
+--- before
+# Plan
+
+## Some **bold** and *italic* words
+
+- A `code span` and ~~struck~~ text
+- See [the docs](https://example.com) and [[Other]] #tag
+- [x] A **done** task
+- [ ] Still to do[^1]
+
+[^1]: A footnote with *emphasis*.
