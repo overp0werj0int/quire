@@ -1,0 +1,632 @@
+//! Map mode on `App`: each tab's camera, folds and selection, the tree and layout of the note
+//! shown, and the actions the map's keys and pointer run (decision 0014, `behavior/map.md`).
+//!
+//! The camera is `pan + world × zoom` in the canvas's own points. Each tab keeps it twice: as
+//! plain numbers, which the view reads to choose what to mount, and as the `Live` values the
+//! world element draws with, so a pan or zoom that mounts nothing new runs no view.
+
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
+use std::time::Duration;
+
+use rune::{Family, Live, TextStyle, Tx};
+
+use crate::app::{App, Mode};
+use crate::map::{self, NodeId, NodeKind, ROOT, Tree};
+use crate::map_layout::{Laid, Metrics};
+use crate::page;
+
+pub const ZOOM_MIN: f32 = 0.1;
+pub const ZOOM_MAX: f32 = 4.0;
+/// How far past the canvas's edges nodes stay mounted (MAP-045).
+pub const OVERSCAN: f32 = 160.0;
+/// What `ensureVisible` keeps between a node and the canvas's edges (MAP-036).
+const MARGIN: f32 = 40.0;
+/// Camera glides (MAP-043).
+const GLIDE: f64 = 0.2;
+/// Room right of a node for its fold circle and count pill, in world points.
+pub const FOLD_ROOM: f32 = 64.0;
+
+/// One tab's map: kept for the session, dropped with the tab (MAP-044).
+pub struct MapView {
+    pub pan: [f32; 2],
+    pub zoom: f32,
+    pub live_pan: Live<[f32; 2]>,
+    pub live_zoom: Live<f32>,
+    pub folded: HashSet<NodeId>,
+    /// Bumped on every fold change, so the layout runs again.
+    pub fold_ver: u64,
+    pub selected: NodeId,
+    /// The camera has been placed once (MAP-065).
+    pub placed: bool,
+}
+
+struct Glide {
+    from: ([f32; 2], f32),
+    to: ([f32; 2], f32),
+    start: f64,
+}
+
+/// The typography tier of a node (MAP-038).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Tier {
+    Root,
+    Head1,
+    Head,
+    Body,
+    Card,
+}
+
+type SizeKey = (String, Tier, u32, u32);
+type LaidKey = (String, u64, u64, u32, u64, &'static str, &'static str);
+/// Label sizes, kept while the font epoch and the two fonts stay the same.
+type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
+
+pub struct MapState {
+    pub views: HashMap<String, MapView>,
+    /// The linear mode the map goes back to (MAP-057).
+    pub back: Mode,
+    /// The canvas's size as last laid out, 0 before it has been.
+    pub size: Cell<[f32; 2]>,
+    tree: RefCell<Option<(u64, Rc<Tree>)>>,
+    laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
+    sizes: RefCell<Sizes>,
+    glide: Option<Glide>,
+    /// The pan when the canvas's drag began.
+    pub drag_from: Option<[f32; 2]>,
+}
+
+impl Default for MapState {
+    fn default() -> Self {
+        MapState {
+            views: HashMap::new(),
+            back: Mode::Source,
+            size: Cell::new([0.0, 0.0]),
+            tree: RefCell::new(None),
+            laid: RefCell::new(None),
+            sizes: RefCell::new((0, "", "", HashMap::new())),
+            glide: None,
+            drag_from: None,
+        }
+    }
+}
+
+pub fn tier(t: &Tree, i: usize) -> Tier {
+    let n = &t.nodes[i];
+    match &n.kind {
+        _ if i == ROOT => Tier::Root,
+        NodeKind::Heading { .. } if n.depth == 1 => Tier::Head1,
+        NodeKind::Heading { .. } | NodeKind::Footnotes => Tier::Head,
+        _ if n.card => Tier::Card,
+        _ => Tier::Body,
+    }
+}
+
+/// A tier's text style at body size `b`.
+pub fn style(tier: Tier, b: f32, prose: Family, mono: Family) -> TextStyle {
+    let (size, weight, lead, family) = match tier {
+        Tier::Root => (page::step(b, 1.5), 700.0, 1.3, prose),
+        Tier::Head1 => (page::step(b, 1.0), 700.0, 1.3, prose),
+        Tier::Head => (b, 700.0, 1.35, prose),
+        Tier::Body => (b, 400.0, 1.45, prose),
+        Tier::Card => (page::code_size(b), 400.0, 1.45, mono),
+    };
+    TextStyle::new(size, weight).family(family).lh(page::line(size, lead))
+}
+
+/// What a node shows: an ordered item's number before its text.
+pub fn shown_label(n: &map::Node) -> String {
+    match &n.kind {
+        NodeKind::Item { marker, ordered: true, .. } if !n.card => format!("{marker} {}", n.label),
+        _ => n.label.clone(),
+    }
+}
+
+impl App {
+    fn fonts(&self) -> (Family, Family, &'static str, &'static str) {
+        let set = self.settings();
+        let prose = crate::theme::pick(&crate::theme::PROSE_FONTS, &set.preview_font);
+        let mono = crate::theme::pick(&crate::theme::CODE_FONTS, &set.code_font);
+        (prose.family, mono.family, prose.id, mono.id)
+    }
+
+    /// The note shown, as a map tree, built once per text.
+    pub fn map_tree(&self) -> Rc<Tree> {
+        let doc = self.doc();
+        let ver = self.doc_hash().unwrap_or(0);
+        if let Some((v, t)) = &*self.map.tree.borrow()
+            && *v == ver
+        {
+            return t.clone();
+        }
+        let t = Rc::new(map::build(&doc, self.active_text(), self.active.as_deref().unwrap_or("")));
+        *self.map.tree.borrow_mut() = Some((ver, t.clone()));
+        t
+    }
+
+    /// The active tab's map, or None with no note shown.
+    pub fn map_view(&self) -> Option<&MapView> {
+        self.map.views.get(self.active.as_deref()?)
+    }
+
+    /// The active tab's map, made with the note's opening folds on first use.
+    pub fn map_view_mut(&mut self) -> Option<&mut MapView> {
+        let a = self.active.clone()?;
+        if !self.map.views.contains_key(&a) {
+            let t = self.map_tree();
+            let v = MapView { pan: [0.0, 0.0], zoom: 1.0, live_pan: Live::new([0.0, 0.0]), live_zoom: Live::new(1.0), folded: t.initial_folds().into_iter().collect(), fold_ver: 0, selected: t.root().id, placed: false };
+            self.map.views.insert(a.clone(), v);
+        }
+        self.map.views.get_mut(&a)
+    }
+
+    /// The selected node's index: the root when the selection is gone.
+    pub fn map_selected(&self) -> usize {
+        let t = self.map_tree();
+        self.map_view().and_then(|v| t.find(v.selected)).unwrap_or(ROOT)
+    }
+
+    /// The layout of the note shown, run again only when the text, the folds, the text size or
+    /// the fonts change (MAP-045).
+    pub fn map_laid(&self) -> Rc<Laid> {
+        let t = self.map_tree();
+        let b = self.settings().size as f32;
+        let (prose, mono, prose_id, mono_id) = self.fonts();
+        let epoch = rune::text::font_epoch();
+        let empty = HashSet::new();
+        let (folded, fold_ver) = self.map_view().map_or((&empty, 0), |v| (&v.folded, v.fold_ver));
+        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.doc_hash().unwrap_or(0), fold_ver, b.to_bits(), epoch, prose_id, mono_id);
+        if let Some((k, l)) = &*self.map.laid.borrow()
+            && *k == key
+        {
+            return l.clone();
+        }
+        let m = Metrics::new(b, &t.opts);
+        let mut sizes = self.map.sizes.borrow_mut();
+        if (sizes.0, sizes.1, sizes.2) != (epoch, prose_id, mono_id) {
+            *sizes = (epoch, prose_id, mono_id, HashMap::new());
+        }
+        let cache = &mut sizes.3;
+        let laid = Rc::new(crate::map_layout::layout(&t, folded, m, |i| {
+            let tier = tier(&t, i);
+            let label = shown_label(&t.nodes[i]);
+            *cache.entry((label.clone(), tier, b.to_bits(), m.max_w.to_bits())).or_insert_with(|| {
+                let st = style(tier, b, prose, mono);
+                let lh = page::line(st.size, if matches!(tier, Tier::Root | Tier::Head1) { 1.3 } else { 1.45 });
+                if label.is_empty() {
+                    return [0.0, lh];
+                }
+                let (w, h) = rune::text::measure(&label, &[], st, Some(m.max_w));
+                [w.min(m.max_w).ceil(), h.max(lh).ceil()]
+            })
+        }));
+        *self.map.laid.borrow_mut() = Some((key, laid.clone()));
+        laid
+    }
+
+    /// The canvas's size, or a guess from the window before it has been laid out.
+    pub fn map_size(&self) -> [f32; 2] {
+        match self.map.size.get() {
+            [w, h] if w > 0.0 && h > 0.0 => [w, h],
+            _ => [self.view_w.get().max(1.0), self.view_h.get().max(1.0)],
+        }
+    }
+
+    /// The camera the view draws with.
+    pub fn map_camera(&self) -> ([f32; 2], f32) {
+        self.map_view().map_or(([0.0, 0.0], 1.0), |v| (v.pan, v.zoom))
+    }
+
+    /// The nodes and links the view mounts at camera `cam`: whatever meets the canvas and its
+    /// overscan. Links are by child.
+    pub fn map_mounted(&self, cam: ([f32; 2], f32)) -> (Vec<usize>, Vec<usize>) {
+        let t = self.map_tree();
+        let l = self.map_laid();
+        let ([px, py], z) = cam;
+        let [w, h] = self.map_size();
+        let (x0, y0, x1, y1) = ((-px - OVERSCAN) / z, (-py - OVERSCAN) / z, (w - px + OVERSCAN) / z, (h - py + OVERSCAN) / z);
+        let meets = |a0: f32, b0: f32, a1: f32, b1: f32| a1 >= x0 && a0 <= x1 && b1 >= y0 && b0 <= y1;
+        let mut nodes = Vec::new();
+        let mut links = Vec::new();
+        for &i in &l.shown {
+            let Some(p) = l.at[i] else { continue };
+            if meets(p.x, p.y, p.right() + FOLD_ROOM, p.bottom()) {
+                nodes.push(i);
+            }
+            if let Some(q) = t.nodes[i].parent.and_then(|q| l.at[q])
+                && meets(q.right(), p.line_y().min(q.line_y()), p.x, p.line_y().max(q.line_y()))
+            {
+                links.push(i);
+            }
+        }
+        (nodes, links)
+    }
+
+    fn map_signature(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let cam = self.map_camera();
+        self.map_mounted(cam).hash(&mut h);
+        hit_bucket(cam.1).hash(&mut h);
+        h.finish()
+    }
+
+    /// Moves the camera at once, running no view unless what is mounted changes.
+    pub fn map_move(&mut self, pan: [f32; 2], zoom: f32, tx: &mut Tx) {
+        let before = self.map_signature();
+        self.map.glide = None;
+        self.set_camera(pan, zoom);
+        if self.map_signature() == before {
+            tx.live_only();
+        }
+    }
+
+    fn set_camera(&mut self, pan: [f32; 2], zoom: f32) {
+        let zoom = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
+        if let Some(v) = self.map_view_mut() {
+            v.pan = pan;
+            v.zoom = zoom;
+            v.live_pan.set(pan);
+            v.live_zoom.set(zoom);
+        }
+    }
+
+    /// Glides the camera to `to` over 200 ms, or jumps under reduced motion (MAP-043).
+    fn map_glide(&mut self, to: ([f32; 2], f32), tx: &mut Tx) {
+        let to = (to.0, to.1.clamp(ZOOM_MIN, ZOOM_MAX));
+        let from = self.map_camera();
+        if crate::motion::reduced() || from == to {
+            self.set_camera(to.0, to.1);
+            self.map.glide = None;
+            return;
+        }
+        self.map.glide = Some(Glide { from, to, start: self.now.get() });
+        tx.wake_after(Duration::from_millis(16));
+    }
+
+    /// Before each frame: a camera glide's next step. True when it mounts something new.
+    pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let Some(g) = &self.map.glide else { return false };
+        let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
+        let e = 1.0 - (1.0 - u).powi(3);
+        let (from, to) = (g.from, g.to);
+        let mix = |a: f32, b: f32| a + (b - a) * e;
+        let before = self.map_signature();
+        self.set_camera([mix(from.0[0], to.0[0]), mix(from.0[1], to.0[1])], mix(from.1, to.1));
+        if u < 1.0 {
+            tx.wake_after(Duration::from_millis(16));
+        } else {
+            self.map.glide = None;
+        }
+        self.map_signature() != before
+    }
+
+    /// Scales the camera by `f` about canvas point `(x, y)`: the world point under it stays.
+    pub fn map_zoom_about(&mut self, x: f32, y: f32, f: f32, tx: &mut Tx) {
+        let ([px, py], z) = self.map_camera();
+        let nz = (z * f).clamp(ZOOM_MIN, ZOOM_MAX);
+        let (wx, wy) = ((x - px) / z, (y - py) / z);
+        self.map_move([x - wx * nz, y - wy * nz], nz, tx);
+    }
+
+    /// `+`, `=` and `-`: about the canvas's centre (MAP-034).
+    pub fn map_zoom_step(&mut self, f: f32, tx: &mut Tx) {
+        let [w, h] = self.map_size();
+        self.map_zoom_about(w / 2.0, h / 2.0, f, tx);
+    }
+
+    /// The camera that fits every shown node (MAP-035).
+    fn fit_camera(&self) -> ([f32; 2], f32) {
+        let [x0, y0, x1, y1] = self.map_laid().bounds;
+        let [w, h] = self.map_size();
+        let (bw, bh) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
+        let z = (w / bw * 0.95).min(h / bh * 0.95).min(2.0).clamp(ZOOM_MIN, ZOOM_MAX);
+        ([w / 2.0 - (x0 + bw / 2.0) * z, h / 2.0 - (y0 + bh / 2.0) * z], z)
+    }
+
+    pub fn map_fit(&mut self, tx: &mut Tx) {
+        let cam = self.fit_camera();
+        self.map_glide(cam, tx);
+    }
+
+    /// The camera at zoom `z` with node `i`'s centre at the canvas's centre.
+    fn centred_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
+        let l = self.map_laid();
+        let [w, h] = self.map_size();
+        let Some(p) = l.at[i] else { return self.map_camera() };
+        ([w / 2.0 - (p.x + p.w / 2.0) * z, h / 2.0 - (p.y + p.h / 2.0) * z], z)
+    }
+
+    /// `c`: the selected node to the middle at the current zoom (MAP-036).
+    pub fn map_center(&mut self, tx: &mut Tx) {
+        let cam = self.centred_on(self.map_selected(), self.map_camera().1);
+        self.map_glide(cam, tx);
+    }
+
+    /// `Ctrl+0`: zoom 1.0 on the selected node (MAP-034).
+    pub fn map_zoom_reset(&mut self, tx: &mut Tx) {
+        let cam = self.centred_on(self.map_selected(), 1.0);
+        self.map_glide(cam, tx);
+    }
+
+    /// Pans by the least that keeps node `i` 40 points inside the canvas (MAP-036).
+    fn ensure_visible(&mut self, i: usize, tx: &mut Tx) {
+        let l = self.map_laid();
+        let Some(p) = l.at[i] else { return };
+        let ([px, py], z) = self.map_camera();
+        let [w, h] = self.map_size();
+        let least = |lo: f32, hi: f32, size: f32| {
+            if hi - lo > size - 2.0 * MARGIN || lo < MARGIN {
+                MARGIN - lo
+            } else if hi > size - MARGIN {
+                size - MARGIN - hi
+            } else {
+                0.0
+            }
+        };
+        let dx = least(px + p.x * z, px + p.right() * z, w);
+        let dy = least(py + p.y * z, py + p.bottom() * z, h);
+        if dx != 0.0 || dy != 0.0 {
+            self.map_glide(([px + dx, py + dy], z), tx);
+        }
+    }
+
+    fn map_select(&mut self, i: usize, tx: &mut Tx) {
+        let id = self.map_tree().nodes[i].id;
+        if let Some(v) = self.map_view_mut() {
+            v.selected = id;
+        }
+        self.ensure_visible(i, tx);
+    }
+
+    /// Arrow and vi keys (MAP-056).
+    pub fn map_parent(&mut self, tx: &mut Tx) {
+        let i = self.map_selected();
+        if let Some(p) = self.map_tree().nodes[i].parent {
+            self.map_select(p, tx);
+        }
+    }
+
+    pub fn map_child(&mut self, tx: &mut Tx) {
+        let t = self.map_tree();
+        let i = self.map_selected();
+        let Some(&c) = t.nodes[i].children.first() else { return };
+        let id = t.nodes[i].id;
+        if let Some(v) = self.map_view_mut()
+            && v.folded.remove(&id)
+        {
+            v.fold_ver += 1;
+        }
+        self.map_select(c, tx);
+    }
+
+    /// The previous or next sibling, else the nearest shown node at the same depth that way.
+    pub fn map_sibling(&mut self, down: bool, tx: &mut Tx) {
+        let t = self.map_tree();
+        let l = self.map_laid();
+        let i = self.map_selected();
+        let d = t.nodes[i].depth;
+        let Some(at) = l.shown.iter().position(|&n| n == i) else { return };
+        let found = if down { l.shown[at + 1..].iter().find(|&&n| t.nodes[n].depth == d) } else { l.shown[..at].iter().rev().find(|&&n| t.nodes[n].depth == d) };
+        if let Some(&n) = found {
+            self.map_select(n, tx);
+        }
+    }
+
+    pub fn map_root(&mut self, tx: &mut Tx) {
+        self.map_select(ROOT, tx);
+    }
+
+    /// Folds or unfolds node `i`, or its whole branch with `all` (MAP-041, MAP-058).
+    pub fn map_toggle(&mut self, i: usize, all: bool, tx: &mut Tx) {
+        let t = self.map_tree();
+        let n = &t.nodes[i];
+        if n.children.is_empty() {
+            return;
+        }
+        let Some(v) = self.map_view_mut() else { return };
+        let fold = !v.folded.contains(&n.id);
+        let ids: Vec<NodeId> = if all { t.nodes[i..n.end].iter().filter(|d| !d.children.is_empty()).map(|d| d.id).collect() } else { vec![n.id] };
+        for id in ids {
+            if fold {
+                v.folded.insert(id);
+            } else {
+                v.folded.remove(&id);
+            }
+        }
+        v.fold_ver += 1;
+        self.keep_selection_shown();
+        let _ = tx;
+    }
+
+    pub fn map_toggle_selected(&mut self, all: bool, tx: &mut Tx) {
+        let i = self.map_selected();
+        self.map_toggle(i, all, tx);
+    }
+
+    /// `]`: every fold opens (MAP-058).
+    pub fn map_expand_all(&mut self) {
+        if let Some(v) = self.map_view_mut()
+            && !v.folded.is_empty()
+        {
+            v.folded.clear();
+            v.fold_ver += 1;
+        }
+    }
+
+    /// `[`: folds every branch at depth 2 and below, or from depth 1 when those are folded
+    /// already (MAP-058; depths are 1-based, the root at 1).
+    pub fn map_collapse_to_level(&mut self) {
+        let t = self.map_tree();
+        let branches = |from: usize| t.nodes.iter().filter(move |n| n.depth + 1 >= from && !n.children.is_empty()).map(|n| n.id);
+        let Some(v) = self.map_view_mut() else { return };
+        let from = if branches(2).all(|id| v.folded.contains(&id)) { 1 } else { 2 };
+        v.folded.extend(branches(from));
+        v.fold_ver += 1;
+        self.keep_selection_shown();
+    }
+
+    /// A fold that hides the selected node selects the fold instead (MAP-055).
+    fn keep_selection_shown(&mut self) {
+        let t = self.map_tree();
+        let i = self.map_selected();
+        let Some(v) = self.map_view_mut() else { return };
+        let mut a = i;
+        let mut shown = i;
+        while let Some(p) = t.nodes[a].parent {
+            if v.folded.contains(&t.nodes[p].id) {
+                shown = p;
+            }
+            a = p;
+        }
+        v.selected = t.nodes[shown].id;
+    }
+
+    /// A node clicked on the canvas: it is selected, where it is.
+    pub fn map_click(&mut self, i: usize) {
+        let id = self.map_tree().nodes.get(i).map(|n| n.id);
+        if let (Some(id), Some(v)) = (id, self.map_view_mut()) {
+            v.selected = id;
+        }
+    }
+
+    // ---------- The camera and the mode ----------
+
+    /// The canvas laid out: its size, and the camera's first place once it is known.
+    pub fn map_laid_out(&mut self, size: [f32; 2]) {
+        self.map.size.set(size);
+        let placed = self.map_view_mut().is_none_or(|v| v.placed);
+        if !placed && size[0] > 0.0 && !self.active_locked() {
+            self.place_camera();
+        }
+    }
+
+    /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 on the
+    /// selected node (MAP-065).
+    fn place_camera(&mut self) {
+        let fit = self.fit_camera();
+        // An empty note's lone root opens at 100%, centred, not fitted up to 200% (MAP-071).
+        let alone = self.map_tree().nodes.len() == 1;
+        let cam = if fit.1 >= 0.7 && !alone { fit } else { self.centred_on(self.map_selected(), 1.0) };
+        self.set_camera(cam.0, cam.1);
+        if let Some(v) = self.map_view_mut() {
+            v.placed = true;
+        }
+    }
+
+    /// The selected node becomes the one holding source line `line`, its folds open, and
+    /// the camera finds it (MAP-065).
+    fn map_land(&mut self, line: usize, tx: &mut Tx) {
+        let t = self.map_tree();
+        let i = t.at_line(line);
+        let Some(v) = self.map_view_mut() else { return };
+        v.selected = t.nodes[i].id;
+        let mut a = i;
+        while let Some(p) = t.nodes[a].parent {
+            if v.folded.remove(&t.nodes[p].id) {
+                v.fold_ver += 1;
+            }
+            a = p;
+        }
+        let placed = v.placed;
+        self.map.glide = None;
+        if !placed {
+            if self.map.size.get()[0] > 0.0 {
+                self.place_camera();
+            }
+        } else {
+            self.ensure_visible(i, tx);
+        }
+    }
+
+    /// The source line the mode being left is at: the caret's, or the preview's top block's.
+    fn place_line_now(&self) -> usize {
+        match self.mode {
+            Mode::Source => {
+                let text = self.active_text();
+                let caret = self.active.as_deref().and_then(|a| self.edits.get(a)).map_or(0, |e| e.focus.min(text.len()));
+                crate::md::line_col(text, caret).0
+            }
+            Mode::Preview => self.doc().blocks.get(self.top()).map_or(0, |b| b.lines.start),
+            Mode::Map => {
+                let t = self.map_tree();
+                t.nodes[self.map_selected()].own.start
+            }
+        }
+    }
+
+    /// `Ctrl+M`: into the map, or back to the linear mode it came from (KEY-102).
+    pub fn toggle_map(&mut self, tx: &mut Tx) {
+        let to = if self.mode == Mode::Map { self.map.back } else { Mode::Map };
+        self.show_mode(to, tx);
+    }
+
+    /// Shows the map, keeping the place (MAP-065).
+    pub fn enter_map(&mut self, tx: &mut Tx) {
+        if self.mode == Mode::Map {
+            return;
+        }
+        tx.clear_text_selection();
+        let line = self.place_line_now();
+        self.map.back = self.mode;
+        self.mode = Mode::Map;
+        self.close_find(tx);
+        self.keys_to_note(tx);
+        if self.active_locked() {
+            return;
+        }
+        self.map_land(line, tx);
+    }
+
+    /// Leaves the map for `to`, keeping the place (MAP-065).
+    pub fn leave_map(&mut self, to: Mode, tx: &mut Tx) {
+        if self.mode != Mode::Map || to == Mode::Map {
+            return;
+        }
+        let line = if self.active_locked() { 0 } else { self.place_line_now() };
+        self.mode = to;
+        self.map.glide = None;
+        if to == Mode::Source {
+            self.source_jump(line, tx);
+        } else {
+            let doc = self.doc();
+            let block = doc.blocks.iter().rposition(|b| b.lines.start <= line).unwrap_or(0);
+            self.keys_to_note(tx);
+            if block == 0 {
+                tx.scroll_to_instant(crate::reader::SCROLL, 0.0, 0.0);
+            } else {
+                self.land(block, false, tx);
+            }
+        }
+    }
+
+    /// Esc on the map, after the layers (MAP-061): the notice, find, then `App::escape`'s
+    /// list, then back to the linear mode.
+    pub fn map_escape(&mut self, tx: &mut Tx) -> bool {
+        if self.notice.take().is_some() {
+            return true;
+        }
+        if self.reader.find.open {
+            self.close_find(tx);
+            return true;
+        }
+        if self.escape(tx) {
+            return true;
+        }
+        self.leave_map(self.map.back, tx);
+        self.persist_later();
+        true
+    }
+
+    /// A tab closed: its map goes with it (MAP-044).
+    pub fn drop_map(&mut self, path: &str) {
+        self.map.views.remove(path);
+    }
+}
+
+/// Zoom in powers of two, so the fold circles' 24-point screen target is sized per bucket
+/// (MAP-041) and a zoom inside one bucket mounts the same elements.
+pub fn hit_bucket(zoom: f32) -> i32 {
+    zoom.log2().floor().clamp(-4.0, 2.0) as i32
+}

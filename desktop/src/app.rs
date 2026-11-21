@@ -37,6 +37,27 @@ pub enum Screen {
 pub enum Mode {
     Source,
     Preview,
+    /// The note as a mind map (decision 0014).
+    Map,
+}
+
+impl Mode {
+    /// The mode `state.json` names; anything unknown is the source (MAP-064).
+    pub fn from_id(id: &str) -> Mode {
+        match id {
+            "preview" => Mode::Preview,
+            "map" => Mode::Map,
+            _ => Mode::Source,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Mode::Source => "source",
+            Mode::Preview => "preview",
+            Mode::Map => "map",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +230,8 @@ pub struct App {
     pub reader: crate::reader::Reader,
     /// The writer's state: typewriter scrolling (`crate::writer_app`).
     pub wstate: crate::writer_app::WriterState,
+    /// Map mode's state: each tab's camera, folds and selection (`crate::map_app`).
+    pub map: crate::map_app::MapState,
     /// Note mode's Open list: the notes opened as files, by full path, in order. Each is a
     /// vault of its own, rooted at its folder; the one shown is `vault`, read again from disk
     /// each time it is shown.
@@ -386,13 +409,14 @@ pub fn init() -> App {
         unlock_error: None,
         reader: Default::default(),
         wstate: Default::default(),
+        map: Default::default(),
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
     for c in app.persist.settings.sync.cfg.values_mut() {
         c.remove("prefix");
     }
-    app.mode = if app.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
+    app.mode = Mode::from_id(&app.persist.mode);
     let known: Vec<PathBuf> = app.persist.vaults.iter().map(|v| v.path.clone()).collect();
     let (start, note) = match crate::cli::start_target(&known) {
         Some(crate::cli::Start::Note(file)) => {
@@ -586,7 +610,7 @@ impl App {
             self.persist.sessions.insert(key, s);
         }
         if !self.note_mode() {
-            self.persist.mode = if self.mode == Mode::Preview { "preview" } else { "source" }.into();
+            self.persist.mode = self.mode.id().into();
         }
     }
 
@@ -632,6 +656,7 @@ impl App {
         changed |= self.drop_stale_layers(tx);
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
+        changed |= self.poll_map(t, tx);
         self.poll_prepare(t, tx);
         changed |= self.search_due(t, tx);
         let res = tx.focused().filter(|k| k.starts_with("res-")).map(str::to_string);
@@ -1063,7 +1088,7 @@ impl App {
                 self.parked.clear();
                 if let Some(left) = self.folder_left.take() {
                     self.persist.left_open = left;
-                    self.mode = if self.persist.mode == "preview" { Mode::Preview } else { Mode::Source };
+                    self.mode = Mode::from_id(&self.persist.mode);
                 }
                 self.focus = false;
             }
@@ -1406,6 +1431,7 @@ impl App {
         self.tabs.remove(i);
         self.reorder = None;
         self.edits.remove(p);
+        self.drop_map(p);
         // A closed note locks again.
         self.unlocked.remove(p);
         if self.active.as_deref() == Some(p) {
@@ -1701,10 +1727,29 @@ impl App {
     // ---------- Modes and panels ----------
 
     pub fn toggle_mode(&mut self, tx: &mut Tx) {
-        if self.active.is_none() {
+        let to = match self.mode {
+            Mode::Source => Mode::Preview,
+            Mode::Preview => Mode::Source,
+            // From the map, the linear mode it did not come from (MAP-057).
+            Mode::Map if self.map.back == Mode::Source => Mode::Preview,
+            Mode::Map => Mode::Source,
+        };
+        self.show_mode(to, tx);
+    }
+
+    /// Shows `to`, keeping the place: the mode buttons, the palette and the mode keys
+    /// (MAP-064, MAP-065).
+    pub fn show_mode(&mut self, to: Mode, tx: &mut Tx) {
+        if self.active.is_none() || self.mode == to {
             return;
         }
-        self.switch_mode(tx);
+        if self.mode == Mode::Map {
+            self.leave_map(to, tx);
+        } else if to == Mode::Map {
+            self.enter_map(tx);
+        } else {
+            self.switch_mode(tx);
+        }
         self.persist_later();
     }
 

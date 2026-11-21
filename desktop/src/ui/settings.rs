@@ -484,7 +484,7 @@ fn keys(v: V) -> El {
         settings_seg(v, "preset-seg", vec![pick(Preset::Omarky, "omarky"), pick(Preset::Quire, "Quire")]),
     ));
     // Only keys whose feature is built: the rest arrive with the reader and writer work.
-    let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor")];
+    let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor"), (Ctx::Map, "In the map")];
     for (ctx, title) in groups {
         c = c.child(styles::caption(title, false, p).key(format!("keys-{title}")).pt(18.0).pb(6.0));
         let shown = keymap::TABLE.iter().filter(|a| {

@@ -6,6 +6,7 @@ mod focus;
 mod layer;
 mod lists;
 mod lock;
+mod map;
 mod menu;
 mod outline;
 mod icons;
@@ -244,6 +245,11 @@ fn drawer(v: V) -> Option<layer::Card> {
 /// The reader is on screen: a note open in preview, not locked.
 pub(crate) fn reading(s: &App) -> bool {
     s.screen == Screen::Vault && s.mode == crate::app::Mode::Preview && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
+}
+
+/// The map is on screen: a note open in map mode, not locked.
+pub(crate) fn mapping(s: &App) -> bool {
+    s.screen == Screen::Vault && s.mode == crate::app::Mode::Map && s.active.as_deref().is_some_and(|a| !s.note_locked(a))
 }
 
 /// The writer is on screen: a note open in source mode, not locked.

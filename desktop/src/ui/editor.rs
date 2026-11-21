@@ -75,7 +75,9 @@ pub fn body(v: V) -> El {
     // Wrap `doc-scroll` and its viewport-aligned overlays (`fade-top`, `fade-foot`, `thumb`) in
     // one container strictly below `find_backing` so `thumb`'s `live_rect` shares `doc-scroll`'s
     // `[0, 0]` origin whether or not Find is open (`THUMBFIX`).
-    let mut view = col().key("doc-view").grow(1.0).min_w(0.0).min_h(0.0).w_full().child(doc_scroll(v));
+    let mapping = v.has_doc() && super::mapping(v.s);
+    let page = if mapping { super::map::canvas(v) } else { doc_scroll(v) };
+    let mut view = col().key("doc-view").grow(1.0).min_w(0.0).min_h(0.0).w_full().child(page);
     if reading {
         // The reader has the writer's fades in zen mode, where no bar sits over the page.
         if focus {

@@ -4,7 +4,7 @@
 use rune::{El, Tx, el, row};
 
 use super::V;
-use super::icons::{CODE, COPY, EYE, FOCUS, FONT, HELP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN};
+use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN};
 use super::widgets::{Control, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
@@ -154,6 +154,11 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_toggle(p, "wide", glyph, &help, wide, act(|s, _| s.toggle_wide())));
         let help = tip("Show shortcuts", "reader.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
+    } else if v.has_doc() && s.mode == Mode::Map {
+        if !s.active_locked() {
+            let help = tip("Fit the map", "map.fit");
+            r = r.child(bar_button(p, "map-fit", &FIT, &help, act(|s, tx| s.map_fit(tx))));
+        }
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();
@@ -168,10 +173,14 @@ fn actions(v: V, mut r: El) -> El {
     }
     if v.has_doc() {
         r = r.child(el().key("bar-sep").w(1.0).h(16.0).fill(p.line));
-        // One button flips between source and preview. Its icon shows where it goes.
-        let glyph = if s.mode == Mode::Source { &EYE } else { &CODE };
-        let help = tip(crate::commands::mode_name(s), "app.toggle-mode");
-        r = r.child(bar_button(p, "mode", glyph, &help, act(|s, tx| s.toggle_mode(tx))).role("switch").checked(s.mode == Mode::Preview));
+        // Source, Preview and Map, the shown one marked (MAP-064).
+        let mut modes = row().key("modes").gap(4.0).center_y().role("radiogroup").label("Mode");
+        for (m, key, glyph, name) in [(Mode::Source, "mode-source", &CODE, "Source"), (Mode::Preview, "mode-preview", &EYE, "Preview"), (Mode::Map, "mode-map", &MAP, "Map")] {
+            let on = s.mode == m;
+            let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(s, m)) };
+            modes = modes.child(bar_toggle(p, key, glyph, &help, on, act(crate::commands::show(m))).role("radio"));
+        }
+        r = r.child(modes);
         let help = tip(crate::commands::zen_name(s), if zen { "app.escape" } else { "app.focus-mode" });
         r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen, act(|s, tx| s.toggle_focus(tx))));
     }
@@ -182,9 +191,9 @@ fn actions(v: V, mut r: El) -> El {
     r
 }
 
-/// The width of zen mode's pill in preview, the wider: six buttons (`actions`), the rule
+/// The width of zen mode's pill in preview, the widest: eight buttons (`actions`), the rule
 /// between them, their gaps and its padding.
-const PILL_ROOM: f32 = 6.0 * (BUTTON + 4.0) + 1.0 + 8.0;
+const PILL_ROOM: f32 = 8.0 * (BUTTON + 4.0) + 1.0 + 8.0;
 
 /// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
 /// nothing covers it; the window dots and a button to leave show under the pointer.

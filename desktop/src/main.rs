@@ -19,6 +19,7 @@ mod layer;
 mod lock;
 mod lock_app;
 mod map;
+mod map_app;
 mod map_layout;
 mod mcp;
 mod highlight;
@@ -376,7 +377,7 @@ pub(crate) mod scroll_tests {
         let mut rt = vault(&dir, &[("note.md", "# A\n")], crate::watch::EVERY);
         let line = crate::ui::styles::panel_line(11.5);
         let mut per_char = Vec::new();
-        for button in ["toggle-right", "toggle-left", "mode"] {
+        for button in ["toggle-right", "toggle-left", "mode-map"] {
             rt.pointer_move(640.0, 500.0);
             for _ in 0..30 {
                 rt.frame(DT);
@@ -729,7 +730,7 @@ pub(crate) mod scroll_tests {
         let dir = std::env::temp_dir().join(format!("quire-tip-names-{}", std::process::id()));
         let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text.\n")], crate::watch::EVERY);
         // Each button, and the palette command it runs: by its key, or by name for the lock.
-        let pairs = [("toggle-left", "app.toggle-sidebar"), ("toggle-right", "app.toggle-outline"), ("mode", "app.toggle-mode"), ("focus", "app.focus-mode"), ("fmt-image", "app.insert-image"), ("fmt-lock", "")];
+        let pairs = [("toggle-left", "app.toggle-sidebar"), ("toggle-right", "app.toggle-outline"), ("mode-source", "app.toggle-mode"), ("mode-preview", "app.toggle-mode"), ("mode-map", "app.toggle-map"), ("focus", "app.focus-mode"), ("fmt-image", "app.insert-image"), ("fmt-lock", "")];
         let name = |tip: &str| match tip.rsplit_once(" (") {
             Some((n, k)) if k.ends_with(')') => n.to_string(),
             _ => tip.to_string(),
@@ -758,7 +759,17 @@ pub(crate) mod scroll_tests {
                 false
             });
             let els = rt.elements();
+            // The shown mode's button names that mode; it runs nothing.
+            let shown = match mode {
+                crate::app::Mode::Source => "mode-source",
+                crate::app::Mode::Preview => "mode-preview",
+                crate::app::Mode::Map => "mode-map",
+            };
+            seen.insert(shown);
             for (key, action) in pairs {
+                if key == shown {
+                    continue;
+                }
                 let Some(tip) = els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).and_then(|e| e.help.clone()) else { continue };
                 let tip = name(&tip);
                 let want: Vec<&String> = palette.iter().filter(|(a, l)| if action.is_empty() { l.starts_with("Lock note") } else { *a == action }).map(|(_, l)| l).collect();
@@ -801,25 +812,26 @@ pub(crate) mod scroll_tests {
         let tips = |rt: &Runtime<crate::app::App>| -> Vec<(String, String)> {
             rt.elements()
                 .into_iter()
-                .filter(|e| ["/titlebar/", "/left-zone/"].iter().any(|z| ("/".to_owned() + &e.path + "/").contains(z)) && matches!(e.role, "button" | "switch") && !e.exiting)
+                .filter(|e| ["/titlebar/", "/left-zone/"].iter().any(|z| ("/".to_owned() + &e.path + "/").contains(z)) && matches!(e.role, "button" | "switch" | "radio") && !e.exiting)
                 .filter_map(|e| Some((e.key?, e.help?)))
                 .collect()
         };
-        let keyed = ["toggle-left", "mode", "focus", "find", "copy-all", "wide", "toggle-right", "help", "paragraph-focus", "typewriter", "next-font"];
-        let check = |tips: Vec<(String, String)>, want: usize| {
-            let named: Vec<_> = tips.iter().filter(|(k, _)| keyed.contains(&k.as_str())).collect();
+        let keyed = ["toggle-left", "mode-source", "mode-preview", "mode-map", "focus", "find", "copy-all", "wide", "toggle-right", "help", "paragraph-focus", "typewriter", "next-font"];
+        // The shown mode's button names that mode and has no key.
+        let check = |tips: Vec<(String, String)>, want: usize, shown: &str| {
+            let named: Vec<_> = tips.iter().filter(|(k, _)| keyed.contains(&k.as_str()) && k != shown).collect();
             assert_eq!(named.len(), want, "{tips:?}");
             for (key, tip) in named {
                 assert!(tip.ends_with(')') && tip.contains(" (") && !tip.contains("  "), "{key}: {tip:?}");
             }
         };
-        check(tips(&rt), 8);
+        check(tips(&rt), 9, "mode-preview");
         rt.update(|s, tx| s.toggle_mode(tx));
         for _ in 0..3 {
             rt.frame(DT);
         }
         assert!(rt.find("copy-all").is_none(), "source mode keeps its own bar");
-        check(tips(&rt), 7);
+        check(tips(&rt), 8, "mode-source");
         // The outline button shows as on while the outline is open, in source mode too.
         rt.update(|s, _| s.persist.right_open = true);
         rt.pointer_move(700.0, 600.0);
@@ -1508,7 +1520,7 @@ pub(crate) mod scroll_tests {
             rt.frame(DT);
         }
         let shown = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some(key)).map(|e| e.opacity).fold(0.0f32, f32::max);
-        let (x, y) = rt.find("mode").expect("the mode button");
+        let (x, y) = rt.find("mode-preview").expect("the Preview button");
         rt.pointer_move(x, y);
         rt.pointer_down(x, y);
         rt.pointer_up(x, y);
@@ -1541,7 +1553,7 @@ pub(crate) mod scroll_tests {
             rt.frame(DT);
         }
         let shown = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().filter(|e| e.key.as_deref() == Some(key)).map(|e| e.opacity).fold(0.0f32, f32::max);
-        for (button, key) in [("mode", "preview"), ("toggle-left", "sidebar")] {
+        for (button, key) in [("mode-preview", "preview"), ("toggle-left", "sidebar")] {
             let (x, y) = rt.find(button).expect(button);
             rt.pointer_move(x, y);
             rt.pointer_down(x, y);
@@ -1845,7 +1857,8 @@ pub(crate) mod scroll_tests {
             m
         };
         let was = mode(&mut rt);
-        let at = rt.find("mode").expect("the mode button");
+        let other = if was == crate::app::Mode::Source { "mode-preview" } else { "mode-source" };
+        let at = rt.find(other).expect("the other mode's button");
         tap(&mut rt, at);
         settle(&mut rt);
         assert!(rect(&rt, "sidebar-over").is_none() && mode(&mut rt) != was, "another button closes the drawer and acts");
@@ -1946,7 +1959,7 @@ pub(crate) mod scroll_tests {
         rt.pointer_down(at.0, at.1);
         rt.pointer_up(at.0, at.1);
         settle(&mut rt);
-        let at = rt.find("mode").expect("the mode button");
+        let at = rt.find("mode-preview").expect("the Preview button");
         rt.pointer_move(at.0, at.1);
         rt.pointer_down(at.0, at.1);
         rt.pointer_up(at.0, at.1);
@@ -2338,7 +2351,7 @@ mod a11y_tests {
             rt.frame(1.0 / 60.0);
         }
         let els = rt.elements();
-        for key in ["toggle-left", "crumb-file", "paragraph-focus", "typewriter", "next-font", "mode", "focus", "toggle-right", "find-prev", "find-next", "find-close"] {
+        for key in ["toggle-left", "crumb-file", "paragraph-focus", "typewriter", "next-font", "mode-source", "mode-preview", "mode-map", "focus", "toggle-right", "find-prev", "find-next", "find-close"] {
             let el = els.iter().find(|e| e.key.as_deref() == Some(key) && !e.exiting).unwrap_or_else(|| panic!("missing {key}"));
             assert!(el.focusable, "{key} must be keyboard-focusable");
         }
@@ -2443,13 +2456,13 @@ mod a11y_tests {
         // 4. Clicking `mode` into Preview restores focus to `note-keys`, and back to Source -> `editor`.
         rt.update(|s, tx| s.close_find(tx));
         step(&mut rt, 6);
-        let (mx, my) = rt.find("mode").expect("mode button");
+        let (mx, my) = rt.find("mode-preview").expect("the Preview button");
         rt.pointer_move(mx, my);
         rt.pointer_down(mx, my);
         rt.pointer_up(mx, my);
         step(&mut rt, 8);
         assert_eq!(focused_key(&rt).as_deref(), Some(crate::focus::NOTE), "clicking mode into Preview focuses note-keys");
-        let (mx, my) = rt.find("mode").expect("mode button in preview");
+        let (mx, my) = rt.find("mode-source").expect("the Source button in preview");
         rt.pointer_move(mx, my);
         rt.pointer_down(mx, my);
         rt.pointer_up(mx, my);
@@ -3486,7 +3499,7 @@ mod writer_chrome_tests {
         assert!(r[0] > bar[0] + bar[2] / 2.0 && bar[0] + bar[2] - (r[0] + r[2]) < 24.0, "at the right: {r:?} in {bar:?}");
         assert!(pill.opacity < 0.05, "hidden without a hover: {}", pill.opacity);
         let inside = |key: &str| info(&rt, key).is_some_and(|e| e.rect[0] >= r[0] && e.rect[0] + e.rect[2] <= r[0] + r[2] + 0.5);
-        for key in ["mode", "focus", "paragraph-focus", "typewriter", "next-font"] {
+        for key in ["mode-source", "mode-preview", "mode-map", "focus", "paragraph-focus", "typewriter", "next-font"] {
             assert!(inside(key), "{key} on the editor's pill");
         }
         for key in ["toggle-right", "find", "help"] {
@@ -3517,7 +3530,7 @@ mod writer_chrome_tests {
             rt.frame(DT);
         }
         let r = info(&rt, "zen-actions").expect("the floating bar in preview").rect;
-        for key in ["mode", "focus", "find", "copy-all", "wide", "help"] {
+        for key in ["mode-source", "mode-preview", "mode-map", "focus", "find", "copy-all", "wide", "help"] {
             assert!(info(&rt, key).is_some_and(|e| e.rect[0] >= r[0] && e.rect[0] + e.rect[2] <= r[0] + r[2] + 0.5), "{key} on the preview's pill");
         }
         for key in ["paragraph-focus", "toggle-right"] {
@@ -3602,7 +3615,7 @@ mod writer_chrome_tests {
             for _ in 0..60 {
                 rt.frame(DT);
             }
-            ["mode", "focus", "toggle-right"].map(|k| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).expect(k).rect)
+            ["mode-source", "mode-preview", "mode-map", "focus", "toggle-right"].map(|k| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(k) && !e.exiting).expect(k).rect)
         };
         let source = places(&mut rt);
         rt.update(|s, tx| s.switch_mode(tx));
@@ -3752,11 +3765,11 @@ mod writer_chrome_tests {
         if !cfg!(target_os = "macos") {
             assert_eq!(left[0], 8.0, "toggle-left sits 8 pt from the left edge: {left:?}");
         }
-        let buttons = ["find", "copy-all", "wide", "help", "mode", "focus", "toggle-right"];
+        let buttons = ["find", "copy-all", "wide", "help", "mode-source", "mode-preview", "mode-map", "focus", "toggle-right"];
         let rects: Vec<[f32; 4]> = buttons.iter().map(|k| info(&rt, k).expect(k).rect).collect();
         let right_edge = rects.last().unwrap()[0] + rects.last().unwrap()[2];
         assert!((root_w - right_edge - 8.0).abs() < 0.5, "toggle-right ends 8 pt from right edge: {right_edge} vs {root_w}");
-        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6)] {
+        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8)] {
             let gap = rects[pair.1][0] - (rects[pair.0][0] + rects[pair.0][2]);
             assert!((gap - 4.0).abs() < 0.5, "4 pt gap between {} and {}: {gap}", buttons[pair.0], buttons[pair.1]);
         }
@@ -5025,7 +5038,7 @@ mod layer_matrix_tests {
         type Way = (&'static str, fn(&mut Runtime<App>));
         let ways: [Way; 10] = [
             ("Ctrl+P", |rt| key(rt, Key::Command('p'), ctrl(false))),
-            ("the mode button", |rt| press_key(rt, "mode", false)),
+            ("the Preview button", |rt| press_key(rt, "mode-preview", false)),
             ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
             ("Ctrl+P, the palette, Esc", |rt| {
                 key(rt, Key::Command('p'), ctrl(false));

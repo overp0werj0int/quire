@@ -20,8 +20,26 @@ fn cmd(label: impl Into<String>, action: &'static str, run: Run) -> Cmd {
 
 /// The names a command goes by both in the palette and on its button's tooltip, each the
 /// action a press performs in the state the app is in, so a user meets one vocabulary (TN).
-pub fn mode_name(s: &App) -> &'static str {
-    if s.mode == Mode::Source { "Show preview" } else { "Show source" }
+pub fn show_name(m: Mode) -> &'static str {
+    match m {
+        Mode::Source => "Show source",
+        Mode::Preview => "Show preview",
+        Mode::Map => "Show map",
+    }
+}
+
+/// The action whose key shows `m` from the mode shown now: `Ctrl+M` into the map and back to
+/// the mode it came from, the mode toggle for the other (MAP-057).
+pub fn mode_action(s: &App, m: Mode) -> &'static str {
+    if m == Mode::Map || (s.mode == Mode::Map && m == s.map.back) { "app.toggle-map" } else { "app.toggle-mode" }
+}
+
+pub fn show(m: Mode) -> Run {
+    match m {
+        Mode::Source => |s, tx| s.show_mode(Mode::Source, tx),
+        Mode::Preview => |s, tx| s.show_mode(Mode::Preview, tx),
+        Mode::Map => |s, tx| s.show_mode(Mode::Map, tx),
+    }
 }
 
 pub fn zen_name(s: &App) -> &'static str {
@@ -53,7 +71,11 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.quick_open(tx)),
     ];
     if has {
-        v.push(cmd(mode_name(s), "app.toggle-mode", |s, tx| s.toggle_mode(tx)));
+        for m in [Mode::Source, Mode::Preview, Mode::Map] {
+            if m != s.mode {
+                v.push(cmd(show_name(m), mode_action(s, m), show(m)));
+            }
+        }
     }
     v.push(cmd("Search all notes", "app.search-notes", |s, tx| s.open_search(tx)));
     if has {

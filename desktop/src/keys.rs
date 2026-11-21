@@ -55,17 +55,17 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         return true;
     }
     for ctx in stack {
-        if *ctx == Ctx::Reader {
+        if matches!(ctx, Ctx::Reader | Ctx::Map) {
             // The second key of `g g` (RD-23).
             let now = s.now.get();
             if let Some((first, at)) = s.reader.pending.take()
                 && now - at < 0.9
-                && let Some(run) = keymap::lookup_seq(preset, Ctx::Reader, &first, ev).iter().find_map(|a| handler(a.id))
+                && let Some(run) = keymap::lookup_seq(preset, *ctx, &first, ev).iter().find_map(|a| handler(a.id))
             {
                 run(s, tx);
                 return true;
             }
-            if keymap::starts_seq(preset, Ctx::Reader, ev) {
+            if keymap::starts_seq(preset, *ctx, ev) {
                 s.reader.pending = Some((ev.clone(), now));
                 return true;
             }
@@ -85,6 +85,9 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             }
             if a.id == "writer.escape" {
                 return s.writer_escape(tx);
+            }
+            if a.id == "map.escape" {
+                return s.map_escape(tx);
             }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
@@ -199,6 +202,8 @@ pub(crate) fn page_stack(s: &App) -> &'static [Ctx] {
         &[Ctx::Global]
     } else if s.mode == crate::app::Mode::Preview {
         &[Ctx::Reader, Ctx::Global]
+    } else if s.mode == crate::app::Mode::Map {
+        &[Ctx::Map, Ctx::Global]
     } else {
         &[Ctx::Writer, Ctx::Global]
     }
@@ -224,8 +229,9 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
         "app.search-notes" => |s, tx| s.open_search(tx),
         "app.toggle-sidebar" => |s, tx| s.toggle_left(tx),
-        "app.toggle-outline" | "reader.toggle-outline" => |s, tx| s.toggle_right(tx),
+        "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline" => |s, tx| s.toggle_right(tx),
         "app.toggle-mode" => |s, tx| s.toggle_mode(tx),
+        "app.toggle-map" => |s, tx| s.toggle_map(tx),
         "app.settings" => |s, tx| s.toggle_settings(tx),
         "app.focus-mode" => |s, tx| s.toggle_focus(tx),
         "app.new-note" => |s, tx| s.new_note(None, tx),
@@ -233,7 +239,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.quit" if !cfg!(target_os = "macos") => |s, tx| s.quit(tx),
         "app.insert-image" => |s, tx| s.pick_image(tx),
         "app.save" => |s, tx| s.save_now(tx),
-        "app.close-tab" | "reader.close-tab" => close_tab,
+        "app.close-tab" | "reader.close-tab" | "map.close-tab" => close_tab,
         "app.zoom-in" => |s, _| s.zoom(Some(true)),
         "app.zoom-out" => |s, _| s.zoom(Some(false)),
         "reader.zoom-reset" => |s, _| s.zoom(None),
@@ -279,8 +285,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "find.select-all" => |s, tx| s.open_find(tx),
         "reader.copy-selection" => |s, tx| s.copy_selection(tx),
         "reader.copy-block-under-pointer" => |s, tx| s.copy_block_here(tx),
-        "reader.copy-all" => |s, tx| s.copy_all(tx),
-        "reader.read-from-disk" => |s, _| s.read_from_disk(),
+        "reader.copy-all" | "map.copy-all" => |s, tx| s.copy_all(tx),
+        "reader.read-from-disk" | "map.read-from-disk" => |s, _| s.read_from_disk(),
         "reader.help" | "writer.help" => |s, tx| s.toggle_help(tx),
         "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
@@ -311,6 +317,23 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.next-font" => |s, tx| s.next_font(tx),
         "writer.escape" => |s, tx| {
             s.writer_escape(tx);
+        },
+        "map.parent" => |s, tx| s.map_parent(tx),
+        "map.child" => |s, tx| s.map_child(tx),
+        "map.prev-sibling" => |s, tx| s.map_sibling(false, tx),
+        "map.next-sibling" => |s, tx| s.map_sibling(true, tx),
+        "map.root" => |s, tx| s.map_root(tx),
+        "map.toggle-fold" => |s, tx| s.map_toggle_selected(false, tx),
+        "map.toggle-fold-recursive" => |s, tx| s.map_toggle_selected(true, tx),
+        "map.expand-all" => |s, _| s.map_expand_all(),
+        "map.collapse-to-level" => |s, _| s.map_collapse_to_level(),
+        "map.fit" => |s, tx| s.map_fit(tx),
+        "map.zoom-reset" => |s, tx| s.map_zoom_reset(tx),
+        "map.center" => |s, tx| s.map_center(tx),
+        "map.zoom-in" => |s, tx| s.map_zoom_step(1.25, tx),
+        "map.zoom-out" => |s, tx| s.map_zoom_step(0.8, tx),
+        "map.escape" => |s, tx| {
+            s.map_escape(tx);
         },
         // The editor follows a Ctrl-clicked link itself; this entry lists it in Settings.
         "writer.follow-link-click" => |_, _| {},
