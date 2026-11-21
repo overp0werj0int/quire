@@ -904,6 +904,16 @@ fn marker_len(k: &NodeKind) -> usize {
     }
 }
 
+/// Whether node `i` can hold a child: the root, items, and headings outside items (MAP-021).
+pub fn takes_children(t: &Tree, i: usize) -> bool {
+    let n = &t.nodes[i];
+    match n.kind {
+        NodeKind::Root | NodeKind::Item { .. } => true,
+        NodeKind::Heading { .. } => !n.parent.is_some_and(|p| is_item(t, p)),
+        _ => false,
+    }
+}
+
 fn child_plan(old: &[&str], t: &Tree, i: usize) -> Result<Plan, Refused> {
     let n = &t.nodes[i];
     let kids: Vec<usize> = n.children.iter().copied().filter(|&c| t.nodes[c].kind != NodeKind::Footnotes).collect();
@@ -914,7 +924,7 @@ fn child_plan(old: &[&str], t: &Tree, i: usize) -> Result<Plan, Refused> {
     match &n.kind {
         NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(None),
         NodeKind::Block(_) => Err(Some(LEAF_CHILD)),
-        NodeKind::Heading { .. } if n.parent.is_some_and(|p| is_item(t, p)) => Err(Some(LEAF_CHILD)),
+        NodeKind::Heading { .. } if !takes_children(t, i) => Err(Some(LEAF_CHILD)),
         NodeKind::Item { marker, ordered, content_col, .. } => Ok(match kids.iter().rev().find(|&&c| is_item(t, c)) {
             Some(&last) => item_plan(old, t, last, n.span.end, false),
             None => {

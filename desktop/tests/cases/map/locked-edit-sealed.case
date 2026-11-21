@@ -1,0 +1,17 @@
+An edit from the map to an unlocked note is saved sealed, and a map key pressed while it was locked moved nothing.
+note: Diary.md
+password: tiger lily
+events: key:m+cmd@0.3 key:Right@0.8 tap:unlock-pass@1.2 type:tiger_lily@1.4 key:Enter@1.8 key:Tab@4.0 type:x@4.3 key:Enter@4.6 key:s+cmd@5.0
+expect: selected: map-node:5
+--- before
+%QUIRE-LOCKED-NOTE v1 pbkdf2-sha256 1000 MDEyMzQ1Njc4OWFiY2RlZg==
+
+This note is locked with a password. Open it in Quire to read it.
+
+UVVJUkUxuYsECSutmGY8MVrT44GXP+mqVNaRrkyLtnVcXqlJUQ/+AdtwaCyZUuSDFLdqVw==
+--- after
+# Diary
+
+Blåbær
+
+## x

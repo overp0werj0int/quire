@@ -48,6 +48,7 @@ pub(super) fn menu(v: V, m: &Menu) -> Card {
         MenuOf::DeleteFolder(f) => confirm_delete_folder(v, f, m.at),
         MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, 0.0, edit(v)),
         MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, 0.0, block(v, *line)),
+        MenuOf::Node(id) => list(v, "node-menu", m.at, 200.0, None, 0.0, node(v, *id)),
         MenuOf::RecentVault(path) => list(v, "recent-menu", m.at, 180.0, None, 0.0, recent_vault(path)),
     };
     Card { el, plane: None }
@@ -204,6 +205,44 @@ fn block(v: V, line: usize) -> Vec<Item> {
         items.push(with("Edit section", keys("reader.edit-section"), Box::new(move |s, tx| s.edit_block_at(line, Scope::Section, tx))));
     }
     items
+}
+
+/// A map node's menu (MAP-062): what the node can do, each item on the node it was opened on.
+/// The footnotes group folds and copies; a footnote edits and copies.
+fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
+    use crate::map::NodeKind;
+    use crate::map_app::Place;
+    let t = v.s.map_tree();
+    let Some(i) = t.find(id) else { return Vec::new() };
+    let n = &t.nodes[i];
+    let p = v.s.preset();
+    let on = |key: &'static str, label: &'static str, keymap_id: &str, enabled: bool, run: fn(&mut App, usize, &mut rune::Tx)| Item {
+        key: Some(key),
+        keys: Some(keymap::label(p, keymap_id)).filter(|k| !k.is_empty()),
+        enabled,
+        ..item(label, Box::new(move |s, tx| if let Some(i) = s.map_pick(id, tx) { run(s, i, tx) }))
+    };
+    let folded = v.s.map_view().is_some_and(|m| m.folded.contains(&id));
+    let fold = (!n.children.is_empty()).then(|| on("menu-fold", if folded { "Unfold" } else { "Fold" }, "map.toggle-fold", true, |s, i, tx| s.map_toggle(i, false, tx)));
+    let copy = on("menu-copy", "Copy Markdown", "map.copy-node", true, |s, _, tx| s.map_copy(false, tx));
+    let edit = on("menu-edit", "Edit", "map.edit", true, |s, _, tx| s.map_edit(tx));
+    match n.kind {
+        NodeKind::Footnotes => fold.into_iter().chain([copy]).collect(),
+        NodeKind::Footnote { .. } => vec![edit, copy],
+        _ => {
+            let root = i == crate::map::ROOT;
+            let virtual_root = n.kind == NodeKind::Root;
+            let mut items = vec![on("menu-add-child", "Add child", "map.add-child", crate::map::takes_children(&t, i), |s, _, tx| s.map_add(Place::Child, tx))];
+            items.extend((!root).then(|| on("menu-add-sibling", "Add sibling", "map.add-sibling", true, |s, _, tx| s.map_add(Place::After, tx))));
+            items.push(edit);
+            items.extend((!virtual_root).then(|| on("menu-edit-branch", "Edit branch in sheet", "map.edit-subtree", true, |s, _, tx| s.map_edit_branch(tx))));
+            items.extend(fold);
+            items.push(copy);
+            items.push(on("menu-copy-branch", "Copy branch", "map.copy-subtree", true, |s, _, tx| s.map_copy(true, tx)));
+            items.extend((!root).then(|| on("menu-delete", "Delete", "map.delete", true, |s, _, tx| s.map_delete(tx))));
+            items
+        }
+    }
 }
 
 /// The tree menu's second step for a folder with notes: what moves to the trash, and two

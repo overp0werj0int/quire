@@ -153,7 +153,7 @@ pub(super) fn canvas(v: V) -> El {
         .role("tree")
         .label("Map")
         .child(world)
-        .on_layout_tx(|s: &mut App, [_, _, w, h], _| s.map_laid_out([w, h]))
+        .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             // The window sends Ctrl + wheel as a pinch (`on_magnify`); a wheel that still holds
             // Ctrl zooms the same way.
@@ -267,6 +267,7 @@ fn node(t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: boo
         }
         e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
+            .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
             .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
             .children((!editing).then(|| {
                 text(label)

@@ -1,0 +1,12 @@
+Ctrl+B in the inline field bolds the field's text, and Enter writes it with the heading's hashes.
+note: B.md
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.1 key:b+cmd@1.4 key:Enter@1.7 key:s+cmd@2.0
+expect: selected: map-node:3
+--- before
+# Doc
+
+## Budget
+--- after
+# Doc
+
+## **Budget**

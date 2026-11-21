@@ -1,0 +1,21 @@
+Right-click on an item opens its menu; Add child names a new nested item in the field.
+note: Menu.md
+events: key:m+cmd@0.3 rtap:map-node:3@0.8 tap:menu-add-child@1.2 type:soy@1.5 key:Enter@1.9 key:s+cmd@2.2
+expect: selected: map-node:5
+--- before
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.
+--- after
+# Plan
+
+- milk
+  - oat
+  - soy
+- eggs
+
+Para.

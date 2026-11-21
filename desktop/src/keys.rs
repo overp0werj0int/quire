@@ -54,6 +54,10 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         s.block_menu_here(tx);
         return true;
     }
+    if vault && s.mode == crate::app::Mode::Map && !s.active_locked() && crate::focus::on_note(tx) && menu_key(ev) {
+        s.map_node_menu(s.map_selected(), None, tx);
+        return true;
+    }
     for ctx in stack {
         if matches!(ctx, Ctx::Reader | Ctx::Map) {
             // The second key of `g g` (RD-23).

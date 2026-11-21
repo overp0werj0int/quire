@@ -1,0 +1,21 @@
+E opens the Edit Sheet on the selected heading's whole branch, and its save changes only those lines.
+note: Span.md
+events: key:m+cmd@0.3 key:Right@0.8 key:E+shift@1.1 key:End+cmd@1.5 type:!@1.6 key:s+cmd@2.0
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# T
+
+## A
+
+text
+
+## B
+--- after
+# T
+
+## A
+
+text!
+
+## B

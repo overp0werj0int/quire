@@ -14,6 +14,7 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
     tests/probe.py "tap:editor@0.1 key:End+cmd@0.4 type:hello_there@0.8 key:s+cmd@1.6"
 
     tap:KEY@T         a click on the element keyed KEY          tap:700,300@T   a click at a point
+    rtap:KEY@T        a right-click, the same way
     hover:KEY@T       move the pointer over KEY                 hover:700,300@T move to a point
     key:NAME[+cmd][+shift][+alt]@T                               type:TEXT@T     (use _ for a space)
     scroll:DY,X,Y@T   a wheel turn (positive DY moves towards the note's top)
@@ -88,12 +89,12 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|hover|key|type|paste|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|rtap|hover|key|type|paste|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
-        if kind in ("tap", "hover"):
-            events.append(dict({"t": t, "type": "tap" if kind == "tap" else "move"}, **at(body)))
+        if kind in ("tap", "rtap", "hover"):
+            events.append(dict({"t": t, "type": {"tap": "tap", "rtap": "secondary-click", "hover": "move"}[kind]}, **at(body)))
         elif kind == "key":
             name, *mods = body.split("+")
             events.append(dict({"t": t, "type": "key", "name": name}, **{m: True for m in mods}))

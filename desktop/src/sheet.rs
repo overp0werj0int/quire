@@ -191,11 +191,15 @@ impl App {
             sh.problem = Some(CHANGED);
             return;
         }
-        let r = line_bytes(&sh.base, &sh.pick.lines);
+        let (lines, r) = (sh.pick.lines.clone(), line_bytes(&sh.base, &sh.pick.lines));
         let with = sh.edit.text.clone();
         self.close_layer(tx);
         // One step in the note's source history (edit-sheet.md, open questions).
-        self.splice_note(&rel, r, &with);
+        if self.mode == Mode::Map && self.active.as_deref() == Some(rel.as_str()) {
+            self.map_replace(lines, &with, tx);
+        } else {
+            self.splice_note(&rel, r, &with);
+        }
         // Written at once, so "Saved" is true by the time anyone looks (open questions).
         self.flush_notes();
         self.toast("Saved", tx);

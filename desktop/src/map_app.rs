@@ -70,6 +70,8 @@ pub struct MapState {
     pub back: Mode,
     /// The canvas's size as last laid out, 0 before it has been.
     pub size: Cell<[f32; 2]>,
+    /// The canvas's top-left corner in the window.
+    origin: Cell<[f32; 2]>,
     tree: RefCell<Option<(u64, Rc<Tree>)>>,
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
@@ -113,6 +115,7 @@ impl Default for MapState {
             views: HashMap::new(),
             back: Mode::Source,
             size: Cell::new([0.0, 0.0]),
+            origin: Cell::new([0.0, 0.0]),
             tree: RefCell::new(None),
             laid: RefCell::new(None),
             sizes: RefCell::new((0, "", "", HashMap::new())),
@@ -559,7 +562,9 @@ impl App {
     // ---------- The camera and the mode ----------
 
     /// The canvas laid out: its size, and the camera's first place once it is known.
-    pub fn map_laid_out(&mut self, size: [f32; 2]) {
+    pub fn map_laid_out(&mut self, [x, y, w, h]: [f32; 4]) {
+        let size = [w, h];
+        self.map.origin.set([x, y]);
         self.map.size.set(size);
         let placed = self.map_view_mut().is_none_or(|v| v.placed);
         if !placed && size[0] > 0.0 && !self.active_locked() {
@@ -729,6 +734,37 @@ impl App {
         let t = self.map_follow(old, s);
         let i = s.focus.map_or(ROOT, |l| t.at_line(l));
         self.map_reveal(i, tx);
+    }
+
+    /// A right-click on node `i`, or the Menu key or Shift+F10 on the selected node with `at`
+    /// None (MAP-062): the node's menu, under it when opened from the keyboard.
+    pub fn map_node_menu(&mut self, i: usize, at: Option<(f32, f32)>, tx: &mut Tx) {
+        let Some(i) = self.map_press_node(i, tx) else { return };
+        self.map_select(i, tx);
+        let Some(p) = self.map_laid().at[i] else { return };
+        let ([px, py], z) = self.map_camera();
+        let [ox, oy] = self.map.origin.get();
+        let under = (ox + px + p.x * z, oy + py + (p.bottom() + 4.0) * z);
+        self.open_menu(crate::layer::MenuOf::Node(self.map_tree().nodes[i].id), at.unwrap_or(under), tx);
+        if at.is_none() {
+            tx.focus("node-menu", true);
+        }
+    }
+
+    /// A node menu's item picked: the node it was opened on is selected again, if it is still
+    /// there, for the item to act on.
+    pub fn map_pick(&mut self, id: NodeId, tx: &mut Tx) -> Option<usize> {
+        let i = self.map_tree().find(id)?;
+        self.map_select(i, tx);
+        Some(i)
+    }
+
+    /// The Edit Sheet's save in Map mode: `lines` of the note shown become `with`, and the map
+    /// keeps its place on the node the sheet began at (MAP-020).
+    pub fn map_replace(&mut self, lines: std::ops::Range<usize>, with: &str, tx: &mut Tx) {
+        let old = self.map_tree();
+        let s = map::Splice { focus: Some(lines.start), lines, with: with.split('\n').map(str::to_string).collect() };
+        self.map_apply(&old, &s, tx);
     }
 
     /// After change `s` to the note shown, whose map was `old`: the folds and the selection

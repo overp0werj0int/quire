@@ -1,0 +1,20 @@
+On a paragraph the menu's Add child is greyed, and a click on it adds nothing.
+note: Menu.md
+events: key:m+cmd@0.3 rtap:map-node:7@0.8 tap:menu-add-child@1.2 type:x@1.5 key:Escape@1.9 key:s+cmd@2.2
+expect: selected: map-node:7
+--- before
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.
+--- after
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.

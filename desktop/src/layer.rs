@@ -50,6 +50,8 @@ pub enum MenuOf {
     Edit(&'static str),
     /// A block of the page, by its first source line (RD-68).
     Block(usize),
+    /// A map node (MAP-062).
+    Node(crate::map::NodeId),
     /// A recent folder row on the welcome screen.
     RecentVault(std::path::PathBuf),
 }

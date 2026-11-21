@@ -1,0 +1,18 @@
+Shift+F10 opens the selected node's menu with its first item marked; d jumps to Delete and Enter deletes the branch.
+note: Menu.md
+events: key:m+cmd@0.3 key:Right@0.6 key:F10+shift@0.9 key:d@1.2 key:Enter@1.4 key:s+cmd@1.8
+expect: selected: map-node:3
+--- before
+# Plan
+
+- milk
+  - oat
+- eggs
+
+Para.
+--- after
+# Plan
+
+- eggs
+
+Para.
