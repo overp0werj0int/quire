@@ -1,0 +1,7 @@
+Opening a note and only moving the caret leaves the file as it was.
+events: tap:editor@0.3 key:End+cmd@0.6 key:Home+cmd@0.9 key:s+cmd@1.2
+expect: focus: editor (no ring)
+--- before
+# Hello
+
+hi

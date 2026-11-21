@@ -24,6 +24,9 @@ apps differ.
   `--print keys` lists the element keys you can name. `--fast` uses the `./dev build` binary.
   `tests/probe.py --help` has the rest. Run one probe at a time: each is a whole copy of the
   app. It needs a built binary and nothing else, and never touches your own notes or settings.
+- Desktop behaviour cases: `desktop/tests/cases.py` runs `tests/cases/**/*.case`. Each case is
+  a note, a probe replay and the note expected on disk after it (plus optional probe readings).
+  Prefer a case to a unit test for anything a user can do: it checks what the user gets.
 - Android tests: `cd android && ./gradlew testDebugUnitTest`.
 - [`docs/reader-writer/`](docs/reader-writer/README.md) is the plan for bringing omarky's
   reader and writer to the desktop app. Its `behavior/` files say what the preview and the

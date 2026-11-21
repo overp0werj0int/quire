@@ -1,0 +1,10 @@
+Typing at the end of a note in Source and saving writes it to disk.
+events: tap:editor@0.3 key:End+cmd@0.6 key:Up@0.8 key:End@1.0 type:_world@1.2 key:s+cmd@1.9
+--- before
+# Hello
+
+hi
+--- after
+# Hello
+
+hi world
