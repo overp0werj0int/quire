@@ -18,6 +18,8 @@ mod keys;
 mod layer;
 mod lock;
 mod lock_app;
+mod map;
+mod map_layout;
 mod mcp;
 mod highlight;
 mod motion;

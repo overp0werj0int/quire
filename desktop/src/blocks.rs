@@ -227,6 +227,8 @@ pub struct Footnote {
     /// How many times it is cited.
     pub refs: usize,
     pub blocks: Vec<Block>,
+    /// The definition's own source lines: definitions may sit anywhere in the note.
+    pub lines: Range<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -289,7 +291,7 @@ struct Walker<'a> {
     /// Cited labels in order of first citation, lowercased, with their counts.
     cites: Vec<(String, usize)>,
     /// Definitions in source order: label as written, blocks, first line.
-    defs: Vec<(String, Vec<Block>, usize)>,
+    defs: Vec<(String, Vec<Block>, Range<usize>)>,
 }
 
 fn is_inline(e: &Event) -> bool {
@@ -393,10 +395,10 @@ impl<'a> Walker<'a> {
             Tag::Table(aligns) => Some(self.table(aligns, &r)),
             Tag::FootnoteDefinition(label) => {
                 self.i += 1;
-                let line = self.line(r.start);
+                let lines = self.lines(&r);
                 let blocks = self.collect(0);
                 if !self.defs.iter().any(|d| d.0.to_lowercase() == label.to_lowercase()) {
-                    self.defs.push((label.to_string(), blocks, line));
+                    self.defs.push((label.to_string(), blocks, lines));
                 }
                 None
             }
@@ -676,7 +678,7 @@ impl<'a> Walker<'a> {
             return None;
         }
         let mut defs = std::mem::take(&mut self.defs);
-        let mut picked: Vec<(String, usize, Vec<Block>, usize)> = Vec::new();
+        let mut picked: Vec<(String, usize, Vec<Block>, Range<usize>)> = Vec::new();
         for (label, n) in &self.cites {
             if let Some(k) = defs.iter().position(|d| d.0.to_lowercase() == *label) {
                 let (l, b, line) = defs.remove(k);
@@ -684,9 +686,9 @@ impl<'a> Walker<'a> {
             }
         }
         picked.extend(defs.into_iter().map(|(l, b, line)| (l, 0, b, line)));
-        let start = picked.iter().map(|p| p.3).min().unwrap_or(0);
-        let end = picked.iter().map(|p| p.3 + 1).max().unwrap_or(0);
-        let items = picked.into_iter().enumerate().map(|(k, (label, refs, blocks, _))| Footnote { number: k + 1, label, anchor: format!("fn-{}", k + 1), refs, blocks }).collect();
+        let start = picked.iter().map(|p| p.3.start).min().unwrap_or(0);
+        let end = picked.iter().map(|p| p.3.start + 1).max().unwrap_or(0);
+        let items = picked.into_iter().enumerate().map(|(k, (label, refs, blocks, lines))| Footnote { number: k + 1, label, anchor: format!("fn-{}", k + 1), refs, blocks, lines }).collect();
         Some(Block { kind: Kind::Footnotes { items }, lines: start..end, key: (0, 0), pid: None })
     }
 }
