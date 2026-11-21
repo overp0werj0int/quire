@@ -34,6 +34,7 @@ WHAT is any of (default `focus,doc-y`):
     doc-y             the page's top edge, which tells you how far it has scrolled
     label:KEY         an element's accessible label (a map node's reads its text and state)
     scale:KEY         how much an element is drawn scaled (a map node's is the map's zoom)
+    opacity:KEY       how opaque an element is drawn: sample it with --series to see a fade
     selected          the map's selected node, by key
     nodes             the map nodes built now, by key, in the order drawn: what culling kept
     keys              every keyed element with its rectangle: the way to find a KEY
@@ -204,6 +205,9 @@ def answer(what, els, home):
     if what.startswith("scale:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %s" % (what, e.get("scale") if e else None)
+    if what.startswith("opacity:"):
+        e = next((e for e in els if e.get("key") == what[8:]), None)
+        return "%s: %s" % (what, e.get("opacity") if e else None)
     if what == "selected":
         e = next((e for e in els if e.get("itemSelected") and e.get("key", "").startswith("map-node:")), None)
         return "selected: %s" % (e.get("key") if e else None)

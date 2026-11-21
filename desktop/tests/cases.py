@@ -23,7 +23,7 @@ The first line says what the case checks. `note` names the file (default Note.md
 is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
 that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`selected`, `nodes`), compared exactly. `at` takes the readings at that time instead of 0.8 s
+`opacity:KEY`, `selected`, `nodes`), compared exactly. `at` takes the readings at that time instead of 0.8 s
 after the last event, to read the app mid-gesture: a drag's drop zone before the release, or a
 node part way through a glide. Each `env` line is NAME=VALUE for the app's environment, such
 as QUIRE_REDUCED_MOTION=1. With `password`, the note on disk must be a locked note (SYNC.md),
@@ -47,7 +47,7 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "selected", "nodes")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "selected", "nodes")
 
 
 class Case:

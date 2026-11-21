@@ -24,8 +24,6 @@ pub struct NodeDrag {
     /// The pointer at the press and now, in the canvas's points.
     start: [f32; 2],
     pub at: [f32; 2],
-    /// The pointer's offset from the node's corner, in world points.
-    pub grab: [f32; 2],
     /// Past the threshold: a move, not a click.
     pub active: bool,
     /// Where a drop now would put the node.
@@ -85,9 +83,7 @@ impl App {
                 if fixed || !self.map_editable() {
                     return self.map_pan_drag(d, tx);
                 }
-                let w = self.map_world(here);
-                let grab = self.map_laid().at[i].map_or([0.0, 0.0], |p| [w[0] - p.x, w[1] - p.y]);
-                self.map.node_drag = Some(NodeDrag { node: t.nodes[i].id, start: here, at: here, grab, active: false, drop: None, tick: 0.0 });
+                self.map.node_drag = Some(NodeDrag { node: t.nodes[i].id, start: here, at: here, active: false, drop: None, tick: 0.0 });
                 tx.live_only();
             }
             Phase::Move => {

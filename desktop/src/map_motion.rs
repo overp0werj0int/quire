@@ -93,10 +93,14 @@ impl App {
             return;
         }
         self.map.relayout = Some(Relayout { rel: self.active.clone().unwrap_or_default(), from, start: self.now.get() });
-        // Rune's own layout motion pairs elements by key, and a node's key is its source line,
-        // which a move or an insertion changes.
-        tx.instant();
         tx.wake_after(Duration::from_millis(16));
+    }
+
+    /// A relayout glide runs on the map shown. Rune's own layout motion stays off the map's
+    /// world meanwhile: it pairs elements by key, and a node's key is its source line, which a
+    /// move or an insertion changes.
+    pub fn map_gliding(&self) -> bool {
+        self.map.relayout.as_ref().is_some_and(|r| Some(r.rel.as_str()) == self.active.as_deref())
     }
 
     /// Before each frame: the glide's next step. True while it runs, and on its last frame.

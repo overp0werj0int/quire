@@ -18,6 +18,9 @@ use crate::theme::normal_lh;
 /// Half the world element's side. The world is centred on the canvas's top-left, so its live
 /// offset is the camera's pan and nodes sit at their world coordinates plus this.
 const W: f32 = 131_072.0;
+/// The drag ghost's offset from the pointer, in screen points (`ui::sidebar::tree`'s).
+const GHOST_DX: f32 = 14.0;
+const GHOST_DY: f32 = 10.0;
 
 /// A node's key: its first source line, 1-based, or the root or footnotes group by name.
 pub fn node_key(t: &Tree, i: usize) -> String {
@@ -82,6 +85,9 @@ pub(super) fn canvas(v: V) -> El {
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);
     }
+    if s.map_gliding() {
+        world = world.instant_changes();
+    }
     // The subtree a drag carries dims where it was (MAP-026).
     let drag = s.map.node_drag.as_ref().filter(|g| g.active);
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
@@ -130,7 +136,9 @@ pub(super) fn canvas(v: V) -> El {
             && let Some(p) = l.at[m]
         {
             let ([px, py], z) = cam;
-            let at = [(g.at[0] - px) / z - g.grab[0], (g.at[1] - py) / z - g.grab[1]];
+            // Below and right of the pointer, as the tree's ghost sits, so the target under the
+            // pointer stays readable.
+            let at = [(g.at[0] - px + GHOST_DX) / z, (g.at[1] - py + GHOST_DY) / z];
             world = world.child(ghost(&t, m, p, at, &c, b, prose, mono, l.metrics.pad_x));
         }
     }
