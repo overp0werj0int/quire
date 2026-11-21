@@ -18,6 +18,8 @@ pub enum Ctx {
     Field,
     Help,
     Rewrite,
+    Map,
+    MapEdit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +91,9 @@ use Ctx::*;
 use Status::*;
 
 const W: &[Ctx] = &[Writer, Sheet];
+const WM: &[Ctx] = &[Writer, Sheet, MapEdit];
+const M: &[Ctx] = &[Map];
+const ME: &[Ctx] = &[MapEdit];
 
 pub const TABLE: &[Action] = &[
     a(8, "app.command-palette", "Command palette", &[Global], Adapted, &["Ctrl+Shift+K"], &["Ctrl+P"]),
@@ -121,6 +126,7 @@ pub const TABLE: &[Action] = &[
     same(99, "app.tab-9", "Tab 9", &[Global], Quire, &["Ctrl+9"]),
     same(100, "app.next-tab", "Next tab", &[Global], Quire, &["Ctrl+Tab"]),
     same(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
+    same(102, "app.toggle-map", "Map / back", &[Global], Adapted, &["Ctrl+M"]),
     // Reader.
     same(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
     same(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),
@@ -149,11 +155,11 @@ pub const TABLE: &[Action] = &[
     Action { guard: Some("changes mode with no find query"), ..same(48, "reader.next-change", "Next change", &[Reader], Deferred, &["n"]) },
     same(49, "reader.previous-change", "Previous change", &[Reader], Deferred, &["p"]),
     // Writer, and the sheet, whose editor is the writer's.
-    same(50, "writer.bold", "Bold", W, In, &["Ctrl+B"]),
-    same(51, "writer.italic", "Italic", W, In, &["Ctrl+I"]),
-    a(52, "writer.inline-code", "Inline code", W, Adapted, &["Ctrl+E"], &["Ctrl+Shift+E"]),
-    same(53, "writer.strikethrough", "Strikethrough", W, In, &["Ctrl+Shift+X"]),
-    same(54, "writer.link", "Link", W, In, &["Ctrl+K"]),
+    same(50, "writer.bold", "Bold", WM, In, &["Ctrl+B"]),
+    same(51, "writer.italic", "Italic", WM, In, &["Ctrl+I"]),
+    a(52, "writer.inline-code", "Inline code", WM, Adapted, &["Ctrl+E"], &["Ctrl+Shift+E"]),
+    same(53, "writer.strikethrough", "Strikethrough", WM, In, &["Ctrl+Shift+X"]),
+    same(54, "writer.link", "Link", WM, In, &["Ctrl+K"]),
     same(55, "writer.heading-1", "Heading 1", W, Adapted, &["Ctrl+Alt+1"]),
     same(55, "writer.heading-2", "Heading 2", W, Adapted, &["Ctrl+Alt+2"]),
     same(55, "writer.heading-3", "Heading 3", W, Adapted, &["Ctrl+Alt+3"]),
@@ -204,6 +210,59 @@ pub const TABLE: &[Action] = &[
     same(91, "rewrite.earlier", "Earlier rewrite", &[Rewrite], Deferred, &["Alt+Up"]),
     same(92, "rewrite.later", "Later rewrite", &[Rewrite], Deferred, &["Alt+Down"]),
     same(93, "rewrite.recall", "Earlier instructions", &[Rewrite], Deferred, &["Up", "Down"]),
+    // Map, and its inline text input.
+    same(103, "map.parent", "Parent node", M, Adapted, &["Left", "h"]),
+    same(104, "map.child", "First child", M, Adapted, &["Right", "l"]),
+    same(105, "map.prev-sibling", "Previous sibling", M, Adapted, &["Up", "k"]),
+    same(106, "map.next-sibling", "Next sibling", M, Adapted, &["Down", "j"]),
+    same(107, "map.root", "Root node", M, Adapted, &["Home", "g g"]),
+    same(108, "map.edit", "Edit the node", M, Adapted, &["F2", "e"]),
+    same(109, "map.edit-subtree", "Edit the branch", M, Adapted, &["E"]),
+    same(110, "map.add-child", "Add a child", M, Adapted, &["Tab"]),
+    same(111, "map.add-sibling", "Add a sibling", M, Adapted, &["Enter"]),
+    same(112, "map.add-sibling-before", "Add a sibling before", M, Adapted, &["Shift+Enter"]),
+    same(113, "map.delete", "Delete the branch", M, Adapted, &["Delete", "Backspace"]),
+    same(114, "map.toggle-fold", "Fold or unfold", M, Adapted, &["Space", "f"]),
+    same(115, "map.toggle-fold-recursive", "Fold or unfold the branch", M, Adapted, &["Shift+Space", "F"]),
+    same(116, "map.toggle-task", "Tick the task", M, Adapted, &["x"]),
+    same(117, "map.expand-all", "Unfold everything", M, Adapted, &["]"]),
+    same(118, "map.collapse-to-level", "Fold to a level", M, Adapted, &["["]),
+    same(119, "map.fit", "Fit the map", M, Adapted, &["0"]),
+    same(120, "map.zoom-reset", "Zoom 100%", M, Adapted, &["Ctrl+0"]),
+    same(121, "map.center", "Centre the node", M, Adapted, &["c"]),
+    same(122, "map.zoom-in", "Zoom in", M, Adapted, &["+", "="]),
+    same(123, "map.zoom-out", "Zoom out", M, Adapted, &["-"]),
+    same(124, "map.move-up", "Move up", M, Adapted, &["Alt+Up"]),
+    same(125, "map.move-down", "Move down", M, Adapted, &["Alt+Down"]),
+    same(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab", "Alt+Left"]),
+    same(127, "map.indent", "Indent", M, Adapted, &["Alt+Right"]),
+    same(128, "map.heading-1", "Heading 1", M, Adapted, &["Ctrl+Alt+1"]),
+    same(128, "map.heading-2", "Heading 2", M, Adapted, &["Ctrl+Alt+2"]),
+    same(128, "map.heading-3", "Heading 3", M, Adapted, &["Ctrl+Alt+3"]),
+    same(128, "map.heading-4", "Heading 4", M, Adapted, &["Ctrl+Alt+4"]),
+    same(128, "map.heading-5", "Heading 5", M, Adapted, &["Ctrl+Alt+5"]),
+    same(128, "map.heading-6", "Heading 6", M, Adapted, &["Ctrl+Alt+6"]),
+    same(129, "map.follow-link", "Follow the node's link", M, Adapted, &["Ctrl+Enter"]),
+    same(130, "map.find", "Find", M, Adapted, &["Ctrl+F", "/"]),
+    same(131, "map.find-next", "Next match", M, Adapted, &["n", "F3", "Ctrl+G"]),
+    same(132, "map.find-previous", "Previous match", M, Adapted, &["N", "Shift+F3"]),
+    same(133, "map.undo", "Undo", M, Adapted, &["Ctrl+Z"]),
+    same(134, "map.redo", "Redo", M, Adapted, &["Ctrl+Shift+Z", "Ctrl+Y"]),
+    same(135, "map.copy-node", "Copy the node's Markdown", M, Adapted, &["Ctrl+C"]),
+    same(136, "map.copy-subtree", "Copy the branch's Markdown", M, Adapted, &["Ctrl+Shift+C"]),
+    same(137, "map.copy-all", "Copy the whole note", M, Adapted, &["Ctrl+Shift+A"]),
+    same(138, "map.paste", "Paste", M, Adapted, &["Ctrl+V"]),
+    same(139, "map.read-from-disk", "Read from disk", M, Adapted, &["Ctrl+R"]),
+    same(140, "map.toggle-outline", "Toggle outline", M, Adapted, &["o", "O"]),
+    same(141, "map.close-tab", "Close tab", M, Adapted, &["q"]),
+    same(142, "map.help", "Keyboard help", M, Adapted, &["?", "F1"]),
+    same(143, "map.escape", "Close find, else leave the map", M, Adapted, &["Esc"]),
+    same(144, "map.node-menu", "Node menu", M, Adapted, &["Right-click"]),
+    same(145, "mapedit.commit", "Commit the edit", ME, Adapted, &["Enter"]),
+    same(146, "mapedit.newline", "New line", ME, Adapted, &["Shift+Enter"]),
+    same(147, "mapedit.cancel", "Cancel the edit", ME, Adapted, &["Esc"]),
+    same(148, "mapedit.commit-add-child", "Commit and add a child", ME, Adapted, &["Tab"]),
+    same(149, "mapedit.commit-outdent", "Commit and outdent", ME, Adapted, &["Shift+Tab"]),
 ];
 
 pub fn action(id: &str) -> Option<&'static Action> {
@@ -502,7 +561,7 @@ mod tests {
         for p in Preset::ALL {
             let m = by_chord(p);
             for ((ctx, seq), acts) in &m {
-                if !matches!(ctx, Reader | Writer | Find | Palette | Field) || seq[0].key == K::Esc {
+                if !matches!(ctx, Reader | Writer | Find | Palette | Field | Map | MapEdit) || seq[0].key == K::Esc {
                     continue;
                 }
                 assert!(!m.contains_key(&(Global, seq.clone())), "{p:?} {ctx:?} {} shadows a global chord", acts[0].id);
@@ -510,15 +569,15 @@ mod tests {
         }
     }
 
-    /// Checks: the writer, sheet, find, palette and field contexts leave the text-field keys to
-    /// Rune (KEY-06), apart from the palette's Up, Down and Backspace.
+    /// Checks: the writer, sheet, map edit, find, palette and field contexts leave the text-field
+    /// keys to Rune (KEY-06), apart from the palette's Up, Down and Backspace.
     #[test]
     fn text_field_keys_stay_with_the_field() {
         let field_keys = ["Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "Backspace", "Delete", "Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"];
         let field: Vec<Vec<Chord>> = field_keys.iter().map(|s| parse(s).unwrap()).collect();
         for p in Preset::ALL {
             for ((ctx, seq), acts) in by_chord(p) {
-                if !matches!(ctx, Writer | Sheet | Find | Palette | Field) || !field.contains(&seq) {
+                if !matches!(ctx, Writer | Sheet | MapEdit | Find | Palette | Field) || !field.contains(&seq) {
                     continue;
                 }
                 assert!(matches!(acts[0].id, "palette.next" | "palette.previous" | "palette.back-to-notes"), "{p:?} {} takes a field key", acts[0].id);
@@ -544,7 +603,7 @@ mod tests {
             let status = line.split_once("** [").unwrap().1.split(&[']', ':'][..]).next().unwrap();
             let acts: Vec<&Action> = TABLE.iter().filter(|a| a.item == item).collect();
             assert!(!acts.is_empty(), "KEY-{item} is not in the table");
-            if item == 55 {
+            if item == 55 || item == 128 {
                 // Six actions, Ctrl+Alt+1 to Ctrl+Alt+6.
                 assert_eq!(acts.len(), 6);
                 for (i, a) in acts.iter().enumerate() {
@@ -576,7 +635,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 92, "every KEY item with chords was read");
+        assert_eq!(seen, 140, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }
