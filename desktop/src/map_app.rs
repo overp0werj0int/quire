@@ -385,7 +385,8 @@ impl App {
                 let hidden = t.nodes[i].end - i - 1;
                 let text = format!("+{hidden}");
                 let pw = rune::text::measure(&text, &[], chip, None).0.ceil() + 2.0 * PILL_PAD;
-                FOLD_R + 6.0 + pw + 4.0
+                let half_h = ((chip.size + 6.0) / 2.0).max(FOLD_R);
+                [FOLD_R + 6.0 + pw + 4.0, half_h]
             },
         ));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
@@ -481,7 +482,8 @@ impl App {
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
         let mut committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
-        let focused = tx.focused().is_none_or(|k| k == crate::focus::NOTE || k == FIELD);
+        let node_menu = matches!(self.menu(), Some(m) if matches!(m.of, crate::layer::MenuOf::Node(_)));
+        let focused = node_menu || tx.focused().is_none_or(|k| k == crate::focus::NOTE || k == FIELD);
         if self.map.canvas_focused != focused {
             self.map.canvas_focused = focused;
             committed = true;
@@ -1089,7 +1091,7 @@ impl App {
         let Some(p) = self.map_laid().at[i] else { return };
         let ([px, py], z) = self.map_camera();
         let [ox, oy] = self.map.origin.get();
-        let under = (ox + px + p.x * z, oy + py + (p.bottom() + 4.0) * z);
+        let under = (ox + px + p.x * z, oy + py + (p.bottom() + FOLD_R + 4.0) * z);
         self.open_menu(crate::layer::MenuOf::Node(self.map_tree().nodes[i].id), at.unwrap_or(under), tx);
         if at.is_none() {
             tx.focus("node-menu", true);

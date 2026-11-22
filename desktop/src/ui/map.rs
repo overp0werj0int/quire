@@ -199,19 +199,27 @@ pub(super) fn canvas(v: V) -> El {
             Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
             _ => [p.w, p.h],
         };
-        let extra_b = if p.depth == 0 { 2.0 } else { 0.0 };
-        let sel_w = (1.75 / 2f32.powi(map_app::hit_bucket(cam.1))).clamp(2.0, 5.0);
+        let extra_b = if p.depth == 0 {
+            2.0
+        } else if line_width(p.depth) >= 2.0 {
+            1.5
+        } else {
+            0.0
+        };
+        let sel_w = (2.0 / cam.1.max(map_app::ZOOM_MIN)).clamp(2.0, 20.0);
         let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
-        let mut sel_el = el()
+        let stroke = if s.map.canvas_focused {
+            accent
+        } else {
+            Roles::readable_on(crate::roles::mix(c.bg, accent, 0.55), c.bg, GRAPHIC)
+        };
+        let sel_el = el()
             .key("map-selection")
             .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
             .size(w + 6.0, h + line_width(p.depth) + 6.0 + extra_b)
             .radius(4.0)
-            .border(sel_w, accent)
+            .border(sel_w, stroke)
             .inert();
-        if !s.map.canvas_focused {
-            sel_el = sel_el.opacity(0.5);
-        }
         world = world.child(sel_el);
     }
     for &i in &nodes {
@@ -225,7 +233,7 @@ pub(super) fn canvas(v: V) -> El {
     if let Some(g) = drag
         && let Some(at) = g.drop
     {
-        world = world.child(drop_mark(&t, &l, at, c));
+        world = world.child(drop_mark(&t, &l, at, c, cam.1));
     }
     let ghost_el = drag.and_then(|g| {
         let m = t.find(g.node)?;
@@ -456,16 +464,33 @@ fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: 
     let y0 = (vcy - hit / 2.0).max(clear[0] - p.y).min(bx_y);
     let y1 = (vcy + hit / 2.0).min(clear[1] - p.y).max(bx_y + bx);
     let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
+    let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
+    let halo = el()
+        .size(bx + 6.0, bx + 6.0)
+        .radius(rad + 2.0)
+        .fill(accent.alpha(0.18))
+        .group_opacity(0.0, 1.0)
+        .pin(Some(bx_x - 3.0 - x0), Some(bx_y - 3.0 - y0), None, None)
+        .inert();
     let mut bx_el = el().size(bx, bx).radius(rad).pin(Some(bx_x - x0), Some(bx_y - y0), None, None);
-    bx_el = if done { bx_el.center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)) } else { bx_el.border(edge, c.faint) };
+    bx_el = if done {
+        bx_el.center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg))
+    } else {
+        bx_el
+            .border(edge, c.faint)
+            .child(el().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(rad).border(edge, accent).group_opacity(0.0, 1.0).inert())
+    };
     el().key(format!("map-task:{}", n.own.start + 1))
         .size(x1 - x0, y1 - y0)
         .role("checkbox")
         .checked(done)
         .label(if done { "Done" } else { "To do" })
         .cursor(rune::Cursor::Pointer)
+        .hover_group()
+        .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
         .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_task_click(i, tx))
         .pin(Some(x0), Some(y0), None, None)
+        .child(halo)
         .child(bx_el)
 }
 
@@ -640,26 +665,29 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
 /// Where a drop would put the node: an accent bar above or below the target for Before and
 /// After, or a tinted box round it with a stub of a branch for Child (MAP-026). Its label names
 /// the zone and the target's key.
-fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles) -> El {
+fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> El {
     use crate::map::Add;
     let j = at.node();
     let Some(p) = l.at[j] else { return el() };
     let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
+    let z = zoom.max(map_app::ZOOM_MIN);
     let (zone, e) = match at {
         Add::Before(_) | Add::After(_) => {
-            let y = if matches!(at, Add::Before(_)) { p.y - 4.0 } else { p.bottom() + 1.0 };
+            let bar_h = (3.0 / z).clamp(3.0, 24.0);
+            let y = if matches!(at, Add::Before(_)) { p.y - bar_h - 1.0 } else { p.bottom() + 1.0 };
             let name = if matches!(at, Add::Before(_)) { "Before" } else { "After" };
-            (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, 3.0).radius(1.5).fill(accent))
+            (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, bar_h).radius(bar_h / 2.0).fill(accent))
         }
         Add::Child(_) => {
+            let bw = (2.0 / z).clamp(2.0, 16.0);
             let wash = accent.alpha(if c.bg.r < 0.2 { 0.18 } else { 0.14 });
-            let stub = el().pin(Some(p.w + 6.0), Some(p.line_y() - p.y + 2.0), None, None).size(24.0, 2.0).fill(accent);
+            let stub = el().pin(Some(p.w + 6.0), Some(p.line_y() - p.y + 3.0 - bw / 2.0), None, None).size(24.0, bw).fill(accent);
             let e = el()
                 .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
                 .size(p.w + 6.0, p.bottom() - p.y + 6.0)
                 .radius(4.0)
                 .fill(wash)
-                .border(2.0, accent)
+                .border(bw, accent)
                 .child(stub);
             ("Child", e)
         }
