@@ -1,0 +1,16 @@
+Ctrl+Z from the outline undoes the map's last edit, and the outline keeps the keyboard.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:l@0.6 key:e@0.8 type:Money@1.0 key:Enter@1.6 key:F6@2.0 key:z+cmd@2.4 key:s+cmd@2.8
+expect: focus: ol-1 (ring shown)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

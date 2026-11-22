@@ -1,0 +1,16 @@
+Esc with a node's menu open in zen mode closes the menu and stays in zen.
+note: Plan.md
+events: key:m+cmd@0.3 key:.+cmd@0.6 rtap:map-node:3@1.0 key:Escape@1.5
+expect: rect:node-menu: None
+expect: text:focus-hint: '7 words · Esc to leave zen mode'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

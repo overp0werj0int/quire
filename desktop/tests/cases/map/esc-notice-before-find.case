@@ -1,0 +1,12 @@
+Esc on the map with a notice up and Find open dismisses the notice first and leaves Find open.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8 key:Enter+cmd@1.1 key:f+cmd@1.4 type:rent@1.6 key:Escape@2.2
+expect: focus: find-input (no ring)
+expect: text:notice: None
+expect: rect:find-bar: [884.0, 51.0, 380.0, 40.0]
+--- before
+# Plan
+
+- [[Other]]
+- rent

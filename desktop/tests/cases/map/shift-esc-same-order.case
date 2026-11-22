@@ -1,0 +1,16 @@
+Shift+Esc runs Esc's order: in zen on the map it leaves zen, not the map.
+note: Plan.md
+events: key:m+cmd@0.3 key:.+cmd@0.6 key:Escape+shift@1.0
+expect: text:focus-hint: None
+expect: rect:map-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

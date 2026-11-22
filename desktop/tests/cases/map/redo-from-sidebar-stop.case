@@ -1,0 +1,27 @@
+Ctrl+Y from the sidebar redoes the map's edit that Ctrl+Z undid there.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:l@0.6 key:e@0.8 type:Money@1.0 key:Enter@1.6 key:F6+shift@2.0 key:z+cmd@2.4 key:y+cmd@2.7 key:s+cmd@3.0
+expect: focus: tab:Plan.md (ring shown)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+# Plan
+
+## Money
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

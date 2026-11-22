@@ -1,0 +1,16 @@
+Shift+F6 on the map goes the other way, to the sidebar.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:F6+shift@0.8
+expect: focus: tab:Plan.md (ring shown)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

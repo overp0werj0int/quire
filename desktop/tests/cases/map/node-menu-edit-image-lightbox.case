@@ -1,0 +1,18 @@
+The menu's Edit on an image opens the lightbox, not the Edit Sheet.
+note: Menu.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 rtap:map-node:11@0.8 tap:menu-edit@1.2
+expect: text:lightbox-caption: 'A wide checkerboard'
+expect: rect:sheet-editor: None
+--- before
+# Plan
+
+## Budget
+
+- Rent
+
+```sh
+echo hi
+```
+
+![A wide checkerboard](attachments/wide.png)

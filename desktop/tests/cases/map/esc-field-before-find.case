@@ -1,0 +1,17 @@
+Esc in a node's field cancels the edit and leaves Find open.
+note: Plan.md
+events: key:m+cmd@0.3 key:f+cmd@0.6 type:rent@0.8 tap:map-node:3@1.4 key:e@1.7 type:X@1.9 key:Escape@2.2
+expect: focus: note-keys (no ring)
+expect: rect:map-inline-edit: None
+expect: text:find-count: '1 / 1'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

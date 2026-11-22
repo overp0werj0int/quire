@@ -1,0 +1,18 @@
+The Menu key opens the selected node's menu with every item a heading has, its first item marked.
+note: Menu.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 key:l@0.6 key:ContextMenu@0.9
+expect: focus: menu-add-child (ring shown)
+expect: text:node-menu: 'Add child Tab Add sibling Enter Edit F2 Edit branch in sheet E Fold Space Copy Markdown Ctrl+C Copy branch Ctrl+Shift+C Delete Delete'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+
+```sh
+echo hi
+```
+
+![A wide checkerboard](attachments/wide.png)

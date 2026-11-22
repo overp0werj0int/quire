@@ -1,0 +1,16 @@
+A second F6 from the map wraps round to the sidebar, the leftmost pane.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:F6@0.8 key:F6@1.1
+expect: focus: tab:Plan.md (ring shown)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

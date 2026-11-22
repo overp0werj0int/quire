@@ -1,0 +1,17 @@
+A third F6 from the map comes back to the map's own keys.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:F6@0.8 key:F6@1.1 key:F6@1.4 key:l@1.7
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

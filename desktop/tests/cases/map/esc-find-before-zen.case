@@ -1,0 +1,17 @@
+Esc with Find open in zen mode closes Find and stays in zen on the map.
+note: Plan.md
+events: key:m+cmd@0.3 key:.+cmd@0.6 key:f+cmd@0.9 type:rent@1.1 key:Escape@1.7
+expect: rect:find-bar: None
+expect: text:focus-hint: '7 words · Esc to leave zen mode'
+expect: label:mode-map: 'Map'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

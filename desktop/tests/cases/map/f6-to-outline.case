@@ -1,0 +1,16 @@
+F6 on the map moves the keyboard to the next docked pane to the right: the outline.
+note: Plan.md
+state: {"right_open": true}
+events: key:m+cmd@0.3 key:F6@0.8
+expect: focus: ol-0 (ring shown)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

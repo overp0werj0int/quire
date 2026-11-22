@@ -1,0 +1,17 @@
+Esc in zen mode on the map leaves zen and stays on the map.
+note: Plan.md
+events: key:m+cmd@0.3 key:.+cmd@0.6 key:Escape@1.0
+expect: focus: note-keys (no ring)
+expect: text:focus-hint: None
+expect: rect:map-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

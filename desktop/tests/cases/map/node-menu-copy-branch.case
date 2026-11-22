@@ -1,0 +1,17 @@
+The menu's Copy branch copies the node's branch and says so.
+note: Menu.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 rtap:map-node:3@0.8 tap:menu-copy-branch@1.2
+expect: text:toast: "Copied the branch's Markdown"
+--- before
+# Plan
+
+## Budget
+
+- Rent
+
+```sh
+echo hi
+```
+
+![A wide checkerboard](attachments/wide.png)
