@@ -663,6 +663,36 @@ impl App {
         self.map_select(ROOT, tx);
     }
 
+    /// Shifts the camera pan so node `anchor` stays at its pre-change screen position `(old_p)`,
+    /// runs a shifted relayout glide around it, and only calls `ensure_visible` if the anchored
+    /// node was completely outside the free viewport (MAP-043).
+    fn finish_anchored_fold(&mut self, anchor: usize, old_p: Option<map_layout::Place>, tx: &mut Tx) {
+        let new_p = self.map_laid().at[anchor];
+        let shift = match (old_p, new_p) {
+            (Some(a), Some(b)) => [b.right() - a.right(), b.line_y() - a.line_y()],
+            _ => [0.0, 0.0],
+        };
+        if shift[0] != 0.0 || shift[1] != 0.0 {
+            let ([px, py], z) = self.map_camera();
+            self.set_camera([px - shift[0] * z, py - shift[1] * z], z);
+            if let Some(g) = &mut self.map.glide {
+                g.from.0[0] -= shift[0] * g.from.1;
+                g.from.0[1] -= shift[1] * g.from.1;
+                g.to.0[0] -= shift[0] * g.to.1;
+                g.to.0[1] -= shift[1] * g.to.1;
+            }
+        }
+        self.map_relayout_shifted(None, shift, tx);
+        if let Some(p) = new_p {
+            let ([px, py], z) = self.map_camera();
+            let [fx0, fy0, fx1, fy1] = self.map_free();
+            let offscreen = px + p.right() * z < fx0 || px + p.x * z > fx1 || py + p.bottom() * z < fy0 || py + p.y * z > fy1;
+            if offscreen {
+                self.ensure_visible(anchor, tx);
+            }
+        }
+    }
+
     /// Folds or unfolds node `i`, or its whole branch with `all` (MAP-041, MAP-058).
     pub fn map_toggle(&mut self, i: usize, all: bool, tx: &mut Tx) {
         let Some(i) = self.map_press_node(i, tx) else { return };
@@ -671,6 +701,7 @@ impl App {
         if n.children.is_empty() {
             return;
         }
+        let old_p = self.map_drawn().laid.at[i];
         let Some(v) = self.map_view_mut() else { return };
         let fold = !v.folded.contains(&n.id);
         let ids: Vec<NodeId> = if all { t.nodes[i..n.end].iter().filter(|d| !d.children.is_empty()).map(|d| d.id).collect() } else { vec![n.id] };
@@ -683,7 +714,7 @@ impl App {
         }
         v.fold_ver += 1;
         self.keep_selection_shown();
-        self.map_relayout(None, tx);
+        self.finish_anchored_fold(i, old_p, tx);
     }
 
     pub fn map_toggle_selected(&mut self, all: bool, tx: &mut Tx) {
@@ -693,26 +724,31 @@ impl App {
 
     /// `]`: every fold opens (MAP-058).
     pub fn map_expand_all(&mut self, tx: &mut Tx) {
+        let anchor = self.map_selected();
+        let old_p = self.map_drawn().laid.at[anchor];
         if let Some(v) = self.map_view_mut()
             && !v.folded.is_empty()
         {
             v.folded.clear();
             v.fold_ver += 1;
         }
-        self.map_relayout(None, tx);
+        self.finish_anchored_fold(anchor, old_p, tx);
     }
 
     /// `[`: folds every branch at depth 2 and below, or from depth 1 when those are folded
     /// already (MAP-058; depths are 1-based, the root at 1).
     pub fn map_collapse_to_level(&mut self, tx: &mut Tx) {
         let t = self.map_tree();
+        let old_drawn = self.map_drawn();
         let branches = |from: usize| t.nodes.iter().filter(move |n| n.depth + 1 >= from && !n.children.is_empty()).map(|n| n.id);
         let Some(v) = self.map_view_mut() else { return };
         let from = if branches(2).all(|id| v.folded.contains(&id)) { 1 } else { 2 };
         v.folded.extend(branches(from));
         v.fold_ver += 1;
         self.keep_selection_shown();
-        self.map_relayout(None, tx);
+        let anchor = self.map_selected();
+        let old_p = old_drawn.laid.at[anchor];
+        self.finish_anchored_fold(anchor, old_p, tx);
     }
 
     /// A fold that hides the selected node selects the fold instead (MAP-055).

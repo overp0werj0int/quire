@@ -147,7 +147,11 @@ pub(super) fn canvas(v: V) -> El {
     // A fold circle's or task box's target is at least 24 points on screen (MAP-041, MAP-073).
     let target = 24.0 / 2f32.powi(map_app::hit_bucket(cam.1));
     let hit = target.max(2.0 * FOLD_R);
-    let mut world = el().key("map-world").pin(Some(-W), Some(-W), None, None).size(2.0 * W, 2.0 * W);
+    let mut world = el()
+        .key("map-world")
+        .pin(Some(-W), Some(-W), None, None)
+        .size(2.0 * W, 2.0 * W)
+        .child_exit(rune::Transition::none());
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);
     }

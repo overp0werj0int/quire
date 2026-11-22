@@ -79,6 +79,13 @@ impl App {
     /// last frame drew them. `change` is the tree the text was and the splice that made it
     /// what it is, which says where a moved node went.
     pub(crate) fn map_relayout(&mut self, change: Option<(&Tree, &map::Splice)>, tx: &mut Tx) {
+        self.map_relayout_shifted(change, [0.0, 0.0], tx);
+    }
+
+    /// Like `map_relayout`, with every pre-change `Place` shifted in world coordinates by `shift`
+    /// to match an instantaneous camera anchor compensation (so every node starts its glide at
+    /// the exact screen pixel it occupied before the fold/unfold).
+    pub(crate) fn map_relayout_shifted(&mut self, change: Option<(&Tree, &map::Splice)>, shift: [f32; 2], tx: &mut Tx) {
         let last = self.map.frame.borrow().as_ref().filter(|f| Some(f.rel.as_str()) == self.active.as_deref()).map(|f| (f.tree.clone(), f.drawn.clone()));
         let Some((old, drawn)) = last else { return };
         if crate::motion::reduced() || self.mode != Mode::Map {
@@ -88,7 +95,10 @@ impl App {
         let t = self.map_tree();
         let laid = self.map_laid();
         let s = change.filter(|(o, _)| std::ptr::eq(*o, &*old)).map(|(_, s)| s);
-        let from: HashMap<NodeId, Place> = pair(&old, &t, s).into_iter().filter_map(|(id, k)| drawn.laid.at[k].map(|p| (id, p))).collect();
+        let from: HashMap<NodeId, Place> = pair(&old, &t, s)
+            .into_iter()
+            .filter_map(|(id, k)| drawn.laid.at[k].map(|p| (id, Place { x: p.x + shift[0], y: p.y + shift[1], ..p })))
+            .collect();
         if t.nodes.iter().zip(&laid.at).all(|(n, p)| from.get(&n.id) == p.as_ref()) {
             return;
         }
