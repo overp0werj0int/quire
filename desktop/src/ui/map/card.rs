@@ -315,23 +315,32 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     let fades = (if natural > look.width { r(b * 2.4) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     let body = el().pin(Some(0.0), Some(head_h), None, None).size(w, body_h).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(rows);
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, head_h - 2.0));
+    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, w));
     let chip_h = compact.unwrap_or_else(|| r(pcode::chip_size(b) * 2.0));
-    let chip_top = ((head_h - chip_h) / 2.0).max(1.0);
-    let mut out = el()
+    let chip_top = match compact {
+        // Bottom-align compact icon chips to the header separator so they keep a full ~20 pt
+        // target at Fit zoom without overlapping the first diff line below `head_h`.
+        Some(side) => head_h - side,
+        None => ((head_h - chip_h) / 2.0).max(1.0),
+    };
+    let mut inner = el()
+        .pin(Some(0.0), Some(0.0), None, None)
         .size(w, h)
         .radius(4.0)
         .clip_rounded(4.0)
         .fill(c.panel)
         .border(1.0, c.on_page(c.hairline_soft))
+        .child(head.pin(Some(0.0), Some(0.0), None, None))
+        .child(body);
+    if rest > 0 {
+        inner = inner.child(more(cx, rest, "line", tail).pin(Some(pad_x), Some(head_h + body_h - r(py / 2.0)), None, None));
+    }
+    let out = el()
+        .size(w, h)
         .hover_group()
         .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
-        .child(head.pin(Some(0.0), Some(0.0), None, None))
-        .child(body)
+        .child(inner)
         .child(chips(cx, src, at, i, tail, compact).pin(None, Some(chip_top), Some(pad_r - 6.0), None));
-    if rest > 0 {
-        out = out.child(more(cx, rest, "line", tail).pin(Some(pad_x), Some(head_h + body_h - r(py / 2.0)), None, None));
-    }
     (out, [w, h])
 }
 

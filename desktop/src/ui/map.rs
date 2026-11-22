@@ -333,9 +333,9 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
     let key = format!("map-link:{}", key_tail(&node_key(t, i)));
     let color = branch_color(c, t.nodes[i].branch);
     let w = (x1 - x0).max(1.0);
-    // Draw straight and nearly-straight horizontal links as a crisp solid bar so they match
-    // underlines seamlessly instead of rasterizing a feathered low-rise cubic Bézier.
-    if (ya - yb).abs() < 2.0 {
+    // Draw truly horizontal links as a crisp bar; keep any noticeable rise as a smooth Bézier
+    // so near-horizontal curves never show a 1 px staircase notch.
+    if (ya - yb).abs() < 0.5 {
         return el()
             .key(key)
             .pin(Some(x0 + W), Some((ya + yb) / 2.0 - lw / 2.0 + W), None, None)
@@ -716,22 +716,24 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
     let z = zoom.max(map_app::ZOOM_MIN);
     let (zone, e) = match at {
         Add::Before(_) | Add::After(_) => {
-            let desired = (3.0 / z).clamp(3.0, 24.0);
+            let desired = (2.5 / z).clamp(3.0, 20.0);
             let clear = l.clear[j];
             let (name, bar_h, y) = if matches!(at, Add::Before(_)) {
                 if clear[0].is_finite() {
-                    let avail = (p.y - clear[0]).max(0.0);
-                    let bar_h = desired.min(avail.max(2.5));
-                    ("Before", bar_h, clear[0] + (avail - bar_h) / 2.0)
+                    let half_gap = (p.y - clear[0]).max(0.0);
+                    let bar_h = desired.min((2.0 * half_gap - 2.0).max(2.5));
+                    let cy = p.y - half_gap.min(bar_h / 2.0 + 3.0);
+                    ("Before", bar_h, cy - bar_h / 2.0)
                 } else {
-                    ("Before", desired, p.y - desired - 1.0)
+                    ("Before", desired, p.y - desired - 2.0)
                 }
             } else if clear[1].is_finite() {
-                let avail = (clear[1] - p.bottom()).max(0.0);
-                let bar_h = desired.min(avail.max(2.5));
-                ("After", bar_h, p.bottom() + (avail - bar_h) / 2.0)
+                let half_gap = (clear[1] - p.bottom()).max(0.0);
+                let bar_h = desired.min((2.0 * half_gap - 2.0).max(2.5));
+                let cy = p.bottom() + half_gap.min(bar_h / 2.0 + 3.0);
+                ("After", bar_h, cy - bar_h / 2.0)
             } else {
-                ("After", desired, p.bottom() + 1.0)
+                ("After", desired, p.bottom() + 2.0)
             };
             (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, bar_h).radius(bar_h / 2.0).fill(accent))
         }

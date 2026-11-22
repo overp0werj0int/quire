@@ -29,18 +29,14 @@ pub const LITE_ZOOM: f32 = 0.35;
 pub const COMPACT_CHIP_ZOOM: f32 = 0.65;
 
 /// World-point side of compact icon-only card chips at zoom `z`, or `None` for normal full
-/// labelled chips (`z >= COMPACT_CHIP_ZOOM`). Quantized to three coarse bands so pan/zoom
-/// inside a band never rebuilds the view (MAP-045).
+/// labelled chips (`z >= COMPACT_CHIP_ZOOM`). Quantized in 0.04 zoom steps so pan/fine zoom
+/// stays live-only while compact chips stay steadily ~20 pt on screen across 0.64× down to Fit.
 pub fn chip_compact_side(z: f32) -> Option<f32> {
     if z >= COMPACT_CHIP_ZOOM {
-        None
-    } else if z >= 0.50 {
-        Some(40.0)
-    } else if z >= LITE_ZOOM {
-        Some(56.0)
-    } else {
-        Some(80.0)
+        return None;
     }
+    let qz = ((z / 0.04).round() * 0.04).clamp(0.24, 0.64);
+    Some((20.0 / qz).round().clamp(30.0, 64.0))
 }
 /// What `ensureVisible` keeps between a node and the canvas's edges (MAP-036).
 const MARGIN: f32 = 40.0;
