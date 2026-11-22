@@ -539,3 +539,240 @@ fn bench_livepace_long() {
     run_prepared("1753-panels-closed", &text_1753);
     run_prepared("5470-panels-closed", LONG);
 }
+
+/// `map_2000` (MAP-045): a note whose map has exactly 2,000 nodes, none folded. Sections of
+/// four parts, each part a list of items with a task and a detail under each, then a paragraph.
+fn map_2000() -> String {
+    let mut s = String::from("# Map 2000\n");
+    let mut n = 1;
+    'all: for a in 1.. {
+        for b in 1..=4 {
+            if n == 2000 {
+                break 'all;
+            }
+            if b == 1 {
+                s += &format!("\n## Section {a}\n");
+                n += 1;
+            }
+            s += &format!("\n### Part {a}.{b}\n\n");
+            n += 1;
+            for c in 1..=6 {
+                if n + 3 > 2000 {
+                    break;
+                }
+                s += &format!("- Item {a}.{b}.{c} with `code` and a [link](https://example.com/{a}/{b}/{c})\n  - [ ] Task {a}.{b}.{c}\n  - Detail {a}.{b}.{c}, a few words longer than its task\n");
+                n += 3;
+            }
+            if n < 2000 {
+                s += &format!("\nPart {a}.{b} ends with a paragraph long enough to wrap onto a second line at the width the map gives a node.\n");
+                n += 1;
+            }
+        }
+    }
+    s
+}
+
+/// MAP-045: the map of `map_2000` in a 1400 × 1000 window. Times the first tree and layout,
+/// entering the map, pan and zoom frames driven by the wheel and a pinch on the canvas, and a
+/// rename typed in the inline field and committed, with the glide after it. A pan or zoom frame
+/// must run no view unless what is mounted changes, and none may lay the map out again.
+#[test]
+#[ignore]
+fn bench_map_45_pan_zoom() {
+    use rune::{MagnifyEvent, WheelEvent};
+    use std::hash::{Hash, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    static VIEWS: AtomicU64 = AtomicU64::new(0);
+    static VIEW_NS: AtomicU64 = AtomicU64::new(0);
+    fn counted(s: &App, cx: &mut rune::Cx<App>) -> rune::El {
+        let t = Instant::now();
+        let out = crate::ui::view(s, cx);
+        VIEW_NS.fetch_add(t.elapsed().as_nanos() as u64, Relaxed);
+        VIEWS.fetch_add(1, Relaxed);
+        out
+    }
+    let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("quire-bench-map-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = dir.join("notes");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("map.md"), map_2000()).unwrap();
+    // SAFETY: the ENV lock keeps other tests that read these variables out.
+    unsafe {
+        std::env::set_var("HOME", &dir);
+        std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+        std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+    }
+    let mut rt = Runtime::new(crate::app::init(), counted, (1400.0, 1000.0), Env { system_dark: false, scale: 1.0 });
+    // Debug builds commit a live-only event now and then to check it; this counts commits.
+    rt.check_live_only(false);
+    rt.on_key = Some(crate::keys::on_key);
+    rt.poll = Some(|s: &mut App, t, tx| s.poll(t, tx));
+    rt.frame(DT);
+    rt.update(move |s, tx| {
+        s.open_vault(root, tx);
+        s.open_file("map.md", None, tx);
+        s.keys_to_note(tx);
+    });
+    for _ in 0..3 {
+        rt.frame(DT);
+    }
+
+    // The first tree and layout, every node measured.
+    let (mut nodes, mut shown, mut tree_ms, mut layout_ms, mut placed_ms) = (0, 0, 0.0, 0.0, 0.0);
+    rt.update_if(|s, _| {
+        let t = Instant::now();
+        nodes = s.map_tree().nodes.len();
+        tree_ms = ms(t);
+        let t = Instant::now();
+        shown = s.map_laid().shown.len();
+        layout_ms = ms(t);
+        // The same layout again with every node's size cached: placing the tree alone.
+        if let Some(v) = s.map_view_mut() {
+            v.fold_ver += 1;
+        }
+        let t = Instant::now();
+        s.map_laid();
+        placed_ms = ms(t);
+        false
+    });
+    let t = Instant::now();
+    rt.update(|s, tx| s.enter_map(tx));
+    rt.frame(DT);
+    let enter_ms = ms(t);
+    for _ in 0..30 {
+        rt.frame(DT);
+    }
+    let (cx, cy) = rt.find("map-canvas").expect("the canvas");
+    rt.pointer_move(cx, cy);
+    rt.frame(DT);
+
+    // What is mounted (hashed with what else makes the view run), the layout and the camera.
+    let state = |rt: &mut Runtime<App>| {
+        let mut out = (0u64, None, ([0f32; 2], 1f32), 0);
+        rt.update_if(|s, _| {
+            let cam = s.map_camera();
+            let mounted = s.map_mounted(cam);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (&mounted, crate::map_app::hit_bucket(cam.1), cam.1 < crate::map_app::LITE_ZOOM).hash(&mut h);
+            out = (h.finish(), Some(s.map_laid()), cam, mounted.0.len());
+            false
+        });
+        out
+    };
+    struct Step {
+        ms: f64,
+        view: bool,
+        changed: bool,
+        zoom: f32,
+        mounted: usize,
+        phases: String,
+    }
+    let (_, laid0, _, _) = state(&mut rt);
+    // One input event and its frame.
+    let step = |rt: &mut Runtime<App>, send: &dyn Fn(&mut Runtime<App>)| {
+        let (before, _, _, _) = state(rt);
+        let v = VIEWS.load(Relaxed);
+        let _ = phases();
+        let t = Instant::now();
+        send(rt);
+        rt.frame(DT);
+        let took = ms(t);
+        let phases = phases();
+        let (after, _, cam, mounted) = state(rt);
+        Step { ms: took, view: VIEWS.load(Relaxed) > v, changed: after != before, zoom: cam.1, mounted, phases }
+    };
+    let report = |name: &str, steps: &[Step]| {
+        let w = steps.iter().max_by(|a, b| a.ms.total_cmp(&b.ms)).unwrap();
+        let mean = steps.iter().map(|s| s.ms).sum::<f64>() / steps.len() as f64;
+        let ran = steps.iter().filter(|s| s.view).count();
+        let changed = steps.iter().filter(|s| s.changed).count();
+        let idle = steps.iter().filter(|s| !s.view).max_by(|a, b| a.ms.total_cmp(&b.ms));
+        let idle = idle.map_or(String::from("none"), |s| format!("{:.2} ms at zoom {:.2} with {} nodes mounted{}", s.ms, s.zoom, s.mounted, s.phases));
+        let most = steps.iter().map(|s| s.mounted).max().unwrap();
+        eprintln!("  {name}: {} frames, mean {mean:.2} ms, worst {:.2} ms at zoom {:.2} with {} nodes mounted{}", steps.len(), w.ms, w.zoom, w.mounted, w.phases);
+        eprintln!("    the view ran in {ran}, the mounted set changed in {changed}; at most {most} nodes mounted; worst live-only frame {idle}");
+        (w.ms, steps.iter().filter(|s| s.view && !s.changed).count())
+    };
+
+    // Pan at 100%: down through the map, then right, then back, in a wheel's 60-point steps,
+    // then a trackpad's 6-point steps.
+    let views0 = VIEW_NS.load(Relaxed);
+    let pan_by = |rt: &mut Runtime<App>, legs: &[(f32, f32, usize)], out: &mut Vec<Step>| {
+        for &(dx, dy, k) in legs {
+            for _ in 0..k {
+                out.push(step(rt, &|rt| rt.wheel_event(WheelEvent::new(dx, dy).at(cx, cy).precise(true))));
+            }
+        }
+    };
+    let pinch_by = |rt: &mut Runtime<App>, legs: &[(f32, usize)], out: &mut Vec<Step>| {
+        for &(d, k) in legs {
+            for _ in 0..k {
+                out.push(step(rt, &|rt| rt.magnify_event(MagnifyEvent::new(d).at(cx, cy))));
+            }
+        }
+    };
+    let mut pan = Vec::new();
+    pan_by(&mut rt, &[(0.0, -60.0, 300), (-60.0, 0.0, 40), (60.0, 0.0, 40), (0.0, 60.0, 300), (0.0, -6.0, 100), (0.0, 6.0, 100)], &mut pan);
+    // Zoom: a pinch in to 400%, then out past the card placeholders' zoom to 10%.
+    let mut zoom = Vec::new();
+    pinch_by(&mut rt, &[(0.06, 30), (-0.06, 70)], &mut zoom);
+    // Pan at 10%, where the most nodes are mounted.
+    let mut pan_far = Vec::new();
+    pan_by(&mut rt, &[(0.0, -60.0, 100), (0.0, 60.0, 100), (0.0, -6.0, 50)], &mut pan_far);
+    // And back to about 100%.
+    pinch_by(&mut rt, &[(0.06, 40)], &mut zoom);
+    let view_ms = (VIEW_NS.load(Relaxed) - views0) as f64 / 1e6;
+    let (_, laid1, cam1, _) = state(&mut rt);
+    let relaid = !std::rc::Rc::ptr_eq(laid0.as_ref().unwrap(), laid1.as_ref().unwrap());
+
+    // A rename: an item brought to the middle of the canvas, its field, ten letters, Enter.
+    rt.update(|s, tx| {
+        let t = s.map_tree();
+        let item = t.nodes.iter().position(|n| n.label.starts_with("Item 20.2.3 ")).expect("item 20.2.3");
+        s.map_go_node(item, tx);
+    });
+    for _ in 0..40 {
+        rt.frame(DT);
+    }
+    rt.update(|s, tx| {
+        s.map_edit(tx);
+    });
+    for _ in 0..3 {
+        rt.frame(DT);
+    }
+    let mut typing = Vec::new();
+    for ch in "renamed it".chars() {
+        typing.push(step(&mut rt, &|rt| rt.key(KeyEvent { key: Key::Text(ch.to_string()), mods: Mods::default() })));
+    }
+    let mut commit = vec![step(&mut rt, &|rt| rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() }))];
+    for _ in 0..20 {
+        commit.push(step(&mut rt, &|_| {}));
+    }
+    let mut landed = false;
+    rt.update_if(|s, _| {
+        landed = s.active_text().contains("renamed it");
+        false
+    });
+
+    eprintln!("MAP-045 map bench: {nodes} nodes, {shown} shown, window 1400 x 1000");
+    eprintln!("  first tree {tree_ms:.1} ms, first layout {layout_ms:.1} ms, of which placing the measured tree {placed_ms:.1} ms");
+    eprintln!("  entering the map, one frame: {enter_ms:.1} ms");
+    let (pan_worst, pan_extra) = report("pan at 100%", &pan);
+    let (far_worst, far_extra) = report("pan at 10%", &pan_far);
+    let (zoom_worst, zoom_extra) = report("zoom from 100% to 400%, to 10% and back", &zoom);
+    eprintln!("  the view ran {view_ms:.1} ms of all pan and zoom frames; laid out again: {relaid}; camera at the end {cam1:?}");
+    let (type_worst, _) = report("typing in the field", &typing);
+    let (commit_worst, _) = report("Enter and the glide after it", &commit);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(nodes, 2000, "map_2000 has 2,000 nodes");
+    assert_eq!(shown, 2000, "and shows them all");
+    assert!(landed, "the rename was written");
+    assert!(!relaid, "MAP-045: pan and zoom never lay the map out again");
+    assert_eq!((pan_extra, far_extra, zoom_extra), (0, 0, 0), "MAP-045: a pan or zoom frame runs the view only when what is mounted changes");
+    let pan_worst = pan_worst.max(far_worst);
+    assert!(pan_worst.max(zoom_worst) < 16.0, "MAP-045 budget: worst pan {pan_worst:.1} ms, worst zoom {zoom_worst:.1} ms");
+    assert!(type_worst.max(commit_worst) < 16.0, "MAP-045 budget: worst edit frame {:.1} ms", type_worst.max(commit_worst));
+    assert!(tree_ms + layout_ms < 50.0, "MAP-045 budget: first tree and layout {:.1} ms", tree_ms + layout_ms);
+}
