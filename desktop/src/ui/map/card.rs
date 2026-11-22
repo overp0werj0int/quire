@@ -26,9 +26,40 @@ const TABLE_ROWS: usize = 8;
 /// The fade over a card's clipped bottom.
 const BOTTOM_FADE: f32 = 28.0;
 
-/// A card's stand-in below `map_app::LITE_ZOOM` (MAP-045): its box, `w` × `h`, empty.
-pub(super) fn lite(c: &Roles, w: f32, h: f32, tail: &str) -> El {
-    el().key(format!("map-lite:{tail}")).size(w, h).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft))
+/// A card's stand-in below `map_app::LITE_ZOOM` (MAP-045): its box, `w` × `h`, with a crisp
+/// outline and a centred kind label so zoomed-out cards remain scannable.
+pub(super) fn lite(cx: &Cx, bl: &Block, w: f32, h: f32, tail: &str) -> El {
+    let c = &cx.look.c;
+    let kind_label = match &bl.kind {
+        Kind::Code { .. } => "CODE",
+        Kind::Diff { .. } => "DIFF",
+        Kind::Table(_) => "TABLE",
+        Kind::Quote { .. } => "QUOTE",
+        Kind::Alert { .. } => "ALERT",
+        Kind::Html { .. } => "HTML",
+        Kind::Image { .. } => "IMAGE",
+        Kind::Gallery { .. } => "GALLERY",
+        _ => "CARD",
+    };
+    let base = (h * 0.34).clamp(11.0, 28.0);
+    let mut sz = base;
+    let mut st = TextStyle::new(sz, 700.0).family(cx.look.mono).lh(line(sz, 1.2)).tracking(1.0);
+    let avail = (w - 10.0).max(8.0);
+    let adv = rune::text::advance(kind_label, st);
+    if adv > avail && adv > 0.0 {
+        sz = (sz * (avail / adv)).clamp(8.0, base);
+        st = TextStyle::new(sz, 700.0).family(cx.look.mono).lh(line(sz, 1.2)).tracking(0.5);
+    }
+    let edge = Roles::readable_on(c.on_page(c.hairline), c.bg, 2.2);
+    let ink = Roles::readable_on(c.dim, c.on_page(c.panel), 4.8);
+    el().key(format!("map-lite:{tail}"))
+        .size(w, h)
+        .radius(4.0)
+        .fill(c.panel)
+        .border(1.5, edge)
+        .center()
+        .clip_rounded(4.0)
+        .child(text(kind_label).font(st).color(ink))
 }
 
 /// Block `bl` of node `i` as a card, and its size, or None for a block that is not one yet.
@@ -138,7 +169,8 @@ fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize,
     let mut lines = row().items_start().pin(Some(0.0), Some(0.0), None, None);
     if let Some(nw) = nums_w {
         let nums = (1..=shown).map(|k| k.to_string()).collect::<Vec<_>>().join("\n");
-        lines = lines.child(text(nums).font(style.features("'tnum' 1")).color(c.ghost).align(rune::Align::End).w(nw).mr(gap));
+        let num_ink = Roles::readable_on(c.dim, c.on_page(c.panel), 4.8);
+        lines = lines.child(text(nums).font(style.features("'tnum' 1")).color(num_ink).align(rune::Align::End).w(nw).mr(gap));
     }
     let marks = cx.marks(pid, &body, 0).0;
     lines = lines.child(text(body).spans(spans).key("code").font(style).color(c.text).text_highlights(marks));

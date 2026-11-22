@@ -56,11 +56,18 @@ fn branch_color(c: &Roles, branch: usize) -> Color {
 }
 
 /// The look the map's labels and cards draw in: the page's, at a card's widest (MAP-038), with
-/// dim lifted to read on the canvas and on cards, where Preview's dim text, such as a quote's,
-/// can fall short (MAP-074).
+/// dim and faint lifted to read on the canvas, cards and placeholders across all themes (MAP-074).
 fn map_look(v: V) -> Look {
     let mut look = look_at(v, page::r(v.s.settings().size as f32 * 30.0));
     look.c.dim = look.c.readable_dim();
+    let bg_card = look.c.on_page(look.c.card);
+    let panel = look.c.on_page(look.c.panel);
+    let tile_card = crate::roles::mix(crate::roles::mix(panel, look.c.text, look.c.raised.a), look.c.text, look.c.card.a);
+    let mut faint = look.c.faint;
+    for surf in [look.c.bg, bg_card, panel, tile_card] {
+        faint = Roles::readable_on(faint, surf, 4.8);
+    }
+    look.c.faint = faint;
     look
 }
 
@@ -398,7 +405,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
-                    Body::Card(_) if lite => Some(card::lite(c, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
+                    Body::Card(bl) if lite => Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
                     Body::Card(bl) => card::card(cx, bl, i, &tail).map(|(e, _)| e),
                     _ => None,
                 };

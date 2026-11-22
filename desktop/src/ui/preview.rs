@@ -600,16 +600,17 @@ impl Cx<'_> {
             Alert::Warning => (c.yellow, &icons::WARNING),
             Alert::Caution => (c.red, &icons::CAUTION),
         };
+        let fill = look.ld(0.075, 0.09);
+        let title_ink = if self.doc.is_none() { Roles::readable_on(tint, mix(c.bg, tint, fill), 4.8) } else { tint };
         let (isz, title_style, title_h) = self.alert_title();
         let title = row()
             .key("title")
             .h(title_h)
             .gap(r(b * 0.5))
             .center_y()
-            .child(icon(glyph, isz).color(tint))
-            .child(text(kind.title()).font(title_style).color(tint).text_case(TextCase::Uppercase));
+            .child(icon(glyph, isz).color(title_ink))
+            .child(text(kind.title()).font(title_style).color(title_ink).text_case(TextCase::Uppercase));
         let inner = Tone { color: c.text, size: b, contained: true, ..tone };
-        let fill = look.ld(0.075, 0.09);
         col()
             .w_full()
             .padding(r(b * 1.05))
