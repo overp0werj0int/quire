@@ -165,6 +165,8 @@ pub(super) fn canvas(v: V) -> El {
     // ~20 pt on screen so they stay usable at Fit zoom without bloating at 0.8×.
     let chip_compact = map_app::chip_compact_side(dz);
     let lite = dz < map_app::LITE_ZOOM;
+    let no_hover = dz < map_app::NO_HOVER_ZOOM;
+    let plain_label = dz < map_app::PLAIN_LABEL_ZOOM;
     let mut world = el()
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
@@ -181,15 +183,30 @@ pub(super) fn canvas(v: V) -> El {
     let drag = s.map.node_drag.as_ref().filter(|g| g.active);
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
     let dim = |i: usize| drawn.alpha(i) * if moved.contains(&i) { 0.35 } else { 1.0 };
-    for &i in &links {
-        world = world.child(link(&t, &l, i, c, dim(i)));
+    if plain_label {
+        let mut static_links = Vec::new();
+        for &i in &links {
+            let a = dim(i);
+            if a < 0.999 {
+                world = world.child(link(&t, &l, i, c, a));
+            } else {
+                static_links.push(i);
+            }
+        }
+        if let Some(batch) = links_batch(&t, &l, &static_links, c) {
+            world = world.child(batch);
+        }
+    } else {
+        for &i in &links {
+            world = world.child(link(&t, &l, i, c, dim(i)));
+        }
     }
     let editing = s.map_editing();
     let query = s.find_query();
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, target, chip_compact, found };
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover, plain_label, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The field over the node being edited: its place, room left of the text, style and size.
@@ -242,7 +259,7 @@ pub(super) fn canvas(v: V) -> El {
     }
     for &i in &nodes {
         if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), editing == Some(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
+            world = world.children(fold(&t, &l, i, folded(i), editing == Some(i), lite, hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
@@ -338,6 +355,51 @@ pub(super) fn canvas(v: V) -> El {
         .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_pan_drag(d, tx))
 }
 
+/// Batches all opaque links at extreme overview zoom (`< PLAIN_LABEL_ZOOM`) into one vector
+/// shape element, slashing hundreds of scene nodes and edges during 10% Fit fold/unfold frames.
+fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
+    let mut segs: Vec<(f32, f32, f32, f32, f32, Color)> = Vec::with_capacity(links.len());
+    let (mut bx0, mut by0, mut bx1, mut by1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for &i in links {
+        let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { continue };
+        let lw = line_width(p.depth);
+        let (x0, x1) = (q.right(), p.x);
+        let (ya, yb) = (q.line_y(), p.line_y());
+        let color = branch_color(c, t.nodes[i].branch);
+        bx0 = bx0.min(x0.min(x1) - lw);
+        by0 = by0.min(ya.min(yb) - lw);
+        bx1 = bx1.max(x0.max(x1) + lw);
+        by1 = by1.max(ya.max(yb) + lw);
+        segs.push((x0, ya, x1, yb, lw, color));
+    }
+    if segs.is_empty() {
+        return None;
+    }
+    let w = (bx1 - bx0).max(1.0);
+    let h = (by1 - by0).max(1.0);
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    (w.to_bits(), h.to_bits(), segs.len()).hash(&mut hash);
+    for &(x0, ya, x1, yb, lw, color) in &segs {
+        ((x0 - bx0).to_bits(), (ya - by0).to_bits(), (x1 - bx0).to_bits(), (yb - by0).to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
+    }
+    let shape_el = rune::memo("map-links-batch".to_string(), hash.finish(), move || {
+        let mut shape = Shape::new();
+        for (x0, ya, x1, yb, lw, color) in segs {
+            let (lx0, ly0, lx1, ly1) = (x0 - bx0, ya - by0, x1 - bx0, yb - by0);
+            let path = if (ly0 - ly1).abs() < 0.5 {
+                let y = (ly0 + ly1) / 2.0;
+                Path::new().move_to([lx0, y]).line_to([lx1, y])
+            } else {
+                let mid = (lx0 + lx1) / 2.0;
+                Path::new().move_to([lx0, ly0]).cubic_to([mid, ly0], [mid, ly1], [lx1, ly1])
+            };
+            shape = shape.stroke_path(&path, lw, LineCap::Round, color);
+        }
+        rune::canvas(shape).size(w, h).inert()
+    });
+    Some(shape_el.pin(Some(bx0 + W), Some(by0 + W), None, None))
+}
+
 fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { return el() };
     let lw = line_width(p.depth);
@@ -417,6 +479,8 @@ struct State<'a> {
     editing: bool,
     alpha: f32,
     lite: bool,
+    no_hover: bool,
+    plain_label: bool,
     /// A task box's least target, in map points.
     target: f32,
     /// Target world-point side for compact icon-only card chips below 0.65× zoom.
@@ -432,7 +496,7 @@ fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
 }
 
 fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
-    let State { folded, selected, editing, alpha, lite, target, chip_compact, found } = st;
+    let State { folded, selected, editing, alpha, lite, no_hover, plain_label, target, chip_compact, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -445,20 +509,55 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     let branch = branch_color(c, n.branch);
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
-    let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
     let clear = l.clear[i];
-    let rel_clear = [clear[0] - p.y, clear[1] - p.y];
     let sh = l.metrics.sh;
     let lw = line_width(p.depth);
     let tail = key_tail(&key).to_string();
+    // Below `PLAIN_LABEL_ZOOM` (0.20×, where rows are <= 5 px tall), mount text nodes as a
+    // single flat plain-text element with its underline on `border_sides`, skipping rich inline
+    // code-chip background spans, hover animations, and wrapper containers.
+    if plain_label && !editing && !matches!(&n.body, Body::Card(_)) {
+        let style = map_app::style(tier, b, cx.look.family, cx.look.mono);
+        let raw = map_app::shown_label(n);
+        let shown = if raw.is_empty() { " ".to_string() } else { raw };
+        let mut e = text(shown.clone())
+            .key(key)
+            .font(style)
+            .color(color)
+            .wrap_anywhere()
+            .pl(pad_x + room)
+            .pr(pad_x)
+            .pin(Some(p.x + W), Some(p.y + W), None, None)
+            .size(p.w, p.h + lw)
+            .border_sides([0.0, 0.0, lw, 0.0], branch)
+            .role("treeitem")
+            .label(spoken(t, i, folded))
+            .level(n.depth as u32 + 1)
+            .focus_selected(selected)
+            .opacity(alpha);
+        if let Some(f) = found {
+            e = e.text_highlights(label_marks(c, &shown, f));
+        }
+        if !n.children.is_empty() {
+            e = e.expanded(!folded);
+        }
+        return e
+            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, true, true)))
+            .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
+            .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
+            .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
+            .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx));
+    }
+    let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
+    let rel_clear = [clear[0] - p.y, clear[1] - p.y];
     // Memoize the node's inner body (task box, rich label / card, underline) independently of
     // `(p.x, p.y, alpha)` so rigid translations during fold/unfold relayout glides hit the cache
     // on every unchanged branch without rebuilding labels, cards or task controls.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (i, n.src, n.depth, selected, editing, b.to_bits(), room.to_bits(), [p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
     let body = rune::memo(body_key.clone(), h.finish(), move || {
@@ -468,7 +567,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
         el().key(body_key)
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h + lw)
-            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c)))
+            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, lite, plain_label)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
                     Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
@@ -491,18 +590,17 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)
         .size(p.w, p.h + lw)
-        .radius(4.0)
         .role("treeitem")
         .label(spoken(t, i, folded))
         .level(n.depth as u32 + 1)
         .focus_selected(selected)
         .opacity(alpha);
-    if !selected && !editing {
-        e = e.hover(c.hover).hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1));
+    if !selected && !editing && !no_hover {
+        e = e.radius(4.0).hover(c.hover).hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1));
     }
     if !n.children.is_empty() {
         e = e.expanded(!folded);
-        if !folded && !editing {
+        if !folded && !editing && !lite {
             e = e.hover_group_shared(format!("map-row:{tail}"));
         }
     }
@@ -516,7 +614,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
 /// A task's box left of its label, centred on the first line, in a target `target` map points
 /// clamped to its non-overlapping row slot and clear of its label text (MAP-053, MAP-073).
 #[allow(clippy::too_many_arguments)]
-fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: f32, sh: f32, target: f32, clear: [f32; 2], c: &Roles) -> El {
+fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: f32, sh: f32, target: f32, clear: [f32; 2], c: &Roles, lite: bool, plain_label: bool) -> El {
     let done = matches!(n.kind, NodeKind::Item { task: crate::blocks::Task::Done, .. });
     let bx = crate::page::r(b * 0.9);
     let lh = crate::page::line(b, 1.45);
@@ -528,6 +626,30 @@ fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: 
     let y0 = (vcy - hit / 2.0).max(clear[0] - p.y).min(bx_y);
     let y1 = (vcy + hit / 2.0).min(clear[1] - p.y).max(bx_y + bx);
     let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
+    let mut bx_el = el().size(bx, bx).pin(Some(bx_x - x0), Some(bx_y - y0), None, None);
+    if !plain_label {
+        bx_el = bx_el.radius(rad);
+    }
+    if lite {
+        bx_el = if done {
+            bx_el
+                .center()
+                .fill(c.accent)
+                .children((!plain_label).then(|| rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)))
+        } else {
+            bx_el.border(edge, c.faint)
+        };
+        return el()
+            .key(format!("map-task:{}", n.own.start + 1))
+            .size(x1 - x0, y1 - y0)
+            .role("checkbox")
+            .checked(done)
+            .label(if done { "Done" } else { "To do" })
+            .cursor(rune::Cursor::Pointer)
+            .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_task_click(i, tx))
+            .pin(Some(x0), Some(y0), None, None)
+            .child(bx_el);
+    }
     let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
     let halo = el()
         .size(bx + 6.0, bx + 6.0)
@@ -536,7 +658,6 @@ fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: 
         .group_opacity(0.0, 1.0)
         .pin(Some(bx_x - 3.0 - x0), Some(bx_y - 3.0 - y0), None, None)
         .inert();
-    let mut bx_el = el().size(bx, bx).radius(rad).pin(Some(bx_x - x0), Some(bx_y - y0), None, None);
     bx_el = if done {
         bx_el.center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg))
     } else {
@@ -559,7 +680,7 @@ fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
+fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
     let Some(p) = l.at[i] else { return Vec::new() };
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
@@ -591,7 +712,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, hit: f32, c: 
             .label(if folded { "Unfold" } else { "Fold" })
             .cursor(rune::Cursor::Pointer)
             .on_press_tx(toggle);
-        if !folded {
+        if !folded && !lite {
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
             let bg = c.bg;

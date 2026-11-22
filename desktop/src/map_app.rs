@@ -25,6 +25,10 @@ pub const ZOOM_MAX: f32 = 4.0;
 pub const OVERSCAN: f32 = 160.0;
 /// Below this zoom a card draws as its bare box (MAP-045).
 pub const LITE_ZOOM: f32 = 0.35;
+/// Below this zoom node hover animations are skipped (rows are < 6 px tall).
+pub const NO_HOVER_ZOOM: f32 = 0.25;
+/// Below this zoom labels render as flat plain text and static links batch into one shape.
+pub const PLAIN_LABEL_ZOOM: f32 = 0.20;
 /// Below this zoom card hover chips switch from labelled pills to compact square icon buttons.
 pub const COMPACT_CHIP_ZOOM: f32 = 0.65;
 
@@ -500,12 +504,21 @@ impl App {
     }
 
     /// The zoom level used for detail switches (`LITE_ZOOM`, `hit_bucket`, compact card chips).
-    /// While a camera glide is in flight, pin detail to `min(from, to)` so zooming 10% -> 100%
-    /// (e.g. `F2`) or 100% -> 10% (`Fit`) never mounts/rebuilds dozens of full cards on transient
-    /// mid-glide frames, then settles cleanly at `to` once the glide lands.
+    /// During a zoom-out glide (`to < from`), pin detail to `min(from, to)` so cards simplify
+    /// immediately without mid-glide thrashing. During a zoom-in glide (`to > from`, e.g. `F2`
+    /// from `10%` to `100%`), stay at `from` while zoomed far out (`cur < 0.50`) and upgrade once
+    /// to `to` once `cur >= 0.50` (when only ~12–20 nodes sit in view) so visible cards upgrade
+    /// smoothly mid-glide instead of popping in after motion stops.
     pub fn map_detail_zoom(&self) -> f32 {
         match &self.map.glide {
-            Some(g) => g.from.1.min(g.to.1),
+            Some(g) => {
+                let cur = self.map_camera().1;
+                if g.to.1 > g.from.1 && cur >= 0.50 {
+                    g.to.1
+                } else {
+                    g.from.1.min(g.to.1)
+                }
+            }
             None => self.map_camera().1,
         }
     }
@@ -517,6 +530,8 @@ impl App {
         self.map_mounted(cam).hash(&mut h);
         hit_bucket(dz).hash(&mut h);
         (dz < LITE_ZOOM).hash(&mut h);
+        (dz < NO_HOVER_ZOOM).hash(&mut h);
+        (dz < PLAIN_LABEL_ZOOM).hash(&mut h);
         chip_compact_side(dz).map(f32::to_bits).hash(&mut h);
         h.finish()
     }
