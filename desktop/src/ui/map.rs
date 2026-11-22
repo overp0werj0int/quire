@@ -25,9 +25,11 @@ use crate::theme::normal_lh;
 /// Half the world element's side. The world is centred on the canvas's top-left, so its live
 /// offset is the camera's pan and nodes sit at their world coordinates plus this.
 const W: f32 = 131_072.0;
-/// The drag ghost's offset from the pointer, in screen points, clear of the Child branch stub.
+/// The drag ghost's offset from the pointer and width cap, in screen points.
 const GHOST_DX: f32 = 16.0;
-const GHOST_DY: f32 = 14.0;
+const GHOST_DY: f32 = 18.0;
+const GHOST_MAX_W: f32 = 260.0;
+const GHOST_EDGE: f32 = 8.0;
 
 /// A node's key: its first source line, 1-based, or the root or footnotes group by name.
 pub fn node_key(t: &Tree, i: usize) -> String {
@@ -227,7 +229,11 @@ pub(super) fn canvas(v: V) -> El {
     }
     let ghost_el = drag.and_then(|g| {
         let m = t.find(g.node)?;
-        Some(ghost(&cx, &t, m, [g.at[0] + GHOST_DX, g.at[1] + GHOST_DY]))
+        let child_bottom = match g.drop {
+            Some(crate::map::Add::Child(j)) => l.at[j].map(|p| cam.0[1] + p.bottom() * cam.1),
+            _ => None,
+        };
+        Some(ghost(&cx, &t, m, g.at, s.map_size(), child_bottom))
     });
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
@@ -536,9 +542,10 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
     out
 }
 
-/// The node a drag carries, drawn as a screen-space overlay at `at` (canvas points) so it stays
-/// crisp and legible at any zoom, with task checkbox parity and a `+N` descendant pill (MAP-026).
-fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
+/// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it
+/// stays bounded (<= `GHOST_MAX_W`), crisp at any zoom, clear of the Child drop stub and never
+/// clipped behind docked chrome (MAP-026).
+fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], child_bottom: Option<f32>) -> El {
     let (c, b, mono) = (&cx.look.c, cx.look.b, cx.look.mono);
     let n = &t.nodes[i];
     let weight = match map_app::tier(t, i) {
@@ -549,6 +556,7 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
     st.weight = weight;
     let small = (b * 0.72).round();
     let pill_h = small + 6.0;
+    let pill_font = styles::note(mono, small, normal_lh(mono, small));
     let below = n.end - i - 1;
     let surface = c.on_page(c.raised);
     let branch = branch_color(c, n.branch);
@@ -560,28 +568,53 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
         color: Color::BLACK.alpha(if cx.v.dark { 0.36 } else { 0.14 }),
         inset: false,
     };
+    let bx = page::r(b * 0.9);
     let task_el = match n.kind {
         NodeKind::Item { task: crate::blocks::Task::Done, .. } if !n.card() => {
-            let bx = page::r(b * 0.9);
             let rad = 2f32.max(page::r(bx * 0.24));
             Some(el().size(bx, bx).radius(rad).center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)))
         }
         NodeKind::Item { task: crate::blocks::Task::Todo, .. } if !n.card() => {
-            let bx = page::r(b * 0.9);
             let rad = 2f32.max(page::r(bx * 0.24));
             let edge = 1f32.max(page::r(b / 12.0));
             Some(el().size(bx, bx).radius(rad).border(edge, c.faint))
         }
         _ => None,
     };
+    let gap = 6.0;
+    let pad_x = 10.0;
+    let task_w = if task_el.is_some() { bx + gap } else { 0.0 };
+    let pill_text = (below > 0).then(|| format!("+{below}"));
+    let pill_w = pill_text.as_deref().map_or(0.0, |pt| rune::text::measure(pt, &[], pill_font, None).0.ceil() + 10.0 + gap);
     let label_text = map_app::shown_label(n);
-    let label_el = text(label_text).font(st).color(c.text).truncate().max_w(220.0);
+    let label_nat = rune::text::measure(&label_text, &[], st, None).0.ceil() + 2.0;
+    let max_label_w = (GHOST_MAX_W - 2.0 * pad_x - task_w - pill_w).max(40.0);
+    let label_w = label_nat.min(max_label_w);
+    let ghost_w = (2.0 * pad_x + task_w + label_w + pill_w).ceil().min(GHOST_MAX_W);
+    let ghost_h = (st.line_height + 10.0).ceil().max(28.0);
+    let [cw, ch] = canvas_size;
+    let mut x = pointer[0] + GHOST_DX;
+    if x + ghost_w > cw - GHOST_EDGE {
+        x = pointer[0] - GHOST_DX - ghost_w;
+    }
+    x = x.clamp(GHOST_EDGE, (cw - ghost_w - GHOST_EDGE).max(GHOST_EDGE));
+    let mut y = pointer[1] + GHOST_DY;
+    if let Some(cb) = child_bottom {
+        y = y.max(cb + 8.0);
+    }
+    if y + ghost_h > ch - GHOST_EDGE {
+        y = pointer[1] - GHOST_DY - ghost_h;
+    }
+    y = y.clamp(GHOST_EDGE, (ch - ghost_h - GHOST_EDGE).max(GHOST_EDGE));
+    let label_el = text(label_text).font(st).color(c.text).truncate().w(label_w).min_w(0.0).clip_soft(0.0);
     rune::row()
         .key("map-ghost")
-        .pin(Some(at[0]), Some(at[1]), None, None)
+        .pin(Some(x), Some(y), None, None)
+        .w(ghost_w)
+        .max_w(GHOST_MAX_W)
         .center_y()
-        .gap(6.0)
-        .px(10.0)
+        .gap(gap)
+        .px(pad_x)
         .py(5.0)
         .min_h(28.0)
         .radius(6.0)
@@ -591,9 +624,9 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
         .opacity(0.92)
         .children(task_el)
         .child(label_el)
-        .children((below > 0).then(|| {
-            text(format!("+{below}"))
-                .font(styles::note(mono, small, normal_lh(mono, small)))
+        .children(pill_text.map(|pt| {
+            text(pt)
+                .font(pill_font)
                 .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)

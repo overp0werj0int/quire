@@ -26,6 +26,8 @@ pub mod widgets;
 
 pub use editor::follow_link_at_caret;
 pub(crate) use map::Sizer as MapSizer;
+pub(crate) const SIDEBAR_W: f32 = sidebar::W;
+pub(crate) const OUTLINE_W: f32 = outline::PANEL_W;
 
 use rune::{Cx, El, TextStyle, col, el, row};
 

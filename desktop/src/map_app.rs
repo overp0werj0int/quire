@@ -110,6 +110,8 @@ pub struct MapState {
     pub spare: TextEdit,
     /// True while keyboard focus sits on the map canvas (`note-keys` or `map-inline-edit`).
     pub canvas_focused: bool,
+    /// Pan saved before nudging the selected node clear of an overlay drawer.
+    pub(crate) drawer_return_pan: Option<[f32; 2]>,
 }
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
@@ -173,6 +175,7 @@ impl Default for MapState {
             inline: None,
             spare: TextEdit::new(""),
             canvas_focused: true,
+            drawer_return_pan: None,
         }
     }
 }
@@ -441,6 +444,7 @@ impl App {
         let before = self.map_signature();
         self.map.glide = None;
         self.map.throw.stop();
+        self.map.drawer_return_pan = None;
         if let Some(e) = &mut self.map.inline {
             e.edit_return_cam = None;
         }
@@ -563,13 +567,62 @@ impl App {
         boxes.into_iter().fold(l.bounds, |[x0, y0, x1, y1], [x, y, w, h]| [x0.min(x), y0.min(y), x1.max(x + w), y1.max(y + h)])
     }
 
-    /// The part of the canvas that an open find bar and a pill at the foot leave clear,
+    /// The part of the canvas that an open overlay drawer, find bar and foot pill leave clear,
     /// `[x0, y0, x1, y1]` (MAP-035).
     fn map_free(&self) -> [f32; 4] {
         let [w, h] = self.map_size();
+        let left = if self.drawer() == Some(crate::app::Drawer::Sidebar) && !self.focus && self.view_w.get() < crate::app::SIDEBAR_DOCK_W {
+            crate::ui::SIDEBAR_W
+        } else {
+            0.0
+        };
+        let right = if self.drawer() == Some(crate::app::Drawer::Outline) && !self.focus && self.view_w.get() < crate::app::OUTLINE_DOCK_W {
+            crate::ui::OUTLINE_W
+        } else {
+            0.0
+        };
         let top = if self.reader.find.open { crate::ui::reader::find_slot_h_for_width(w) } else { 0.0 };
         let bottom = if self.foot_shows() { self.reader.reveal.band } else { 0.0 };
-        [0.0, top.min(h / 2.0), w, (h - bottom).max(h / 2.0)]
+        [left.min(w / 2.0), top.min(h / 2.0), (w - right).max(w / 2.0), (h - bottom).max(h / 2.0)]
+    }
+
+    /// When an overlay sidebar or outline drawer opens over the map at narrow widths, nudge the
+    /// selected node clear of the drawer so it stays readable beside it.
+    pub(crate) fn map_drawer_opened(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Map || self.active_locked() {
+            return;
+        }
+        let sel = self.map_selected();
+        let l = self.map_laid();
+        let Some(p) = l.at[sel] else { return };
+        let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+        let [fx0, _, fx1, _] = self.map_free();
+        let pad = 16.0;
+        let dx = if fx0 > 0.0 && px + p.x * z < fx0 + pad {
+            fx0 + pad - (px + p.x * z)
+        } else if fx1 < self.map_size()[0] && px + p.right() * z > fx1 - pad {
+            let room = (fx1 - fx0 - 2.0 * pad).max(0.0);
+            if p.w * z <= room {
+                fx1 - pad - (px + p.right() * z)
+            } else {
+                fx0 + pad - (px + p.x * z)
+            }
+        } else {
+            0.0
+        };
+        if dx != 0.0 {
+            self.map.drawer_return_pan.get_or_insert([px, py]);
+            self.map_glide(([px + dx, py], z), tx);
+        }
+    }
+
+    /// When an overlay drawer closes, restore the camera pan if we nudged it clear of the drawer.
+    pub(crate) fn map_drawer_closed(&mut self, tx: &mut Tx) {
+        let Some(pan) = self.map.drawer_return_pan.take() else { return };
+        if self.mode == Mode::Map && !self.active_locked() {
+            let z = self.map.glide.as_ref().map_or_else(|| self.map_camera().1, |g| g.to.1);
+            self.map_glide((pan, z), tx);
+        }
     }
 
     /// The camera that fits everything the map draws (MAP-035).
@@ -710,8 +763,8 @@ impl App {
         if let Some(p) = new_p {
             let ([px, py], z) = self.map_camera();
             let [fx0, fy0, fx1, fy1] = self.map_free();
-            let offscreen = px + p.right() * z < fx0 || px + p.x * z > fx1 || py + p.bottom() * z < fy0 || py + p.y * z > fy1;
-            if offscreen {
+            let clipped = px + p.x * z < fx0 || px + p.right() * z > fx1 || py + p.y * z < fy0 || py + p.bottom() * z > fy1;
+            if clipped {
                 self.ensure_visible(anchor, tx);
             }
         }
@@ -812,11 +865,31 @@ impl App {
 
     // ---------- The camera and the mode ----------
 
-    /// The canvas laid out: its size, and the camera's first place once it is known.
+    /// The canvas laid out: its size, origin compensation when a docked panel or Zen bar shifts
+    /// its left/top edge on an already-placed map, and the camera's first place once known.
     pub fn map_laid_out(&mut self, [x, y, w, h]: [f32; 4]) {
+        let old_origin = self.map.origin.get();
+        let old_size = self.map.size.get();
         let size = [w, h];
         self.map.origin.set([x, y]);
         self.map.size.set(size);
+        if old_size[0] > 0.0 && (old_origin[0] != x || old_origin[1] != y) {
+            let dx = old_origin[0] - x;
+            let dy = old_origin[1] - y;
+            if let Some(v) = self.map_view_mut()
+                && v.placed
+            {
+                let pan = [v.pan[0] + dx, v.pan[1] + dy];
+                let z = v.zoom;
+                self.set_camera(pan, z);
+                if let Some(g) = &mut self.map.glide {
+                    g.from.0[0] += dx;
+                    g.from.0[1] += dy;
+                    g.to.0[0] += dx;
+                    g.to.0[1] += dy;
+                }
+            }
+        }
         self.place_due();
     }
 
@@ -985,12 +1058,26 @@ impl App {
     /// Splice `s` of the note shown, whose map was `old`, goes in as one undo step (MAP-013);
     /// the folds follow their nodes and the node at the splice's focus line is selected.
     fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
+        self.map_apply_inner(old, s, false, tx);
+    }
+
+    fn map_apply_inner(&mut self, old: &Tree, s: &map::Splice, only_if_clipped: bool, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let base = self.active_text().to_string();
         self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
         let i = s.focus.map_or(ROOT, |l| t.at_line(l));
-        self.map_reveal(i, tx);
+        if self.map_open_to(i).is_some() {
+            if !only_if_clipped {
+                self.ensure_visible(i, tx);
+            } else if let Some(p) = self.map_laid().at[i] {
+                let ([px, py], z) = self.map_camera();
+                let [fx0, fy0, fx1, fy1] = self.map_free();
+                if px + p.x * z < fx0 || px + p.right() * z > fx1 || py + p.y * z < fy0 || py + p.bottom() * z > fy1 {
+                    self.ensure_visible(i, tx);
+                }
+            }
+        }
         self.map_relayout(Some((old, s)), tx);
     }
 
@@ -1131,12 +1218,16 @@ impl App {
 
     /// `x`, or a click on a task's box (MAP-053): one character, through the undo path.
     pub fn map_toggle_task(&mut self, i: usize, tx: &mut Tx) {
+        self.map_toggle_task_inner(i, false, tx);
+    }
+
+    fn map_toggle_task_inner(&mut self, i: usize, from_pointer: bool, tx: &mut Tx) {
         if !self.map_editable() {
             return;
         }
         let t = self.map_tree();
         if let Some(s) = map::toggle_task(self.active_text(), &t, i) {
-            self.map_apply(&t, &s, tx);
+            self.map_apply_inner(&t, &s, from_pointer, tx);
         }
     }
 
@@ -1628,6 +1719,7 @@ impl App {
         self.map.glide = None;
         self.map.relayout = None;
         self.map.node_drag = None;
+        self.map.drawer_return_pan = None;
     }
 
     /// Esc in the field (MAP-017): nothing is written, and a new node goes.
@@ -1724,10 +1816,11 @@ impl App {
         self.map_commit_inner(restore, tx)
     }
 
-    /// A click on node `i`'s task box (MAP-053).
+    /// A click on node `i`'s task box (MAP-053): toggles in place without panning a task
+    /// already wholly inside the canvas out from under the pointer.
     pub fn map_task_click(&mut self, i: usize, tx: &mut Tx) {
         let Some(i) = self.map_press_node(i, tx) else { return };
-        self.map_toggle_task(i, tx);
+        self.map_toggle_task_inner(i, true, tx);
         self.keys_to_note(tx);
     }
 

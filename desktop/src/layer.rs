@@ -286,6 +286,9 @@ impl App {
             }
         }
         self.layers.push(Open { layer, back, over: self.context(), size: self.window_size() });
+        if self.drawer().is_some() {
+            self.map_drawer_opened(tx);
+        }
     }
 
     /// Opens a menu of `of` at `at`. Single-action pointer menus that arm Enter immediately
@@ -334,6 +337,9 @@ impl App {
     /// Closes the top layer and gives focus back to where it was before it opened.
     pub fn close_layer(&mut self, tx: &mut Tx) {
         if let Some(open) = self.layers.pop() {
+            if matches!(open.layer, Layer::Drawer(_)) {
+                self.map_drawer_closed(tx);
+            }
             self.give_back(open.back, tx);
         }
     }
@@ -371,8 +377,12 @@ impl App {
     /// Closes every open layer.
     pub fn close_layers(&mut self, tx: &mut Tx) {
         if !self.layers.is_empty() {
+            let had_drawer = self.drawer().is_some();
             let back = self.layers.swap_remove(0).back;
             self.layers.clear();
+            if had_drawer {
+                self.map_drawer_closed(tx);
+            }
             self.give_back(back, tx);
         }
     }
@@ -416,8 +426,12 @@ impl App {
         };
         let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now) || gone(o);
         let Some(i) = self.layers.iter().position(stale) else { return false };
+        let had_drawer = self.layers[i..].iter().any(|o| matches!(o.layer, Layer::Drawer(_)));
         let back = self.layers[i].back.clone();
         self.layers.truncate(i);
+        if had_drawer {
+            self.map_drawer_closed(tx);
+        }
         if i == 0 {
             self.give_back(back, tx);
             self.handed = None;
