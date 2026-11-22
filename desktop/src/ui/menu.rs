@@ -236,6 +236,12 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
             items.extend((!root).then(|| on("menu-add-sibling", "Add sibling", "map.add-sibling", true, |s, _, tx| s.map_add(Place::After, tx))));
             items.push(edit);
             items.extend((!virtual_root).then(|| on("menu-edit-branch", "Edit branch in sheet", "map.edit-subtree", true, |s, _, tx| s.map_edit_branch(tx))));
+            items.extend((root && t.props > 0).then(|| Item {
+                key: Some("menu-properties"),
+                keys: None,
+                enabled: true,
+                ..item("Edit properties", Box::new(|s, tx| s.map_props(tx)))
+            }));
             items.extend(fold);
             items.push(copy);
             items.push(on("menu-copy-branch", "Copy branch", "map.copy-subtree", true, |s, _, tx| s.map_copy(true, tx)));

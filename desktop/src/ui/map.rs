@@ -102,7 +102,7 @@ impl<'a> Sizer<'a> {
     pub(crate) fn size(&self, t: &Tree, i: usize, max_w: f32) -> [f32; 2] {
         let cx = Cx::map(self.v, &self.look, None);
         if let Body::Card(bl) = &t.nodes[i].body
-            && let Some((_, size)) = card::card(&cx, bl, i, "")
+            && let Some((_, size)) = card::card(&cx, bl, i, "", 1.0)
         {
             return size;
         }
@@ -155,8 +155,12 @@ pub(super) fn canvas(v: V) -> El {
     let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));
     let (b, prose, mono) = (look.b, look.family, look.mono);
     // A fold circle's or task box's target is at least 24 points on screen (MAP-041, MAP-073).
-    let target = 24.0 / 2f32.powi(map_app::hit_bucket(cam.1));
+    let bucket_zoom = 2f32.powi(map_app::hit_bucket(cam.1));
+    let target = 24.0 / bucket_zoom;
     let hit = target.max(2.0 * FOLD_R);
+    // Card hover chips (Expand, Copy, Edit) scale up at low zoom so they keep a >= 18-20 pt
+    // screen hit target at Fit zoom without altering world layout.
+    let chip_scale = (20.0 / (24.0 * bucket_zoom)).clamp(1.0, 2.5);
     let mut world = el()
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
@@ -180,7 +184,7 @@ pub(super) fn canvas(v: V) -> El {
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, found };
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, chip_scale, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The field over the node being edited: its place, room left of the text, style and size.
@@ -248,20 +252,26 @@ pub(super) fn canvas(v: V) -> El {
     {
         let font = map_app::chip_font(b, mono);
         if t.props > 0 {
-            let (badge, [x, y, ..]) = map_app::badge(t.props, p, l.metrics.pad_x, font);
+            let (badge, [x, y, _, h]) = map_app::badge(t.props, p, l.metrics.pad_x, font);
             world = world.child(
-                text(badge)
+                rune::row()
                     .key("map-props")
-                    .font(font)
-                    .color(c.dim)
+                    .h(h)
+                    .px(map_app::BADGE_PAD)
+                    .center_y()
+                    .radius(4.0)
+                    .hover(c.hover)
+                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
                     .role("button")
+                    .label(badge.clone())
                     .cursor(rune::Cursor::Pointer)
                     .on_press_tx(|s: &mut App, tx: &mut Tx| s.map_props(tx))
-                    .pin(Some(x + W), Some(y + W), None, None),
+                    .pin(Some(x + W), Some(y + W), None, None)
+                    .child(text(badge).font(font).color(c.dim)),
             );
         }
         if t.nodes.len() == 1 {
-            let y = p.bottom() + 6.0 + if t.props > 0 { font.size * 1.6 } else { 0.0 };
+            let y = p.bottom() + 6.0 + if t.props > 0 { 28.0 } else { 0.0 };
             world = world.child(
                 text("Press Tab to add a branch, or F2 to name the root")
                     .key("map-hint")
@@ -371,6 +381,8 @@ struct State<'a> {
     lite: bool,
     /// A task box's least target, in map points.
     target: f32,
+    /// Scale factor for card hover chips at low zoom.
+    chip_scale: f32,
     found: Option<Found<'a>>,
 }
 
@@ -382,7 +394,7 @@ fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
 }
 
 fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
-    let State { folded, selected, editing, alpha, lite, target, found } = st;
+    let State { folded, selected, editing, alpha, lite, target, chip_scale, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -433,7 +445,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .children((!editing).then(|| {
                 let shown = match &n.body {
                     Body::Card(bl) if lite => Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
-                    Body::Card(bl) => card::card(cx, bl, i, &tail).map(|(e, _)| e),
+                    Body::Card(bl) => card::card(cx, bl, i, &tail, chip_scale).map(|(e, _)| e),
                     _ => None,
                 };
                 let text = || {

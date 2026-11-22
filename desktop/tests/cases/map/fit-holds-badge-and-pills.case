@@ -3,8 +3,8 @@ note: Plan.md
 size: 700x400
 events: key:m+cmd@0.3 key:Right@0.6 key:f@0.8 key:0@1.0
 expect: rect:map-canvas: [248.0, 41.0, 452.0, 359.0]
-expect: rect:map-props: [259.3, 236.81, 74.08, 11.47]
-expect: rect:map-pill:9: [669.31, 230.86, 19.39, 14.11]
+expect: rect:map-props: [259.31, 231.69, 82.61, 20.66]
+expect: rect:map-pill:9: [669.78, 225.88, 18.92, 13.77]
 --- before
 ---
 title: Plan
