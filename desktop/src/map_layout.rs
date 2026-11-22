@@ -96,8 +96,9 @@ struct Seg {
 }
 
 /// Lays out the nodes `folded` leaves shown. `size` gives a node's content size, before
-/// padding; it is asked only for shown nodes.
-pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl FnMut(usize) -> [f32; 2]) -> Laid {
+/// padding; it is asked only for shown nodes. `pill_ext` gives the horizontal extent right of a
+/// folded node's right edge occupied by its fold circle and `+N` count pill.
+pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl FnMut(usize) -> [f32; 2], mut pill_ext: impl FnMut(usize) -> f32) -> Laid {
     let n = tree.nodes.len();
     let mut shown = Vec::new();
     let mut i = ROOT;
@@ -120,7 +121,11 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     for &v in shown.iter().rev() {
         let [w, h] = wh[v];
         let col = w + m.sh;
-        let mut prof = vec![Seg { x0: 0.0, x1: col, top: 0.0, top_n: v, bot: h, bot_n: v }];
+        let is_folded = !open(v) && !tree.nodes[v].children.is_empty();
+        // Reserve room for a folded node's fold circle and `+N` pill so sibling Bézier links
+        // crossing `[w_sib, w_sib + sh]` never slice through the pill.
+        let prof_x1 = if is_folded { col + pill_ext(v) } else { col };
+        let mut prof = vec![Seg { x0: 0.0, x1: prof_x1, top: 0.0, top_n: v, bot: h, bot_n: v }];
         let kids: &[usize] = if open(v) { &tree.nodes[v].children } else { &[] };
         if let Some((&first, rest)) = kids.split_first() {
             let mut acc = profile[first].take().unwrap_or_default();

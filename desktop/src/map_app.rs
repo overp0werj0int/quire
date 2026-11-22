@@ -342,7 +342,7 @@ impl App {
     pub fn map_laid(&self) -> Rc<Laid> {
         let t = self.map_tree();
         let b = self.settings().size as f32;
-        let (_, _, prose_id, mono_id) = self.fonts();
+        let (_, mono, prose_id, mono_id) = self.fonts();
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
         let (folded, fold_ver) = self.map_view().map_or((&empty, None), |v| (&v.folded, Some(v.fold_ver)));
@@ -360,12 +360,24 @@ impl App {
         }
         let cache = &mut sizes.3;
         let sizer = crate::ui::MapSizer::new(self);
-        let laid = Rc::new(crate::map_layout::layout(&t, folded, m, |i| {
-            let n = &t.nodes[i];
-            let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
-            let [w, h] = *cache.entry(key).or_insert_with(|| sizer.size(&t, i, m.max_w));
-            [w + task_room(n, b), h]
-        }));
+        let chip = chip_font(b, mono);
+        let laid = Rc::new(crate::map_layout::layout(
+            &t,
+            folded,
+            m,
+            |i| {
+                let n = &t.nodes[i];
+                let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
+                let [w, h] = *cache.entry(key).or_insert_with(|| sizer.size(&t, i, m.max_w));
+                [w + task_room(n, b), h]
+            },
+            |i| {
+                let hidden = t.nodes[i].end - i - 1;
+                let text = format!("+{hidden}");
+                let pw = rune::text::measure(&text, &[], chip, None).0.ceil() + 2.0 * PILL_PAD;
+                FOLD_R + 6.0 + pw + 4.0
+            },
+        ));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
         laid
     }

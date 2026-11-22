@@ -111,7 +111,8 @@ impl<'a> Sizer<'a> {
         if rich.text.is_empty() {
             return [0.0, lh];
         }
-        let (w, h) = rune::text::measure(&rich.text, &rich.spans, st, Some(max_w));
+        let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+        let (w, h) = rune::text::measure_with(&rich.text, &rich.spans, st, Some(max_w), anywhere);
         [w.min(max_w).ceil(), h.max(lh).ceil()]
     }
 }
@@ -414,7 +415,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                     if let Some(f) = found {
                         r.marks = label_marks(c, &r.text, f);
                     }
-                    r.el(st, color, None).w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
+                    r.el(st, color, None).wrap_anywhere().w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
                 };
                 shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
@@ -528,6 +529,7 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, p: Place, at: [f32; 2], pad_x: f32) -> El 
         .child(
             label(cx, n, st, c.text)
                 .el(st, c.text, None)
+                .wrap_anywhere()
                 .pin(Some(pad_x), Some(0.0), None, None)
                 .w((p.w - 2.0 * pad_x).max(1.0))
                 .clip_soft(0.0),
