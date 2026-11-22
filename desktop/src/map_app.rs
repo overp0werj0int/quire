@@ -571,6 +571,17 @@ impl App {
         ([(x0 + x1) / 2.0 - (p.x + p.w / 2.0) * z, (y0 + y1) / 2.0 - (p.y + p.h / 2.0) * z], z)
     }
 
+    /// The camera at zoom `z` with node `i` anchored near the left edge of the free canvas and
+    /// vertically centred, so left-to-right branches fill the viewport (MAP-065).
+    fn left_anchored_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
+        let l = self.map_laid();
+        let [fx0, fy0, fx1, fy1] = self.map_free();
+        let Some(p) = l.at[i] else { return self.map_camera() };
+        let (fw, fh) = (fx1 - fx0, fy1 - fy0);
+        let inset = (fw * 0.07).clamp(32.0, 56.0);
+        ([fx0 + inset - p.x * z, fy0 + fh / 2.0 - (p.y + p.h / 2.0) * z], z)
+    }
+
     /// `c`: the selected node to the middle at the current zoom (MAP-036).
     pub fn map_center(&mut self, tx: &mut Tx) {
         let cam = self.centred_on(self.map_selected(), self.map_camera().1);
@@ -760,13 +771,20 @@ impl App {
         due
     }
 
-    /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 on the
-    /// selected node (MAP-065).
+    /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 left-anchored
+    /// on the selected node so left-to-right branches stay in view, or centred for a lone root
+    /// (MAP-065, MAP-071).
     fn place_camera(&mut self) {
         let fit = self.fit_camera();
         // An empty note's lone root opens at 100%, centred, not fitted up to 200% (MAP-071).
         let alone = self.map_tree().nodes.len() == 1;
-        let cam = if fit.1 >= 0.7 && !alone { fit } else { self.centred_on(self.map_selected(), 1.0) };
+        let cam = if fit.1 >= 0.7 && !alone {
+            fit
+        } else if alone {
+            self.centred_on(self.map_selected(), 1.0)
+        } else {
+            self.left_anchored_on(self.map_selected(), 1.0)
+        };
         self.set_camera(cam.0, cam.1);
         if let Some(v) = self.map_view_mut() {
             v.placed = true;
