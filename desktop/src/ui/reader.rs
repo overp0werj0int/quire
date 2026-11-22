@@ -591,16 +591,19 @@ pub fn toast_band(v: V) -> Option<El> {
         let right = if v.right_over() { super::outline::PANEL_W } else { 0.0 };
         let max_w = (foot_room(v) + 32.0).max(0.0);
         let pill_w = foot_pill_w(v);
-        let band_w = (pill_w + 64.0).min(max_w).max(pill_w);
+        let side_fade = 44.0f32;
+        let band_w = (pill_w + 2.0 * side_fade + 32.0).min(max_w).max(pill_w);
+        let fade_x = side_fade.min(band_w * 0.35);
+        let fill = el().w_full().h_full().linear_gradient(std::f32::consts::PI, stops).inert();
         let band = el()
             .key("toast-band")
             .w(band_w)
             .h(h)
-            .corners([18.0, 18.0, 0.0, 0.0])
-            .linear_gradient(std::f32::consts::PI, stops)
+            .clip_fade_linear(fade_x, 0.0, fade_x, 0.0)
             .inert()
             .transition(rune::Transition::opacity().springs(fade))
-            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, roof, tx));
+            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, roof, tx))
+            .child(fill);
         return Some(
             row()
                 .key("toast-band-row")

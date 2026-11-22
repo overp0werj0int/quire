@@ -579,7 +579,7 @@ impl Cx<'_> {
     }
 
     /// A quote's bar width, the inset of its text and the tone its blocks take (BLK-33).
-    fn quote_parts(&self, tone: Tone) -> (f32, f32, Tone) {
+    pub(super) fn quote_parts(&self, tone: Tone) -> (f32, f32, Tone) {
         let b = self.look.b;
         let inset = if tone.quote_depth >= 8 { r(b * 0.5) } else { r(b * 1.2) };
         let inner = Tone { color: self.look.c.dim, size: page::quote_size(b), contained: true, quote_depth: tone.quote_depth + 1, ..tone };
@@ -597,8 +597,9 @@ impl Cx<'_> {
             .child(self.stack(blocks, inner, false).key("body").grow(1.0).min_w(0.0).ml(inset - bar))
     }
 
-    /// BLK-37 to BLK-42.
-    pub(super) fn alert(&self, kind: Alert, blocks: &[Block], tone: Tone) -> El {
+    /// Shared chrome for an alert card: title row, padding, gap, title height, fill, border,
+    /// composited surface colour on the page, and inner text tone (BLK-37 to BLK-42).
+    pub(super) fn alert_chrome(&self, kind: Alert, tone: Tone) -> (El, f32, f32, f32, Color, Color, Color, Tone) {
         let look = self.look;
         let c = &look.c;
         let b = look.b;
@@ -610,23 +611,33 @@ impl Cx<'_> {
             Alert::Caution => (c.red, &icons::CAUTION),
         };
         let fill = look.ld(0.075, 0.09);
-        let title_ink = if self.doc.is_none() { Roles::readable_on(tint, mix(c.bg, tint, fill), 4.8) } else { tint };
+        let surf = mix(c.bg, tint, fill);
+        let title_ink = if self.doc.is_none() { Roles::readable_on(tint, surf, 4.8) } else { tint };
         let (isz, title_style, title_h) = self.alert_title();
+        let pad = r(b * 1.05);
+        let gap = r(b * 0.5);
         let title = row()
             .key("title")
             .h(title_h)
-            .gap(r(b * 0.5))
+            .gap(gap)
             .center_y()
             .child(icon(glyph, isz).color(title_ink))
             .child(text(kind.title()).font(title_style).color(title_ink).text_case(TextCase::Uppercase));
         let inner = Tone { color: c.text, size: b, contained: true, ..tone };
+        let border = c.on_page(tint.alpha(look.ld(0.3, 0.24)));
+        (title, pad, gap, title_h, tint.alpha(fill), border, surf, inner)
+    }
+
+    /// BLK-37 to BLK-42.
+    pub(super) fn alert(&self, kind: Alert, blocks: &[Block], tone: Tone) -> El {
+        let (title, pad, gap, _, fill, border, _, inner) = self.alert_chrome(kind, tone);
         col()
             .w_full()
-            .padding(r(b * 1.05))
-            .gap(r(b * 0.5))
+            .padding(pad)
+            .gap(gap)
             .radius(4.0)
-            .fill(tint.alpha(fill))
-            .border(1.0, c.on_page(tint.alpha(look.ld(0.3, 0.24))))
+            .fill(fill)
+            .border(1.0, border)
             .child(title)
             .child(self.stack(blocks, inner, false).key("body").w_full())
     }
@@ -733,6 +744,63 @@ impl Cx<'_> {
         [w, 2.0 * pad + title_h + gap + self.stack_h(blocks, inner, w - 2.0 * pad)]
     }
 
+    /// Counts actual content lines of `blocks` clipped past `cap` (ignoring blank inter-block
+    /// gaps) for map card `"+N more lines"` footers.
+    pub(super) fn hidden_lines(&self, blocks: &[Block], tone: Tone, w: f32, cap: f32) -> usize {
+        let mut y = 0.0;
+        self.hidden_lines_in(blocks, tone, w, false, &mut y, cap)
+    }
+
+    fn hidden_lines_in(&self, blocks: &[Block], tone: Tone, w: f32, tight: bool, y: &mut f32, cap: f32) -> usize {
+        let b = self.look.b;
+        let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+        let mut prev = None;
+        let mut hidden = 0usize;
+        for bl in blocks {
+            let k = page::rk(&bl.kind);
+            *y += page::inner_gap(b, prev, k, tight);
+            match &bl.kind {
+                Kind::List(l) => {
+                    let (_, _, indent, item_gap) = list::layout_metrics(self, l, tone);
+                    let inner_w = (w - indent).max(1.0);
+                    for (idx, it) in l.items.iter().enumerate() {
+                        if idx > 0 {
+                            *y += item_gap;
+                        }
+                        hidden += self.hidden_lines_in(&it.blocks, tone, inner_w, l.tight, y, cap);
+                    }
+                }
+                Kind::Quote { blocks } => {
+                    let (_, inset, inner) = self.quote_parts(tone);
+                    hidden += self.hidden_lines_in(blocks, inner, (w - inset).max(1.0), false, y, cap);
+                }
+                _ => {
+                    let (bh, lh, lines) = match self.text_block(bl, tone) {
+                        Some((rich, style)) => {
+                            let h = rune::text::measure_with(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w), anywhere).1;
+                            let lh = style.line_height.max(1.0);
+                            (h, lh, (h / lh).round().max(1.0) as usize)
+                        }
+                        None => {
+                            let lh = line(tone.size, tone.lead).max(1.0);
+                            let lines = bl.lines.len().max(1);
+                            (lines as f32 * lh, lh, lines)
+                        }
+                    };
+                    if *y >= cap - 0.5 {
+                        hidden += lines;
+                    } else if *y + bh > cap + 0.5 {
+                        let shown = ((cap - *y) / lh).floor().max(0.0) as usize;
+                        hidden += lines.saturating_sub(shown);
+                    }
+                    *y += bh;
+                }
+            }
+            prev = Some(k);
+        }
+        hidden
+    }
+
     /// Raw HTML's natural size, at most `max_w` wide: `[w, h]`.
     pub(super) fn html_size(&self, t: &str, max_w: f32) -> [f32; 2] {
         let style = self.html_style();
@@ -740,6 +808,35 @@ impl Cx<'_> {
         let w = (ml + rune::text::measure(t, &[], style, None).0).ceil().min(max_w);
         let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
         [w, rune::text::measure_with(if t.is_empty() { " " } else { t }, &[], style, Some(w - ml), anywhere).1]
+    }
+
+    /// Counts non-empty wrapped lines of raw HTML `t` clipped past `cap`.
+    pub(super) fn html_hidden_lines(&self, t: &str, w: f32, cap: f32) -> usize {
+        let style = self.html_style();
+        let lh = style.line_height.max(1.0);
+        let ml = 1.0 + r(self.look.b * 0.9);
+        let inner_w = (w - ml).max(1.0);
+        let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+        let mut y = 0.0;
+        let mut hidden = 0usize;
+        for raw in t.split('\n') {
+            let bh = if raw.is_empty() {
+                lh
+            } else {
+                rune::text::measure_with(raw, &[], style, Some(inner_w), anywhere).1.max(lh)
+            };
+            if !raw.trim().is_empty() {
+                let lines = (bh / lh).round().max(1.0) as usize;
+                if y >= cap - 0.5 {
+                    hidden += lines;
+                } else if y + bh > cap + 0.5 {
+                    let shown = ((cap - y) / lh).floor().max(0.0) as usize;
+                    hidden += lines.saturating_sub(shown);
+                }
+            }
+            y += bh;
+        }
+        hidden.max(1)
     }
 
     /// Where image `img` stands: its pixels, still on its way, or why it is not there.

@@ -78,18 +78,19 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
         Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail, chip_compact),
         Kind::Table(t) => table(cx, t, tone, tail),
         Kind::Quote { blocks } => {
-            let lh = line(page::quote_size(cx.look.b), 1.6);
-            capped(cx, cx.quote(blocks, tone), cx.quote_size(blocks, tone, max), TEXT_LINES * lh, lh, tail, r(cx.look.b * 0.9))
+            let (_, inset, inner) = cx.quote_parts(tone);
+            let [w, h] = cx.quote_size(blocks, tone, max);
+            let cap = TEXT_LINES * line(page::quote_size(cx.look.b), 1.6);
+            let extra = if h > cap { cx.hidden_lines(blocks, inner, (w - inset).max(1.0), cap).max(1) } else { 0 };
+            capped(cx, cx.quote(blocks, tone), [w, h], cap, extra, tail, inset)
         }
-        Kind::Alert { kind, blocks } => {
-            let [w, h] = cx.alert_size(*kind, blocks, tone, max);
-            let text_h = cx.alert_size(*kind, &[], tone, max)[1];
-            let lh = line(cx.look.b, 1.6);
-            capped(cx, cx.alert(*kind, blocks, tone), [w, h], text_h + TEXT_LINES * lh, lh, tail, r(cx.look.b * 0.85))
-        }
+        Kind::Alert { kind, blocks } => alert(cx, *kind, blocks, tone, tail),
         Kind::Html { text } => {
-            let lh = line(r(cx.look.b * 0.8), 1.5);
-            capped(cx, cx.html(text), cx.html_size(text, max), HTML_LINES * lh, lh, tail, 0.0)
+            let [w, h] = cx.html_size(text, max);
+            let cap = HTML_LINES * line(r(cx.look.b * 0.8), 1.5);
+            let inset = 1.0 + r(cx.look.b * 0.9);
+            let extra = if h > cap { cx.html_hidden_lines(text, w, cap) } else { 0 };
+            capped(cx, cx.html(text), [w, h], cap, extra, tail, inset)
         }
         Kind::Image { img, .. } => image(cx, img, i, tail, chip_compact),
         Kind::Gallery { items } => gallery(cx, items, i, tail),
@@ -98,17 +99,19 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
     Some((e.key(format!("map-card:{tail}")), size))
 }
 
-/// A card drawn by a reader builder: `inner` at its natural size `[w, h]`, shown at most `cap`
-/// tall with its bottom fading out and a `"+N more lines"` footer when it is taller (MAP-052).
-fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, lh: f32, tail: &str, inset_x: f32) -> (El, [f32; 2]) {
+/// A card drawn by a reader builder (Quote or HTML): `inner` at its natural size `[w, h]`, shown
+/// at most `cap` tall with its bottom fading out and a `"+N more lines"` footer aligned to its
+/// text inset `inset_x` with comfortable clearance above the branch underline (MAP-052).
+fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, tail: &str, inset_x: f32) -> (El, [f32; 2]) {
     let shown = h.min(cap).ceil();
-    if h <= cap {
+    if h <= cap || extra == 0 {
         return (el().size(w, shown).child(inner.pin(Some(0.0), Some(0.0), None, None).w(w)), [w, shown]);
     }
-    let extra = ((h - cap) / lh.max(1.0)).ceil().max(1.0) as usize;
-    let more_el = more(cx, extra, "line", tail);
-    let foot_h = more_style(cx, pcode::badge_size(cx.look.b)).line_height + 4.0;
-    let total_h = shown + foot_h;
+    let avail = (w - inset_x).max(0.0);
+    let more_el = more_fit(cx, extra, "line", tail, avail, cx.look.c.dim);
+    let more_lh = more_style(cx, pcode::badge_size(cx.look.b)).line_height;
+    let foot_top = shown + 4.0;
+    let total_h = (foot_top + more_lh + 6.0).ceil();
     let clipped = el()
         .pin(Some(0.0), Some(0.0), None, None)
         .size(w, shown)
@@ -117,7 +120,47 @@ fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, lh: f32, tail: &str, i
     let out = el()
         .size(w, total_h)
         .child(clipped)
-        .child(more_el.pin(Some(inset_x), Some(shown + 2.0), None, None));
+        .child(more_el.pin(Some(inset_x), Some(foot_top), None, None));
+    (out, [w, total_h])
+}
+
+/// MAP-052: an alert card with its rounded tinted fill and border enclosing both the clipped body
+/// and its `"+N more lines"` footer when taller than `TEXT_LINES`.
+fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, tail: &str) -> (El, [f32; 2]) {
+    let b = cx.look.b;
+    let max = cx.look.width;
+    let [w, full_h] = cx.alert_size(kind, blocks, tone, max);
+    let (title, pad, gap, title_h, fill, border, surf, inner_tone) = cx.alert_chrome(kind, tone);
+    let body_cap = TEXT_LINES * line(b, 1.6);
+    let body_top = pad + title_h + gap;
+    let full_body_h = full_h - (2.0 * pad + title_h + gap);
+    if full_body_h <= body_cap {
+        let h = full_h.ceil();
+        return (el().size(w, h).child(cx.alert(kind, blocks, tone).pin(Some(0.0), Some(0.0), None, None).w(w)), [w, h]);
+    }
+    let shown_body_h = body_cap.ceil();
+    let inner_w = (w - 2.0 * pad).max(1.0);
+    let extra = cx.hidden_lines(blocks, inner_tone, inner_w, body_cap).max(1);
+    let ink = Roles::readable_on(cx.look.c.dim, surf, 4.8);
+    let more_el = more_fit(cx, extra, "line", tail, inner_w, ink);
+    let more_lh = more_style(cx, pcode::badge_size(b)).line_height;
+    let foot_gap = r(b * 0.35);
+    let foot_top = body_top + shown_body_h + foot_gap;
+    let total_h = (foot_top + more_lh + (pad * 0.75).round()).ceil();
+    let body = el()
+        .pin(Some(pad), Some(body_top), None, None)
+        .size(inner_w, shown_body_h)
+        .clip_fade_linear(0.0, 0.0, 0.0, BOTTOM_FADE)
+        .child(cx.stack(blocks, inner_tone, false).key("body").pin(Some(0.0), Some(0.0), None, None).w(inner_w));
+    let out = el()
+        .size(w, total_h)
+        .radius(4.0)
+        .clip_rounded(4.0)
+        .fill(fill)
+        .border(1.0, border)
+        .child(title.pin(Some(pad), Some(pad), None, None).w(inner_w))
+        .child(body)
+        .child(more_el.pin(Some(pad), Some(foot_top), None, None));
     (out, [w, total_h])
 }
 
@@ -126,6 +169,20 @@ fn more(cx: &Cx, n: usize, what: &str, tail: &str) -> El {
     let size = pcode::badge_size(cx.look.b);
     let what = if n == 1 { what.to_string() } else { format!("{what}s") };
     text(format!("+{n} more {what}")).key(format!("map-more:{tail}")).font(more_style(cx, size)).color(cx.look.c.dim)
+}
+
+/// Like `more`, shortening to `"+N more"` or `"+N"` when the card is narrower than the full text.
+fn more_fit(cx: &Cx, n: usize, what: &str, tail: &str, avail_w: f32, ink: rune::Color) -> El {
+    let style = more_style(cx, pcode::badge_size(cx.look.b));
+    let plural = if n == 1 { what.to_string() } else { format!("{what}s") };
+    let full = format!("+{n} more {plural}");
+    let label = if rune::text::advance(&full, style) <= avail_w {
+        full
+    } else {
+        let mid = format!("+{n} more");
+        if rune::text::advance(&mid, style) <= avail_w { mid } else { format!("+{n}") }
+    };
+    text(label).key(format!("map-more:{tail}")).font(style).color(ink)
 }
 
 fn more_style(cx: &Cx, size: f32) -> TextStyle {
@@ -337,12 +394,10 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     let fades = (if natural > look.width { r(b * 2.4) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     let body = el().pin(Some(0.0), Some(head_h), None, None).size(w, body_h).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(rows);
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, w));
+    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, h - 8.0));
     let chip_h = compact.unwrap_or_else(|| r(pcode::chip_size(b) * 2.0));
     let chip_top = match compact {
-        // Bottom-align compact icon chips to the header separator so they keep a full ~20 pt
-        // target at Fit zoom without overlapping the first diff line below `head_h`.
-        Some(side) => head_h - side,
+        Some(_) => 4.0,
         None => ((head_h - chip_h) / 2.0).max(1.0),
     };
     let mut inner = el()

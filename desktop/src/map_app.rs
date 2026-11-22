@@ -36,7 +36,7 @@ pub fn chip_compact_side(z: f32) -> Option<f32> {
         return None;
     }
     let qz = ((z / 0.04).round() * 0.04).clamp(0.24, 0.64);
-    Some((20.0 / qz).round().clamp(30.0, 64.0))
+    Some((20.0 / qz).round().clamp(30.0, 80.0))
 }
 /// What `ensureVisible` keeps between a node and the canvas's edges (MAP-036).
 const MARGIN: f32 = 40.0;
