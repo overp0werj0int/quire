@@ -150,4 +150,4 @@ cargo run -- --script events.json --snap shot.png --at mark:end   # play input e
 
   `live_store_check` also writes and deletes one small object, `.quire/probe.txt`.
 - `QUIRE_SMOOTHING` picks another text rasterizer, for comparing renders. `ref/` holds renders of the design in Chromium, used as the reference for pixel comparisons.
-- `vendor/winit` is Rune's winit with Wayland file drops and the touchpad scroll scale added. `Cargo.toml` points the `winit` patch at it.
+- `vendor/winit` is Rune's winit with Wayland file drops and the touchpad pinch added. `Cargo.toml` points the `winit` patch at it.

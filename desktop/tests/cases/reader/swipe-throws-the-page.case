@@ -1,0 +1,168 @@
+A touchpad swipe over the Preview page coasts on after the fingers lift, as Chrome throws a page (RD-27).
+note: Long.md
+state: {"mode": "preview"}
+events: swipe:0,-10,640,420@1.0
+expect: doc-y: -107.03
+--- before
+# Long
+
+Line 0 of a long note with some words.
+
+Line 1 of a long note with some words.
+
+Line 2 of a long note with some words.
+
+Line 3 of a long note with some words.
+
+Line 4 of a long note with some words.
+
+Line 5 of a long note with some words.
+
+Line 6 of a long note with some words.
+
+Line 7 of a long note with some words.
+
+Line 8 of a long note with some words.
+
+Line 9 of a long note with some words.
+
+Line 10 of a long note with some words.
+
+Line 11 of a long note with some words.
+
+Line 12 of a long note with some words.
+
+Line 13 of a long note with some words.
+
+Line 14 of a long note with some words.
+
+Line 15 of a long note with some words.
+
+Line 16 of a long note with some words.
+
+Line 17 of a long note with some words.
+
+Line 18 of a long note with some words.
+
+Line 19 of a long note with some words.
+
+Line 20 of a long note with some words.
+
+Line 21 of a long note with some words.
+
+Line 22 of a long note with some words.
+
+Line 23 of a long note with some words.
+
+Line 24 of a long note with some words.
+
+Line 25 of a long note with some words.
+
+Line 26 of a long note with some words.
+
+Line 27 of a long note with some words.
+
+Line 28 of a long note with some words.
+
+Line 29 of a long note with some words.
+
+Line 30 of a long note with some words.
+
+Line 31 of a long note with some words.
+
+Line 32 of a long note with some words.
+
+Line 33 of a long note with some words.
+
+Line 34 of a long note with some words.
+
+Line 35 of a long note with some words.
+
+Line 36 of a long note with some words.
+
+Line 37 of a long note with some words.
+
+Line 38 of a long note with some words.
+
+Line 39 of a long note with some words.
+
+Line 40 of a long note with some words.
+
+Line 41 of a long note with some words.
+
+Line 42 of a long note with some words.
+
+Line 43 of a long note with some words.
+
+Line 44 of a long note with some words.
+
+Line 45 of a long note with some words.
+
+Line 46 of a long note with some words.
+
+Line 47 of a long note with some words.
+
+Line 48 of a long note with some words.
+
+Line 49 of a long note with some words.
+
+Line 50 of a long note with some words.
+
+Line 51 of a long note with some words.
+
+Line 52 of a long note with some words.
+
+Line 53 of a long note with some words.
+
+Line 54 of a long note with some words.
+
+Line 55 of a long note with some words.
+
+Line 56 of a long note with some words.
+
+Line 57 of a long note with some words.
+
+Line 58 of a long note with some words.
+
+Line 59 of a long note with some words.
+
+Line 60 of a long note with some words.
+
+Line 61 of a long note with some words.
+
+Line 62 of a long note with some words.
+
+Line 63 of a long note with some words.
+
+Line 64 of a long note with some words.
+
+Line 65 of a long note with some words.
+
+Line 66 of a long note with some words.
+
+Line 67 of a long note with some words.
+
+Line 68 of a long note with some words.
+
+Line 69 of a long note with some words.
+
+Line 70 of a long note with some words.
+
+Line 71 of a long note with some words.
+
+Line 72 of a long note with some words.
+
+Line 73 of a long note with some words.
+
+Line 74 of a long note with some words.
+
+Line 75 of a long note with some words.
+
+Line 76 of a long note with some words.
+
+Line 77 of a long note with some words.
+
+Line 78 of a long note with some words.
+
+Line 79 of a long note with some words.
+

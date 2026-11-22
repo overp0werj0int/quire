@@ -264,9 +264,7 @@ pub(super) fn canvas(v: V) -> El {
                 s.map_zoom_about(e.x, e.y, 1.0 - e.dy / 200.0, tx);
                 return true;
             }
-            let ([px, py], z) = s.map_camera();
-            let (dx, dy) = if e.mods.shift && e.dx == 0.0 { (e.dy, 0.0) } else { (e.dx, e.dy) };
-            s.map_move([px + dx, py + dy], z, tx);
+            s.map_wheel(&e, tx);
             true
         })
         .on_magnify(|s: &mut App, e: MagnifyEvent, tx: &mut Tx| {

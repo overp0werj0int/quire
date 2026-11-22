@@ -96,6 +96,8 @@ pub struct MapState {
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
     pub(crate) glide: Option<Glide>,
+    /// A touchpad swipe's coast after the fingers lift (`map_throw`).
+    pub(crate) throw: crate::map_throw::Throw,
     pub(crate) relayout: Option<crate::map_motion::Relayout>,
     pub(crate) frame: RefCell<Option<crate::map_motion::Frame>>,
     /// The pan when the canvas's drag began.
@@ -155,6 +157,7 @@ impl Default for MapState {
             laid: RefCell::new(None),
             sizes: RefCell::new((0, "", "", HashMap::new())),
             glide: None,
+            throw: Default::default(),
             relayout: None,
             frame: RefCell::new(None),
             drag_from: None,
@@ -385,6 +388,7 @@ impl App {
     pub fn map_move(&mut self, pan: [f32; 2], zoom: f32, tx: &mut Tx) {
         let before = self.map_signature();
         self.map.glide = None;
+        self.map.throw.stop();
         self.set_camera(pan, zoom);
         if self.map_signature() == before {
             tx.live_only();
@@ -405,6 +409,7 @@ impl App {
     fn map_glide(&mut self, to: ([f32; 2], f32), tx: &mut Tx) {
         let to = (to.0, to.1.clamp(ZOOM_MIN, ZOOM_MAX));
         let from = self.map_camera();
+        self.map.throw.stop();
         if crate::motion::reduced() || from == to {
             self.set_camera(to.0, to.1);
             self.map.glide = None;
@@ -416,7 +421,16 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
+        let mut committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
+        if let Some(([dx, dy], running)) = self.map.throw.step(t) {
+            let before = self.map_signature();
+            let ([px, py], z) = self.map_camera();
+            self.set_camera([px + dx, py + dy], z);
+            if running {
+                tx.wake_after(Duration::from_millis(16));
+            }
+            committed |= self.map_signature() != before;
+        }
         let Some(g) = &self.map.glide else { return committed };
         let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
         let e = 1.0 - (1.0 - u).powi(3);
@@ -430,6 +444,26 @@ impl App {
             self.map.glide = None;
         }
         committed || self.map_signature() != before
+    }
+
+    /// A wheel or touchpad scroll over the canvas pans the camera by its deltas; the fingers'
+    /// lift throws it on (`map_throw`).
+    pub fn map_wheel(&mut self, e: &rune::WheelEvent, tx: &mut Tx) {
+        let t = e.time.unwrap_or_else(|| tx.clock());
+        let (dx, dy) = if e.mods.shift && e.dx == 0.0 { (e.dy, 0.0) } else { (e.dx, e.dy) };
+        if e.phase == rune::GesturePhase::Ended && (dx, dy) == (0.0, 0.0) {
+            if self.map.throw.released(t, tx.clock(), self.map_size()) {
+                tx.wake_after(Duration::from_millis(0));
+            }
+            return;
+        }
+        let ([px, py], z) = self.map_camera();
+        self.map_move([px + dx, py + dy], z, tx);
+        if e.precise {
+            self.map.throw.moved((dx, dy), t);
+        } else {
+            self.map.throw.stepped();
+        }
     }
 
     /// Scales the camera by `f` about canvas point `(x, y)`: the world point under it stays.

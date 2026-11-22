@@ -24,6 +24,7 @@ mod map_drag;
 mod map_find;
 mod map_layout;
 mod map_motion;
+mod map_throw;
 mod mcp;
 mod highlight;
 mod motion;

@@ -1,0 +1,13 @@
+A touchpad swipe over the map coasts on after the fingers lift: 80 points of swipe at 600 points a second carry the map 68 points further, as Chrome throws a page.
+note: Plan.md
+state: {"mode": "map"}
+events: swipe:-10,0,640,420@1.0
+expect: rect:map-node:1: [332.98, 388.0, 116.0, 68.0]
+--- before
+# Plan
+
+## A
+
+## B
+
+## C

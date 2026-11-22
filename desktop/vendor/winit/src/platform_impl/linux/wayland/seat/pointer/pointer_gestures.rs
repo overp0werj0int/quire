@@ -1,5 +1,6 @@
 //! Pointer gestures: the hold, fingers resting on a touchpad without moving, which apps take as
-//! the signal to stop kinetic scrolling (`zwp_pointer_gesture_hold_v1`, version 3).
+//! the signal to stop kinetic scrolling (`zwp_pointer_gesture_hold_v1`, version 3), and, for
+//! Quire, the pinch (`zwp_pointer_gesture_pinch_v1`), sent as `PinchGesture` as macOS sends it.
 
 use std::ops::Deref;
 use std::sync::Mutex;
@@ -9,6 +10,7 @@ use sctk::reexports::client::globals::{BindError, GlobalList};
 use sctk::reexports::client::{delegate_dispatch, Connection, Dispatch, Proxy, QueueHandle};
 use sctk::reexports::protocols::wp::pointer_gestures::zv1::client::{
     zwp_pointer_gesture_hold_v1::{self, ZwpPointerGestureHoldV1},
+    zwp_pointer_gesture_pinch_v1::{self, ZwpPointerGesturePinchV1},
     zwp_pointer_gestures_v1::ZwpPointerGesturesV1,
 };
 
@@ -96,3 +98,55 @@ impl Dispatch<ZwpPointerGestureHoldV1, HoldData, WinitState> for PointerGestures
 
 delegate_dispatch!(WinitState: [ZwpPointerGesturesV1: GlobalData] => PointerGesturesState);
 delegate_dispatch!(WinitState: [ZwpPointerGestureHoldV1: HoldData] => PointerGesturesState);
+delegate_dispatch!(WinitState: [ZwpPointerGesturePinchV1: PinchData] => PointerGesturesState);
+
+/// The window a pinch began over, for its updates and end, which name no surface, and the scale
+/// its last update reached.
+#[derive(Debug, Default)]
+pub struct PinchData {
+    window: Mutex<Option<WindowId>>,
+    scale: Mutex<f64>,
+}
+
+impl Dispatch<ZwpPointerGesturePinchV1, PinchData, WinitState> for PointerGesturesState {
+    fn event(
+        state: &mut WinitState,
+        _proxy: &ZwpPointerGesturePinchV1,
+        event: <ZwpPointerGesturePinchV1 as Proxy>::Event,
+        data: &PinchData,
+        _conn: &Connection,
+        _qhandle: &QueueHandle<WinitState>,
+    ) {
+        // The compositor gives the scale since the pinch began; macOS, and so winit, gives each
+        // step's own, such that the product of (1 + delta) is that scale.
+        let (window_id, phase, delta) = match event {
+            zwp_pointer_gesture_pinch_v1::Event::Begin { surface, .. } => {
+                let parent = surface
+                    .data::<SurfaceData>()
+                    .and_then(|data| data.parent_surface().cloned())
+                    .unwrap_or(surface);
+                let window_id = wayland::make_wid(&parent);
+                *data.window.lock().unwrap() = Some(window_id);
+                *data.scale.lock().unwrap() = 1.0;
+                (window_id, TouchPhase::Started, 0.0)
+            },
+            zwp_pointer_gesture_pinch_v1::Event::Update { scale, .. } => {
+                let Some(window_id) = *data.window.lock().unwrap() else { return };
+                let mut last = data.scale.lock().unwrap();
+                let delta = if *last > 0.0 && scale > 0.0 { scale / *last - 1.0 } else { 0.0 };
+                *last = scale;
+                (window_id, TouchPhase::Moved, delta)
+            },
+            zwp_pointer_gesture_pinch_v1::Event::End { cancelled, .. } => {
+                let Some(window_id) = data.window.lock().unwrap().take() else { return };
+                let phase = if cancelled != 0 { TouchPhase::Cancelled } else { TouchPhase::Ended };
+                (window_id, phase, 0.0)
+            },
+            _ => return,
+        };
+        let device_id = crate::event::DeviceId(crate::platform_impl::DeviceId::Wayland(DeviceId));
+        state
+            .events_sink
+            .push_window_event(WindowEvent::PinchGesture { device_id, delta, phase }, window_id);
+    }
+}

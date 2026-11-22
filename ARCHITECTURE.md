@@ -481,6 +481,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `map_find.rs` | Find on the map (MAP-066): every match of the find bar's query in the nodes' labels and cards' pieces, in the note's order, folded branches included, where a search starts from the selection, and showing the current match. |
 | `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
 | `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's right edge. Nothing glides under reduced motion. |
+| `map_throw.rs` | The map's touchpad throw (MAP-033): the map pans in its own `on_wheel`, which takes the swipe from Rune's throw, so this fits the release speed and runs Chrome's fling curve on the camera as Rune does for a page (RD-27), stepped from `App::poll_map`. |
 | `theme.rs` | Themes, fonts, text measurements. |
 | `motion.rs` | Reduced motion: `QUIRE_REDUCED_MOTION`, Hyprland's animations setting and the system's, as one gate. |
 | `roles.rs` | The preview page's colours and code colours, derived from the active palette (`docs/reader-writer/`, decision 0005), and the side panels' text colours, made readable on the sidebar (`Roles::panel`, decision 0008). |
@@ -601,7 +602,9 @@ decided, not why. Each point says how sure it is.
   Chromium measures text, such as `line-height: normal`. Why the design was made in a browser
   is not recorded.
 - **Vendored winit.** Confirmed. `desktop/vendor/winit` is Rune's winit with
-  one change: file drops on Wayland (`vendor/winit/src/platform_impl/linux/wayland/dnd.rs`).
+  two changes: file drops on Wayland (`vendor/winit/src/platform_impl/linux/wayland/dnd.rs`),
+  and the touchpad pinch on Wayland, sent as `PinchGesture` for the map's zoom
+  (`seat/pointer/pointer_gestures.rs`, beside Rune's hold gesture).
   Rune's own winit already scales touchpad scrolling as Chromium does (12 points per unit),
   gives each Wayland scroll event its own time and reports the touchpad hold gesture, which
   Rune's Chrome-style fling uses (decision 0012). `Cargo.toml` points the `winit` patch at it.

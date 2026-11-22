@@ -20,8 +20,11 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
     scroll:DY,X,Y@T   a wheel turn (positive DY moves towards the note's top)
     drag:FROM>DX,DY[,DUR][+MOD]@T   a press at FROM (a KEY or X,Y), moved by DX,DY over DUR
                       seconds (default 0.3), then released; MOD is middle or a key modifier
-    wheel:DX,DY[,X,Y][+MOD]@T       one raw wheel delta, at X,Y or where the pointer is
+    wheel:DX,DY[,X,Y][+MOD]@T       one raw wheel delta, at X,Y or where the pointer is; MOD is a
+                      key modifier or the touchpad phase (began, moved, ended)
     pinch:DELTA[,X,Y]@T             a touchpad pinch (0.1 zooms in by about a tenth)
+    swipe:DX,DY[,X,Y][,N]@T         a two-finger touchpad swipe: N frames (default 8) of DX,DY
+                      16 ms apart, then the fingers lift, which throws the page or the map on
     drop:FILE[,FILE...]>WHERE@T     image files from another app, held over WHERE (a KEY or
                       X,Y) for 0.4 s, then dropped; FILE is a path from desktop/
     pastepng:FILE@T   a paste of a copied image: FILE's PNG bytes on the clipboard
@@ -113,7 +116,7 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|pick|scroll|drag|wheel|pinch|drop|write|delete):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|pick|scroll|drag|wheel|pinch|swipe|drop|write|delete):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
@@ -134,10 +137,21 @@ def parse_events(arg):
         elif kind == "wheel":
             body, *mods = body.split("+")
             dx, dy, *xy = body.split(",")
-            ev = dict({"t": t, "type": "wheel", "dx": float(dx), "dy": float(dy)}, **{m: True for m in mods})
+            phases = [m for m in mods if m in ("began", "moved", "ended")]
+            ev = dict({"t": t, "type": "wheel", "dx": float(dx), "dy": float(dy)}, **{m: True for m in mods if m not in phases})
+            if phases:
+                ev["phase"] = phases[0]
             if xy:
                 ev.update(x=float(xy[0]), y=float(xy[1]))
             events.append(ev)
+        elif kind == "swipe":
+            parts = body.split(",")
+            dx, dy = float(parts[0]), float(parts[1])
+            xy = {"x": float(parts[2]), "y": float(parts[3])} if len(parts) >= 4 else {}
+            n = int(parts[4]) if len(parts) == 5 else int(parts[2]) if len(parts) == 3 else 8
+            for i in range(n):
+                events.append(dict({"t": round(t + i * 0.016, 4), "type": "wheel", "dx": dx, "dy": dy, "phase": "began" if i == 0 else "moved"}, **xy))
+            events.append(dict({"t": round(t + n * 0.016, 4), "type": "wheel", "dx": 0.0, "dy": 0.0, "phase": "ended"}, **xy))
         elif kind == "pinch":
             delta, *xy = body.split(",")
             ev = {"t": t, "type": "magnify", "delta": float(delta)}
