@@ -115,17 +115,18 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     let parent = |i: usize| tree.nodes[i].parent;
     let depth = |i: usize| tree.nodes[i].depth;
     // The gap below node `a` when node `b` sits under it: text leaves keep generous vertical
-    // separation so each underline clearly belongs to its own row (R12), while framed card blocks
-    // stay tighter so tall card-heavy maps still fit cleanly above LITE_ZOOM.
-    let card_sv = r(m.sv * 0.45);
+    // separation so each underline clearly belongs to its own row (R12) and parent groups read
+    // distinctly (~1.7x cousin ratio), while framed cards keep enough gap for crisp drop bars
+    // without pushing card-heavy maps below LITE_ZOOM at Fit.
+    let card_sv = r(m.sv * 0.58);
     let gap = |a: usize, b: usize| {
         let same = parent(a) == parent(b);
         let base = if same {
             if tree.nodes[a].card() { card_sv } else { m.sv }
         } else if tree.nodes[a].card() || tree.nodes[b].card() {
-            r(card_sv * 1.65)
+            r(m.sv * 0.72)
         } else {
-            r(m.sv * 1.3)
+            r(m.sv * 1.7)
         };
         base + line_width(depth(a))
     };

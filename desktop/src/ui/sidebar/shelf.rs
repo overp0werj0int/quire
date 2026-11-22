@@ -181,10 +181,10 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
             return;
         }
         // On the active tab a click, Enter or Space folds its outline, and the keyboard stays
-        // (SB-26, SB-83), except when clicking the active tab inside a narrow overlay sidebar
-        // drawer, which closes the drawer and returns to the note like clicking its vault row.
+        // (SB-26, SB-83), except inside a narrow overlay sidebar drawer where activating the
+        // active tab closes the drawer and returns to the note like activating its vault row.
         if s.shelved().as_ref() == Some(&press_t) {
-            if s.drawer() == Some(crate::app::Drawer::Sidebar) && !tx.by_keys() {
+            if s.drawer() == Some(crate::app::Drawer::Sidebar) {
                 s.close_drawer(tx);
                 s.keys_to_note(tx);
                 return;

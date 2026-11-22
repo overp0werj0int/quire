@@ -11,6 +11,9 @@ use crate::app::App;
 use super::styles::sans;
 use crate::theme;
 
+/// Key of the lock panel's password field.
+pub const PASS: &str = "unlock-pass";
+
 /// A password field kept in `App::fields`. Enter runs `submit`.
 fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mut App, &mut Tx)) -> El {
     let p = v.p;
@@ -64,7 +67,7 @@ pub fn panel(v: V) -> El {
                 .gap(8.0)
                 .mt(8.0)
                 .center_y()
-                .child(el().grow(1.0).min_w(0.0).child(password(v, "unlock-pass", "Password", err.is_some(), |s, tx| s.unlock(tx))))
+                .child(el().grow(1.0).min_w(0.0).child(password(v, PASS, "Password", err.is_some(), |s, tx| s.unlock(tx))))
                 .child(primary_button(p, "unlock", "Unlock", 32.0, 14.0, 13.0, |s, tx| s.unlock(tx))),
         );
     if let Some(e) = err {

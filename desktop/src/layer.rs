@@ -327,6 +327,8 @@ impl App {
     pub fn keys_to_note(&mut self, tx: &mut Tx) {
         if self.writing_note() {
             self.focus_editor(tx);
+        } else if self.screen == Screen::Vault && self.mode == Mode::Map && self.active_locked() {
+            tx.focus(crate::ui::lock::PASS, false);
         } else if self.screen == Screen::Vault {
             tx.focus(crate::focus::NOTE, false);
         } else {

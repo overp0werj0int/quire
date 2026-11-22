@@ -158,6 +158,12 @@ fn search_field(v: V) -> El {
                     s.res_focus = Some(k.clone());
                     tx.focus(k.clone(), true);
                 }
+                (rune::Key::Down, None) if s.query.text.trim().is_empty() => {
+                    let stop = s.sidebar_stop();
+                    if stop != "search" {
+                        tx.focus(stop, true);
+                    }
+                }
                 (rune::Key::Enter, Some(k)) => s.choose_result(k, tx),
                 (rune::Key::Enter, None) => {}
                 _ => return false,

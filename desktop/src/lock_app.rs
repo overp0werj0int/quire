@@ -130,12 +130,16 @@ impl App {
                 self.edits.remove(&a);
                 self.unlocked.insert(a, Unlocked::new(key, plain));
                 self.rebuild_names_pub();
-                self.focus_editor(tx);
+                if self.mode == Mode::Map {
+                    self.keys_to_note(tx);
+                } else {
+                    self.focus_editor(tx);
+                }
             }
             Err(e) => {
                 self.unlock_error = Some(e);
                 // After a press on Unlock, the field takes the keyboard back for another try.
-                tx.focus("unlock-pass", false);
+                tx.focus(crate::ui::lock::PASS, false);
             }
         }
     }

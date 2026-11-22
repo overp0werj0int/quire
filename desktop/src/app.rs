@@ -664,8 +664,12 @@ impl App {
         changed |= self.poll_map(t, tx);
         if self.want_editor_focus && self.laid_out.get() {
             self.want_editor_focus = false;
-            if self.writing_note() && self.layers.is_empty() && tx.focused().is_none() {
-                tx.focus("editor", false);
+            if self.layers.is_empty() && tx.focused().is_none() {
+                if self.writing_note() {
+                    tx.focus("editor", false);
+                } else if self.mode == Mode::Map && self.active_locked() {
+                    tx.focus(crate::ui::lock::PASS, false);
+                }
             }
         }
         self.poll_prepare(t, tx);
@@ -1180,7 +1184,7 @@ impl App {
                 e.focused = true;
             }
         }
-        self.want_editor_focus = self.mode == Mode::Source;
+        self.want_editor_focus = self.mode == Mode::Source || (self.mode == Mode::Map && self.active_locked());
         self.persist_later();
         self.sync_auto(0.5);
     }
@@ -1373,6 +1377,9 @@ impl App {
         if self.active.is_some() && self.mode == Mode::Source {
             tx.focus("editor", false);
             self.want_editor_focus = !self.laid_out.get();
+        } else if self.mode == Mode::Map && self.active_locked() {
+            tx.focus(crate::ui::lock::PASS, false);
+            self.want_editor_focus = !self.laid_out.get();
         }
     }
 
@@ -1388,6 +1395,7 @@ impl App {
             self.active = Some(n.to_string());
             self.tree_reveal = Some(n.to_string());
             self.ensure_edit();
+            self.want_editor_focus = self.mode == Mode::Source || (self.mode == Mode::Map && self.active_locked());
         }
     }
 

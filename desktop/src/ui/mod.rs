@@ -5,7 +5,7 @@ mod chip;
 mod focus;
 mod layer;
 mod lists;
-mod lock;
+pub(crate) mod lock;
 mod map;
 mod menu;
 mod outline;

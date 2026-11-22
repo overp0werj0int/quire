@@ -209,10 +209,19 @@ pub(super) fn canvas(v: V) -> El {
             _ => [p.w, p.h],
         };
         let lw = line_width(p.depth);
-        let sel_w = (2.0 / cam.1.max(map_app::ZOOM_MIN)).clamp(2.0, 20.0);
+        let z = cam.1.max(map_app::ZOOM_MIN);
+        let sel_w = (2.0 / z).clamp(2.0, 20.0);
         let extra_pad = (sel_w - 2.0).max(0.0);
         let side_pad = 3.0 + extra_pad;
-        let bot_pad = extra_pad;
+        // Keep the bottom stroke unified over the branch underline at readable & intermediate
+        // zooms (>= LITE_ZOOM, including 0.51x) so outgoing curves never separate from the border,
+        // expanding downward only at overview zoom (< LITE_ZOOM) so 0.10x stays hollow.
+        let bot_pad = if z < map_app::LITE_ZOOM {
+            extra_pad * ((map_app::LITE_ZOOM - z) / 0.15).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let unified = bot_pad <= 0.5;
         let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
         let stroke = if s.map.canvas_focused {
             accent
@@ -220,8 +229,8 @@ pub(super) fn canvas(v: V) -> El {
             Roles::readable_on(crate::roles::mix(c.bg, accent, 0.55), c.bg, GRAPHIC)
         };
         let top_r = 4.0 + extra_pad;
-        let bot_r = if extra_pad <= 0.5 { 1.5 } else { top_r };
-        let bot_w = if extra_pad <= 0.5 { sel_w.max(lw) } else { sel_w };
+        let bot_r = if unified { 1.5 } else { top_r };
+        let bot_w = if unified { sel_w.max(lw) } else { sel_w };
         let sel_el = el()
             .key("map-selection")
             .pin(Some(p.x - side_pad + W), Some(p.y - side_pad + W), None, None)
@@ -233,7 +242,7 @@ pub(super) fn canvas(v: V) -> El {
     }
     for &i in &nodes {
         if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
+            world = world.children(fold(&t, &l, i, folded(i), editing == Some(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
@@ -477,7 +486,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                 };
                 shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
-            .children((!selected).then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
+            .children((!selected || lite).then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
     });
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)
@@ -493,7 +502,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     }
     if !n.children.is_empty() {
         e = e.expanded(!folded);
-        if !folded {
+        if !folded && !editing {
             e = e.hover_group_shared(format!("map-row:{tail}"));
         }
     }
@@ -550,7 +559,7 @@ fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
+fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
     let Some(p) = l.at[i] else { return Vec::new() };
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
@@ -558,9 +567,13 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
     let (cx, cy) = (p.right(), p.line_y());
     let clear = l.clear[i];
     // Never let the fold hit box invade left of the fold dot over the node's own label text,
-    // nor cross into adjacent rows or the next column's task boxes.
+    // nor cross into adjacent rows, the next column's task boxes, or a folded node's `+N` pill.
     let x0 = (cx - hit / 2.0).max(p.right() - FOLD_R);
-    let x1 = (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_R);
+    let x1 = if folded {
+        (x0 + hit).min(p.right() + 5.0).max(cx)
+    } else {
+        (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_R)
+    };
     let y0 = (cy - hit / 2.0).max(clear[0]).min(cy - FOLD_R);
     let y1 = (cy + hit / 2.0).min(clear[1]).max(cy + FOLD_R);
     let toggle = move |s: &mut App, tx: &mut Tx| {
@@ -568,56 +581,59 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         s.map_toggle(i, all, tx);
         s.keys_to_note(tx);
     };
-    let mut hit_el = el()
-        .key(format!("map-fold:{tail}"))
-        .pin(Some(x0 + W), Some(y0 + W), None, None)
-        .size(x1 - x0, y1 - y0)
-        .role("button")
-        .label(if folded { "Unfold" } else { "Fold" })
-        .cursor(rune::Cursor::Pointer)
-        .on_press_tx(toggle);
-    if !folded {
-        let (fw, fh) = (x1 - x0, y1 - y0);
-        let (rcx, rcy) = (cx - x0, cy - y0);
-        let bg = c.bg;
-        let mut hash = std::collections::hash_map::DefaultHasher::new();
-        (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch), color_bits(bg)).hash(&mut hash);
-        let vis_key = format!("map-fold-v:{tail}");
-        let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
-            let halo_r = FOLD_R + 3.0;
-            let halo_wrap = el()
-                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                .hover_group()
+    let mut out = Vec::new();
+    if !editing {
+        let mut hit_el = el()
+            .key(format!("map-fold:{tail}"))
+            .pin(Some(x0 + W), Some(y0 + W), None, None)
+            .size(x1 - x0, y1 - y0)
+            .role("button")
+            .label(if folded { "Unfold" } else { "Fold" })
+            .cursor(rune::Cursor::Pointer)
+            .on_press_tx(toggle);
+        if !folded {
+            let (fw, fh) = (x1 - x0, y1 - y0);
+            let (rcx, rcy) = (cx - x0, cy - y0);
+            let bg = c.bg;
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch), color_bits(bg)).hash(&mut hash);
+            let vis_key = format!("map-fold-v:{tail}");
+            let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
+                let halo_r = FOLD_R + 3.0;
+                let halo_wrap = el()
+                    .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .hover_group()
+                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                    .child(
+                        el().size(2.0 * halo_r, 2.0 * halo_r)
+                            .radius(halo_r)
+                            .fill(branch.alpha(0.18))
+                            .group_opacity(0.0, 1.0)
+                            .pin(Some(rcx - halo_r), Some(rcy - halo_r), None, None)
+                            .inert(),
+                    );
+                let dot = el()
+                    .size(2.0 * FOLD_R, 2.0 * FOLD_R)
+                    .radius(FOLD_R)
+                    .center()
+                    .border(1.5, branch)
+                    .fill(bg)
+                    .group_opacity(0.0, 1.0)
+                    .pin(Some(rcx - FOLD_R), Some(rcy - FOLD_R), None, None)
+                    .inert()
+                    .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
+                el().key(vis_key)
+                    .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .child(halo_wrap)
+                    .child(dot)
+            });
+            hit_el = hit_el
+                .hover_group_shared(format!("map-row:{tail}"))
                 .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                .child(
-                    el().size(2.0 * halo_r, 2.0 * halo_r)
-                        .radius(halo_r)
-                        .fill(branch.alpha(0.18))
-                        .group_opacity(0.0, 1.0)
-                        .pin(Some(rcx - halo_r), Some(rcy - halo_r), None, None)
-                        .inert(),
-                );
-            let dot = el()
-                .size(2.0 * FOLD_R, 2.0 * FOLD_R)
-                .radius(FOLD_R)
-                .center()
-                .border(1.5, branch)
-                .fill(bg)
-                .group_opacity(0.0, 1.0)
-                .pin(Some(rcx - FOLD_R), Some(rcy - FOLD_R), None, None)
-                .inert()
-                .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
-            el().key(vis_key)
-                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                .child(halo_wrap)
-                .child(dot)
-        });
-        hit_el = hit_el
-            .hover_group_shared(format!("map-row:{tail}"))
-            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-            .child(visuals);
+                .child(visuals);
+        }
+        out.push(hit_el);
     }
-    let mut out = vec![hit_el];
     if folded {
         let hidden = n.end - i - 1;
         let font = map_app::chip_font(b, mono);
