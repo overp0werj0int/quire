@@ -662,6 +662,12 @@ impl App {
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
         changed |= self.poll_map(t, tx);
+        if self.want_editor_focus && self.laid_out.get() {
+            self.want_editor_focus = false;
+            if self.writing_note() && self.layers.is_empty() && tx.focused().is_none() {
+                tx.focus("editor", false);
+            }
+        }
         self.poll_prepare(t, tx);
         changed |= self.search_due(t, tx);
         let res = tx.focused().filter(|k| k.starts_with("res-")).map(str::to_string);
@@ -1363,7 +1369,7 @@ impl App {
     pub fn focus_editor(&mut self, tx: &mut Tx) {
         if self.active.is_some() && self.mode == Mode::Source {
             tx.focus("editor", false);
-            self.want_editor_focus = true;
+            self.want_editor_focus = !self.laid_out.get();
         }
     }
 

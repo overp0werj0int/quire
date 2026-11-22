@@ -507,7 +507,13 @@ impl Cx<'_> {
             Kind::FrontMatter { title, fields } => front::card(self, title, fields),
             Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone),
             Kind::Paragraph { runs } if is_tag_line(runs) => tag_line(self, runs, tone),
-            Kind::Paragraph { runs } => self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color, self.sel()).w_full(),
+            Kind::Paragraph { runs } => {
+                let mut e = self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color, self.sel()).w_full();
+                if self.doc.is_none() {
+                    e = e.wrap_anywhere();
+                }
+                e
+            }
             Kind::List(l) => list::list(self, l, tone),
             Kind::Quote { blocks } => self.quote(blocks, tone),
             Kind::Alert { kind, blocks } => self.alert(*kind, blocks, tone),
@@ -533,6 +539,9 @@ impl Cx<'_> {
             style = style.tracking(0.6);
         }
         let mut e = self.rich_at(runs, Tone { size, ..tone }, pid).el(style, color, self.sel()).w_full().role("heading").level(level as u32).label(label.to_string());
+        if self.doc.is_none() {
+            e = e.wrap_anywhere();
+        }
         if level == 6 {
             e = e.text_case(TextCase::Uppercase);
         }
@@ -662,13 +671,14 @@ impl Cx<'_> {
     /// measure as they wrap; another block counts its source lines.
     fn stack_h(&self, blocks: &[Block], tone: Tone, w: f32) -> f32 {
         let b = self.look.b;
+        let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
         let mut prev = None;
         let mut h = 0.0;
         for bl in blocks {
             let k = page::rk(&bl.kind);
             h += page::inner_gap(b, prev, k, false);
             h += match self.text_block(bl, tone) {
-                Some((rich, style)) => rune::text::measure(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w)).1,
+                Some((rich, style)) => rune::text::measure_with(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w), anywhere).1,
                 None => bl.lines.len() as f32 * line(tone.size, tone.lead),
             };
             prev = Some(k);

@@ -331,8 +331,10 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
         .w(w)
         .radius(3.0)
         .fill(surface);
-    if !e.multi {
-        f = f.single_line();
+    if e.multi {
+        f = f.wrap_anywhere();
+    } else {
+        f = f.single_line().clip_soft(0.0);
     }
     f
 }

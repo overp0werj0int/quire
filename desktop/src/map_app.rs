@@ -236,16 +236,20 @@ pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f
 pub const PILL_PAD: f32 = 5.0;
 
 /// The inline field's size for its text: as wide as the text, at least the label's width and
-/// at most a node's widest, and as tall as the text wraps to at that width.
+/// at most a node's widest, and as tall as the text wraps to at that width (breaking inside
+/// unbreakable tokens wider than `max_w`).
 pub fn field_size(e: &Inline, p: map_layout::Place, room: f32, st: TextStyle, m: Metrics) -> [f32; 2] {
     let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
-    let w = (rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0).max(p.w - 2.0 * m.pad_x - room).min(m.max_w);
-    [w, rune::text::measure(shown, &[], st, e.multi.then_some(w)).1.ceil()]
+    let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+    let w = (rune::text::measure_with(shown, &[], st, Some(m.max_w), anywhere).0.ceil() + 2.0)
+        .max(p.w - 2.0 * m.pad_x - room)
+        .min(m.max_w);
+    [w, rune::text::measure_with(shown, &[], st, e.multi.then_some(w), anywhere).1.ceil()]
 }
 
-fn text_hash(s: &str) -> u64 {
+fn edit_hash(e: &TextEdit) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
+    (e.text.as_str(), e.focus).hash(&mut h);
     h.finish()
 }
 
@@ -828,18 +832,21 @@ impl App {
     }
 
     /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 left-anchored
-    /// on the selected node so left-to-right branches stay in view, or centred for a lone root
-    /// (MAP-065, MAP-071).
+    /// on the selected node when it has children so left-to-right branches stay in view, or
+    /// centred for a lone root or leaf target (MAP-065, MAP-071).
     fn place_camera(&mut self) {
         let fit = self.fit_camera();
         // An empty note's lone root opens at 100%, centred, not fitted up to 200% (MAP-071).
-        let alone = self.map_tree().nodes.len() == 1;
+        let t = self.map_tree();
+        let sel = self.map_selected();
+        let alone = t.nodes.len() == 1;
+        let leaf = t.nodes[sel].children.is_empty();
         let cam = if fit.1 >= 0.7 && !alone {
             fit
-        } else if alone {
-            self.centred_on(self.map_selected(), 1.0)
+        } else if alone || leaf {
+            self.centred_on(sel, 1.0)
         } else {
-            self.left_anchored_on(self.map_selected(), 1.0)
+            self.left_anchored_on(sel, 1.0)
         };
         self.set_camera(cam.0, cam.1);
         if let Some(v) = self.map_view_mut() {
@@ -1454,8 +1461,29 @@ impl App {
         }
     }
 
+    /// Adjusts `cam` by the least pan needed if node `i` would be clipped outside `map_free`.
+    fn keep_in_view_cam(&self, i: usize, cam: ([f32; 2], f32)) -> ([f32; 2], f32) {
+        let l = self.map_laid();
+        let Some(p) = l.at[i] else { return cam };
+        let ([px, py], z) = cam;
+        let [x0, y0, x1, y1] = self.map_free();
+        let nudge = |lo: f32, hi: f32, a: f32, b: f32| {
+            if lo >= a && hi <= b {
+                0.0
+            } else if hi - lo > b - a - 2.0 * MARGIN || lo < a {
+                (a + MARGIN).min(b - (hi - lo)).max(a) - lo
+            } else {
+                (b - MARGIN).max(a + (hi - lo)).min(b) - hi
+            }
+        };
+        let dx = nudge(px + p.x * z, px + p.right() * z, x0, x1);
+        let dy = nudge(py + p.y * z, py + p.bottom() * z, y0, y1);
+        ([px + dx, py + dy], z)
+    }
+
     /// Pans by the least needed to keep the live inline-edit field rect (growing as text is
-    /// typed) `MARGIN` points inside the canvas's free part.
+    /// typed) `MARGIN` points inside the canvas's free part; when a tall multi-line draft
+    /// exceeds the free height, tracks the caret's line so newly typed text stays in view.
     fn ensure_inline_visible(&mut self, tx: &mut Tx) {
         let Some(i) = self.map_editing() else { return };
         let Some(e) = &self.map.inline else { return };
@@ -1481,7 +1509,40 @@ impl App {
             }
         };
         let dx = least(px + p.x * z, px + (p.x + w) * z, x0, x1);
-        let dy = least(py + p.y * z, py + (p.y + h) * z, y0, y1);
+        let (lo_y, hi_y) = (py + p.y * z, py + (p.y + h) * z);
+        let dy = if hi_y - lo_y > (y1 - y0) - 2.0 * MARGIN {
+            let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+            let mut end = e.edit.focus.min(e.edit.text.len());
+            while end > 0 && !e.edit.text.is_char_boundary(end) {
+                end -= 1;
+            }
+            let caret_h = if !e.multi {
+                st.line_height
+            } else {
+                let pre = &e.edit.text[..end];
+                let extra = if pre.ends_with('\n') { st.line_height } else { 0.0 };
+                let body = pre.strip_suffix('\n').unwrap_or(pre);
+                let base = if body.is_empty() {
+                    st.line_height
+                } else {
+                    rune::text::measure_with(body, &[], st, Some(fw), anywhere).1.ceil()
+                };
+                (base + extra).max(st.line_height).min(fh)
+            };
+            let tail = if end == e.edit.text.len() { l.metrics.pad_b + map_layout::line_width(p.depth) } else { 0.0 };
+            let caret_bot = py + (p.y + caret_h + tail) * z;
+            let caret_top = py + (p.y + (caret_h - st.line_height).max(0.0)) * z;
+            let pad = 16.0f32.min(((y1 - y0) - st.line_height * z).max(0.0) / 2.0);
+            if caret_bot > y1 - pad {
+                (y1 - pad) - caret_bot
+            } else if caret_top < y0 + pad {
+                (y0 + pad) - caret_top
+            } else {
+                0.0
+            }
+        } else {
+            least(lo_y, hi_y, y0, y1)
+        };
         if dx != 0.0 || dy != 0.0 {
             self.map_glide(([px + dx, py + dy], z), tx);
         }
@@ -1493,8 +1554,8 @@ impl App {
         let base = self.active_text().to_string();
         let anchor = tree.nodes[self.map_selected()].id;
         let cam = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
-        let edit_return_cam = matches!(what, Editing::Node(_)).then_some(cam).filter(|c| c.1 < EDIT_ZOOM_MIN);
-        let last_hash = text_hash(&edit.text);
+        let edit_return_cam = Some(cam).filter(|c| c.1 < EDIT_ZOOM_MIN);
+        let last_hash = edit_hash(&edit);
         self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false, edit_return_cam, last_hash });
         tx.focus(FIELD, false);
         if let Editing::Node(i) = what {
@@ -1514,6 +1575,7 @@ impl App {
         let Some(s) = e.splice() else {
             self.map_back_to(&e, tx);
             if let Some(cam) = return_cam {
+                let cam = self.keep_in_view_cam(self.map_selected(), cam);
                 self.map_glide(cam, tx);
             }
             return true;
@@ -1531,6 +1593,7 @@ impl App {
         if Some(e.rel.as_str()) == self.active.as_deref() {
             self.map_apply(&e.tree, &s, tx);
             if let Some(cam) = return_cam {
+                let cam = self.keep_in_view_cam(self.map_selected(), cam);
                 self.map_glide(cam, tx);
             }
         } else {
@@ -1572,6 +1635,7 @@ impl App {
         if let Some(e) = self.map.inline.take() {
             self.map_back_to(&e, tx);
             if let Some(cam) = e.edit_return_cam {
+                let cam = self.keep_in_view_cam(self.map_selected(), cam);
                 self.map_glide(cam, tx);
             }
         }
@@ -1641,12 +1705,12 @@ impl App {
     }
 
     /// Before each frame: a field that lost focus, or whose note or mode went, commits.
-    /// While focused, re-checks visibility whenever the typed text changes.
+    /// While focused, re-checks visibility whenever the typed text or caret changes.
     fn poll_field(&mut self, tx: &mut Tx) -> bool {
         let Some(e) = &mut self.map.inline else { return false };
         if tx.focused() == Some(FIELD) && self.mode == Mode::Map {
             e.held = true;
-            let h = text_hash(&e.edit.text);
+            let h = edit_hash(&e.edit);
             if h != e.last_hash {
                 e.last_hash = h;
                 self.ensure_inline_visible(tx);
@@ -1656,7 +1720,8 @@ impl App {
         if !e.held && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref() {
             return false;
         }
-        self.map_commit(tx)
+        let restore = matches!(e.what, Editing::Node(_)) && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref();
+        self.map_commit_inner(restore, tx)
     }
 
     /// A click on node `i`'s task box (MAP-053).
@@ -1680,7 +1745,8 @@ impl App {
     pub(crate) fn map_press_node(&mut self, i: usize, tx: &mut Tx) -> Option<usize> {
         let shown = self.map_tree();
         let text = self.map.inline.as_ref().and_then(|e| e.preview.as_ref()).map_or_else(|| self.active_text().to_string(), |p| p.1.clone());
-        if !self.map_commit(tx) {
+        let restore = self.map.inline.as_ref().is_some_and(|e| matches!(e.what, Editing::Node(_)));
+        if !self.map_commit_inner(restore, tx) {
             return Some(i);
         }
         let t = self.map_tree();
