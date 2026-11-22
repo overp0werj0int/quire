@@ -1,10 +1,10 @@
 //! The preview: a note drawn as omarky's reader page, from `crate::blocks`. The numbers come
 //! from `docs/reader-writer/behavior/page-and-typography.md` and `blocks.md`, by item id.
 
-mod code;
+pub(super) mod code;
 mod front;
 mod list;
-mod table;
+pub(super) mod table;
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -551,13 +551,18 @@ impl Cx<'_> {
         row().w_full().h(r(b * 1.2)).justify_center().center_y().gap(r(b * 0.9)).child(dot(0)).child(dot(1)).child(dot(2))
     }
 
+    /// A quote's bar width, the inset of its text and the tone its blocks take (BLK-33).
+    fn quote_parts(&self, tone: Tone) -> (f32, f32, Tone) {
+        let b = self.look.b;
+        let inset = if tone.quote_depth >= 8 { r(b * 0.5) } else { r(b * 1.2) };
+        let inner = Tone { color: self.look.c.dim, size: page::quote_size(b), contained: true, quote_depth: tone.quote_depth + 1, ..tone };
+        (2f32.max(r(b / 6.0)), inset, inner)
+    }
+
     /// BLK-33 to BLK-36.
     pub(super) fn quote(&self, blocks: &[Block], tone: Tone) -> El {
         let look = self.look;
-        let b = look.b;
-        let bar = 2f32.max(r(b / 6.0));
-        let inset = if tone.quote_depth >= 8 { r(b * 0.5) } else { r(b * 1.2) };
-        let inner = Tone { color: look.c.dim, size: page::quote_size(b), contained: true, quote_depth: tone.quote_depth + 1, ..tone };
+        let (bar, inset, inner) = self.quote_parts(tone);
         row()
             .w_full()
             .items_stretch()
@@ -577,17 +582,14 @@ impl Cx<'_> {
             Alert::Warning => (c.yellow, &icons::WARNING),
             Alert::Caution => (c.red, &icons::CAUTION),
         };
-        let ts = r(b * 0.76);
-        let isz = r(b * 0.95);
-        // omarky draws the icon as a Nerd Font glyph, so the row is as tall as that font's line:
-        // JetBrains Mono's ascent and descent come to 1.32 em [18].
+        let (isz, title_style, title_h) = self.alert_title();
         let title = row()
             .key("title")
-            .h((isz * 1.32).ceil())
+            .h(title_h)
             .gap(r(b * 0.5))
             .center_y()
             .child(icon(glyph, isz).color(tint))
-            .child(text(kind.title()).font(TextStyle::new(ts, 700.0).family(look.mono).lh(line(ts, 1.3)).tracking(r(b * 0.08))).color(tint).text_case(TextCase::Uppercase));
+            .child(text(kind.title()).font(title_style).color(tint).text_case(TextCase::Uppercase));
         let inner = Tone { color: c.text, size: b, contained: true, ..tone };
         let fill = look.ld(0.075, 0.09);
         col()
@@ -601,15 +603,98 @@ impl Cx<'_> {
             .child(self.stack(blocks, inner, false).key("body").w_full())
     }
 
+    /// An alert's icon size, title style and title row height (BLK-38).
+    fn alert_title(&self) -> (f32, TextStyle, f32) {
+        let look = self.look;
+        let b = look.b;
+        let ts = r(b * 0.76);
+        let isz = r(b * 0.95);
+        // omarky draws the icon as a Nerd Font glyph, so the row is as tall as that font's line:
+        // JetBrains Mono's ascent and descent come to 1.32 em [18].
+        (isz, TextStyle::new(ts, 700.0).family(look.mono).lh(line(ts, 1.3)).tracking(r(b * 0.08)), (isz * 1.32).ceil())
+    }
+
     /// Raw HTML, shown literally (BLK-76).
     pub(super) fn html(&self, t: &str) -> El {
         let look = self.look;
-        let b = look.b;
         row()
             .w_full()
             .items_stretch()
             .child(el().key("rule").w(1.0).fill(look.c.hairline))
-            .child(self.selectable_text(text(t.to_string()).key("text").font(look.mono_at(r(b * 0.8), 1.5)).color(look.c.faint).wrap_anywhere()).grow(1.0).min_w(0.0).ml(r(b * 0.9)))
+            .child(self.selectable_text(text(t.to_string()).key("text").font(self.html_style()).color(look.c.faint).wrap_anywhere()).grow(1.0).min_w(0.0).ml(r(look.b * 0.9)))
+    }
+
+    fn html_style(&self) -> TextStyle {
+        self.look.mono_at(r(self.look.b * 0.8), 1.5)
+    }
+
+    // ---------- Sizes, for the map's cards, which the map lays out before Rune does ----------
+
+    /// How wide `blocks` would set on one line each in `tone`, or None when one is more than a
+    /// line of text.
+    fn stack_w(&self, blocks: &[Block], tone: Tone) -> Option<f32> {
+        blocks.iter().try_fold(0f32, |w, bl| {
+            let (rich, style) = self.text_block(bl, tone)?;
+            Some(w.max(rune::text::measure(&rich.text, &rich.spans, style, None).0))
+        })
+    }
+
+    /// How tall `blocks` stack `w` wide in `tone`, as `stack` sets them. Paragraphs and headings
+    /// measure as they wrap; another block counts its source lines.
+    fn stack_h(&self, blocks: &[Block], tone: Tone, w: f32) -> f32 {
+        let b = self.look.b;
+        let mut prev = None;
+        let mut h = 0.0;
+        for bl in blocks {
+            let k = page::rk(&bl.kind);
+            h += page::inner_gap(b, prev, k, false);
+            h += match self.text_block(bl, tone) {
+                Some((rich, style)) => rune::text::measure(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w)).1,
+                None => bl.lines.len() as f32 * line(tone.size, tone.lead),
+            };
+            prev = Some(k);
+        }
+        h
+    }
+
+    /// A paragraph's or heading's text and style, as `block` sets it.
+    fn text_block(&self, bl: &Block, tone: Tone) -> Option<(Rich, TextStyle)> {
+        match &bl.kind {
+            Kind::Paragraph { runs } => Some((self.rich(runs, tone), self.look.prose(tone.size, tone.lead))),
+            Kind::Heading { level, runs, .. } => {
+                let (size, lead) = page::heading_type(self.look.b, *level);
+                let weight = if *level <= 4 { 700.0 } else { 400.0 };
+                Some((self.rich(runs, Tone { size, ..tone }), TextStyle::new(size, weight).family(self.look.family).lh(line(size, lead))))
+            }
+            _ => None,
+        }
+    }
+
+    /// A quote's natural size, at most `max_w` wide: `[w, h]`.
+    pub(super) fn quote_size(&self, blocks: &[Block], tone: Tone, max_w: f32) -> [f32; 2] {
+        let (_, inset, inner) = self.quote_parts(tone);
+        let w = self.stack_w(blocks, inner).map_or(max_w, |w| (inset + w).ceil().min(max_w));
+        [w, self.stack_h(blocks, inner, w - inset)]
+    }
+
+    /// An alert's natural size, at most `max_w` wide: `[w, h]`.
+    pub(super) fn alert_size(&self, kind: Alert, blocks: &[Block], tone: Tone, max_w: f32) -> [f32; 2] {
+        let b = self.look.b;
+        let (pad, gap) = (r(b * 1.05), r(b * 0.5));
+        let (isz, style, title_h) = self.alert_title();
+        let title = isz + gap + rune::text::advance(&kind.title().to_uppercase(), style);
+        let inner = Tone { size: b, contained: true, ..tone };
+        let w = self.stack_w(blocks, inner).map_or(max_w, |w| (2.0 * pad + w.max(title)).ceil().min(max_w));
+        [w, 2.0 * pad + title_h + gap + self.stack_h(blocks, inner, w - 2.0 * pad)]
+    }
+
+    /// Raw HTML's natural size, at most `max_w` wide: `[w, h]`.
+    pub(super) fn html_size(&self, t: &str, max_w: f32) -> [f32; 2] {
+        let style = self.html_style();
+        let ml = 1.0 + r(self.look.b * 0.9);
+        let w = (ml + rune::text::measure(t, &[], style, None).0).ceil().min(max_w);
+        let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+        [w, rune::text::measure_with(if t.is_empty() { " " } else { t }, &[], style, Some(w - ml), anywhere).1]
     }
 
     /// An image's pixels, or the placeholder card (BLK-70, BLK-72). `size` is a gallery's shown

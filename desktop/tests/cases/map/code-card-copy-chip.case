@@ -1,0 +1,13 @@
+The Copy chip on a code card shows under the pointer, copies and says Copied, with the toast.
+note: Code.md
+events: key:m+cmd@0.3 hover:map-card:3@0.8 tap:map-copy:3@1.1
+expect: text:map-copy:3: 'Copied'
+expect: opacity:map-copy:3: 1.0
+expect: text:toast: 'Copied'
+expect: selected: map-node:1
+--- before
+# Notes
+
+```sh
+ls
+```

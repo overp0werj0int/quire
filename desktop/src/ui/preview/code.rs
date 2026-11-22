@@ -9,7 +9,7 @@ use crate::page::{line, r};
 use crate::roles::mix;
 
 /// Tabs to spaces at stops of 4 characters (BLK-49).
-fn expand_tabs(s: &str) -> String {
+pub(in crate::ui) fn expand_tabs(s: &str) -> String {
     if !s.contains('\t') {
         return s.to_string();
     }
@@ -37,20 +37,20 @@ fn expand_tabs(s: &str) -> String {
 
 /// Scaled font size for the Copy chip (12 pt at default 14 pt body -> 24 pt chip height),
 /// scaling proportionally with preview body size `b / 14.0`, clamped for extreme zoom levels.
-pub(super) fn chip_size(b: f32) -> f32 {
+pub(in crate::ui) fn chip_size(b: f32) -> f32 {
     r((12.0 * (b / 14.0)).clamp(10.0, 20.0))
 }
 
 /// Scaled font size for code/diff metadata labels (language badge, diff counts), proportional
 /// to preview body size `b / 14.0` (11 pt at default 14 pt body), clamped to >= 10 pt so thin
 /// zoomed-out mono glyphs stay crisp and readable (`CONTRAST4`).
-pub(super) fn badge_size(b: f32) -> f32 {
+pub(in crate::ui) fn badge_size(b: f32) -> f32 {
     r((11.0 * (b / 14.0)).clamp(10.0, 18.0))
 }
 
 /// Top inset for the badge / Copy chip and top padding for the code body (BLK-44, BLK-51).
 /// Keeps at least 4 pt of vertical clearance between the chip and line 1 at every zoom level.
-pub(super) fn top_clearance(b: f32) -> (f32, f32) {
+pub(in crate::ui) fn top_clearance(b: f32) -> (f32, f32) {
     let chip_h = r(chip_size(b) * 2.0);
     let top = 4f32.max(r(b * 0.3));
     let pad_top = r(b * 1.25).max(top + chip_h + 4.0);
@@ -60,21 +60,17 @@ pub(super) fn top_clearance(b: f32) -> (f32, f32) {
 /// The language badge: lower case, mono scaled with preview body size at medium-bold weight
 /// so 10 pt zoomed-out 1× glyphs stay crisp and match diff count legibility on the code panel
 /// across every theme (BLK-50, `RASTERCR`).
-fn badge(cx: &Cx, lang: &str) -> El {
+pub(in crate::ui) fn badge(cx: &Cx, lang: &str) -> El {
     let b = cx.look.b;
     let sz = badge_size(b);
     let lh = r(chip_size(b) * 2.0);
     text(lang.to_lowercase()).key("badge").font(TextStyle::new(sz, 600.0).family(cx.look.mono).lh(lh).tracking(0.4)).color(cx.look.c.readable_dim())
 }
 
-pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
-    let look = cx.look;
-    let c = &look.c;
-    let b = look.b;
-    let size = crate::page::code_size(b);
-    let style = look.mono_at(size, 1.5);
-    let src = expand_tabs(src);
-    let spans: Vec<Span> = crate::highlight::highlight(lang, &src)
+/// Syntax colours for `src` in `lang` (PAGE-49 to PAGE-53).
+pub(in crate::ui) fn highlight(cx: &Cx, lang: &str, src: &str) -> Vec<Span> {
+    let c = &cx.look.c;
+    crate::highlight::highlight(lang, src)
         .iter()
         .map(|(range, st)| {
             let ink = c.code(*st);
@@ -86,7 +82,33 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
                 ..Span::new(range.start, range.end)
             }
         })
-        .collect();
+        .collect()
+}
+
+/// The block at line `at` was copied a moment ago (BLK-51).
+pub(in crate::ui) fn copied(cx: &Cx, at: usize) -> bool {
+    cx.v.s.reader.copied.is_some_and(|(l, _)| l == at)
+}
+
+/// The Copy chip, which says Copied in green for a moment after a click (BLK-51).
+pub(in crate::ui) fn copy_chip(cx: &Cx, key: &str, code: String, at: usize) -> El {
+    let c = &cx.look.c;
+    let size = chip_size(cx.look.b);
+    let (glyph, label, tint) = if copied(cx, at) { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
+    crate::ui::chip::Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }
+        .el(c)
+        .label("Copy the code")
+        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&code, at, tx))
+}
+
+pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
+    let look = cx.look;
+    let c = &look.c;
+    let b = look.b;
+    let size = crate::page::code_size(b);
+    let style = look.mono_at(size, 1.5);
+    let src = expand_tabs(src);
+    let spans = highlight(cx, lang, &src);
     let n = src.split('\n').count();
     let pad_x = r(b * 1.1);
     let (top, pad_top) = top_clearance(b);
@@ -105,22 +127,20 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     let fade = rune::ScrollFade::strength(r(b * 2.4)).full_at(1.0).linear().end_only();
     body = body.child(el().key("scroll").grow(1.0).min_w(0.0).scroll_x().scroll_fade(fade).child(code));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let chip_sz = chip_size(b);
-    // Over the block the badge gives way to a Copy chip, which says Copied in green for a
-    // moment after a click, with or without the pointer (BLK-51).
-    let copied = cx.v.s.reader.copied.is_some_and(|(l, _)| l == at);
-    let (glyph, label, tint) = if copied { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
-    let chip = crate::ui::chip::Chip { key: "copy", glyph, size: chip_sz, icon: r(chip_sz * 1.1), label, mono: look.mono, tint, active: false, fill: Some(c.panel) }
-        .el(c)
-        .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
-        .label("Copy the code")
-        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&copy, at, tx))
-        .pin(None, Some(top), Some(pad_r - 6.0), None);
+    // Over the block the badge gives way to the Copy chip, which stays while it says Copied.
+    let copied = copied(cx, at);
+    let chip = copy_chip(cx, "copy", copy, at).group_opacity(if copied { 1.0 } else { 0.0 }, 1.0).pin(None, Some(top), Some(pad_r - 6.0), None);
     let mut out = el().w_full().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(body);
     if !lang.is_empty() {
         out = out.child(badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }
     out.child(chip)
+}
+
+/// A diff's `+N` and `−M` counts (BLK-54).
+pub(in crate::ui) fn count_style(cx: &Cx) -> TextStyle {
+    let bs = badge_size(cx.look.b);
+    TextStyle::new(bs, 700.0).family(cx.look.mono).lh(line(bs, 1.3))
 }
 
 pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, removed: usize, pid: Option<usize>) -> El {
@@ -130,8 +150,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, lines: &[DiffLine], added: usize, remove
     let size = crate::page::code_size(b);
     let style = look.mono_at(size, 1.5);
     let pad_x = r(b * 1.1);
-    let bs = badge_size(b);
-    let count = TextStyle::new(bs, 700.0).family(look.mono).lh(line(bs, 1.3));
+    let count = count_style(cx);
     let head = row()
         .key("head")
         .w_full()

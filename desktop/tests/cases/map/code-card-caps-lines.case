@@ -1,0 +1,31 @@
+A code card shows 12 lines and says how many more; a short one is as tall as its lines. At 100%: 32 top, 18 a line, 12 below, 18 for the label.
+note: Code.md
+events: key:m+cmd@0.3 key:0+cmd@0.8
+expect: rect:map-card:3: [884.0, 188.75, 168.0, 278.0]
+expect: text:map-more:3: '+3 more lines'
+expect: rect:map-card:21: [884.0, 478.25, 168.0, 62.0]
+expect: text:map-more:21: None
+--- before
+# Code
+
+```py
+x1 = 1
+x2 = 2
+x3 = 3
+x4 = 4
+x5 = 5
+x6 = 6
+x7 = 7
+x8 = 8
+x9 = 9
+x10 = 10
+x11 = 11
+x12 = 12
+x13 = 13
+x14 = 14
+x15 = 15
+```
+
+```py
+print(1)
+```

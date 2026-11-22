@@ -1,8 +1,8 @@
 A middle-button drag pans the map.
 note: Trip.md
 events: key:m+cmd@0.3 drag:1200,700>-100,-50+middle@0.9
-expect: rect:map-node:6: [240.23, 335.27, 98.77, 61.06]
-expect: scale:map-node:6: 1.7956000566482544
+expect: rect:map-node:6: [269.7, 337.72, 91.91, 56.81]
+expect: scale:map-node:6: 1.670799970626831
 --- before
 ---
 title: Trip

@@ -1,0 +1,21 @@
+The Edit chip on a code card opens the Edit Sheet on its fence; saving writes the note.
+note: Code.md
+events: key:m+cmd@0.3 hover:map-card:3@0.8 tap:map-edit:3@1.1 key:Down@1.5 key:End@1.6 type:_-la@1.7 key:s+cmd@2.1
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# Notes
+
+```sh
+ls
+```
+
+After.
+--- after
+# Notes
+
+```sh
+ls -la
+```
+
+After.

@@ -1,0 +1,16 @@
+A diff card has the reader's +N and −M header and its lines; its Copy chip copies the diff. At 100%: a 29 header, 10 above and below the lines, 18 a line.
+note: Patch.md
+events: key:m+cmd@0.3 key:0+cmd@0.8 hover:map-card:3@1.2 tap:map-copy:3@1.5
+expect: rect:map-card:3: [888.5, 358.0, 218.0, 121.0]
+expect: text:added: '+1'
+expect: text:removed: '−1'
+expect: text:toast: 'Copied'
+--- before
+# Patch
+
+```diff
+@@ -1,2 +1,2 @@
+ keep
+-old
++new
+```

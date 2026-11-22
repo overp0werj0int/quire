@@ -3,6 +3,8 @@
 //! node, link and fold circle sits in it at its world place. Only what meets the canvas and
 //! its overscan is built.
 
+mod card;
+
 use std::hash::{Hash, Hasher};
 
 use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextStyle, Tx, WheelEvent, el, text};
@@ -77,12 +79,19 @@ impl<'a> Sizer<'a> {
         Sizer { v, look: map_look(v) }
     }
 
-    /// Node `i`'s content size: its label wrapped at `max_w`, at least a line tall.
+    /// Node `i`'s content size: its card's, or its label wrapped at `max_w`, at least a line
+    /// tall.
     pub(crate) fn size(&self, t: &Tree, i: usize, max_w: f32) -> [f32; 2] {
+        let cx = Cx::map(self.v, &self.look);
+        if let Body::Card(bl) = &t.nodes[i].body
+            && let Some((_, size)) = card::card(&cx, bl, i, "")
+        {
+            return size;
+        }
         let tier = map_app::tier(t, i);
         let st = map_app::style(tier, self.look.b, self.look.family, self.look.mono);
         let lh = page::line(st.size, if matches!(tier, Tier::Root | Tier::Head1) { 1.3 } else { 1.45 });
-        let rich = label(&Cx::map(self.v, &self.look), &t.nodes[i], st, self.look.c.text);
+        let rich = label(&cx, &t.nodes[i], st, self.look.c.text);
         if rich.text.is_empty() {
             return [0.0, lh];
         }
@@ -308,14 +317,16 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
     let branch = branch_color(c, n.branch);
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
+    let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
     let mut h = std::collections::hash_map::DefaultHasher::new();
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied).hash(&mut h);
     let pad_x = l.metrics.pad_x;
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
+        let tail = key_tail(&key).to_string();
         let mut e = el().key(key)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
             .size(p.w, p.h + lw)
@@ -333,11 +344,11 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
             .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
             .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
             .children((!editing).then(|| {
-                label(cx, n, st, color)
-                    .el(st, color, None)
-                    .pin(Some(pad_x + room), Some(0.0), None, None)
-                    .w(p.w - 2.0 * pad_x - room)
-                    .clip_soft(0.0)
+                let shown = match &n.body {
+                    Body::Card(bl) => card::card(cx, bl, i, &tail).map(|(e, _)| e),
+                    _ => None,
+                };
+                shown.unwrap_or_else(|| label(cx, n, st, color).el(st, color, None).w(p.w - 2.0 * pad_x - room).clip_soft(0.0)).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
             .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
     })
