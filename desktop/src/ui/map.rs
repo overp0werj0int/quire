@@ -450,6 +450,9 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
         }
         if !n.children.is_empty() {
             e = e.expanded(!folded);
+            if !folded {
+                e = e.hover_group_shared(format!("map-row:{tail}"));
+            }
         }
         e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
@@ -541,40 +544,45 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         s.map_toggle(i, all, tx);
         s.keys_to_note(tx);
     };
-    let halo_r = FOLD_R + 3.0;
-    let halo = (!folded).then(|| {
-        el().size(2.0 * halo_r, 2.0 * halo_r)
-            .radius(halo_r)
-            .fill(branch.alpha(0.18))
-            .group_opacity(0.0, 1.0)
-            .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
-            .inert()
-    });
-    let mut dot = el()
-        .size(2.0 * FOLD_R, 2.0 * FOLD_R)
-        .radius(FOLD_R)
-        .center()
-        .border(1.5, branch)
-        .fill(c.bg)
-        .group_opacity(0.0, 1.0)
-        .pin(Some(cx - FOLD_R - x0), Some(cy - FOLD_R - y0), None, None)
-        .inert();
+    let mut hit_el = el()
+        .key(format!("map-fold:{tail}"))
+        .pin(Some(x0 + W), Some(y0 + W), None, None)
+        .size(x1 - x0, y1 - y0)
+        .role("button")
+        .label(if folded { "Unfold" } else { "Fold" })
+        .cursor(rune::Cursor::Pointer)
+        .on_press_tx(toggle);
     if !folded {
-        dot = dot.child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
-    }
-    let mut out = vec![
-        el().key(format!("map-fold:{tail}"))
-            .pin(Some(x0 + W), Some(y0 + W), None, None)
-            .size(x1 - x0, y1 - y0)
-            .role("button")
-            .label(if folded { "Unfold" } else { "Fold" })
-            .cursor(rune::Cursor::Pointer)
+        let halo_r = FOLD_R + 3.0;
+        let halo_wrap = el()
+            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
             .hover_group()
             .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-            .on_press_tx(toggle)
-            .children(halo)
-            .child(dot),
-    ];
+            .child(
+                el().size(2.0 * halo_r, 2.0 * halo_r)
+                    .radius(halo_r)
+                    .fill(branch.alpha(0.18))
+                    .group_opacity(0.0, 1.0)
+                    .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
+                    .inert(),
+            );
+        let dot = el()
+            .size(2.0 * FOLD_R, 2.0 * FOLD_R)
+            .radius(FOLD_R)
+            .center()
+            .border(1.5, branch)
+            .fill(c.bg)
+            .group_opacity(0.0, 1.0)
+            .pin(Some(cx - FOLD_R - x0), Some(cy - FOLD_R - y0), None, None)
+            .inert()
+            .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
+        hit_el = hit_el
+            .hover_group_shared(format!("map-row:{tail}"))
+            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+            .child(halo_wrap)
+            .child(dot);
+    }
+    let mut out = vec![hit_el];
     if folded {
         let hidden = n.end - i - 1;
         let font = map_app::chip_font(b, mono);

@@ -957,6 +957,7 @@ impl App {
     pub fn map_laid_out(&mut self, [x, y, w, h]: [f32; 4], tx: &mut Tx) {
         let old_origin = self.map.origin.get();
         let old_size = self.map.size.get();
+        let (old_pan, old_z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
         let size = [w, h];
         self.map.origin.set([x, y]);
         self.map.size.set(size);
@@ -981,21 +982,27 @@ impl App {
         if (left_shrunk || right_shrunk) && self.mode == Mode::Map && !self.active_locked() {
             let sel = self.map_selected();
             if let Some(p) = self.map_laid().at[sel] {
-                let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
-                let pad = 16.0;
-                let nudge = if left_shrunk && px + p.x * z < 0.0 {
-                    pad - (px + p.x * z)
-                } else if right_shrunk && px + p.right() * z > w {
-                    if p.w * z <= (w - 2.0 * pad).max(0.0) {
-                        (w - pad) - (px + p.right() * z)
-                    } else {
+                let was_visible = old_pan[0] + p.right() * old_z >= 0.0
+                    && old_pan[0] + p.x * old_z <= old_size[0]
+                    && old_pan[1] + p.bottom() * old_z >= 0.0
+                    && old_pan[1] + p.y * old_z <= old_size[1];
+                if was_visible {
+                    let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+                    let pad = 16.0;
+                    let nudge = if left_shrunk && px + p.x * z < 0.0 {
                         pad - (px + p.x * z)
+                    } else if right_shrunk && px + p.right() * z > w {
+                        if p.w * z <= (w - 2.0 * pad).max(0.0) {
+                            (w - pad) - (px + p.right() * z)
+                        } else {
+                            pad - (px + p.x * z)
+                        }
+                    } else {
+                        0.0
+                    };
+                    if nudge != 0.0 {
+                        self.map_glide(([px + nudge, py], z), tx);
                     }
-                } else {
-                    0.0
-                };
-                if nudge != 0.0 {
-                    self.map_glide(([px + nudge, py], z), tx);
                 }
             }
         }
