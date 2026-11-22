@@ -1,0 +1,21 @@
+Zen mode on the map hides the sidebar and outline, shows the word count bar, and under the pointer the pill holds Find, Fit, Help, the hairline, the three modes and Zen.
+note: Trip.md
+state: {"mode": "map", "right_open": true}
+events: key:.+cmd@0.8 hover:640,20@1.4
+at: 2.2
+expect: text:focus-hint: '3 words · Esc to leave zen mode'
+expect: rect:sidebar: None
+expect: rect:outline: None
+expect: rect:zen-actions: [1059.0, 4.0, 205.0, 32.0]
+expect: rect:find: [1063.0, 8.0, 24.0, 24.0]
+expect: rect:map-fit: [1091.0, 8.0, 24.0, 24.0]
+expect: rect:help: [1119.0, 8.0, 24.0, 24.0]
+expect: rect:bar-sep: [1147.0, 12.0, 1.0, 16.0]
+expect: rect:mode-source: [1152.0, 8.0, 24.0, 24.0]
+expect: rect:mode-preview: [1180.0, 8.0, 24.0, 24.0]
+expect: rect:mode-map: [1208.0, 8.0, 24.0, 24.0]
+expect: rect:focus: [1236.0, 8.0, 24.0, 24.0]
+--- before
+# Trip
+
+One two.

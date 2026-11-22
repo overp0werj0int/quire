@@ -155,10 +155,17 @@ fn actions(v: V, mut r: El) -> El {
         let help = tip("Show shortcuts", "reader.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() && s.mode == Mode::Map {
-        if !s.active_locked() {
+        // Find, Fit and Help (MAP-064).
+        if s.active_locked() {
+            r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
+        } else {
+            let find = tip("Find in note", "map.find");
+            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
             let help = tip("Fit the map", "map.fit");
             r = r.child(bar_button(p, "map-fit", &FIT, &help, act(|s, tx| s.map_fit(tx))));
         }
+        let help = tip("Show shortcuts", "map.help");
+        r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
         // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
         let set = s.settings();

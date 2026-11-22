@@ -1,0 +1,9 @@
+? on the map opens the help sheet with the Navigate, Canvas, Edit and Find & views groups, keys from the omarky preset.
+note: Trip.md
+events: key:m+cmd@0.3 key:?@0.8
+expect: text:help-Navigate: "NAVIGATE Left Right Parent / first child Up Down Previous / next sibling Home Root Space Fold or unfold Shift+Space Fold or unfold the branch ] [ Unfold everything / fold to a level Ctrl+Enter Follow the node's link"
+expect: text:help-Canvas: 'CANVAS 0 Fit the map + - Zoom in / out Ctrl+0 Zoom 100% c Centre the node'
+expect: text:help-Edit: 'EDIT F2 E Edit the node / its branch Tab Enter Shift+Enter Add a child / sibling / sibling before Delete Delete the branch x Tick the task Alt+Up Alt+Down Move up / down Alt+Right Shift+Tab Indent / outdent Ctrl+Alt+1 Ctrl+Alt+6 Heading 1 to 6 Ctrl+Z Ctrl+Shift+Z Undo / redo Ctrl+C Ctrl+Shift+C Copy the node / its branch Ctrl+V Paste as a child'
+expect: text:help-Find & views: 'FIND & VIEWS Ctrl+F Find n N Next / previous match o Outline Ctrl+P Source or preview Ctrl+M Leave the map Ctrl+Shift+A Copy the whole note Ctrl+R Read from disk q Close the tab ? F1 This sheet'
+--- before
+# Trip

@@ -285,6 +285,60 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
     ),
 ];
 
+/// The map's help groups (MAP-063).
+const MAP_HELP: &[(&str, &[HelpRow])] = &[
+    (
+        "Navigate",
+        &[
+            h("Parent / first child", &["map.parent", "map.child"]),
+            h("Previous / next sibling", &["map.prev-sibling", "map.next-sibling"]),
+            h("Root", &["map.root"]),
+            h("Fold or unfold", &["map.toggle-fold"]),
+            h("Fold or unfold the branch", &["map.toggle-fold-recursive"]),
+            h("Unfold everything / fold to a level", &["map.expand-all", "map.collapse-to-level"]),
+            h("Follow the node's link", &["map.follow-link"]),
+        ],
+    ),
+    (
+        "Canvas",
+        &[
+            h("Fit the map", &["map.fit"]),
+            h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
+            h("Zoom 100%", &["map.zoom-reset"]),
+            h("Centre the node", &["map.center"]),
+        ],
+    ),
+    (
+        "Edit",
+        &[
+            h("Edit the node / its branch", &["map.edit", "map.edit-subtree"]),
+            h("Add a child / sibling / sibling before", &["map.add-child", "map.add-sibling", "map.add-sibling-before"]),
+            h("Delete the branch", &["map.delete"]),
+            h("Tick the task", &["map.toggle-task"]),
+            h("Move up / down", &["map.move-up", "map.move-down"]),
+            h("Indent / outdent", &["map.indent", "map.outdent"]),
+            h("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
+            h("Undo / redo", &["map.undo", "map.redo"]),
+            h("Copy the node / its branch", &["map.copy-node", "map.copy-subtree"]),
+            h("Paste as a child", &["map.paste"]),
+        ],
+    ),
+    (
+        "Find & views",
+        &[
+            h("Find", &["map.find"]),
+            h("Next / previous match", &["map.find-next", "map.find-previous"]),
+            h("Outline", &["map.toggle-outline"]),
+            h("Source or preview", &["app.toggle-mode"]),
+            h("Leave the map", &["app.toggle-map"]),
+            h("Copy the whole note", &["map.copy-all"]),
+            h("Read from disk", &["map.read-from-disk"]),
+            h("Close the tab", &["map.close-tab"]),
+            h("This sheet", &["map.help"]),
+        ],
+    ),
+];
+
 /// A key cap (RD-91): delegates to the shared `<kbd>` helper (`widgets::kbd`, `SCROLLFADE`).
 pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
     super::widgets::kbd(p, t, false)
@@ -295,10 +349,14 @@ pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
 pub(super) fn help_sheet(v: V) -> Card {
     let c = Roles::new(v.p);
     let preset = v.s.preset();
-    let writer = v.s.mode == crate::app::Mode::Source;
-    let (groups, row_h, row_gap, keys_w, col_w) = if writer { (WRITER_HELP, 26.0, 7.0, 170.0, 470.0) } else { (HELP, 24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0) };
-    // The writer's sheet sets its groups in two columns on a wide window (WR-163).
-    let cols = if writer && v.vw > 1040.0 { 2 } else { 1 };
+    let (groups, row_h, row_gap, keys_w, col_w, left) = match v.s.mode {
+        crate::app::Mode::Source => (WRITER_HELP, 26.0, 7.0, 170.0, 470.0, 1),
+        crate::app::Mode::Map => (MAP_HELP, 26.0, 7.0, 190.0, 490.0, 2),
+        crate::app::Mode::Preview => (HELP, 24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0, 4),
+    };
+    // The writer's and the map's sheets set their groups in two columns on a wide window
+    // (WR-163): the first `left` groups on the left.
+    let cols = if left < groups.len() && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
     let header_h = 44.0;
@@ -346,7 +404,7 @@ pub(super) fn help_sheet(v: V) -> Card {
             for id in r.ids {
                 if let Some(a) = keymap::action(id) {
                     let chords = a.chords(preset);
-                    let show = if *id == "reader.help" { chords } else { &chords[..chords.len().min(1)] };
+                    let show = if matches!(*id, "reader.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };
                     for k in show {
                         keys = keys.child(cap(keymap::label_of(k), v.p));
                     }
@@ -354,8 +412,7 @@ pub(super) fn help_sheet(v: V) -> Card {
             }
             g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text)));
         }
-        // The first group fills the left column; the rest go to the right one.
-        let k = if cols == 2 && gi > 0 { 1 } else { 0 };
+        let k = if cols == 2 && gi >= left { 1 } else { 0 };
         let slot = std::mem::replace(&mut columns[k], el());
         columns[k] = slot.child(g);
     }
