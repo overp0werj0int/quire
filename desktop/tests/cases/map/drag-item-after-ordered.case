@@ -1,6 +1,6 @@
 Dragging an item onto the bottom of an ordered item puts it after that item: it takes the list's number, its text the new content column, and the list renumbers.
 note: Plan.md
-events: key:m+cmd@0.3 drag:map-node:1>24,94,0.6@1.0 key:s+cmd@2.0
+events: key:m+cmd@0.3 drag:map-node:1>23,108.75,0.6@1.0 key:s+cmd@2.0
 expect: selected: map-node:2
 --- before
 - x

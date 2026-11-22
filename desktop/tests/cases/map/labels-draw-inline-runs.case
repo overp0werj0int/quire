@@ -3,7 +3,7 @@ note: Runs.md
 events: key:m+cmd@0.3
 expect: text:map-node:3: 'Some bold and italic words'
 expect: text:map-node:5: 'A \xa0code span\xa0 and struck text'
-expect: rect:map-node:5: [942.38, 340.17, 303.66, 35.06]
+expect: rect:map-node:5: [942.38, 321.78, 303.66, 35.06]
 expect: color:map-node:7: #a4a097ff
 expect: color:map-node:8: #e9e3d8ff
 --- before

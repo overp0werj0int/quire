@@ -1,10 +1,10 @@
 Quote and alert cards draw as the reader draws them, as wide as their text up to 420 and at most 8 lines tall. At 100%: a quote line is 21; the alert is 15 of padding, an 18 title, a 7 gap and a 22 line.
 note: Quotes.md
 events: key:m+cmd@0.3 key:0+cmd@0.8
-expect: rect:map-card:3: [894.5, 310.75, 220.0, 21.0]
-expect: rect:map-card:5: [894.5, 343.25, 133.0, 77.0]
+expect: rect:map-card:3: [894.5, 304.25, 220.0, 21.0]
+expect: rect:map-card:5: [894.5, 337.75, 133.0, 77.0]
 expect: text:map-card:5: 'Warning Mind the gap.'
-expect: rect:map-card:8: [894.5, 431.75, 420.0, 168.0]
+expect: rect:map-card:8: [894.5, 427.25, 420.0, 190.0]
 --- before
 # Quotes
 

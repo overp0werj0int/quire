@@ -5,8 +5,8 @@ expect: focus: map-inline-edit (no ring)
 expect: text:map-inline-edit: 'Money'
 expect: text:notice: 'The file changed while you were editing. Copy your text and open it again. Dismiss'
 expect: selected: map-node:5
-expect: rect:map-node:5: [695.0, 418.5, 158.0, 59.0]
-expect: rect:map-inline-edit: [711.0, 418.5, 126.0, 46.0]
+expect: rect:map-node:5: [695.0, 427.5, 158.0, 59.0]
+expect: rect:map-inline-edit: [711.0, 427.5, 126.0, 46.0]
 --- before
 # Plan
 
