@@ -255,7 +255,7 @@ pub fn field_size(e: &Inline, p: map_layout::Place, room: f32, st: TextStyle, m:
 
 fn edit_hash(e: &TextEdit) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (e.text.as_str(), e.focus).hash(&mut h);
+    (e.text.as_str(), e.anchor, e.focus).hash(&mut h);
     h.finish()
 }
 
@@ -1573,9 +1573,8 @@ impl App {
         if cam.1 < EDIT_ZOOM_MIN {
             let to = self.centred_on(i, 1.0);
             self.map_glide(to, tx);
-        } else {
-            self.ensure_inline_visible(tx);
         }
+        self.ensure_inline_visible(tx);
     }
 
     /// Adjusts `cam` by the least pan needed if node `i` would be clipped outside `map_free`.
@@ -1615,7 +1614,11 @@ impl App {
         let w = p.w.max(fw + room + 2.0 * l.metrics.pad_x);
         let h = p.h.max(fh + l.metrics.pad_b) + map_layout::line_width(p.depth);
         let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
-        let [x0, y0, x1, y1] = self.map_free();
+        let [x0, y0, x1, mut y1] = self.map_free();
+        let [cw, ch] = self.map_size();
+        if !self.active_locked() && cw >= 360.0 && !(self.foot_shows() && cw < 640.0) {
+            y1 = y1.min(ch - 48.0).max(y0 + 1.0);
+        }
         let least = |lo: f32, hi: f32, a: f32, b: f32| {
             if hi - lo > b - a - 2.0 * MARGIN || lo < a + MARGIN {
                 a + MARGIN - lo

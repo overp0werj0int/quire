@@ -120,7 +120,11 @@ pub fn body(v: V) -> El {
     } else {
         v.s.reader.toast.as_ref().map(|(msg, _)| super::reader::toast(v, msg))
     };
-    area = area.children(super::reader::toast_band(v)).children(toast);
+    area = area.children(super::reader::toast_band(v));
+    if mapping {
+        area = area.children(super::map::zoom_hud(v));
+    }
+    area = area.children(toast);
     if let Some(n) = &v.s.notice {
         area = area.child(super::reader::notice(v, n));
     }

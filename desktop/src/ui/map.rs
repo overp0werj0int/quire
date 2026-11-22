@@ -212,6 +212,7 @@ pub(super) fn canvas(v: V) -> El {
             0.0
         };
         let sel_w = (2.0 / cam.1.max(map_app::ZOOM_MIN)).clamp(2.0, 20.0);
+        let pad = 3.0 + (sel_w - 2.0);
         let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
         let stroke = if s.map.canvas_focused {
             accent
@@ -220,9 +221,9 @@ pub(super) fn canvas(v: V) -> El {
         };
         let sel_el = el()
             .key("map-selection")
-            .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
-            .size(w + 6.0, h + line_width(p.depth) + 6.0 + extra_b)
-            .radius(4.0)
+            .pin(Some(p.x - pad + W), Some(p.y - pad + W), None, None)
+            .size(w + 2.0 * pad, h + line_width(p.depth) + 2.0 * pad + extra_b)
+            .radius(4.0 + (sel_w - 2.0))
             .border(sel_w, stroke)
             .inert();
         world = world.child(sel_el);
@@ -293,9 +294,6 @@ pub(super) fn canvas(v: V) -> El {
             .inert()
             .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: v.p.acc, inset: true })
     });
-    let [cw, _] = s.map_size();
-    let show_hud = !s.active_locked() && cw >= 360.0 && !(s.foot_shows() && cw < 640.0);
-    let hud_el = show_hud.then(|| zoom_hud(v, c, mono, cam.1));
     el().key("map-canvas")
         .grow(1.0)
         .min_w(0.0)
@@ -308,7 +306,6 @@ pub(super) fn canvas(v: V) -> El {
         .label("Map")
         .child(world)
         .child(ring.unwrap_or_else(el))
-        .children(hud_el)
         .children(ghost_el)
         .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
@@ -724,12 +721,13 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
         }
         Add::Child(_) => {
             let bw = (2.0 / z).clamp(2.0, 16.0);
+            let pad = 3.0 + (bw - 2.0);
             let wash = accent.alpha(if c.bg.r < 0.2 { 0.18 } else { 0.14 });
-            let stub = el().pin(Some(p.w + 6.0), Some(p.line_y() - p.y + 3.0 - bw / 2.0), None, None).size(24.0, bw).fill(accent);
+            let stub = el().pin(Some(p.w + 2.0 * pad), Some(p.line_y() - p.y + pad - bw / 2.0), None, None).size(24.0, bw).fill(accent);
             let e = el()
-                .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
-                .size(p.w + 6.0, p.bottom() - p.y + 6.0)
-                .radius(4.0)
+                .pin(Some(p.x - pad + W), Some(p.y - pad + W), None, None)
+                .size(p.w + 2.0 * pad, p.bottom() - p.y + 2.0 * pad)
+                .radius(4.0 + (bw - 2.0))
                 .fill(wash)
                 .border(bw, accent)
                 .child(stub);
@@ -741,11 +739,22 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
 
 /// Quiet bottom-right canvas zoom pill (`map-zoom-hud`, MAP-064): `−`, clickable tabular-mono
 /// zoom percentage (resets to 100%), `+`, and `Fit`, with WCAG AA contrast on every theme.
-fn zoom_hud(v: V, c: &Roles, mono: rune::Family, zoom: f32) -> El {
-    let preset = v.s.preset();
+/// Mounted in `doc-area` after `toast-band` so bottom-right controls stay visible while a toast shows.
+pub(super) fn zoom_hud(v: V) -> Option<El> {
+    let s = v.s;
+    let [cw, _] = s.map_size();
+    if s.active_locked() || cw < 360.0 || (s.foot_shows() && cw < 640.0) {
+        return None;
+    }
+    let look = map_look(v);
+    let c = &look.c;
+    let mono = look.mono;
+    let zoom = s.map_camera().1;
+    let preset = s.preset();
     let tip = |name: &str, id: &str| crate::keymap::tip(preset, name, id);
     let hud_bg = c.on_page(c.panel);
     let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
+    let sep_color = Roles::readable_on(hud_edge, hud_bg, 3.2);
     let hud_ink = Roles::readable_on(c.dim, hud_bg, 4.8);
     let hud_hover = crate::roles::mix(hud_bg, c.text, if v.dark { 0.10 } else { 0.06 });
     let shadow = rune::Shadow {
@@ -796,23 +805,25 @@ fn zoom_hud(v: V, c: &Roles, mono: rune::Family, zoom: f32) -> El {
             s.keys_to_note(tx);
         })
         .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text));
-    let sep = el().size(1.0, 14.0).mx(2.0).fill(hud_edge).inert();
-    rune::row()
-        .key("map-zoom-hud")
-        .pin(None, None, Some(12.0), Some(12.0))
-        .h(28.0)
-        .px(3.0)
-        .gap(1.0)
-        .center_y()
-        .radius(6.0)
-        .fill(hud_bg)
-        .border(1.0, hud_edge)
-        .box_shadow(shadow)
-        .child(icon_btn("map-zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
-        .child(reset)
-        .child(icon_btn("map-zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
-        .child(sep)
-        .child(icon_btn("map-zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)))
+    let sep = el().size(1.0, 14.0).mx(2.0).fill(sep_color).inert();
+    Some(
+        rune::row()
+            .key("map-zoom-hud")
+            .pin(None, None, Some(12.0), Some(12.0))
+            .h(28.0)
+            .px(3.0)
+            .gap(1.0)
+            .center_y()
+            .radius(6.0)
+            .fill(hud_bg)
+            .border(1.0, hud_edge)
+            .box_shadow(shadow)
+            .child(icon_btn("map-zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
+            .child(reset)
+            .child(icon_btn("map-zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
+            .child(sep)
+            .child(icon_btn("map-zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx))),
+    )
 }
 
 fn color_bits(c: Color) -> [u32; 4] {
