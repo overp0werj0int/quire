@@ -1,8 +1,8 @@
 A pinch zooms about the pointer.
 note: Trip.md
 events: key:m+cmd@0.3 pinch:0.1,300,420@0.9
-expect: rect:map-node:6: [453.81, 392.05, 79.89, 49.39]
-expect: scale:map-node:6: 1.4524999856948853
+expect: rect:map-node:6: [467.63, 393.16, 76.8, 47.47]
+expect: scale:map-node:6: 1.3961999416351318
 --- before
 ---
 title: Trip

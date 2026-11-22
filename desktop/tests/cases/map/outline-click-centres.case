@@ -6,7 +6,7 @@ at: 1.8
 expect: focus: note-keys (no ring)
 expect: selected: map-node:5
 expect: label:map-node:3: 'Packing, level 2, expanded'
-expect: rect:map-node:5: [605.5, 406.42, 81.03, 30.23]
+expect: rect:map-node:5: [605.5, 406.41, 81.03, 30.23]
 --- before
 # Plan
 

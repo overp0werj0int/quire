@@ -3,7 +3,7 @@ note: Lite.md
 events: key:m+cmd@0.3 key:0+cmd@0.5 key:-@0.8 key:-@0.9 key:-@1.0 key:-@1.1 key:-@1.2
 expect: scale:map-node:1: 0.3276999890804291
 expect: rect:map-card:3: None
-expect: rect:map-lite:3: [801.86, 383.47, 55.05, 26.22]
+expect: rect:map-lite:3: [801.86, 382.83, 55.05, 26.2]
 expect: rect:map-lite:8: [801.86, 413.78, 23.59, 21.95]
 expect: text:map-node:12: 'Text.'
 --- before

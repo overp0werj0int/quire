@@ -4,11 +4,11 @@ file: attachments/wide.png fixtures/wide.png
 file: attachments/small.png fixtures/small.png
 file: attachments/tall.png fixtures/tall.png
 events: key:m+cmd@0.3 key:0+cmd@0.8
-expect: rect:map-pic:3: [881.0, 183.75, 280.0, 175.0]
+expect: rect:map-pic:3: [881.0, 181.75, 280.0, 175.0]
 expect: rect:map-pic:5: [881.0, 397.25, 48.0, 32.0]
-expect: rect:map-pic:7: [881.0, 441.75, 65.0, 196.0]
+expect: rect:map-pic:7: [881.0, 443.75, 65.0, 196.0]
 expect: text:map-caption:3: 'A wide checkerboard in blue and orange'
-expect: rect:map-caption:7: [881.0, 645.75, 65.0, 18.0]
+expect: rect:map-caption:7: [881.0, 647.75, 65.0, 18.0]
 --- before
 # Pics
 

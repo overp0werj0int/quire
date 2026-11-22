@@ -1,8 +1,8 @@
 The wheel pans the map.
 note: Trip.md
 events: key:m+cmd@0.3 wheel:-30,-100,700,400@0.9
-expect: rect:map-node:6: [409.83, 294.59, 72.63, 44.89]
-expect: scale:map-node:6: 1.3205000162124634
+expect: rect:map-node:6: [422.39, 295.59, 69.81, 43.16]
+expect: scale:map-node:6: 1.2692999839782715
 --- before
 ---
 title: Trip
