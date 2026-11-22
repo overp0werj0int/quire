@@ -229,13 +229,13 @@ pub fn badge(props: usize, p: map_layout::Place, pad_x: f32, font: TextStyle) ->
 /// Horizontal padding inside the Properties badge pill.
 pub const BADGE_PAD: f32 = 6.0;
 
-/// The `+N` pill right of a folded node's circle, for box `p` (MAP-041): its text and
-/// `[x, y, w, h]`.
+/// The `+N` pill snugged right of a folded node's underline end, for box `p` (MAP-041): its
+/// text and `[x, y, w, h]`.
 pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f32; 4]) {
     let text = format!("+{hidden}");
     let h = font.size + 6.0;
     let w = rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * PILL_PAD;
-    (text, [p.right() + FOLD_R + 6.0, p.line_y() - h / 2.0, w, h])
+    (text, [p.right() + 6.0, p.line_y() - h / 2.0, w, h])
 }
 
 /// A pill's padding either side of its text.
@@ -389,7 +389,7 @@ impl App {
                 let text = format!("+{hidden}");
                 let pw = rune::text::measure(&text, &[], chip, None).0.ceil() + 2.0 * PILL_PAD;
                 let half_h = ((chip.size + 6.0) / 2.0).max(FOLD_R);
-                [FOLD_R + 6.0 + pw + 4.0, half_h]
+                [6.0 + pw + 4.0, half_h]
             },
         ));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));

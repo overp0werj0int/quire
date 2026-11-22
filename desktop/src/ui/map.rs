@@ -195,8 +195,8 @@ pub(super) fn canvas(v: V) -> El {
         let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
         Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
     });
-    // Paint `map-selection` BEFORE fold circles so fold dots always sit cleanly above the
-    // selection border (never sliced in half).
+    // Paint `map-selection` BEFORE fold targets so hover-revealed fold controls sit cleanly
+    // above the selection border while leaving it unbroken at rest.
     if nodes.contains(&sel)
         && let Some(p) = l.at[sel]
     {
@@ -551,19 +551,26 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         s.keys_to_note(tx);
     };
     let halo_r = FOLD_R + 3.0;
-    let halo = el()
-        .size(2.0 * halo_r, 2.0 * halo_r)
-        .radius(halo_r)
-        .fill(branch.alpha(0.18))
-        .group_opacity(0.0, 1.0)
-        .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
-        .inert();
-    let dot = el()
+    let halo = (!folded).then(|| {
+        el().size(2.0 * halo_r, 2.0 * halo_r)
+            .radius(halo_r)
+            .fill(branch.alpha(0.18))
+            .group_opacity(0.0, 1.0)
+            .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
+            .inert()
+    });
+    let mut dot = el()
         .size(2.0 * FOLD_R, 2.0 * FOLD_R)
         .radius(FOLD_R)
+        .center()
         .border(1.5, branch)
-        .fill(if folded { branch } else { c.bg })
-        .pin(Some(cx - FOLD_R - x0), Some(cy - FOLD_R - y0), None, None);
+        .fill(c.bg)
+        .group_opacity(0.0, 1.0)
+        .pin(Some(cx - FOLD_R - x0), Some(cy - FOLD_R - y0), None, None)
+        .inert();
+    if !folded {
+        dot = dot.child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
+    }
     let mut out = vec![
         el().key(format!("map-fold:{tail}"))
             .pin(Some(x0 + W), Some(y0 + W), None, None)
@@ -574,7 +581,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
             .hover_group()
             .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
             .on_press_tx(toggle)
-            .child(halo)
+            .children(halo)
             .child(dot),
     ];
     if folded {
