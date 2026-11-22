@@ -667,19 +667,35 @@ impl Cx<'_> {
         })
     }
 
-    /// How tall `blocks` stack `w` wide in `tone`, as `stack` sets them. Paragraphs and headings
-    /// measure as they wrap; another block counts its source lines.
+    /// How tall `blocks` stack `w` wide in `tone`, as `stack` sets them. Paragraphs, headings,
+    /// lists and nested quotes measure as they wrap; another block counts its source lines.
     fn stack_h(&self, blocks: &[Block], tone: Tone, w: f32) -> f32 {
+        self.stack_h_in(blocks, tone, w, false)
+    }
+
+    fn stack_h_in(&self, blocks: &[Block], tone: Tone, w: f32, tight: bool) -> f32 {
         let b = self.look.b;
         let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
         let mut prev = None;
         let mut h = 0.0;
         for bl in blocks {
             let k = page::rk(&bl.kind);
-            h += page::inner_gap(b, prev, k, false);
-            h += match self.text_block(bl, tone) {
-                Some((rich, style)) => rune::text::measure_with(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w), anywhere).1,
-                None => bl.lines.len() as f32 * line(tone.size, tone.lead),
+            h += page::inner_gap(b, prev, k, tight);
+            h += match &bl.kind {
+                Kind::List(l) => {
+                    let (_, _, indent, item_gap) = list::layout_metrics(self, l, tone);
+                    let inner_w = (w - indent).max(1.0);
+                    let items_h: f32 = l.items.iter().map(|it| self.stack_h_in(&it.blocks, tone, inner_w, l.tight)).sum();
+                    items_h + item_gap * l.items.len().saturating_sub(1) as f32
+                }
+                Kind::Quote { blocks } => {
+                    let (_, inset, inner) = self.quote_parts(tone);
+                    self.stack_h_in(blocks, inner, (w - inset).max(1.0), false)
+                }
+                _ => match self.text_block(bl, tone) {
+                    Some((rich, style)) => rune::text::measure_with(if rich.text.is_empty() { " " } else { &rich.text }, &rich.spans, style, Some(w), anywhere).1,
+                    None => bl.lines.len() as f32 * line(tone.size, tone.lead),
+                },
             };
             prev = Some(k);
         }

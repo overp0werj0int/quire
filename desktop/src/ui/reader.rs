@@ -285,7 +285,7 @@ const WRITER_HELP: &[(&str, &[HelpRow])] = &[
     ),
 ];
 
-/// The map's help groups (MAP-063).
+/// The map's help groups (MAP-063), balanced across the two columns (15 rows left, 16 right).
 const MAP_HELP: &[(&str, &[HelpRow])] = &[
     (
         "Navigate",
@@ -300,12 +300,16 @@ const MAP_HELP: &[(&str, &[HelpRow])] = &[
         ],
     ),
     (
-        "Canvas",
+        "Find & views",
         &[
-            h("Fit the map", &["map.fit"]),
-            h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
-            h("Zoom 100%", &["map.zoom-reset"]),
-            h("Centre the node", &["map.center"]),
+            h("Find", &["map.find"]),
+            h("Next / previous match", &["map.find-next", "map.find-previous"]),
+            h("Outline", &["map.toggle-outline"]),
+            h("Source or preview", &["app.toggle-mode"]),
+            h("Leave the map", &["app.toggle-map"]),
+            h("Read from disk", &["map.read-from-disk"]),
+            h("Close the tab", &["map.close-tab"]),
+            h("This sheet", &["map.help"]),
         ],
     ),
     (
@@ -326,16 +330,12 @@ const MAP_HELP: &[(&str, &[HelpRow])] = &[
         ],
     ),
     (
-        "Find & views",
+        "Canvas",
         &[
-            h("Find", &["map.find"]),
-            h("Next / previous match", &["map.find-next", "map.find-previous"]),
-            h("Outline", &["map.toggle-outline"]),
-            h("Source or preview", &["app.toggle-mode"]),
-            h("Leave the map", &["app.toggle-map"]),
-            h("Read from disk", &["map.read-from-disk"]),
-            h("Close the tab", &["map.close-tab"]),
-            h("This sheet", &["map.help"]),
+            h("Fit the map", &["map.fit"]),
+            h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
+            h("Zoom 100%", &["map.zoom-reset"]),
+            h("Centre the node", &["map.center"]),
         ],
     ),
 ];
@@ -352,7 +352,7 @@ pub(super) fn help_sheet(v: V) -> Card {
     let preset = v.s.preset();
     let (groups, row_h, row_gap, keys_w, col_w, left) = match v.s.mode {
         crate::app::Mode::Source => (WRITER_HELP, 26.0, 7.0, 170.0, 470.0, 1),
-        crate::app::Mode::Map => (MAP_HELP, 26.0, 7.0, 190.0, 490.0, 2),
+        crate::app::Mode::Map => (MAP_HELP, 24.0, 6.0, 190.0, 490.0, 2),
         crate::app::Mode::Preview => (HELP, 24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0, 4),
     };
     // The writer's and the map's sheets set their groups in two columns on a wide window
@@ -408,9 +408,10 @@ pub(super) fn help_sheet(v: V) -> Card {
                     keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(v.p.mute));
                 }
                 if *id == "map.node-menu" {
-                    keys = keys.child(cap(keymap::label_of("Shift+F10"), v.p));
-                }
-                if let Some(a) = keymap::action(id) {
+                    keys = keys
+                        .child(cap(keymap::label_of("Shift+F10"), v.p))
+                        .child(text("or right-click").font(sans(11.5, 400.0)).color(v.p.mute));
+                } else if let Some(a) = keymap::action(id) {
                     let chords = a.chords(preset);
                     let show = if matches!(*id, "reader.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };
                     for k in show {

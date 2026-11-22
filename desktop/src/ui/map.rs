@@ -361,7 +361,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
     let Some(e) = &v.s.map.inline else { return el() };
     let c = Roles::new(v.p);
     let surface = c.on_page(c.raised);
-    let mut f = rune::text_input(&e.edit, st)
+    rune::text_input(&e.edit, st)
         .key(map_app::FIELD)
         .label("Node text")
         .color(v.p.ink)
@@ -374,13 +374,8 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
         .pin(Some(p.x + pad_x + room + W), Some(p.y + W), None, None)
         .w(w)
         .radius(3.0)
-        .fill(surface);
-    if e.multi {
-        f = f.wrap_anywhere();
-    } else {
-        f = f.single_line().clip_soft(0.0);
-    }
-    f
+        .fill(surface)
+        .wrap_anywhere()
 }
 
 #[allow(clippy::too_many_arguments)]

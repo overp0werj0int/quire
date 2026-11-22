@@ -10,9 +10,9 @@ use crate::page::{line, r};
 use crate::ui::icons;
 use crate::ui::widgets::Control;
 
-pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
+/// The indent left of each item's body and the vertical gap between items for list `l` in `tone`.
+pub(super) fn layout_metrics(cx: &Cx, l: &List, tone: Tone) -> (f32, f32, f32, f32) {
     let look = cx.look;
-    let c = &look.c;
     let t = tone.size;
     let lh = line(t, tone.lead);
     let gap = r(t * 0.55);
@@ -28,10 +28,21 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
     }
     let mw = mw.ceil();
     let indent = if (l.depth > 0 && l.depth <= 10) || (tone.contained && l.depth == 0) { (mw + gap).max(r(t * 1.5)) } else { 0.0 };
+    let item_gap = if l.tight { r(t * 0.3) } else { r(t * 0.75) };
+    (mw, gap, indent, item_gap)
+}
+
+pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
+    let look = cx.look;
+    let c = &look.c;
+    let t = tone.size;
+    let lh = line(t, tone.lead);
+    let bx = r(t * 0.9);
+    let numbers = TextStyle::new(t, 400.0).family(look.family).lh(lh).features("'tnum' 1");
+    let (mw, gap, indent, item_gap) = layout_metrics(cx, l, tone);
     // The marker box's left edge, from the item's text edge (negative: in the margin).
     let mx = indent - gap - mw;
     let xc = look.x_mid(t, lh);
-    let item_gap = if l.tight { r(t * 0.3) } else { r(t * 0.75) };
     let mut out = col().w_full().gap(item_gap).role("list");
     for it in &l.items {
         let done = it.task == Task::Done;

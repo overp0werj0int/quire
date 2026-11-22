@@ -313,13 +313,29 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
-    let g = Grid::new(cx, t, tone, look.width - 2.0);
-    let heights = g.heights();
+    let mut g = Grid::new(cx, t, tone, look.width - 2.0);
     let shown = g.rows().min(TABLE_ROWS);
     let rest = g.rows() - shown;
     // The frame's 1 point of padding each side, round the grid.
     let natural = g.widths.iter().sum::<f32>() + 2.0;
-    let w = natural.min(look.width);
+    let pad_x = r(b * 0.85);
+    let foot_w = if rest > 0 {
+        let what = if rest == 1 { "row" } else { "rows" };
+        let label = format!("+{rest} more {what}");
+        rune::text::measure(&label, &[], more_style(cx, pcode::badge_size(b)), None).0.ceil() + 2.0 * pad_x + 4.0
+    } else {
+        0.0
+    };
+    let w = natural.max(foot_w).min(look.width);
+    if w > natural && !g.widths.is_empty() {
+        let extra = w - natural;
+        let n = g.widths.len();
+        let per = (extra / n as f32).floor();
+        for (idx, cw) in g.widths.iter_mut().enumerate() {
+            *cw += per + if idx + 1 == n { extra - per * n as f32 } else { 0.0 };
+        }
+    }
+    let heights = g.heights();
     let inner_h = heights[..=shown].iter().sum::<f32>();
     let fades = (if natural > w { r(b * 2.8) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     if rest == 0 {
@@ -328,7 +344,6 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
         let out = el().size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, 0.0).child(frame);
         return (out, [w, grid_h]);
     }
-    let pad_x = r(b * 0.85);
     let foot_py = r(b * 0.3);
     let foot_h = more_style(cx, pcode::badge_size(b)).line_height + 2.0 * foot_py;
     let total_h = inner_h + foot_h + 2.0;

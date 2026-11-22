@@ -250,7 +250,7 @@ pub fn field_size(e: &Inline, p: map_layout::Place, room: f32, st: TextStyle, m:
     let w = (rune::text::measure_with(shown, &[], st, Some(m.max_w), anywhere).0.ceil() + 2.0)
         .max(p.w - 2.0 * m.pad_x - room)
         .min(m.max_w);
-    [w, rune::text::measure_with(shown, &[], st, e.multi.then_some(w), anywhere).1.ceil()]
+    [w, rune::text::measure_with(shown, &[], st, Some(w), anywhere).1.ceil()]
 }
 
 fn edit_hash(e: &TextEdit) -> u64 {
@@ -1683,19 +1683,15 @@ impl App {
             while end > 0 && !e.edit.text.is_char_boundary(end) {
                 end -= 1;
             }
-            let caret_h = if !e.multi {
+            let pre = &e.edit.text[..end];
+            let extra = if pre.ends_with('\n') { st.line_height } else { 0.0 };
+            let body = pre.strip_suffix('\n').unwrap_or(pre);
+            let base = if body.is_empty() {
                 st.line_height
             } else {
-                let pre = &e.edit.text[..end];
-                let extra = if pre.ends_with('\n') { st.line_height } else { 0.0 };
-                let body = pre.strip_suffix('\n').unwrap_or(pre);
-                let base = if body.is_empty() {
-                    st.line_height
-                } else {
-                    rune::text::measure_with(body, &[], st, Some(fw), anywhere).1.ceil()
-                };
-                (base + extra).max(st.line_height).min(fh)
+                rune::text::measure_with(body, &[], st, Some(fw), anywhere).1.ceil()
             };
+            let caret_h = (base + extra).max(st.line_height).min(fh);
             let tail = if end == e.edit.text.len() { l.metrics.pad_b + map_layout::line_width(p.depth) } else { 0.0 };
             let caret_bot = py + (p.y + caret_h + tail) * z;
             let caret_top = py + (p.y + (caret_h - st.line_height).max(0.0)) * z;
@@ -1845,9 +1841,13 @@ impl App {
                     }
                 }
                 "mapedit.commit-add-child" => {
+                    let chain_cam = self.map.inline.as_ref().and_then(|e| e.edit_return_cam);
                     if self.map_commit(tx) {
                         self.keys_to_note(tx);
                         self.map_add(Place::Child, tx);
+                        if let (Some(cam), Some(e)) = (chain_cam, &mut self.map.inline) {
+                            e.edit_return_cam.get_or_insert(cam);
+                        }
                     }
                 }
                 id => match crate::keys::handler(id) {
@@ -1888,7 +1888,7 @@ impl App {
         if !e.held && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref() {
             return false;
         }
-        let restore = matches!(e.what, Editing::Node(_)) && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref();
+        let restore = self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref();
         self.map_commit_inner(restore, tx)
     }
 
@@ -1914,7 +1914,7 @@ impl App {
     pub(crate) fn map_press_node(&mut self, i: usize, tx: &mut Tx) -> Option<usize> {
         let shown = self.map_tree();
         let text = self.map.inline.as_ref().and_then(|e| e.preview.as_ref()).map_or_else(|| self.active_text().to_string(), |p| p.1.clone());
-        let restore = self.map.inline.as_ref().is_some_and(|e| matches!(e.what, Editing::Node(_)));
+        let restore = self.map.inline.is_some();
         if !self.map_commit_inner(restore, tx) {
             return Some(i);
         }
