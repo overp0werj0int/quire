@@ -102,7 +102,7 @@ impl<'a> Sizer<'a> {
     pub(crate) fn size(&self, t: &Tree, i: usize, max_w: f32) -> [f32; 2] {
         let cx = Cx::map(self.v, &self.look, None);
         if let Body::Card(bl) = &t.nodes[i].body
-            && let Some((_, size)) = card::card(&cx, bl, i, "", 1.0)
+            && let Some((_, size)) = card::card(&cx, bl, i, "", None)
         {
             return size;
         }
@@ -158,9 +158,9 @@ pub(super) fn canvas(v: V) -> El {
     let bucket_zoom = 2f32.powi(map_app::hit_bucket(cam.1));
     let target = 24.0 / bucket_zoom;
     let hit = target.max(2.0 * FOLD_R);
-    // Card hover chips (Expand, Copy, Edit) scale up at low zoom so they keep a >= 18-20 pt
-    // screen hit target at Fit zoom without altering world layout.
-    let chip_scale = (20.0 / (24.0 * bucket_zoom)).clamp(1.0, 2.5);
+    // Below 0.65× zoom, card hover chips switch to compact square icon-only buttons sized for
+    // ~20 pt on screen so they stay usable at Fit zoom without bloating at 0.8×.
+    let chip_compact = map_app::chip_compact_side(cam.1);
     let mut world = el()
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
@@ -185,7 +185,7 @@ pub(super) fn canvas(v: V) -> El {
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, chip_scale, found };
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The field over the node being edited: its place, room left of the text, style and size.
@@ -334,9 +334,9 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
     let key = format!("map-link:{}", key_tail(&node_key(t, i)));
     let color = branch_color(c, t.nodes[i].branch);
     let w = (x1 - x0).max(1.0);
-    // Draw straight horizontal links as a crisp solid bar so they match underlines seamlessly
-    // instead of rasterizing a degenerate 0-height cubic Bézier.
-    if (ya - yb).abs() < 0.5 {
+    // Draw straight and nearly-straight horizontal links as a crisp solid bar so they match
+    // underlines seamlessly instead of rasterizing a feathered low-rise cubic Bézier.
+    if (ya - yb).abs() < 2.0 {
         return el()
             .key(key)
             .pin(Some(x0 + W), Some((ya + yb) / 2.0 - lw / 2.0 + W), None, None)
@@ -396,8 +396,8 @@ struct State<'a> {
     lite: bool,
     /// A task box's least target, in map points.
     target: f32,
-    /// Scale factor for card hover chips at low zoom.
-    chip_scale: f32,
+    /// Target world-point side for compact icon-only card chips below 0.65× zoom.
+    chip_compact: Option<f32>,
     found: Option<Found<'a>>,
 }
 
@@ -409,7 +409,7 @@ fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
 }
 
 fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
-    let State { folded, selected, editing, alpha, lite, target, chip_scale, found } = st;
+    let State { folded, selected, editing, alpha, lite, target, chip_compact, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -430,7 +430,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), chip_compact.map(f32::to_bits), clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
@@ -462,7 +462,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                     Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
                         Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail))
                     }
-                    Body::Card(bl) => card::card(cx, bl, i, &tail, chip_scale).map(|(e, _)| e),
+                    Body::Card(bl) => card::card(cx, bl, i, &tail, chip_compact).map(|(e, _)| e),
                     _ => None,
                 };
                 let text = || {
@@ -709,9 +709,23 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
     let z = zoom.max(map_app::ZOOM_MIN);
     let (zone, e) = match at {
         Add::Before(_) | Add::After(_) => {
-            let bar_h = (3.0 / z).clamp(3.0, 24.0);
-            let y = if matches!(at, Add::Before(_)) { p.y - bar_h - 1.0 } else { p.bottom() + 1.0 };
-            let name = if matches!(at, Add::Before(_)) { "Before" } else { "After" };
+            let desired = (3.0 / z).clamp(3.0, 24.0);
+            let clear = l.clear[j];
+            let (name, bar_h, y) = if matches!(at, Add::Before(_)) {
+                if clear[0].is_finite() {
+                    let avail = (p.y - clear[0]).max(0.0);
+                    let bar_h = desired.min(avail.max(2.5));
+                    ("Before", bar_h, clear[0] + (avail - bar_h) / 2.0)
+                } else {
+                    ("Before", desired, p.y - desired - 1.0)
+                }
+            } else if clear[1].is_finite() {
+                let avail = (clear[1] - p.bottom()).max(0.0);
+                let bar_h = desired.min(avail.max(2.5));
+                ("After", bar_h, p.bottom() + (avail - bar_h) / 2.0)
+            } else {
+                ("After", desired, p.bottom() + 1.0)
+            };
             (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, bar_h).radius(bar_h / 2.0).fill(accent))
         }
         Add::Child(_) => {
@@ -744,7 +758,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let look = map_look(v);
     let c = &look.c;
     let mono = look.mono;
-    let zoom = s.map_camera().1;
+    let zoom = s.map_target_zoom();
     let preset = s.preset();
     let tip = |name: &str, id: &str| crate::keymap::tip(preset, name, id);
     let hud_bg = c.on_page(c.panel);

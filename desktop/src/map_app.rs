@@ -25,6 +25,23 @@ pub const ZOOM_MAX: f32 = 4.0;
 pub const OVERSCAN: f32 = 160.0;
 /// Below this zoom a card draws as its bare box (MAP-045).
 pub const LITE_ZOOM: f32 = 0.35;
+/// Below this zoom card hover chips switch from labelled pills to compact square icon buttons.
+pub const COMPACT_CHIP_ZOOM: f32 = 0.65;
+
+/// World-point side of compact icon-only card chips at zoom `z`, or `None` for normal full
+/// labelled chips (`z >= COMPACT_CHIP_ZOOM`). Quantized to three coarse bands so pan/zoom
+/// inside a band never rebuilds the view (MAP-045).
+pub fn chip_compact_side(z: f32) -> Option<f32> {
+    if z >= COMPACT_CHIP_ZOOM {
+        None
+    } else if z >= 0.50 {
+        Some(40.0)
+    } else if z >= LITE_ZOOM {
+        Some(56.0)
+    } else {
+        Some(80.0)
+    }
+}
 /// What `ensureVisible` keeps between a node and the canvas's edges (MAP-036).
 const MARGIN: f32 = 40.0;
 /// Camera glides (MAP-043).
@@ -79,8 +96,10 @@ pub enum Tier {
 /// images epoch.
 type SizeKey = (u64, Tier, u32, u32, u64);
 /// The fold version is None before the tab has a view: a new view's first folds, from the
-/// note's fold comments, are version 0 and need a layout of their own.
-type LaidKey = (String, u64, Option<u64>, u32, u64, &'static str, &'static str, u64);
+/// note's fold comments, are version 0 and need a layout of their own. The trailing option
+/// carries an active provisional `Editing::New(_)` node's reserved size so Flextree keeps it
+/// clear of sibling subtrees while typing.
+type LaidKey = (String, u64, Option<u64>, u32, u64, &'static str, &'static str, u64, Option<(usize, u32, u32)>);
 /// Label sizes, kept while the font epoch and the two fonts stay the same.
 type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
 
@@ -355,18 +374,38 @@ impl App {
     pub fn map_laid(&self) -> Rc<Laid> {
         let t = self.map_tree();
         let b = self.settings().size as f32;
-        let (_, mono, prose_id, mono_id) = self.fonts();
+        let (prose, mono, prose_id, mono_id) = self.fonts();
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
         let (folded, fold_ver) = self.map_view().map_or((&empty, None), |v| (&v.folded, Some(v.fold_ver)));
         let pics = self.images.epoch.get();
-        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics);
+        let m = Metrics::new(b, &t.opts);
+        let active = self.active.as_deref().unwrap_or("");
+        let prov_size = self
+            .map
+            .inline
+            .as_ref()
+            .filter(|e| e.rel == active && matches!(e.what, Editing::New(_)))
+            .and_then(|e| {
+                let idx = self.map_selected();
+                if idx >= t.nodes.len() {
+                    return None;
+                }
+                let st = style(tier(&t, idx), b, prose, mono);
+                let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
+                let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
+                let tw = rune::text::measure_with(shown, &[], st, Some(m.max_w), anywhere).0.ceil() + 2.0;
+                let fw = tw.max(220.0f32.min(m.max_w)).min(m.max_w);
+                let fh = rune::text::measure_with(shown, &[], st, Some(fw), anywhere).1.ceil();
+                Some((idx, fw, fh))
+            });
+        let prov_key = prov_size.map(|(idx, w, h)| (idx, w.to_bits(), h.to_bits()));
+        let key: LaidKey = (active.to_string(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics, prov_key);
         if let Some((k, l)) = &*self.map.laid.borrow()
             && *k == key
         {
             return l.clone();
         }
-        let m = Metrics::new(b, &t.opts);
         let mut sizes = self.map.sizes.borrow_mut();
         if (sizes.0, sizes.1, sizes.2) != (epoch, prose_id, mono_id) {
             *sizes = (epoch, prose_id, mono_id, HashMap::new());
@@ -380,6 +419,11 @@ impl App {
             m,
             |i| {
                 let n = &t.nodes[i];
+                if let Some((pi, fw, fh)) = prov_size
+                    && i == pi
+                {
+                    return [fw + task_room(n, b), fh];
+                }
                 let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
                 let [w, h] = *cache.entry(key).or_insert_with(|| sizer.size(&t, i, m.max_w));
                 [w + task_room(n, b), h]
@@ -407,6 +451,12 @@ impl App {
     /// The camera the view draws with.
     pub fn map_camera(&self) -> ([f32; 2], f32) {
         self.map_view().map_or(([0.0, 0.0], 1.0), |v| (v.pan, v.zoom))
+    }
+
+    /// The zoom the canvas HUD displays: the glide target while a zoom glide is in flight so
+    /// the readout updates immediately rather than lagging mid-glide.
+    pub fn map_target_zoom(&self) -> f32 {
+        self.map.glide.as_ref().map_or_else(|| self.map_camera().1, |g| g.to.1)
     }
 
     /// The nodes and links the view mounts at camera `cam`: whatever meets the canvas and its
@@ -440,6 +490,7 @@ impl App {
         self.map_mounted(cam).hash(&mut h);
         hit_bucket(cam.1).hash(&mut h);
         (cam.1 < LITE_ZOOM).hash(&mut h);
+        chip_compact_side(cam.1).map(f32::to_bits).hash(&mut h);
         h.finish()
     }
 
@@ -545,21 +596,18 @@ impl App {
     }
 
     /// `+`, `=` and `-`, and the canvas zoom HUD buttons: about the canvas's centre (MAP-034).
-    /// Discrete steps always refresh the view so the canvas zoom HUD percentage updates at once.
+    /// Glides smoothly (snapping under reduced motion) and chains from any in-flight glide target.
     pub fn map_zoom_step(&mut self, f: f32, tx: &mut Tx) {
         let [w, h] = self.map_size();
-        let ([px, py], z) = self.map_camera();
+        let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
         let nz = (z * f).clamp(ZOOM_MIN, ZOOM_MAX);
         let (cx, cy) = (w / 2.0, h / 2.0);
         let (wx, wy) = ((cx - px) / z, (cy - py) / z);
-        self.map.glide = None;
-        self.map.throw.stop();
         self.map.drawer_return_pan = None;
         if let Some(e) = &mut self.map.inline {
             e.edit_return_cam = None;
         }
-        self.set_camera([cx - wx * nz, cy - wy * nz], nz);
-        let _ = tx;
+        self.map_glide(([cx - wx * nz, cy - wy * nz], nz), tx);
     }
 
     /// What the map draws, `[x0, y0, x1, y1]`: every shown node with its fold circle, its

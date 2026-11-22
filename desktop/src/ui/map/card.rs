@@ -66,15 +66,16 @@ pub(super) fn lite(cx: &Cx, bl: &Block, w: f32, h: f32, tail: &str) -> El {
 }
 
 /// Block `bl` of node `i` as a card, and its size, or None for a block that is not one yet.
-/// `tail` names the node in the card's keys. `chip_scale` scales hover chips up at low zoom so
-/// they keep a readable screen hit target without changing world layout.
-pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_scale: f32) -> Option<(El, [f32; 2])> {
+/// `tail` names the node in the card's keys. When `chip_compact` is `Some(side)`, hover chips
+/// render as compact square icon-only buttons of that world-point side (clamped inside the
+/// card/header) so they keep a readable screen target at Fit zoom without bloating at 0.8×.
+pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Option<f32>) -> Option<(El, [f32; 2])> {
     let at = bl.lines.start;
     let tone = Tone::top(cx.look.c.text, cx.look.b, 1.6);
     let max = cx.look.width;
     let (e, size) = match &bl.kind {
-        Kind::Code { lang, text } => code(cx, lang, text, bl.pid, at, i, tail, chip_scale),
-        Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail, chip_scale),
+        Kind::Code { lang, text } => code(cx, lang, text, bl.pid, at, i, tail, chip_compact),
+        Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail, chip_compact),
         Kind::Table(t) => table(cx, t, tone, tail),
         Kind::Quote { blocks } => capped(cx.quote(blocks, tone), cx.quote_size(blocks, tone, max), TEXT_LINES * line(page::quote_size(cx.look.b), 1.6)),
         Kind::Alert { kind, blocks } => {
@@ -83,7 +84,7 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_scale: f32) -
             capped(cx.alert(*kind, blocks, tone), [w, h], text_h + TEXT_LINES * line(cx.look.b, 1.6))
         }
         Kind::Html { text } => capped(cx.html(text), cx.html_size(text, max), HTML_LINES * line(r(cx.look.b * 0.8), 1.5)),
-        Kind::Image { img, .. } => image(cx, img, i, tail, chip_scale),
+        Kind::Image { img, .. } => image(cx, img, i, tail, chip_compact),
         Kind::Gallery { items } => gallery(cx, items, i, tail),
         _ => return None,
     };
@@ -109,22 +110,51 @@ fn more_style(cx: &Cx, size: f32) -> TextStyle {
     cx.look.mono_at(size, 1.6)
 }
 
-/// The Edit chip beside Copy: the Edit Sheet on the card's block (MAP-049).
-fn edit_chip(cx: &Cx, i: usize, tail: &str, scale: f32) -> El {
+/// Compact square icon-only card chip used below `COMPACT_CHIP_ZOOM` (`0.65×`).
+fn icon_chip(cx: &Cx, key: &str, glyph: &'static rune::Icon, side: f32, tint: rune::Color, a11y: &'static str, tip: &'static str) -> El {
     let c = &cx.look.c;
-    let size = r(pcode::chip_size(cx.look.b) * scale);
+    let icon_sz = (side * 0.52).round().max(11.0);
+    row()
+        .key(key)
+        .size(side, side)
+        .center()
+        .radius(4.0)
+        .fill(c.panel)
+        .border(1.0, c.on_page(c.hairline))
+        .hover(c.hover)
+        .hover_group()
+        .hover_motion(crate::ui::chip::fade(), crate::ui::chip::fade())
+        .cursor(rune::Cursor::Pointer)
+        .role("button")
+        .label(a11y)
+        .help(tip)
+        .child(rune::icon(glyph, icon_sz).color(tint).group_color(c.text))
+}
+
+/// The Edit chip beside Copy: the Edit Sheet on the card's block (MAP-049).
+fn edit_chip(cx: &Cx, i: usize, tail: &str, compact: Option<f32>) -> El {
+    let c = &cx.look.c;
     let key = format!("map-edit:{tail}");
+    if let Some(side) = compact {
+        return icon_chip(cx, &key, &icons::PENCIL, side, c.readable_dim(), "Edit the Markdown", "Edit")
+            .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx));
+    }
+    let size = pcode::chip_size(cx.look.b);
     Chip { key: &key, glyph: &icons::PENCIL, size, icon: r(size * 1.1), label: "Edit", mono: cx.look.mono, tint: c.readable_dim(), active: false, fill: Some(c.panel) }
         .el(c)
         .label("Edit the Markdown")
         .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx))
 }
 
-/// The Copy chip, scaled by `scale` at low zoom so hover controls keep a usable screen hit size.
-fn copy_chip(cx: &Cx, key: &str, code: String, at: usize, scale: f32) -> El {
+/// The Copy chip: normal labelled pill above `0.65×`, compact icon button below `0.65×`.
+fn copy_chip(cx: &Cx, key: &str, code: String, at: usize, compact: Option<f32>) -> El {
     let c = &cx.look.c;
-    let size = r(pcode::chip_size(cx.look.b) * scale);
     let (glyph, label, tint) = if pcode::copied(cx, at) { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
+    if let Some(side) = compact {
+        return icon_chip(cx, key, glyph, side, tint, "Copy the code", label)
+            .on_press_tx(move |s: &mut App, tx| s.copy_code(&code, at, tx));
+    }
+    let size = pcode::chip_size(cx.look.b);
     Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }
         .el(c)
         .label("Copy the code")
@@ -141,12 +171,13 @@ fn chip_w(cx: &Cx, label: &str) -> f32 {
 const CHIP_GAP: f32 = 4.0;
 
 /// The Copy and Edit chips, shown under the pointer and while Copy says Copied.
-fn chips(cx: &Cx, code: &str, at: usize, i: usize, tail: &str, scale: f32) -> El {
+fn chips(cx: &Cx, code: &str, at: usize, i: usize, tail: &str, compact: Option<f32>) -> El {
     let copied = pcode::copied(cx, at);
+    let gap = if compact.is_some() { 6.0 } else { CHIP_GAP };
     row()
-        .gap(r(CHIP_GAP * scale))
-        .child(copy_chip(cx, &format!("map-copy:{tail}"), code.to_string(), at, scale))
-        .child(edit_chip(cx, i, tail, scale))
+        .gap(gap)
+        .child(copy_chip(cx, &format!("map-copy:{tail}"), code.to_string(), at, compact))
+        .child(edit_chip(cx, i, tail, compact))
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
 }
 
@@ -155,18 +186,15 @@ fn chips_w(cx: &Cx) -> f32 {
     chip_w(cx, "Copied") + CHIP_GAP + chip_w(cx, "Edit")
 }
 
-/// Clamps `chip_scale` so scaled Copy+Edit chips never overflow a card of size `[w, h]`.
-fn fit_chips_scale(cx: &Cx, w: f32, h: f32, scale: f32) -> f32 {
-    let base_w = chips_w(cx).max(1.0);
-    let base_h = r(pcode::chip_size(cx.look.b) * 2.0).max(1.0);
-    let max_w = ((w - 12.0) / base_w).max(1.0);
-    let max_h = ((h - 12.0) / base_h).max(1.0);
-    scale.min(max_w).min(max_h).max(1.0)
+/// Clamps compact icon-chip side so two side-by-side chips fit cleanly inside `[w, max_h]`.
+fn clamp_compact_pair(side: f32, w: f32, max_h: f32) -> f32 {
+    let max_side_w = ((w - 18.0) / 2.0).max(16.0);
+    side.min(max_side_w).min(max_h.max(16.0))
 }
 
 /// MAP-049: the reader's code block, capped at 12 lines, with no scrolling.
 #[allow(clippy::too_many_arguments)]
-fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize, tail: &str, chip_scale: f32) -> (El, [f32; 2]) {
+fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -212,8 +240,8 @@ fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize,
     if !lang.is_empty() {
         out = out.child(pcode::badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }
-    let scale = fit_chips_scale(cx, w, h, chip_scale);
-    out = out.child(chips(cx, src, at, i, tail, scale).pin(None, Some(top), Some(pad_r - 6.0), None));
+    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, h - 12.0));
+    out = out.child(chips(cx, src, at, i, tail, compact).pin(None, Some(top), Some(pad_r - 6.0), None));
     if rest > 0 {
         out = out.child(more(cx, rest, "line", tail).pin(Some(pad_x), Some(pad_top + shown as f32 * lh + r(pad_b / 2.0)), None, None));
     }
@@ -222,7 +250,7 @@ fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize,
 
 /// MAP-050: the reader's diff block in the capped code card, with Copy and Edit in its header.
 #[allow(clippy::too_many_arguments)]
-fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (usize, usize), pid: Option<usize>, at: usize, i: usize, tail: &str, chip_scale: f32) -> (El, [f32; 2]) {
+fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (usize, usize), pid: Option<usize>, at: usize, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -287,9 +315,9 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     let fades = (if natural > look.width { r(b * 2.4) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     let body = el().pin(Some(0.0), Some(head_h), None, None).size(w, body_h).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(rows);
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let scale = fit_chips_scale(cx, w, h, chip_scale);
-    let chip_h = r(r(pcode::chip_size(b) * scale) * 2.0);
-    let chip_top = ((head_h - chip_h) / 2.0).max(4.0);
+    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, head_h - 2.0));
+    let chip_h = compact.unwrap_or_else(|| r(pcode::chip_size(b) * 2.0));
+    let chip_top = ((head_h - chip_h) / 2.0).max(1.0);
     let mut out = el()
         .size(w, h)
         .radius(4.0)
@@ -300,7 +328,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
         .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(head.pin(Some(0.0), Some(0.0), None, None))
         .child(body)
-        .child(chips(cx, src, at, i, tail, scale).pin(None, Some(chip_top), Some(pad_r - 6.0), None));
+        .child(chips(cx, src, at, i, tail, compact).pin(None, Some(chip_top), Some(pad_r - 6.0), None));
     if rest > 0 {
         out = out.child(more(cx, rest, "line", tail).pin(Some(pad_x), Some(head_h + body_h - r(py / 2.0)), None, None));
     }
@@ -373,15 +401,13 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
 /// MAP-046: the picture at its natural size, never larger, at most `B × 20` by `B × 14`, with
 /// its alt text under it in at most two lines; the placeholder while it loads or when it is
 /// missing. MAP-047: the Expand chip at its top-right corner under the pointer.
-fn image(cx: &Cx, img: &Img, i: usize, tail: &str, chip_scale: f32) -> (El, [f32; 2]) {
+fn image(cx: &Cx, img: &Img, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
     let (pic, [pw, ph]) = thumb(cx, img, [r(b * 20.0), r(b * 14.0)]);
-    let base_h = r(pcode::chip_size(b) * 2.0).max(1.0);
-    let max_scale = ((pw.min(ph) - 12.0) / base_h).max(1.0);
-    let scale = chip_scale.min(max_scale).max(1.0);
-    let pic = pic.key(format!("map-pic:{tail}")).child(expand_chip(cx, i, tail, scale).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+    let compact = chip_compact.map(|side| side.min((pw.min(ph) - 12.0).max(16.0)));
+    let pic = pic.key(format!("map-pic:{tail}")).child(expand_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     let mut w = pw;
     let mut h = ph;
     let mut out = rune::col().items_center().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).child(pic);
@@ -422,10 +448,14 @@ fn thumb(cx: &Cx, img: &Img, [max_w, max_h]: [f32; 2]) -> (El, [f32; 2]) {
 }
 
 /// The Expand chip: the lightbox on the image (MAP-047).
-fn expand_chip(cx: &Cx, i: usize, tail: &str, scale: f32) -> El {
+fn expand_chip(cx: &Cx, i: usize, tail: &str, compact: Option<f32>) -> El {
     let c = &cx.look.c;
-    let size = r(pcode::chip_size(cx.look.b) * scale);
     let key = format!("map-expand:{tail}");
+    if let Some(side) = compact {
+        return icon_chip(cx, &key, &icons::EXPAND, side, c.readable_dim(), "Expand the image", "Expand")
+            .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, 0, tx));
+    }
+    let size = pcode::chip_size(cx.look.b);
     Chip { key: &key, glyph: &icons::EXPAND, size, icon: r(size * 1.1), label: "", mono: cx.look.mono, tint: c.readable_dim(), active: false, fill: Some(c.panel) }
         .el(c)
         .label("Expand the image")
