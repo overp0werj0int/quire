@@ -1,4 +1,4 @@
-A gallery is one card of thumbnails at most 112 tall, never enlarged, in a row; a thumbnail opens the lightbox on itself.
+A gallery is one card of thumbnails at most 112 tall, never enlarged, each in a tile as tall as its row with even gaps; a thumbnail opens the lightbox on itself.
 note: Pics.md
 file: attachments/wide.png fixtures/wide.png
 file: attachments/small.png fixtures/small.png
@@ -6,7 +6,7 @@ file: attachments/tall.png fixtures/tall.png
 events: key:m+cmd@0.3 key:0+cmd@0.8 tap:map-thumb:3:2@1.2
 expect: rect:map-card:3: [881.0, 355.5, 292.0, 126.0]
 expect: rect:map-thumb:3:0: [888.0, 362.5, 179.0, 112.0]
-expect: rect:map-thumb:3:1: [1074.0, 442.5, 48.0, 32.0]
+expect: rect:map-thumb:3:1: [1074.0, 362.5, 48.0, 112.0]
 expect: rect:map-thumb:3:2: [1129.0, 362.5, 37.0, 112.0]
 expect: rect:lightbox-pic: [530.5, 52.0, 219.0, 656.0]
 expect: text:lightbox-caption: 'three'

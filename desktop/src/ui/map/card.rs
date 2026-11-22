@@ -329,7 +329,8 @@ fn expand_chip(cx: &Cx, i: usize, tail: &str) -> El {
 }
 
 /// MAP-047: a gallery's images as thumbnails at most `B × 8` tall, in rows that wrap at the
-/// card's widest, each opening the lightbox on itself.
+/// card's widest, each opening the lightbox on itself. Each sits in a tile as tall as its row,
+/// so a small one beside a tall one leaves no hole in the grid.
 fn gallery(cx: &Cx, items: &[GalleryItem], i: usize, tail: &str) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
@@ -337,32 +338,49 @@ fn gallery(cx: &Cx, items: &[GalleryItem], i: usize, tail: &str) -> (El, [f32; 2
     let pad = r(b * 0.5);
     let gap = r(b * 0.5);
     let room = look.width - 2.0 * pad;
-    let mut rows: Vec<(El, [f32; 2])> = Vec::new();
-    let mut line = row().gap(gap).items_end();
-    let [mut lw, mut lh] = [0f32; 2];
+    let mut rows: Vec<Vec<(usize, El, [f32; 2])>> = Vec::new();
+    let mut line = Vec::new();
+    let mut lw = 0f32;
     for (k, it) in items.iter().enumerate() {
         let (t, [tw, th]) = thumb(cx, &it.img, [room, r(b * 8.0)]);
         if lw > 0.0 && lw + gap + tw > room {
-            rows.push((std::mem::replace(&mut line, row().gap(gap).items_end()), [lw, lh]));
-            [lw, lh] = [0.0, 0.0];
+            rows.push(std::mem::take(&mut line));
+            lw = 0.0;
         }
-        let tip = if it.title.is_empty() { &it.img.alt } else { &it.title };
-        let mut t = t.key(format!("map-thumb:{tail}:{k}")).cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, k, tx));
-        if !tip.is_empty() {
-            t = t.help(tip.clone());
-        }
-        line = line.child(t);
         lw += if lw > 0.0 { gap } else { 0.0 } + tw;
-        lh = lh.max(th);
+        line.push((k, t, [tw, th]));
     }
-    if lw > 0.0 {
-        rows.push((line, [lw, lh]));
+    if !line.is_empty() {
+        rows.push(line);
     }
-    let w = rows.iter().map(|(_, [w, _])| *w).fold(0.0, f32::max) + 2.0 * pad;
-    let h = rows.iter().map(|(_, [_, h])| *h).sum::<f32>() + gap * rows.len().saturating_sub(1) as f32 + 2.0 * pad;
+    let size = |line: &[(usize, El, [f32; 2])]| {
+        let w = line.iter().map(|(_, _, [w, _])| *w).sum::<f32>() + gap * line.len().saturating_sub(1) as f32;
+        [w, line.iter().map(|(_, _, [_, h])| *h).fold(0.0, f32::max)]
+    };
+    let w = rows.iter().map(|l| size(l)[0]).fold(0.0, f32::max) + 2.0 * pad;
+    let h = rows.iter().map(|l| size(l)[1]).sum::<f32>() + gap * rows.len().saturating_sub(1) as f32 + 2.0 * pad;
     let mut out = rune::col().key(format!("map-gallery:{tail}")).size(w, h).padding(pad).gap(gap).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft));
-    for (k, (rw, _)) in rows.into_iter().enumerate() {
-        out = out.child(rw.key(format!("row-{k}")));
+    for (n, line) in rows.into_iter().enumerate() {
+        let lh = size(&line)[1];
+        let mut rw = row().key(format!("row-{n}")).gap(gap);
+        for (k, t, [tw, _]) in line {
+            let it = &items[k];
+            let tip = if it.title.is_empty() { &it.img.alt } else { &it.title };
+            let mut tile = el()
+                .key(format!("map-thumb:{tail}:{k}"))
+                .size(tw, lh)
+                .radius(4.0)
+                .fill(c.raised)
+                .center()
+                .child(t)
+                .cursor(rune::Cursor::Pointer)
+                .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, k, tx));
+            if !tip.is_empty() {
+                tile = tile.help(tip.clone());
+            }
+            rw = rw.child(tile);
+        }
+        out = out.child(rw);
     }
     (out, [w, h])
 }
