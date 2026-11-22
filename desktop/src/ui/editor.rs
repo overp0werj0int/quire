@@ -77,7 +77,14 @@ pub fn body(v: V) -> El {
     // `[0, 0]` origin whether or not Find is open (`THUMBFIX`).
     let mapping = v.has_doc() && super::mapping(v.s);
     let page = if mapping { super::map::canvas(v) } else { doc_scroll(v) };
-    let mut view = col().key("doc-view").grow(1.0).min_w(0.0).min_h(0.0).w_full().child(page);
+    let mut view = col()
+        .key("doc-view")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .w_full()
+        .child_exit(rune::Transition::none())
+        .child(page);
     if reading {
         // The reader has the writer's fades in zen mode, where no bar sits over the page.
         if focus {
@@ -244,6 +251,7 @@ fn doc_scroll(v: V) -> El {
         .min_w(0.0)
         .min_h(0.0)
         .w_full()
+        .transition(rune::Transition::none())
         .scroll(ScrollSpec { stick_bottom: false })
         .on_scroll_offset(move |at| {
             let now = [at.offset[1], at.max[1], at.viewport[1], at.viewport[0]];

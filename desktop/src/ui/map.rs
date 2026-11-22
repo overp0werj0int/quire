@@ -165,6 +165,7 @@ pub(super) fn canvas(v: V) -> El {
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
         .size(2.0 * W, 2.0 * W)
+        .transition(super::swap())
         .child_exit(rune::Transition::none());
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);
@@ -292,6 +293,9 @@ pub(super) fn canvas(v: V) -> El {
             .inert()
             .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: v.p.acc, inset: true })
     });
+    let [cw, _] = s.map_size();
+    let show_hud = !s.active_locked() && cw >= 360.0 && !(s.foot_shows() && cw < 640.0);
+    let hud_el = show_hud.then(|| zoom_hud(v, c, mono, cam.1));
     el().key("map-canvas")
         .grow(1.0)
         .min_w(0.0)
@@ -299,10 +303,12 @@ pub(super) fn canvas(v: V) -> El {
         .w_full()
         .fill(c.bg)
         .clip_soft(0.0)
+        .transition(rune::Transition::none())
         .role("tree")
         .label("Map")
         .child(world)
         .child(ring.unwrap_or_else(el))
+        .children(hud_el)
         .children(ghost_el)
         .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
@@ -724,6 +730,82 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
         }
     };
     e.key("map-drop").label(format!("{zone} {}", node_key(t, j))).inert()
+}
+
+/// Quiet bottom-right canvas zoom pill (`map-zoom-hud`, MAP-064): `−`, clickable tabular-mono
+/// zoom percentage (resets to 100%), `+`, and `Fit`, with WCAG AA contrast on every theme.
+fn zoom_hud(v: V, c: &Roles, mono: rune::Family, zoom: f32) -> El {
+    let preset = v.s.preset();
+    let tip = |name: &str, id: &str| crate::keymap::tip(preset, name, id);
+    let hud_bg = c.on_page(c.panel);
+    let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
+    let hud_ink = Roles::readable_on(c.dim, hud_bg, 4.8);
+    let hud_hover = crate::roles::mix(hud_bg, c.text, if v.dark { 0.10 } else { 0.06 });
+    let shadow = rune::Shadow {
+        x: 0.0,
+        y: 1.0,
+        blur: 6.0,
+        spread: 0.0,
+        color: Color::BLACK.alpha(if v.dark { 0.24 } else { 0.08 }),
+        inset: false,
+    };
+    let icon_btn = |key: &'static str, glyph: &'static rune::Icon, label: &'static str, help: String, run: fn(&mut App, &mut Tx)| {
+        rune::row()
+            .key(key)
+            .size(24.0, 24.0)
+            .center()
+            .radius(4.0)
+            .hover(hud_hover)
+            .hover_group()
+            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+            .cursor(rune::Cursor::Pointer)
+            .role("button")
+            .label(label)
+            .help(help)
+            .on_press_tx(move |s: &mut App, tx: &mut Tx| {
+                run(s, tx);
+                s.keys_to_note(tx);
+            })
+            .child(rune::icon(glyph, 12.0).color(hud_ink).group_color(c.text))
+    };
+    let pct = format!("{}%", (zoom * 100.0).round() as i32);
+    let pct_font = styles::note(mono, 11.0, normal_lh(mono, 11.0)).features("'tnum' 1");
+    let reset = rune::row()
+        .key("map-zoom-reset")
+        .h(24.0)
+        .min_w(42.0)
+        .px(5.0)
+        .center()
+        .radius(4.0)
+        .hover(hud_hover)
+        .hover_group()
+        .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+        .cursor(rune::Cursor::Pointer)
+        .role("button")
+        .label(format!("Zoom {pct}, reset to 100%"))
+        .help(tip("Zoom 100%", "map.zoom-reset"))
+        .on_press_tx(|s: &mut App, tx: &mut Tx| {
+            s.map_zoom_reset(tx);
+            s.keys_to_note(tx);
+        })
+        .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text));
+    let sep = el().size(1.0, 14.0).mx(2.0).fill(hud_edge).inert();
+    rune::row()
+        .key("map-zoom-hud")
+        .pin(None, None, Some(12.0), Some(12.0))
+        .h(28.0)
+        .px(3.0)
+        .gap(1.0)
+        .center_y()
+        .radius(6.0)
+        .fill(hud_bg)
+        .border(1.0, hud_edge)
+        .box_shadow(shadow)
+        .child(icon_btn("map-zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
+        .child(reset)
+        .child(icon_btn("map-zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
+        .child(sep)
+        .child(icon_btn("map-zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)))
 }
 
 fn color_bits(c: Color) -> [u32; 4] {

@@ -511,6 +511,7 @@ impl App {
             tx.wake_after(Duration::from_millis(16));
         } else {
             self.map.glide = None;
+            committed = true;
         }
         committed || self.map_signature() != before
     }
@@ -543,10 +544,22 @@ impl App {
         self.map_move([x - wx * nz, y - wy * nz], nz, tx);
     }
 
-    /// `+`, `=` and `-`: about the canvas's centre (MAP-034).
+    /// `+`, `=` and `-`, and the canvas zoom HUD buttons: about the canvas's centre (MAP-034).
+    /// Discrete steps always refresh the view so the canvas zoom HUD percentage updates at once.
     pub fn map_zoom_step(&mut self, f: f32, tx: &mut Tx) {
         let [w, h] = self.map_size();
-        self.map_zoom_about(w / 2.0, h / 2.0, f, tx);
+        let ([px, py], z) = self.map_camera();
+        let nz = (z * f).clamp(ZOOM_MIN, ZOOM_MAX);
+        let (cx, cy) = (w / 2.0, h / 2.0);
+        let (wx, wy) = ((cx - px) / z, (cy - py) / z);
+        self.map.glide = None;
+        self.map.throw.stop();
+        self.map.drawer_return_pan = None;
+        if let Some(e) = &mut self.map.inline {
+            e.edit_return_cam = None;
+        }
+        self.set_camera([cx - wx * nz, cy - wy * nz], nz);
+        let _ = tx;
     }
 
     /// What the map draws, `[x0, y0, x1, y1]`: every shown node with its fold circle, its
@@ -641,8 +654,16 @@ impl App {
     }
 
     pub fn map_fit(&mut self, tx: &mut Tx) {
+        let [x0, y0, x1, y1] = self.map_extent();
+        let [fx0, fy0, fx1, fy1] = self.map_free();
+        let (w, h) = (fx1 - fx0, fy1 - fy0);
+        let (bw, bh) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
+        let raw = (w / bw * 0.95).min(h / bh * 0.95);
         let cam = self.fit_camera();
         self.map_glide(cam, tx);
+        if raw < ZOOM_MIN && (bw * ZOOM_MIN > w || bh * ZOOM_MIN > h) {
+            self.toast("Minimum zoom (10%) \u{2014} press [ to fold branches", tx);
+        }
     }
 
     /// The camera at zoom `z` with node `i`'s centre at the centre of the canvas's free part.

@@ -88,10 +88,7 @@ chips, and no scrolling inside a card. The layout must know each node's size bef
 lays anything out, since it also runs from handlers between frames, so each card is measured
 by the code that builds it (`ui::MapSizer`). Sizes are cached by `Node::src`, a hash of what
 the node draws, with its tier, the body size and the wrap width, and for an image or a
-gallery the images epoch, so a card takes its picture's size once it loads. A picture comes
-through `Cx::pic`, which says whether it is ready, loading or missing. Below zoom 0.35
-(`map_app::LITE_ZOOM`) a card draws as its bare box (`card::lite`), at the size the layout
-gave it, and crossing that zoom is one of the camera moves that runs the view.
+gallery the images epoch, so a card takes its picture's size once it loads. A picture comes through `Cx::pic`, which says whether it is ready, loading or missing. Below zoom 0.35 (`map_app::LITE_ZOOM`) non-image cards draw as labelled placeholders (`card::lite`), at the size the layout gave them, while standalone images and galleries stay visual; crossing that zoom is one of the camera moves that runs the view.
 
 The map writes the note the way the edit sheet does. Each gesture is a function in `map.rs`
 from the note's text, its tree and the gesture to a `Splice`: some whole lines replaced by
