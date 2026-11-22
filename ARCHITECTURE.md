@@ -133,6 +133,33 @@ shown on the map for the first time gets its first camera once the canvas has a 
 (`App::place_due`). The canvas reports its size only when it changes, so a note opened while
 the map shows is placed from `App::poll`.
 
+The rest of the window works on the map as it does on the page. Find (`map_find.rs`) matches
+the find bar's query in each node's label and in a card's pieces, folded branches included,
+and a step selects the match's node, opens the folds above it and glides it to the middle of
+the canvas clear of the bar (`App::map_go_node`). A search result opened on the map seeds Find
+the same way. The outline's and the shelf's current entry is the heading the selected node
+sits under, and a click on an entry, or any other `App::jump`, goes to that heading's node
+(`App::map_go_line`). When the note changes on disk or by sync, `App::map_reloaded` carries
+the folds and the selection to the new tree by `NodeId` (`MapView::follow`); a selected node
+the change removed gives way to the nearest node at or above its line. An open inline field
+keeps its text then, and its commit is refused with a notice while the note under it has
+changed, so a stale field never writes over another app's text. Each tab keeps its own
+`MapView`. In Note mode each note is a vault of its own, so `App::park` takes the note's view
+with it (`Parked::map`) and `App::open_note` puts it back. Opening a folder drops every view
+(`App::map_new_notes`). Both first settle the inline field (`App::map_settle`), writing what
+it holds if its note is unchanged.
+
+A fold circle's and a task box's press target is 24 screen points at any zoom: 24 / 2^b world
+points, where `b` is the zoom's power of two (`map_app::hit_bucket`), so it changes only when
+the view runs anyway. The map draws with the page's colours with three changes: `map_look`
+lifts dim to `Roles::readable_dim`, so a done task, a quote or a caption reads at 4.5:1 on the
+canvas and on cards; a diff card lifts its line inks to 4.5:1 on their washes; and the
+branches, the selection and the drop marks keep 3.1:1 against the page (`ui::map::GRAPHIC`),
+which leaves 3:1 after the rounding to 8-bit colour. The
+`contrast:` reading of `tests/probe.py` measures both, and the cases in
+`tests/cases/map/contrast/` take it on every built-in theme, a picked accent and the Omarchy
+themes in `tests/fixtures/omarchy-themes/`.
+
 `main.rs` connects these parts. It builds a `rune::AppSpec` from `app::init`, `ui::view`,
 `keys::on_key`, `App::poll` and `App::set_waker`. It calls `App::flush_all` when the window
 closes. If the first argument is a subcommand, such as `quire mcp`, `cli::run_subcommand`
@@ -451,6 +478,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling (with lists renumbered and blank lines matched), delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. `add_block` adds a block such as an image's link, a paragraph where `add` would make a heading or a bullet. |
 | `map_layout.rs` | Where each shown node sits: a left-to-right tidy tree in world points, built bottom-up from each subtree's top and bottom profile, so a short branch tucks under a long one. Pure: it takes the tree, the folds and a size per node. |
 | `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, image inserts, the lightbox, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` pills' geometry, which the view draws and fit takes in (`App::map_extent`). |
+| `map_find.rs` | Find on the map (MAP-066): every match of the find bar's query in the nodes' labels and cards' pieces, in the note's order, folded branches included, where a search starts from the selection, and showing the current match. |
 | `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
 | `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's right edge. Nothing glides under reduced motion. |
 | `theme.rs` | Themes, fonts, text measurements. |
@@ -537,8 +565,10 @@ Desktop:
   They set `HOME` and the XDG folders to a temporary folder, and hold the
   `scroll_tests::ENV` lock while they do. `src/throw_tests.rs` drives the reader with
   timestamped touchpad frames to check Rune's fling against Chrome's numbers (RD-27).
-- `src/bench.rs` holds the budgets as ignored tests: the reader scroll (VER-32) and typing
-  latency (WR-224). Run them on a release build with
+- `src/bench.rs` holds the budgets as ignored tests: the reader scroll (VER-32), typing
+  latency (WR-224), and the map's pan, zoom and inline edit on the 2,000-node `map_2000`
+  (MAP-045), which also checks that a pan or zoom frame runs the view only when the mounted
+  set changes and never lays the map out again. Run them on a release build with
   `cargo test --release bench -- --ignored --nocapture --test-threads 1`; add
   `--features profile` for Rune's view, commit, layout, text and paint split.
 - `cargo run -- --snap shot.png` renders one frame without a window. `--scene` picks a scene
