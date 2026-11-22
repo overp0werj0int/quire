@@ -153,7 +153,7 @@ pub(super) fn canvas(v: V) -> El {
     }
     let editing = s.map_editing();
     for &i in &nodes {
-        world = world.child(node(&cx, &t, &l, i, folded(i), i == sel, editing == Some(i), dim(i)));
+        world = world.child(node(&cx, &t, &l, i, folded(i), i == sel, editing == Some(i), dim(i), cam.1 < map_app::LITE_ZOOM));
         if !t.nodes[i].children.is_empty() {
             world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
@@ -313,7 +313,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32) -> El {
+fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32, lite: bool) -> El {
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -332,8 +332,8 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics).hash(&mut h);
-    let pad_x = l.metrics.pad_x;
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite).hash(&mut h);
+    let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
@@ -356,6 +356,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
             .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
+                    Body::Card(_) if lite => Some(card::lite(c, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
                     Body::Card(bl) => card::card(cx, bl, i, &tail).map(|(e, _)| e),
                     _ => None,
                 };

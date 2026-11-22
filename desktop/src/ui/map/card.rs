@@ -9,7 +9,7 @@ use crate::app::App;
 use crate::blocks::{Block, DiffKind, DiffLine, GalleryItem, Kind, Table};
 use crate::md::Img;
 use crate::page::{self, line, r};
-use crate::roles::mix;
+use crate::roles::{Roles, mix};
 use crate::ui::chip::Chip;
 use crate::ui::icons;
 use crate::ui::preview::code as pcode;
@@ -25,6 +25,11 @@ const HTML_LINES: f32 = 6.0;
 const TABLE_ROWS: usize = 8;
 /// The fade over a card's clipped bottom.
 const BOTTOM_FADE: f32 = 28.0;
+
+/// A card's stand-in below `map_app::LITE_ZOOM` (MAP-045): its box, `w` × `h`, empty.
+pub(super) fn lite(c: &Roles, w: f32, h: f32, tail: &str) -> El {
+    el().key(format!("map-lite:{tail}")).size(w, h).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft))
+}
 
 /// Block `bl` of node `i` as a card, and its size, or None for a block that is not one yet.
 /// `tail` names the node in the card's keys.

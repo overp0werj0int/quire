@@ -23,6 +23,8 @@ pub const ZOOM_MIN: f32 = 0.1;
 pub const ZOOM_MAX: f32 = 4.0;
 /// How far past the canvas's edges nodes stay mounted (MAP-045).
 pub const OVERSCAN: f32 = 160.0;
+/// Below this zoom a card draws as its bare box (MAP-045).
+pub const LITE_ZOOM: f32 = 0.35;
 /// What `ensureVisible` keeps between a node and the canvas's edges (MAP-036).
 const MARGIN: f32 = 40.0;
 /// Camera glides (MAP-043).
@@ -338,6 +340,7 @@ impl App {
         let cam = self.map_camera();
         self.map_mounted(cam).hash(&mut h);
         hit_bucket(cam.1).hash(&mut h);
+        (cam.1 < LITE_ZOOM).hash(&mut h);
         h.finish()
     }
 
