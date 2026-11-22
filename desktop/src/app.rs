@@ -700,7 +700,7 @@ impl App {
         let set = self.settings();
         let left_vis = self.persist.left_open && !self.focus && vw >= SIDEBAR_DOCK_W;
         let right_vis = self.persist.right_open && !self.focus && self.active.is_some() && vw >= OUTLINE_DOCK_W;
-        let source = (self.mode == Mode::Preview && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
+        let source = (matches!(self.mode, Mode::Preview | Mode::Map) && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
             (self.active_text_key().to_owned(), vw.to_bits(), set.size, set.font.clone(), self.wide(), left_vis, right_vis, dark)
         });
         let palette = (dark, self.preset(), self.note_mode(), self.active.is_some(), set.panel_font.clone());
@@ -709,6 +709,9 @@ impl App {
             || (cur.source.is_none() && self.prepared_key.as_ref().is_some_and(|p| p.palette == cur.palette))
         {
             self.prepare_due = None;
+            return;
+        }
+        if self.mode == Mode::Map && (self.map.glide.is_some() || self.map.relayout.is_some()) {
             return;
         }
         match self.prepare_due {

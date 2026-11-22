@@ -155,12 +155,16 @@ pub(super) fn canvas(v: V) -> El {
     let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));
     let (b, prose, mono) = (look.b, look.family, look.mono);
     // A fold circle's or task box's target is at least 24 points on screen (MAP-041, MAP-073).
-    let bucket_zoom = 2f32.powi(map_app::hit_bucket(cam.1));
+    // Pin detail level during active camera glides (`map_detail_zoom`) so zooming across
+    // `LITE_ZOOM` or `hit_bucket` boundaries never mounts/rebuilds dozens of cards mid-glide.
+    let dz = s.map_detail_zoom();
+    let bucket_zoom = 2f32.powi(map_app::hit_bucket(dz));
     let target = 24.0 / bucket_zoom;
     let hit = target.max(2.0 * FOLD_R);
     // Below 0.65× zoom, card hover chips switch to compact square icon-only buttons sized for
     // ~20 pt on screen so they stay usable at Fit zoom without bloating at 0.8×.
-    let chip_compact = map_app::chip_compact_side(cam.1);
+    let chip_compact = map_app::chip_compact_side(dz);
+    let lite = dz < map_app::LITE_ZOOM;
     let mut world = el()
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
@@ -178,14 +182,14 @@ pub(super) fn canvas(v: V) -> El {
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
     let dim = |i: usize| drawn.alpha(i) * if moved.contains(&i) { 0.35 } else { 1.0 };
     for &i in &links {
-        world = world.child(link(&t, &l, i, c).opacity(dim(i)));
+        world = world.child(link(&t, &l, i, c, dim(i)));
     }
     let editing = s.map_editing();
     let query = s.find_query();
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, chip_compact, found };
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The field over the node being edited: its place, room left of the text, style and size.
@@ -325,12 +329,13 @@ pub(super) fn canvas(v: V) -> El {
         .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_pan_drag(d, tx))
 }
 
-fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
+fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { return el() };
     let lw = line_width(p.depth);
     let (x0, x1) = (q.right(), p.x);
     let (ya, yb) = (q.line_y(), p.line_y());
-    let key = format!("map-link:{}", key_tail(&node_key(t, i)));
+    let tail = key_tail(&node_key(t, i)).to_string();
+    let key = format!("map-link:{tail}");
     let color = branch_color(c, t.nodes[i].branch);
     let w = (x1 - x0).max(1.0);
     // Draw truly horizontal links as a crisp bar; keep any noticeable rise as a smooth Bézier
@@ -341,18 +346,28 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
             .pin(Some(x0 + W), Some((ya + yb) / 2.0 - lw / 2.0 + W), None, None)
             .size(w, lw)
             .fill(color)
+            .opacity(alpha)
             .inert();
     }
     let top = ya.min(yb) - lw;
     let h = (ya.max(yb) - top + lw).max(1.0);
-    let mid = w / 2.0;
-    let (a, z) = ([0.0, ya - top], [w, yb - top]);
-    let path = Path::new().move_to(a).cubic_to([mid, a[1]], [mid, z[1]], z);
-    rune::canvas(Shape::new().stroke_path(&path, lw, LineCap::Round, color))
-        .key(key)
+    let (y0, y1) = (ya - top, yb - top);
+    // Memoize the stroked Bézier shape by relative geometry `(w, y0, y1, lw, color)` so rigid
+    // subtree translations during fold/unfold relayout glides never re-tessellate unchanged links.
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
+    let shape = rune::memo(format!("map-link-s:{tail}"), hash.finish(), move || {
+        let mid = w / 2.0;
+        let (a, z) = ([0.0, y0], [w, y1]);
+        let path = Path::new().move_to(a).cubic_to([mid, a[1]], [mid, z[1]], z);
+        rune::canvas(Shape::new().stroke_path(&path, lw, LineCap::Round, color)).size(w, h).inert()
+    });
+    el().key(key)
         .pin(Some(x0 + W), Some(top + W), None, None)
         .size(w, h)
+        .opacity(alpha)
         .inert()
+        .child(shape)
 }
 
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
@@ -424,47 +439,33 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
     let clear = l.clear[i];
+    let rel_clear = [clear[0] - p.y, clear[1] - p.y];
     let sh = l.metrics.sh;
+    let lw = line_width(p.depth);
+    let tail = key_tail(&key).to_string();
+    // Memoize the node's inner body (task box, rich label / card, underline) independently of
+    // `(p.x, p.y, alpha)` so rigid translations during fold/unfold relayout glides hit the cache
+    // on every unchanged branch without rebuilding labels, cards or task controls.
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    // The palette and the names a wiki link resolves against colour the runs.
-    (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
+    (i, n.src, n.depth, selected, editing, b.to_bits(), room.to_bits(), [p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), chip_compact.map(f32::to_bits), clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
-    rune::memo(key.clone(), h.finish(), move || {
-        let lw = line_width(p.depth);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
+    let body_key = format!("map-body:{tail}");
+    let body_tail = tail.clone();
+    let body = rune::memo(body_key.clone(), h.finish(), move || {
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));
         let cx = &Cx::map(cx.v, cx.look, hl.as_ref());
-        let tail = key_tail(&key).to_string();
-        let mut e = el().key(key)
-            .pin(Some(p.x + W), Some(p.y + W), None, None)
+        el().key(body_key)
+            .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h + lw)
-            .radius(4.0)
-            .role("treeitem")
-            .label(spoken(t, i, folded))
-            .level(n.depth as u32 + 1)
-            .focus_selected(selected)
-            .opacity(alpha);
-        if !selected && !editing {
-            e = e.hover(c.hover).hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1));
-        }
-        if !n.children.is_empty() {
-            e = e.expanded(!folded);
-            if !folded {
-                e = e.hover_group_shared(format!("map-row:{tail}"));
-            }
-        }
-        e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
-            .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
-            .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
-            .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
             .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
                     Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
-                        Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail))
+                        Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &body_tail))
                     }
-                    Body::Card(bl) => card::card(cx, bl, i, &tail, chip_compact).map(|(e, _)| e),
+                    Body::Card(bl) => card::card(cx, bl, i, &body_tail, chip_compact).map(|(e, _)| e),
                     _ => None,
                 };
                 let text = || {
@@ -477,7 +478,30 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                 shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
             .children((!selected).then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
-    })
+    });
+    let mut e = el().key(key)
+        .pin(Some(p.x + W), Some(p.y + W), None, None)
+        .size(p.w, p.h + lw)
+        .radius(4.0)
+        .role("treeitem")
+        .label(spoken(t, i, folded))
+        .level(n.depth as u32 + 1)
+        .focus_selected(selected)
+        .opacity(alpha);
+    if !selected && !editing {
+        e = e.hover(c.hover).hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1));
+    }
+    if !n.children.is_empty() {
+        e = e.expanded(!folded);
+        if !folded {
+            e = e.hover_group_shared(format!("map-row:{tail}"));
+        }
+    }
+    e.on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
+        .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
+        .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
+        .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
+        .child(body)
 }
 
 /// A task's box left of its label, centred on the first line, in a target `target` map points
@@ -553,34 +577,45 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         .cursor(rune::Cursor::Pointer)
         .on_press_tx(toggle);
     if !folded {
-        let halo_r = FOLD_R + 3.0;
-        let halo_wrap = el()
-            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-            .hover_group()
-            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-            .child(
-                el().size(2.0 * halo_r, 2.0 * halo_r)
-                    .radius(halo_r)
-                    .fill(branch.alpha(0.18))
-                    .group_opacity(0.0, 1.0)
-                    .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
-                    .inert(),
-            );
-        let dot = el()
-            .size(2.0 * FOLD_R, 2.0 * FOLD_R)
-            .radius(FOLD_R)
-            .center()
-            .border(1.5, branch)
-            .fill(c.bg)
-            .group_opacity(0.0, 1.0)
-            .pin(Some(cx - FOLD_R - x0), Some(cy - FOLD_R - y0), None, None)
-            .inert()
-            .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
+        let (fw, fh) = (x1 - x0, y1 - y0);
+        let (rcx, rcy) = (cx - x0, cy - y0);
+        let bg = c.bg;
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch), color_bits(bg)).hash(&mut hash);
+        let vis_key = format!("map-fold-v:{tail}");
+        let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
+            let halo_r = FOLD_R + 3.0;
+            let halo_wrap = el()
+                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .hover_group()
+                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                .child(
+                    el().size(2.0 * halo_r, 2.0 * halo_r)
+                        .radius(halo_r)
+                        .fill(branch.alpha(0.18))
+                        .group_opacity(0.0, 1.0)
+                        .pin(Some(rcx - halo_r), Some(rcy - halo_r), None, None)
+                        .inert(),
+                );
+            let dot = el()
+                .size(2.0 * FOLD_R, 2.0 * FOLD_R)
+                .radius(FOLD_R)
+                .center()
+                .border(1.5, branch)
+                .fill(bg)
+                .group_opacity(0.0, 1.0)
+                .pin(Some(rcx - FOLD_R), Some(rcy - FOLD_R), None, None)
+                .inert()
+                .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
+            el().key(vis_key)
+                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .child(halo_wrap)
+                .child(dot)
+        });
         hit_el = hit_el
             .hover_group_shared(format!("map-row:{tail}"))
             .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-            .child(halo_wrap)
-            .child(dot);
+            .child(visuals);
     }
     let mut out = vec![hit_el];
     if folded {

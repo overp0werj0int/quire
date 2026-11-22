@@ -230,7 +230,7 @@ pub(crate) fn prepare_cold(s: &App, cx: &mut Cx<App>) -> El {
     let trailing = cx.chrome_insets().trailing;
     let v = V { s, p, dark, vw, vh, trailing, caret: None, caret_view: None, find_at: None, place_at: None };
     let mut out = col().w_full().h_full();
-    if v.has_doc() && s.mode == crate::app::Mode::Preview && !s.active_locked() && s.active_text().len() <= 2_000_000 {
+    if v.has_doc() && matches!(s.mode, crate::app::Mode::Preview | crate::app::Mode::Map) && !s.active_locked() && s.active_text().len() <= 2_000_000 {
         out = out.child(editor::prepare_source(v));
     }
     if v.is_vault() {

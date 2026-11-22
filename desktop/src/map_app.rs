@@ -98,6 +98,10 @@ type SizeKey = (u64, Tier, u32, u32, u64);
 type LaidKey = (String, u64, Option<u64>, u32, u64, &'static str, &'static str, u64, Option<(usize, u32, u32)>);
 /// Label sizes, kept while the font epoch and the two fonts stay the same.
 type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
+/// Per-tree O(1) indexed size cache independent of `fold_ver` so folding/unfolding reuses
+/// measured `[w, h]` directly without rehashing or constructing `MapSizer`.
+type TreeSizesKey = (u64, u32, u32, u64, &'static str, &'static str, u64);
+type TreeSizes = Option<(TreeSizesKey, Vec<Option<[f32; 2]>>)>;
 
 pub struct MapState {
     pub views: HashMap<String, MapView>,
@@ -110,6 +114,7 @@ pub struct MapState {
     tree: RefCell<Option<(u64, Rc<Tree>)>>,
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
+    tree_sizes: RefCell<TreeSizes>,
     pub(crate) glide: Option<Glide>,
     /// A touchpad swipe's coast after the fingers lift (`map_throw`).
     pub(crate) throw: crate::map_throw::Throw,
@@ -180,6 +185,7 @@ impl Default for MapState {
             tree: RefCell::new(None),
             laid: RefCell::new(None),
             sizes: RefCell::new((0, "", "", HashMap::new())),
+            tree_sizes: RefCell::new(None),
             glide: None,
             throw: Default::default(),
             relayout: None,
@@ -407,7 +413,13 @@ impl App {
             *sizes = (epoch, prose_id, mono_id, HashMap::new());
         }
         let cache = &mut sizes.3;
-        let sizer = crate::ui::MapSizer::new(self);
+        let ts_key: TreeSizesKey = (self.map_ver(), b.to_bits(), m.max_w.to_bits(), epoch, prose_id, mono_id, pics);
+        let mut ts_ref = self.map.tree_sizes.borrow_mut();
+        if ts_ref.as_ref().is_none_or(|(k, v)| *k != ts_key || v.len() != t.nodes.len()) {
+            *ts_ref = Some((ts_key, vec![None; t.nodes.len()]));
+        }
+        let fast_sizes = &mut ts_ref.as_mut().unwrap().1;
+        let mut sizer: Option<crate::ui::MapSizer<'_>> = None;
         let chip = chip_font(b, mono);
         let laid = Rc::new(crate::map_layout::layout(
             &t,
@@ -420,9 +432,16 @@ impl App {
                 {
                     return [fw + task_room(n, b), fh];
                 }
+                if let Some(sz) = fast_sizes[i] {
+                    return sz;
+                }
                 let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
-                let [w, h] = *cache.entry(key).or_insert_with(|| sizer.size(&t, i, m.max_w));
-                [w + task_room(n, b), h]
+                let [w, h] = *cache.entry(key).or_insert_with(|| {
+                    sizer.get_or_insert_with(|| crate::ui::MapSizer::new(self)).size(&t, i, m.max_w)
+                });
+                let full = [w + task_room(n, b), h];
+                fast_sizes[i] = Some(full);
+                full
             },
             |i| {
                 let hidden = t.nodes[i].end - i - 1;
@@ -480,13 +499,25 @@ impl App {
         (nodes, links)
     }
 
+    /// The zoom level used for detail switches (`LITE_ZOOM`, `hit_bucket`, compact card chips).
+    /// While a camera glide is in flight, pin detail to `min(from, to)` so zooming 10% -> 100%
+    /// (e.g. `F2`) or 100% -> 10% (`Fit`) never mounts/rebuilds dozens of full cards on transient
+    /// mid-glide frames, then settles cleanly at `to` once the glide lands.
+    pub fn map_detail_zoom(&self) -> f32 {
+        match &self.map.glide {
+            Some(g) => g.from.1.min(g.to.1),
+            None => self.map_camera().1,
+        }
+    }
+
     fn map_signature(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         let cam = self.map_camera();
+        let dz = self.map_detail_zoom();
         self.map_mounted(cam).hash(&mut h);
-        hit_bucket(cam.1).hash(&mut h);
-        (cam.1 < LITE_ZOOM).hash(&mut h);
-        chip_compact_side(cam.1).map(f32::to_bits).hash(&mut h);
+        hit_bucket(dz).hash(&mut h);
+        (dz < LITE_ZOOM).hash(&mut h);
+        chip_compact_side(dz).map(f32::to_bits).hash(&mut h);
         h.finish()
     }
 
