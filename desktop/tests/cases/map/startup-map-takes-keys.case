@@ -1,0 +1,19 @@
+A note that opens in Map from the saved state takes map keys before any click: Right, Down and Tab add a child under B.
+note: Plan.md
+state: {"mode": "map"}
+events: key:Right@0.8 key:Down@1.0 key:Tab@1.2 type:Budget@1.5 key:Enter@2.0
+expect: selected: map-node:7
+--- before
+# Plan
+
+## A
+
+## B
+--- after
+# Plan
+
+## A
+
+## B
+
+- Budget
