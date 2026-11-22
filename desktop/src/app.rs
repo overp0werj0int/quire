@@ -331,6 +331,7 @@ struct Parked {
     text: String,
     edit: Option<TextEdit>,
     unlocked: Option<Unlocked>,
+    map: Option<crate::map_app::MapView>,
 }
 
 pub fn init() -> App {
@@ -967,7 +968,7 @@ impl App {
             return true;
         }
         self.park();
-        let parked = self.parked.remove(&file);
+        let mut parked = self.parked.remove(&file);
         if parked.is_some() {
             // Its last edits are queued for the writer: read the file after them.
             self.writer.wait(Duration::from_secs(2));
@@ -985,6 +986,10 @@ impl App {
                     self.want_editor_focus = false;
                 }
                 let rel = self.active.clone().unwrap_or_default();
+                // The map's camera and folds hold even when the text changed meanwhile.
+                if let Some(m) = parked.as_mut().and_then(|p| p.map.take()) {
+                    self.map.views.insert(rel.clone(), m);
+                }
                 if let Some(p) = parked.filter(|p| self.files().get(&rel) == Some(&p.text)) {
                     if let Some(u) = p.unlocked {
                         self.unlocked.insert(rel.clone(), u);
@@ -1003,13 +1008,15 @@ impl App {
         }
     }
 
-    /// Keeps the shown note's editor and unlocked text while another note shows in Note mode.
+    /// Keeps the shown note's editor, unlocked text and map while another note shows in Note
+    /// mode.
     fn park(&mut self) {
+        self.map_settle();
         let Some(file) = self.note_path() else { return };
         let Some(rel) = self.active.clone() else { return };
         let Some(text) = self.files().get(&rel).cloned() else { return };
-        let (edit, unlocked) = (self.edits.remove(&rel), self.unlocked.remove(&rel));
-        self.parked.insert(file, Parked { text, edit, unlocked });
+        let (edit, unlocked, map) = (self.edits.remove(&rel), self.unlocked.remove(&rel), self.map.views.remove(&rel));
+        self.parked.insert(file, Parked { text, edit, unlocked, map });
     }
 
     /// Starts the app in Note mode on `file`, in zen; leaving zen shows the page with the
@@ -1087,6 +1094,7 @@ impl App {
     /// Makes `v` the open vault. A folder takes the session it was left with and joins the list;
     /// a note in Note mode is its only tab, with the sidebar collapsed.
     fn enter(&mut self, v: Vault) {
+        self.map_new_notes();
         self.flush_notes();
         self.store_session();
         match v.scope {

@@ -1,0 +1,11 @@
+In Note mode the map is never the mode saved for the next start.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8
+at: 1.8
+expect: label:mode-map: 'Map'
+expect: state:mode: "source"
+--- before
+# Plan
+
+## Budget

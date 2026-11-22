@@ -20,10 +20,11 @@ contains any of the words. A case file:
     ## Budget
 
 The first line says what the case checks. `note` names the file (default Note.md), `state`
-is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
+is the state file as for probe.py --state, `scene` a scene as for probe.py --scene (`note` for
+Note mode), `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
 that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`opacity:KEY`, `color:KEY`, `selected`, `nodes`, `file:GLOB`), compared exactly. `at` takes the readings at that time instead of 0.8 s
+`opacity:KEY`, `color:KEY`, `selected`, `nodes`, `file:GLOB`, `state:KEY`), compared exactly. `at` takes the readings at that time instead of 0.8 s
 after the last event, to read the app mid-gesture: a drag's drop zone before the release, or a
 node part way through a glide. Each `env` line is NAME=VALUE for the app's environment, such
 as QUIRE_REDUCED_MOTION=1. With `password`, the note on disk must be a locked note (SYNC.md),
@@ -55,14 +56,14 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "color:", "selected", "nodes", "file:")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "color:", "selected", "nodes", "file:", "state:")
 
 
 class Case:
     def __init__(self, path):
         self.path = path
         self.name = os.path.relpath(path, os.path.join(HERE, "cases"))
-        self.note, self.state, self.size, self.password, self.at = "Note.md", None, "1280x800", None, None
+        self.note, self.state, self.size, self.password, self.at, self.scene = "Note.md", None, "1280x800", None, None, None
         self.events, self.expect, self.before, self.after, self.env = [], [], None, None, {}
         self.files, self.outside = {}, {}
         text = open(path).read()
@@ -82,6 +83,8 @@ class Case:
                     self.note = value
                 elif key == "state":
                     self.state = value
+                elif key == "scene":
+                    self.scene = value
                 elif key == "size":
                     self.size = value
                 elif key == "password":
@@ -158,7 +161,7 @@ def run(case, binary, keep):
         with open(os.path.join(src, case.note), "w") as f:
             f.write(case.before)
         events = probe.parse_events(" ".join(case.events))
-        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env, extra=case.files, outside=case.outside)
+        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env, extra=case.files, outside=case.outside, scene=case.scene)
         problems = []
         path = os.path.join(work, "notes", case.note)
         if not os.path.exists(path):

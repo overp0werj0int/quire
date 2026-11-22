@@ -1,0 +1,9 @@
+In Folder mode the map is the mode saved for the next start.
+note: Plan.md
+events: key:m+cmd@0.3 key:l@0.8
+at: 1.8
+expect: state:mode: "map"
+--- before
+# Plan
+
+## Budget

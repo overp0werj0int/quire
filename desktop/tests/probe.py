@@ -50,6 +50,7 @@ WHAT is any of (default `focus,doc-y`):
     nodes             the map nodes built now, by key, in the order drawn: what culling kept
     keys              every keyed element with its rectangle: the way to find a KEY
     notes             the first 60 characters of each note on disk after the replay
+    state:KEY         a top-level value in the state file the app saved, as JSON
     file:GLOB         the files in the notes folder that match GLOB, with their sizes
 
 --at takes the reading at that time; without it, 0.8 s after the last event.
@@ -65,6 +66,9 @@ folders above it. Without either the app writes its sample notes.
 
 --outside NAME=FILE gives the text a `write:NAME` event writes: FILE's bytes. Repeat it for
 more files.
+
+--scene NAME starts the app in one of its scenes: `note` opens the note in Note mode, as a
+file of its own.
 
 --state starts the app with that JSON as its state file, for settings: '{"settings":
 {"panel_font": "mono"}}'. What it leaves out keeps its default.
@@ -182,7 +186,7 @@ def run_outside(cmd, env, notes, outside):
         return subprocess.CompletedProcess(cmd, p.returncode, "", err.read())
 
 
-def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None, outside=None):
+def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None, outside=None, scene=None):
     """One headless run; returns the element tree (a list of dicts) and the home folder.
     `extra` maps paths in the notes folder to bytes written there beside `note`; `outside` maps
     them to the bytes a `write` event writes mid-run."""
@@ -198,6 +202,8 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
         cmd += ["--theme", theme]
     if snap:
         cmd += ["--snap", snap]
+    if scene:
+        cmd += ["--scene", scene]
     for attempt in range(6):
         shutil.rmtree(home, ignore_errors=True)
         os.makedirs(home)
@@ -286,6 +292,11 @@ def answer(what, els, home):
         notes = os.path.join(os.path.dirname(home), "notes")
         hits = sorted(glob.glob(os.path.join(notes, what[5:])))
         return "%s: %s" % (what, ", ".join("%s (%d bytes)" % (os.path.relpath(h, notes), os.path.getsize(h)) for h in hits) or "none")
+    if what.startswith("state:"):
+        import glob
+        found = glob.glob(os.path.join(os.path.dirname(home), "state.json")) + glob.glob(os.path.join(home, ".config", "*", "state.json"))
+        saved = json.load(open(found[0])) if found else {}
+        return "%s: %s" % (what, json.dumps(saved.get(what[6:])) if found else None)
     if what == "doc-y":
         r = rect(els, "doc-col")
         return "doc-y: %s" % (r[1] if r else None)
@@ -326,6 +337,7 @@ def main():
     ap.add_argument("--open")
     ap.add_argument("--state")
     ap.add_argument("--outside", action="append", default=[])
+    ap.add_argument("--scene")
     a = ap.parse_args()
     outside = {}
     for spec in a.outside:
@@ -342,14 +354,14 @@ def main():
             t0, t1, step = [float(v) for v in a.series.split(":")]
             prev, t = None, t0
             while t <= t1 + 1e-9:
-                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside)
+                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside, scene=a.scene)
                 y = (rect(els, "doc-col") or [0, None])[1]
                 move = "" if prev is None or y is None else "  moved %+.1f" % (y - prev)
                 rest = "  ".join(answer(w, els, home) for w in whats if w != "doc-y")
                 print("t %.3f  doc-y %s%s  %s" % (t, y, move, rest))
                 prev, t = y, t + step
         else:
-            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside)
+            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside, scene=a.scene)
             for w in whats:
                 print(answer(w, els, home))
     finally:

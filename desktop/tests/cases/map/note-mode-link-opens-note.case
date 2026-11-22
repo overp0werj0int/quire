@@ -1,0 +1,13 @@
+In Note mode, following a link to a note file from the map opens that note in Note mode, in preview, beside the first in the Open list.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8 key:Enter+cmd@1.1
+expect: text:crumb: 'Other .md'
+expect: label:mode-preview: 'Preview'
+expect: rect:open-notes: [0.0, 77.0, 247.0, 71.0]
+--- before
+# Plan
+
+- [Other](Other.md)
+--- file Other.md
+# Other

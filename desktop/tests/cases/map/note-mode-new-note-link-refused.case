@@ -1,0 +1,11 @@
+In Note mode, following a wiki link to a note that does not exist refuses to make one and says why.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8 key:Enter+cmd@1.1
+expect: text:crumb: 'Plan .md'
+expect: text:notice: 'This note is open as a file. Open its folder to add, rename, move or delete notes. Dismiss'
+expect: file:*.md: Plan.md (20 bytes)
+--- before
+# Plan
+
+- [[Other]]

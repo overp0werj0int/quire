@@ -1,0 +1,22 @@
+In Note mode a second note with the same file name, in another folder, opens on a map of its own: fitted, not at the first one's zoom.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:=@0.8 key:l@1.0 key:j@1.2 key:l@1.4 key:Enter+cmd@1.7 key:m+cmd@2.3
+expect: text:crumb: 'Plan .md'
+expect: selected: map-node:1
+expect: scale:map-node:1: 2.0
+expect: text:map-node:1: 'Trip plan'
+--- before
+# Plan
+
+## Budget
+
+## Dates
+
+- [Next](trip/Plan.md)
+--- file trip/Plan.md
+# Trip plan
+
+## Gear
+
+- Tent

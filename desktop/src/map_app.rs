@@ -128,6 +128,16 @@ pub struct Inline {
     held: bool,
 }
 
+impl Inline {
+    /// The change the field's text makes to `base`, or None when it makes none (MAP-018).
+    fn splice(&self) -> Option<map::Splice> {
+        match self.what {
+            Editing::Node(i) => map::rename(&self.base, &self.tree, i, &self.edit.text),
+            Editing::New(at) => map::add(&self.base, &self.tree, at, &self.edit.text).ok(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Editing {
     Node(usize),
@@ -826,9 +836,7 @@ impl App {
     fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let base = self.active_text().to_string();
-        let new = s.apply(&base);
-        let (pre, post) = shared(&base, &new);
-        self.splice_note(&rel, pre..base.len() - post, &new[pre..new.len() - post]);
+        self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
         let i = s.focus.map_or(ROOT, |l| t.at_line(l));
         self.map_reveal(i, tx);
@@ -1302,11 +1310,7 @@ impl App {
     /// empty or unchanged (MAP-018). True when a field was open and has closed.
     pub fn map_commit(&mut self, tx: &mut Tx) -> bool {
         let Some(e) = self.map.inline.take() else { return false };
-        let s = match e.what {
-            Editing::Node(i) => map::rename(&e.base, &e.tree, i, &e.edit.text),
-            Editing::New(at) => map::add(&e.base, &e.tree, at, &e.edit.text).ok(),
-        };
-        let Some(s) = s else {
+        let Some(s) = e.splice() else {
             self.map_back_to(&e, tx);
             return true;
         };
@@ -1323,11 +1327,37 @@ impl App {
         if Some(e.rel.as_str()) == self.active.as_deref() {
             self.map_apply(&e.tree, &s, tx);
         } else {
-            let new = s.apply(&e.base);
-            let (pre, post) = shared(&e.base, &new);
-            self.splice_note(&e.rel, pre..e.base.len() - post, &new[pre..new.len() - post]);
+            self.splice_into(&e.rel, &e.base, &s);
         }
         true
+    }
+
+    /// Before the notes shown change under the map (another folder, another note in Note
+    /// mode): an open field's text goes into its note, as a click away would.
+    pub(crate) fn map_settle(&mut self) {
+        let Some(e) = self.map.inline.take() else { return };
+        if let Some(s) = e.splice()
+            && self.note_text(&e.rel) == Some(e.base.as_str())
+        {
+            self.splice_into(&e.rel, &e.base, &s);
+        }
+    }
+
+    /// Splice `s` into note `rel`, whose text is `base`, as one change.
+    fn splice_into(&mut self, rel: &str, base: &str, s: &map::Splice) {
+        let new = s.apply(base);
+        let (pre, post) = shared(base, &new);
+        self.splice_note(rel, pre..base.len() - post, &new[pre..new.len() - post]);
+    }
+
+    /// A new folder of notes is shown (MAP-044): the last one's maps go, but for a Note mode
+    /// note's, which `park` has kept.
+    pub(crate) fn map_new_notes(&mut self) {
+        self.map_settle();
+        self.map.views.clear();
+        self.map.glide = None;
+        self.map.relayout = None;
+        self.map.node_drag = None;
     }
 
     /// Esc in the field (MAP-017): nothing is written, and a new node goes.

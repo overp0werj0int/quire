@@ -1,0 +1,24 @@
+In Note mode, showing another note while a node's name is being edited writes the name into its note first.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8 key:j@1.0 key:l@1.2 key:Enter+cmd@1.4 tap:120,94@2.0 key:m+cmd@2.4
+events: key:l@2.9 key:e@3.1 type:Money@3.3 tap:120,130@3.9 key:s+cmd@4.3
+expect: text:crumb: 'Other .md'
+--- before
+# Plan
+
+## Budget
+
+## Dates
+
+- [Other](Other.md)
+--- after
+# Plan
+
+## Money
+
+## Dates
+
+- [Other](Other.md)
+--- file Other.md
+# Other

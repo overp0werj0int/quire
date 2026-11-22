@@ -1,0 +1,17 @@
+In Note mode a rename on the map saves into the note's own file.
+note: Plan.md
+scene: note
+events: key:m+cmd@0.3 key:l@0.8 key:e@1.0 type:Money@1.2 key:Enter@1.8 key:s+cmd@2.1
+expect: selected: map-node:3
+--- before
+# Plan
+
+## Budget
+
+- Rent
+--- after
+# Plan
+
+## Money
+
+- Rent

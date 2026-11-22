@@ -1,0 +1,24 @@
+Closing a tab drops its map: opened again, the note's map starts fitted, with its folds open.
+note: Plan.md
+events: key:m+cmd@0.3 key:l@0.8 type:_@1.1 key:j@1.3 key:=@1.5 key:l@1.7 key:Enter+cmd@1.9 tap:tab:Plan.md@2.6
+events: key:w+cmd@3.0 tap:file:Plan.md@3.5
+expect: selected: map-node:1
+expect: label:map-node:3: 'Budget, level 2, expanded'
+expect: scale:map-node:10: 2.0
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+- [[Other]]
+--- file Other.md
+# Other
+
+## Branch
+
+- item
