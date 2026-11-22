@@ -108,6 +108,8 @@ pub struct MapState {
     pub inline: Option<Inline>,
     /// What the field edits for the moment between its edit ending and its view going.
     pub spare: TextEdit,
+    /// True while keyboard focus sits on the map canvas (`note-keys` or `map-inline-edit`).
+    pub canvas_focused: bool,
 }
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
@@ -170,6 +172,7 @@ impl Default for MapState {
             dropped: false,
             inline: None,
             spare: TextEdit::new(""),
+            canvas_focused: true,
         }
     }
 }
@@ -470,6 +473,11 @@ impl App {
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
         let mut committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
+        let focused = tx.focused().is_none_or(|k| k == crate::focus::NOTE || k == FIELD);
+        if self.map.canvas_focused != focused {
+            self.map.canvas_focused = focused;
+            committed = true;
+        }
         if let Some(([dx, dy], running)) = self.map.throw.step(t) {
             let before = self.map_signature();
             let ([px, py], z) = self.map_camera();

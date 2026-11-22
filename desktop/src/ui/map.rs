@@ -25,9 +25,9 @@ use crate::theme::normal_lh;
 /// Half the world element's side. The world is centred on the canvas's top-left, so its live
 /// offset is the camera's pan and nodes sit at their world coordinates plus this.
 const W: f32 = 131_072.0;
-/// The drag ghost's offset from the pointer, in screen points (`ui::sidebar::tree`'s).
-const GHOST_DX: f32 = 14.0;
-const GHOST_DY: f32 = 10.0;
+/// The drag ghost's offset from the pointer, in screen points, clear of the Child branch stub.
+const GHOST_DX: f32 = 16.0;
+const GHOST_DY: f32 = 14.0;
 
 /// A node's key: its first source line, 1-based, or the root or footnotes group by name.
 pub fn node_key(t: &Tree, i: usize) -> String {
@@ -180,9 +180,6 @@ pub(super) fn canvas(v: V) -> El {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
         let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, found };
         world = world.child(node(&cx, &t, &l, i, st));
-        if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
-        }
     }
     // The field over the node being edited: its place, room left of the text, style and size.
     let field_at = editing.and_then(|i| {
@@ -191,6 +188,8 @@ pub(super) fn canvas(v: V) -> El {
         let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
         Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
     });
+    // Paint `map-selection` BEFORE fold circles so fold dots always sit cleanly above the
+    // selection border (never sliced in half).
     if nodes.contains(&sel)
         && let Some(p) = l.at[sel]
     {
@@ -198,32 +197,38 @@ pub(super) fn canvas(v: V) -> El {
             Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
             _ => [p.w, p.h],
         };
-        world = world.child(
-            el().key("map-selection")
-                .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
-                .size(w + 6.0, h + line_width(p.depth) + 6.0)
-                .radius(4.0)
-                .border(2.0, Roles::readable_on(c.accent, c.bg, GRAPHIC))
-                .inert(),
-        );
+        let extra_b = if p.depth == 0 { 2.0 } else { 0.0 };
+        let sel_w = (1.75 / 2f32.powi(map_app::hit_bucket(cam.1))).clamp(2.0, 5.0);
+        let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
+        let mut sel_el = el()
+            .key("map-selection")
+            .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
+            .size(w + 6.0, h + line_width(p.depth) + 6.0 + extra_b)
+            .radius(4.0)
+            .border(sel_w, accent)
+            .inert();
+        if !s.map.canvas_focused {
+            sel_el = sel_el.opacity(0.5);
+        }
+        world = world.child(sel_el);
+    }
+    for &i in &nodes {
+        if !t.nodes[i].children.is_empty() {
+            world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
+        }
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
         world = world.child(field(v, p, room, st, w, l.metrics.pad_x));
     }
-    if let Some(g) = drag {
-        if let Some(at) = g.drop {
-            world = world.child(drop_mark(&t, &l, at, c));
-        }
-        if let Some(m) = t.find(g.node)
-            && let Some(p) = l.at[m]
-        {
-            let ([px, py], z) = cam;
-            // Below and right of the pointer, as the tree's ghost sits, so the target under the
-            // pointer stays readable.
-            let at = [(g.at[0] - px + GHOST_DX) / z, (g.at[1] - py + GHOST_DY) / z];
-            world = world.child(ghost(&cx, &t, m, p, at, l.metrics.pad_x));
-        }
+    if let Some(g) = drag
+        && let Some(at) = g.drop
+    {
+        world = world.child(drop_mark(&t, &l, at, c));
     }
+    let ghost_el = drag.and_then(|g| {
+        let m = t.find(g.node)?;
+        Some(ghost(&cx, &t, m, [g.at[0] + GHOST_DX, g.at[1] + GHOST_DY]))
+    });
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
     {
@@ -270,6 +275,7 @@ pub(super) fn canvas(v: V) -> El {
         .label("Map")
         .child(world)
         .child(ring.unwrap_or_else(el))
+        .children(ghost_el)
         .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             // The window sends Ctrl + wheel as a pinch (`on_magnify`); a wheel that still holds
@@ -391,11 +397,15 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
         let mut e = el().key(key)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
             .size(p.w, p.h + lw)
+            .radius(4.0)
             .role("treeitem")
             .label(spoken(t, i, folded))
             .level(n.depth as u32 + 1)
             .focus_selected(selected)
             .opacity(alpha);
+        if !selected && !editing {
+            e = e.hover(c.hover).hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1));
+        }
         if !n.children.is_empty() {
             e = e.expanded(!folded);
         }
@@ -470,6 +480,14 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
         s.map_toggle(i, all, tx);
         s.keys_to_note(tx);
     };
+    let halo_r = FOLD_R + 3.0;
+    let halo = el()
+        .size(2.0 * halo_r, 2.0 * halo_r)
+        .radius(halo_r)
+        .fill(branch.alpha(0.18))
+        .group_opacity(0.0, 1.0)
+        .pin(Some(cx - halo_r - x0), Some(cy - halo_r - y0), None, None)
+        .inert();
     let dot = el()
         .size(2.0 * FOLD_R, 2.0 * FOLD_R)
         .radius(FOLD_R)
@@ -483,19 +501,25 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
             .role("button")
             .label(if folded { "Unfold" } else { "Fold" })
             .cursor(rune::Cursor::Pointer)
+            .hover_group()
+            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
             .on_press_tx(toggle)
+            .child(halo)
             .child(dot),
     ];
     if folded {
         let hidden = n.end - i - 1;
         let font = map_app::chip_font(b, mono);
         let (pill, [x, y, _, h]) = map_app::pill(hidden, p, font);
+        let pill_hover = crate::roles::mix(c.on_page(c.chip_fill), c.text, 0.08);
         out.push(
             text(pill)
                 .key(format!("map-pill:{tail}"))
                 .font(font)
                 .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
                 .fill(c.chip_fill)
+                .hover(pill_hover)
+                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
                 .border(1.0, c.chip_edge)
                 .radius(h / 2.0)
                 .px(map_app::PILL_PAD)
@@ -510,30 +534,60 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
     out
 }
 
-/// The node a drag carries, at the pointer: a translucent copy with a count of what goes
-/// with it (MAP-026).
-fn ghost(cx: &Cx, t: &Tree, i: usize, p: Place, at: [f32; 2], pad_x: f32) -> El {
+/// The node a drag carries, drawn as a screen-space overlay at `at` (canvas points) so it stays
+/// crisp and legible at any zoom, with task checkbox parity and a `+N` descendant pill (MAP-026).
+fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
     let (c, b, mono) = (&cx.look.c, cx.look.b, cx.look.mono);
     let n = &t.nodes[i];
-    let st = map_app::style(map_app::tier(t, i), b, cx.look.family, mono);
+    let weight = match map_app::tier(t, i) {
+        Tier::Root | Tier::Head1 | Tier::Head => 700.0,
+        _ => 400.0,
+    };
+    let st = TextStyle::new(b, weight).family(cx.look.family).lh(page::line(b, 1.35));
     let small = (b * 0.72).round();
     let pill_h = small + 6.0;
     let below = n.end - i - 1;
-    el().key("map-ghost")
-        .pin(Some(at[0] + W), Some(at[1] + W), None, None)
-        .size(p.w, p.h)
-        .radius(4.0)
-        .fill(c.bg)
-        .border(1.0, branch_color(c, n.branch))
-        .opacity(0.8)
-        .child(
-            label(cx, n, st, c.text)
-                .el(st, c.text, None)
-                .wrap_anywhere()
-                .pin(Some(pad_x), Some(0.0), None, None)
-                .w((p.w - 2.0 * pad_x).max(1.0))
-                .clip_soft(0.0),
-        )
+    let surface = c.on_page(c.raised);
+    let branch = branch_color(c, n.branch);
+    let shadow = rune::Shadow {
+        x: 0.0,
+        y: 4.0,
+        blur: 12.0,
+        spread: 0.0,
+        color: Color::BLACK.alpha(if cx.v.dark { 0.36 } else { 0.14 }),
+        inset: false,
+    };
+    let task_el = match n.kind {
+        NodeKind::Item { task: crate::blocks::Task::Done, .. } if !n.card() => {
+            let bx = page::r(b * 0.9);
+            let rad = 2f32.max(page::r(bx * 0.24));
+            Some(el().size(bx, bx).radius(rad).center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)))
+        }
+        NodeKind::Item { task: crate::blocks::Task::Todo, .. } if !n.card() => {
+            let bx = page::r(b * 0.9);
+            let rad = 2f32.max(page::r(bx * 0.24));
+            let edge = 1f32.max(page::r(b / 12.0));
+            Some(el().size(bx, bx).radius(rad).border(edge, c.faint))
+        }
+        _ => None,
+    };
+    let label_text = map_app::shown_label(n);
+    let label_el = text(label_text).font(st).color(c.text).truncate().max_w(220.0);
+    rune::row()
+        .key("map-ghost")
+        .pin(Some(at[0]), Some(at[1]), None, None)
+        .center_y()
+        .gap(6.0)
+        .px(10.0)
+        .py(5.0)
+        .min_h(28.0)
+        .radius(6.0)
+        .fill(surface)
+        .border(1.5, branch)
+        .box_shadow(shadow)
+        .opacity(0.92)
+        .children(task_el)
+        .child(label_el)
         .children((below > 0).then(|| {
             text(format!("+{below}"))
                 .font(styles::note(mono, small, normal_lh(mono, small)))
@@ -543,14 +597,13 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, p: Place, at: [f32; 2], pad_x: f32) -> El 
                 .radius(pill_h / 2.0)
                 .px(5.0)
                 .h(pill_h)
-                .pin(Some(p.w + 6.0), Some((p.h - pill_h) / 2.0), None, None)
         }))
         .inert()
 }
 
 /// Where a drop would put the node: an accent bar above or below the target for Before and
-/// After, or a box round it with a stub of a branch for Child (MAP-026). Its label names the
-/// zone and the target's key.
+/// After, or a tinted box round it with a stub of a branch for Child (MAP-026). Its label names
+/// the zone and the target's key.
 fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles) -> El {
     use crate::map::Add;
     let j = at.node();
@@ -563,8 +616,15 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles) -> El {
             (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, 3.0).radius(1.5).fill(accent))
         }
         Add::Child(_) => {
+            let wash = accent.alpha(if c.bg.r < 0.2 { 0.18 } else { 0.14 });
             let stub = el().pin(Some(p.w + 6.0), Some(p.line_y() - p.y + 2.0), None, None).size(24.0, 2.0).fill(accent);
-            let e = el().pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None).size(p.w + 6.0, p.bottom() - p.y + 6.0).radius(4.0).border(2.0, accent).child(stub);
+            let e = el()
+                .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
+                .size(p.w + 6.0, p.bottom() - p.y + 6.0)
+                .radius(4.0)
+                .fill(wash)
+                .border(2.0, accent)
+                .child(stub);
             ("Child", e)
         }
     };

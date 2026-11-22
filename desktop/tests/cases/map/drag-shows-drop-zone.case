@@ -1,10 +1,10 @@
-Mid-drag, the zone under the pointer shows and names where the drop would go, and the ghost follows the pointer 14 right and 10 below it, clear of the target (map-node:5 ends at y 451.25, the ghost starts at 455.41).
+Mid-drag, the zone under the pointer shows and names where the drop would go, and the ghost follows the pointer 16 right and 14 below it at screen scale, clear of the target (map-node:5 ends at y 451.25, the ghost starts at 459.41).
 note: Plan.md
 at: 1.55
 events: key:m+cmd@0.3 drag:map-node:1>24,94,0.6@1.0
 expect: label:map-drop: 'After map-node:5'
 expect: rect:map-node:5: [741.0, 398.25, 96.0, 53.0]
-expect: rect:map-ghost: [803.53, 455.41, 50.0, 48.0]
+expect: rect:map-ghost: [805.53, 459.41, 56.41, 29.0]
 --- before
 - x
 
