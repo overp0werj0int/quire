@@ -204,27 +204,26 @@ pub(super) fn canvas(v: V) -> El {
             Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
             _ => [p.w, p.h],
         };
-        let extra_b = if p.depth == 0 {
-            2.0
-        } else if line_width(p.depth) >= 2.0 {
-            1.5
-        } else {
-            0.0
-        };
+        let lw = line_width(p.depth);
         let sel_w = (2.0 / cam.1.max(map_app::ZOOM_MIN)).clamp(2.0, 20.0);
-        let pad = 3.0 + (sel_w - 2.0);
+        let extra_pad = (sel_w - 2.0).max(0.0);
+        let side_pad = 3.0 + extra_pad;
+        let bot_pad = extra_pad;
         let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
         let stroke = if s.map.canvas_focused {
             accent
         } else {
             Roles::readable_on(crate::roles::mix(c.bg, accent, 0.55), c.bg, GRAPHIC)
         };
+        let top_r = 4.0 + extra_pad;
+        let bot_r = if extra_pad <= 0.5 { 1.5 } else { top_r };
+        let bot_w = if extra_pad <= 0.5 { sel_w.max(lw) } else { sel_w };
         let sel_el = el()
             .key("map-selection")
-            .pin(Some(p.x - pad + W), Some(p.y - pad + W), None, None)
-            .size(w + 2.0 * pad, h + line_width(p.depth) + 2.0 * pad + extra_b)
-            .radius(4.0 + (sel_w - 2.0))
-            .border(sel_w, stroke)
+            .pin(Some(p.x - side_pad + W), Some(p.y - side_pad + W), None, None)
+            .size(w + 2.0 * side_pad, h + lw + side_pad + bot_pad)
+            .corners([top_r, top_r, bot_r, bot_r])
+            .border_sides([sel_w, sel_w, bot_w, sel_w], stroke)
             .inert();
         world = world.child(sel_el);
     }
@@ -474,7 +473,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                 };
                 shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
-            .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
+            .children((!selected).then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
     })
 }
 

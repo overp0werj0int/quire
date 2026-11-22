@@ -31,7 +31,7 @@ impl Metrics {
         };
         Metrics {
             sh: o.spacing_horizontal.unwrap_or_else(|| r(b * 80.0 / 14.0)),
-            sv: o.spacing_vertical.unwrap_or_else(|| r(b * 5.0 / 14.0)),
+            sv: o.spacing_vertical.unwrap_or_else(|| r(b * 14.0 / 14.0)),
             pad_x: r(b * 8.0 / 14.0),
             pad_b: r(b * 4.0 / 14.0),
             min_h: r(b * 16.0 / 14.0),
@@ -114,8 +114,21 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     }
     let parent = |i: usize| tree.nodes[i].parent;
     let depth = |i: usize| tree.nodes[i].depth;
-    // The gap below node `a` when node `b` sits under it: siblings sit closer than cousins.
-    let gap = |a: usize, b: usize| if parent(a) == parent(b) { m.sv } else { 2.0 * m.sv } + line_width(depth(a));
+    // The gap below node `a` when node `b` sits under it: text leaves keep generous vertical
+    // separation so each underline clearly belongs to its own row (R12), while framed card blocks
+    // stay tighter so tall card-heavy maps still fit cleanly above LITE_ZOOM.
+    let card_sv = r(m.sv * 0.45);
+    let gap = |a: usize, b: usize| {
+        let same = parent(a) == parent(b);
+        let base = if same {
+            if tree.nodes[a].card() { card_sv } else { m.sv }
+        } else if tree.nodes[a].card() || tree.nodes[b].card() {
+            r(card_sv * 1.65)
+        } else {
+            r(m.sv * 1.3)
+        };
+        base + line_width(depth(a))
+    };
     let mut profile: Vec<Option<Vec<Seg>>> = vec![None; n];
     let mut dy = vec![0.0f32; n];
     for &v in shown.iter().rev() {
