@@ -26,9 +26,15 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
                       X,Y) for 0.4 s, then dropped; FILE is a path from desktop/
     pastepng:FILE@T   a paste of a copied image: FILE's PNG bytes on the clipboard
     pick:FILE@T       FILE picked in the open file dialog
+    write:NAME@T      another app writes NAME in the notes folder (its text from --outside)
+    delete:NAME@T     another app deletes NAME from the notes folder
 
 T is seconds on the app's own clock. `cmd` is Ctrl on Linux and Windows. Typed text arrives at
 about 30 letters a second, so leave it time before the next event.
+
+A replay with `write` or `delete` runs on the wall clock (Rune's --realtime), so the app's
+watcher sees the file change as it would one a sync tool made: it looks every 1.5 s, so leave
+2 s after the change before the next event.
 
 WHAT is any of (default `focus,doc-y`):
 
@@ -56,6 +62,9 @@ a few minutes.
 --note opens a folder holding only that note. --folder opens a copy of a whole folder of notes,
 and --open names the note in it to open, by its path inside the folder; opening a note opens the
 folders above it. Without either the app writes its sample notes.
+
+--outside NAME=FILE gives the text a `write:NAME` event writes: FILE's bytes. Repeat it for
+more files.
 
 --state starts the app with that JSON as its state file, for settings: '{"settings":
 {"panel_font": "mono"}}'. What it leaves out keeps its default.
@@ -96,7 +105,7 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|pick|scroll|drag|wheel|pinch|drop):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|pick|scroll|drag|wheel|pinch|drop|write|delete):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
@@ -137,6 +146,8 @@ def parse_events(arg):
             events.append({"t": t, "drop_files": spec})
         elif kind == "pick":
             events.append({"t": t, "type": "file-dialog", "path": os.path.abspath(body)})
+        elif kind in ("write", "delete"):
+            events.append({"t": t, "type": "mark", "name": "probe-%s:%s" % (kind, body)})
         elif kind == "pastepng":
             events.append({"t": t, "type": "paste", "png": os.path.abspath(body)})
         elif kind == "paste":
@@ -147,9 +158,34 @@ def parse_events(arg):
     return events
 
 
-def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None):
+def run_outside(cmd, env, notes, outside):
+    """A --realtime run that acts on its `probe-write:NAME` and `probe-delete:NAME` marks as
+    the app reaches them, writing `outside[NAME]` to the notes folder or deleting NAME."""
+    with tempfile.TemporaryFile("w+") as err:
+        p = subprocess.Popen(cmd + ["--realtime"], env=env, stdout=subprocess.PIPE, stderr=err, text=True)
+        for line in p.stdout:
+            m = re.match(r"rune-mark probe-(write|delete):(\S+) ", line)
+            if not m:
+                continue
+            path = os.path.join(notes, m.group(2))
+            if m.group(1) == "delete":
+                os.remove(path)
+                continue
+            if m.group(2) not in outside:
+                p.kill()
+                raise SystemExit("probe: no text for write:%s (see --outside)" % m.group(2))
+            with open(path + ".probe-tmp", "wb") as f:
+                f.write(outside[m.group(2)])
+            os.replace(path + ".probe-tmp", path)
+        p.wait()
+        err.seek(0)
+        return subprocess.CompletedProcess(cmd, p.returncode, "", err.read())
+
+
+def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None, outside=None):
     """One headless run; returns the element tree (a list of dicts) and the home folder.
-    `extra` maps paths in the notes folder to bytes written there beside `note`."""
+    `extra` maps paths in the notes folder to bytes written there beside `note`; `outside` maps
+    them to the bytes a `write` event writes mid-run."""
     home = os.path.join(work, "home")
     script = os.path.join(work, "events.json")
     tree = os.path.join(work, "tree.json")
@@ -189,10 +225,16 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
             with open(os.path.join(work, "state.json"), "w") as f:
                 f.write(state)
             env.update(QUIRE_STATE=os.path.join(work, "state.json"))
+        timed = any(e.get("type") == "mark" and e.get("name", "").startswith(("probe-write:", "probe-delete:")) for e in events)
+        if timed and not (note or folder):
+            raise SystemExit("probe: write and delete need --note or --folder")
         with open(LOCK_PATH, "w") as lf:
             fcntl.flock(lf, fcntl.LOCK_EX)
             try:
-                r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                if timed:
+                    r = run_outside(cmd, env, notes, outside or {})
+                else:
+                    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
             finally:
                 fcntl.flock(lf, fcntl.LOCK_UN)
         if not r.returncode:
@@ -283,7 +325,12 @@ def main():
     ap.add_argument("--folder")
     ap.add_argument("--open")
     ap.add_argument("--state")
+    ap.add_argument("--outside", action="append", default=[])
     a = ap.parse_args()
+    outside = {}
+    for spec in a.outside:
+        name, _, path = spec.partition("=")
+        outside[name] = open(path, "rb").read()
     a.bin = a.bin or os.path.join(DESKTOP, "target", "fast" if a.fast else "debug", "quire")
     if not os.path.exists(a.bin):
         raise SystemExit("probe: no binary at %s. Build it with `./dev %s`." % (a.bin, "build" if a.fast else "app"))
@@ -295,14 +342,14 @@ def main():
             t0, t1, step = [float(v) for v in a.series.split(":")]
             prev, t = None, t0
             while t <= t1 + 1e-9:
-                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note, folder=a.folder, open_note=a.open, state=a.state)
+                els, home = replay(a.bin, events, t, a.size, a.scale, a.theme, a.work, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside)
                 y = (rect(els, "doc-col") or [0, None])[1]
                 move = "" if prev is None or y is None else "  moved %+.1f" % (y - prev)
                 rest = "  ".join(answer(w, els, home) for w in whats if w != "doc-y")
                 print("t %.3f  doc-y %s%s  %s" % (t, y, move, rest))
                 prev, t = y, t + step
         else:
-            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note, folder=a.folder, open_note=a.open, state=a.state)
+            els, home = replay(a.bin, events, a.at, a.size, a.scale, a.theme, a.work, snap=a.snap, note=a.note, folder=a.folder, open_note=a.open, state=a.state, outside=outside)
             for w in whats:
                 print(answer(w, els, home))
     finally:

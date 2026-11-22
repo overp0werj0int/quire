@@ -1,0 +1,11 @@
+When another app deletes the note shown as a map, its tab closes.
+note: Plan.md
+events: key:m+cmd@0.3 delete:Plan.md@0.8
+at: 3.2
+expect: file:Plan.md: none
+expect: rect:map-canvas: None
+expect: rect:tab:Plan.md: None
+--- before
+# Plan
+
+## Budget

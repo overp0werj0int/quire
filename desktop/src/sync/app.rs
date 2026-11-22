@@ -275,6 +275,7 @@ impl App {
                 pl.path
             };
             let text = pl.text;
+            let old = self.files().get(&path).cloned();
             self.writer.send(Op::Write { root: root.clone(), rel: path.clone(), text: text.clone() });
             // An unlocked note opens the new sealed text with its key, or locks again.
             if self.unlocked.contains_key(&path) {
@@ -299,7 +300,10 @@ impl App {
                     }
                     v.folders.sort();
                 }
-                v.put(path, text);
+                v.put(path.clone(), text);
+            }
+            if let Some(old) = old {
+                self.map_reloaded(&path, &old);
             }
             any = true;
         }

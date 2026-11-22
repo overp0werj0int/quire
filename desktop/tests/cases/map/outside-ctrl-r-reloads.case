@@ -1,0 +1,28 @@
+Ctrl+R on the map reads the note from disk now: the map shows the new text and the title bar pulses the reloaded mark.
+note: Plan.md
+events: key:m+cmd@0.3 write:Plan.md@0.8 key:r+cmd@1.0
+at: 1.4
+expect: text:reloaded: 'reloaded'
+expect: nodes: 1 3 5 6 7
+--- before
+# Plan
+
+## Budget
+
+- Rent
+--- outside Plan.md
+# Plan
+
+## Budget
+
+- Rent
+- Food
+- Fun
+--- after
+# Plan
+
+## Budget
+
+- Rent
+- Food
+- Fun

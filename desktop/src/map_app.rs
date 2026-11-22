@@ -48,6 +48,17 @@ pub struct MapView {
     pub placed: bool,
 }
 
+impl MapView {
+    /// After change `s` turned map `old` into `t`: the folds and the selection follow their
+    /// nodes, the selection else to the node at the change (MAP-010, MAP-068).
+    fn follow(&mut self, old: &Tree, t: &Tree, s: &map::Splice) {
+        let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
+        self.folded = std::mem::take(&mut self.folded).into_iter().filter_map(|id| map::follow(old, t, s, id)).filter(shut).collect();
+        self.fold_ver += 1;
+        self.selected = map::follow(old, t, s, self.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
+    }
+}
+
 pub(crate) struct Glide {
     from: ([f32; 2], f32),
     to: ([f32; 2], f32),
@@ -860,12 +871,36 @@ impl App {
     fn map_follow(&mut self, old: &Tree, s: &map::Splice) -> Rc<Tree> {
         let t = self.map_tree();
         if let Some(v) = self.map_view_mut() {
-            let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
-            v.folded = std::mem::take(&mut v.folded).into_iter().filter_map(|id| map::follow(old, &t, s, id)).filter(shut).collect();
-            v.fold_ver += 1;
-            v.selected = map::follow(old, &t, s, v.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
+            v.follow(old, &t, s);
         }
         t
+    }
+
+    /// Note `rel` changed outside the app from `old` (MAP-068): its map's folds and selection
+    /// follow their nodes into the new text, and its camera stays. A field naming a new node
+    /// keeps that node selected, and Esc goes back to where its anchor went.
+    pub(crate) fn map_reloaded(&mut self, rel: &str, old: &str) {
+        let Some(new) = self.note_text(rel).map(str::to_string) else { return };
+        if !self.map.views.contains_key(rel) {
+            return;
+        }
+        let tree = |text: &str| map::build(&crate::blocks::build(text), text, rel);
+        let (was, now, s) = (tree(old), tree(&new), map::diff(old, &new));
+        let Some(v) = self.map.views.get_mut(rel) else { return };
+        let picked = v.selected;
+        // A selected node the change removed gives way to the nearest node at or above where
+        // it stood, rather than to the section around it.
+        let gone = map::follow(&was, &now, &s, picked).is_none().then(|| was.find(picked).map(|i| &was.nodes[i].own)).flatten();
+        v.follow(&was, &now, &s);
+        if let Some(own) = gone {
+            let line = s.lines.start + own.start.saturating_sub(s.lines.start).min(s.with.len());
+            let above = now.nodes.iter().filter(|n| !n.own.is_empty() && n.own.start <= line).max_by_key(|n| n.own.start);
+            v.selected = above.map_or(now.root().id, |n| n.id);
+        }
+        if let Some(e) = self.map.inline.as_mut().filter(|e| e.rel == rel && matches!(e.what, Editing::New(_))) {
+            e.anchor = map::follow(&was, &now, &s, e.anchor).unwrap_or(v.selected);
+            v.selected = picked;
+        }
     }
 
     /// Node `i` is selected, the folds above it open, and the camera keeps it in view.
@@ -1039,7 +1074,13 @@ impl App {
     pub fn map_editing(&self) -> Option<usize> {
         let e = self.map.inline.as_ref().filter(|e| Some(e.rel.as_str()) == self.active.as_deref())?;
         Some(match e.what {
-            Editing::Node(i) => i,
+            Editing::Node(i) if self.active_text() == e.base => i,
+            // The note changed outside the app under the field (MAP-068): it stays on its node.
+            Editing::Node(i) => {
+                let t = self.map_tree();
+                let s = map::diff(&e.base, self.active_text());
+                map::follow(&e.tree, &t, &s, e.tree.nodes[i].id).and_then(|id| t.find(id)).unwrap_or_else(|| self.map_selected())
+            }
             Editing::New(_) => self.map_selected(),
         })
     }
@@ -1258,7 +1299,7 @@ impl App {
     }
 
     /// Enter, Tab, a click away (MAP-017): the field's text goes into the note, unless it is
-    /// empty or unchanged (MAP-018). True when a field was open.
+    /// empty or unchanged (MAP-018). True when a field was open and has closed.
     pub fn map_commit(&mut self, tx: &mut Tx) -> bool {
         let Some(e) = self.map.inline.take() else { return false };
         let s = match e.what {
@@ -1271,6 +1312,11 @@ impl App {
         };
         if self.note_text(&e.rel) != Some(e.base.as_str()) {
             self.notice = Some(crate::sheet::CHANGED.into());
+            // The field stays with its text to copy while its note is on the map (SHEET-044).
+            if self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref() {
+                self.map.inline = Some(Inline { held: false, ..e });
+                return false;
+            }
             self.map_back_to(&e, tx);
             return true;
         }
@@ -1306,21 +1352,19 @@ impl App {
         let multi = self.map.inline.as_ref().is_some_and(|e| e.multi);
         for a in crate::keymap::lookup(self.preset(), crate::keymap::Ctx::MapEdit, ev) {
             match a.id {
-                "mapedit.commit" => {
-                    self.map_commit(tx);
-                    self.keys_to_note(tx);
-                }
                 "mapedit.newline" if multi => return false,
-                "mapedit.newline" => {
-                    self.map_commit(tx);
-                    self.keys_to_note(tx);
+                "mapedit.commit" | "mapedit.newline" => {
+                    if self.map_commit(tx) {
+                        self.keys_to_note(tx);
+                    }
                 }
                 "mapedit.commit-outdent" => {
                     let unnamed = self.map.inline.as_ref().is_some_and(|e| matches!(e.what, Editing::New(_)) && e.edit.text.trim().is_empty());
-                    self.map_commit(tx);
-                    self.keys_to_note(tx);
-                    if !unnamed {
-                        self.map_step(map::Step::Out, tx);
+                    if self.map_commit(tx) {
+                        self.keys_to_note(tx);
+                        if !unnamed {
+                            self.map_step(map::Step::Out, tx);
+                        }
                     }
                 }
                 "mapedit.cancel" => {
@@ -1329,9 +1373,10 @@ impl App {
                     }
                 }
                 "mapedit.commit-add-child" => {
-                    self.map_commit(tx);
-                    self.keys_to_note(tx);
-                    self.map_add(Place::Child, tx);
+                    if self.map_commit(tx) {
+                        self.keys_to_note(tx);
+                        self.map_add(Place::Child, tx);
+                    }
                 }
                 id => match crate::keys::handler(id) {
                     Some(run) => run(self, tx),
@@ -1378,7 +1423,7 @@ impl App {
     /// A click on the Properties badge (MAP-006): the Edit Sheet on the front matter.
     pub fn map_props(&mut self, tx: &mut Tx) {
         self.map_commit(tx);
-        if self.map_editable() {
+        if self.map_editable() && self.map.inline.is_none() {
             let lines = map::front_lines(self.active_text());
             self.open_sheet_lines(lines, crate::sheet::Scope::Block, tx);
         }

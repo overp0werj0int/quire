@@ -1,0 +1,36 @@
+When another app removes the selected node, the selection goes to the node at its line, not the root.
+note: Plan.md
+events: key:m+cmd@0.3 key:l@0.8 key:l@1.0 key:j@1.2 write:Plan.md@1.5
+at: 4.2
+expect: selected: map-node:5
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- outside Plan.md
+# Plan
+
+## Budget
+
+- Rent
+
+## Dates
+
+Late May.
+--- after
+# Plan
+
+## Budget
+
+- Rent
+
+## Dates
+
+Late May.

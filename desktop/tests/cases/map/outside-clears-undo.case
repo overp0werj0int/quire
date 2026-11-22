@@ -1,0 +1,24 @@
+An outside change clears the note's undo history: Ctrl+Z on the map afterwards changes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 key:l@0.8 key:e@1.0 type:Money@1.2 key:Enter@1.6 key:s+cmd@1.8 write:Plan.md@2.2 key:r+cmd@2.4 key:z+cmd@2.8 key:s+cmd@3.2
+expect: nodes: 1 3 5 6
+--- before
+# Plan
+
+## Budget
+
+- Rent
+--- outside Plan.md
+# Plan
+
+## Money
+
+- Rent
+- Food
+--- after
+# Plan
+
+## Money
+
+- Rent
+- Food

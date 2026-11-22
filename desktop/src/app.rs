@@ -756,17 +756,20 @@ impl App {
                 any = true;
                 continue;
             }
-            let new = !self.files().contains_key(&rel);
+            let old = self.files().get(&rel).cloned();
             if let Some(e) = self.edits.get_mut(&rel) {
                 let (a, b) = (e.anchor.min(text.len()), e.focus.min(text.len()));
                 e.replace_text(text.clone());
                 e.set_selection(a, b);
             }
             if let Some(v) = &mut self.vault {
-                if new {
+                if old.is_none() {
                     v.born.insert(rel.clone(), now_ns());
                 }
-                v.put(rel, text);
+                v.put(rel.clone(), text);
+            }
+            if let Some(old) = old {
+                self.map_reloaded(&rel, &old);
             }
             any = true;
         }

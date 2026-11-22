@@ -35,7 +35,9 @@ line of the note, ended by a newline, so both notes end in one.
 Other files can sit beside the note. Each `file` line is NAME SOURCE: the file's path in the
 notes folder, then `base64:DATA` or a path from the case's own folder, such as
 `file: attachments/wide.png fixtures/wide.png`. A `--- file NAME` section, after `--- before`,
-is one more note, written as `--- before` is. `{any}` in an `--- after` line or an `expect`
+is one more note, written as `--- before` is. A `--- outside NAME` section is the text another
+app writes to NAME when the replay reaches a `write:NAME@T` event; a case whose note another
+app deletes says so with `expect: file:NOTE: none`. `{any}` in an `--- after` line or an `expect`
 line stands for any text on that line, for what the app names by the clock (a pasted image).
 
 Each case is a whole copy of the app, run one at a time. --keep leaves each run's folder.
@@ -62,13 +64,13 @@ class Case:
         self.name = os.path.relpath(path, os.path.join(HERE, "cases"))
         self.note, self.state, self.size, self.password, self.at = "Note.md", None, "1280x800", None, None
         self.events, self.expect, self.before, self.after, self.env = [], [], None, None, {}
-        self.files = {}
+        self.files, self.outside = {}, {}
         text = open(path).read()
         lines = (text[:-1] if text.endswith("\n") else text).split("\n")
         self.says = lines[0]
         section, body = None, []
         for line in lines[1:]:
-            if line in ("--- before", "--- after") or line.startswith("--- file "):
+            if line in ("--- before", "--- after") or line.startswith(("--- file ", "--- outside ")):
                 self._close(section, body)
                 section, body = line[4:], []
             elif section:
@@ -110,6 +112,8 @@ class Case:
         text = "".join(line + "\n" for line in body)
         if section and section.startswith("file "):
             self.files[section[5:]] = text.encode()
+        elif section and section.startswith("outside "):
+            self.outside[section[8:]] = text.encode()
         elif section:
             setattr(self, section, text)
 
@@ -154,13 +158,20 @@ def run(case, binary, keep):
         with open(os.path.join(src, case.note), "w") as f:
             f.write(case.before)
         events = probe.parse_events(" ".join(case.events))
-        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env, extra=case.files)
+        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env, extra=case.files, outside=case.outside)
         problems = []
-        saved = open(os.path.join(work, "notes", case.note)).read()
-        if case.password:
+        path = os.path.join(work, "notes", case.note)
+        if not os.path.exists(path):
+            # A case about the note going says so with `expect: file:NOTE: none`.
+            if "file:%s: none" % case.note not in case.expect:
+                problems.append("the note is not on disk")
+            saved = want = None
+        else:
+            saved = open(path).read()
+            want = case.before if case.after is None else case.after
+        if saved is not None and case.password:
             saved = unlock(saved, case.password)
-        want = case.before if case.after is None else case.after
-        if not same(want, saved):
+        if saved is not None and not same(want, saved):
             diff = difflib.unified_diff(want.splitlines(True), saved.splitlines(True), "expected", "on disk")
             problems.append("the note on disk differs:\n" + "".join(diff).rstrip("\n"))
         for line in case.expect:

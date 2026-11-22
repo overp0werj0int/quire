@@ -1,0 +1,24 @@
+An open find on the map counts the matches another app's change brings.
+note: Plan.md
+events: key:m+cmd@0.3 key:f+cmd@0.8 type:rent@1.0 write:Plan.md@1.6 key:r+cmd@1.8
+expect: text:find-count: '1 / 2'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+--- outside Plan.md
+# Plan
+
+## Budget
+
+- Rent
+- Rent again
+--- after
+# Plan
+
+## Budget
+
+- Rent
+- Rent again

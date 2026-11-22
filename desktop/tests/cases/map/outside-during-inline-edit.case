@@ -1,0 +1,31 @@
+An outside change while a node is being renamed leaves the field open with its text; Enter refuses to write and says why.
+note: Plan.md
+events: key:m+cmd@0.3 key:l@0.8 key:e@1.0 type:Money@1.2 write:Plan.md@1.8 key:Enter@3.9
+expect: focus: map-inline-edit (no ring)
+expect: text:map-inline-edit: 'Money'
+expect: text:notice: 'The file changed while you were editing. Copy your text and open it again. Dismiss'
+expect: selected: map-node:5
+expect: rect:map-node:5: [695.0, 418.5, 158.0, 59.0]
+expect: rect:map-inline-edit: [711.0, 418.5, 126.0, 46.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+--- outside Plan.md
+# Plan
+
+Intro.
+
+## Budget
+
+- Rent
+--- after
+# Plan
+
+Intro.
+
+## Budget
+
+- Rent
