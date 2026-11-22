@@ -171,7 +171,12 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };
     let mut root = col().key("root").w_full().h_full().fill(win_bg);
     if s.map_editable() {
-        root = root.on_paste(|s: &mut App, text: &str, tx: &mut rune::Tx| s.map_paste(text, tx));
+        // A copied image or image file goes in as an image node (MAP-048), text as a node.
+        root = root.on_paste_content(|s: &mut App, content: &rune::ClipboardContent, tx: &mut rune::Tx| {
+            if !s.paste_content(content, tx) {
+                s.map_paste(content.text(), tx);
+            }
+        });
     }
     root = match s.screen {
         Screen::Welcome => root.child(welcome::welcome(v)),

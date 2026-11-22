@@ -1,0 +1,21 @@
+Image files dropped on the map are copied into attachments/ and go in as one child of the selected heading: a gallery for two.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-node:3@0.7 drop:tests/cases/map/fixtures/wide.png,tests/cases/map/fixtures/small.png>map-canvas@1.0 key:s+cmd@2.0
+expect: selected: map-node:7
+expect: rect:map-drop: None
+expect: file:attachments/*: attachments/small.png (128 bytes), attachments/wide.png (5875 bytes)
+--- before
+# Trip
+
+## Days
+
+Text.
+--- after
+# Trip
+
+## Days
+
+Text.
+
+![wide](attachments/wide.png)
+![small](attachments/small.png)

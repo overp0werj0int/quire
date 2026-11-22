@@ -1,0 +1,19 @@
+Ctrl+Shift+I asks for an image file; the picked one is copied in and goes in after the selected paragraph.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-node:5@0.7 key:i+cmd+shift@1.0 pick:tests/cases/map/fixtures/wide.png@1.4 key:s+cmd@2.0
+expect: selected: map-node:7
+expect: file:attachments/*: attachments/wide.png (5875 bytes)
+--- before
+# Trip
+
+## Days
+
+Text.
+--- after
+# Trip
+
+## Days
+
+Text.
+
+![wide](attachments/wide.png)

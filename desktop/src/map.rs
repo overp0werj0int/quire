@@ -882,6 +882,41 @@ pub fn add(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> 
     Ok(splice_of(&old, &new, Some(focus)))
 }
 
+/// A new block of `text`, such as an image's link (MAP-048). Under a heading or the root it is
+/// a paragraph after the section's own blocks and before its first subheading, and after a
+/// heading inside a list item it is a paragraph under that heading, where a typed node would
+/// be a heading or a list item. Anywhere else it goes in as `add` puts a typed node.
+pub fn add_block(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> {
+    let old: Vec<&str> = src.split('\n').collect();
+    let n = &t.nodes[at.node()];
+    let (line, indent) = match (at, &n.kind) {
+        (Add::Child(i), NodeKind::Root | NodeKind::Heading { .. }) if takes_children(t, i) => {
+            let mut kids = n.children.iter().copied().filter(|&c| t.nodes[c].kind != NodeKind::Footnotes).peekable();
+            let own = kids.peek().map_or(if n.own.is_empty() { front_end(&old) } else { n.own.end }, |&c| t.nodes[c].own.start);
+            let mut line = own;
+            for c in kids {
+                if matches!(t.nodes[c].kind, NodeKind::Heading { .. }) {
+                    break;
+                }
+                line = t.nodes[c].span.end;
+            }
+            (line, "")
+        }
+        (Add::After(_), NodeKind::Heading { .. }) => (n.span.end, &old[n.own.start][..lead(old[n.own.start]).1]),
+        _ => return add(src, t, at, text),
+    };
+    let lines = typed(text, true).ok_or(None)?;
+    let real = old.len() - usize::from(src.ends_with('\n'));
+    let before = line > 0 && !blank(old[line - 1]);
+    let after = line < real && !blank(old[line]);
+    let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    let mut ins: Vec<String> = before.then(String::new).into_iter().collect();
+    ins.extend(lines.iter().map(|l| format!("{indent}{l}")));
+    ins.extend(after.then(String::new));
+    new.splice(line..line, ins);
+    Ok(splice_of(&old, &new, Some(line + usize::from(before))))
+}
+
 fn reparse(lines: &[String]) -> Tree {
     let src = lines.join("\n");
     build(&blocks::build(&src), &src, "")

@@ -1,0 +1,18 @@
+An image dropped on a heading whose children are subheadings goes in as a paragraph before them, not as a heading.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-node:1@0.7 drop:tests/cases/map/fixtures/wide.png>map-canvas@1.0 key:s+cmd@2.0
+expect: selected: map-node:3
+--- before
+# Trip
+
+## Days
+
+Text.
+--- after
+# Trip
+
+![wide](attachments/wide.png)
+
+## Days
+
+Text.

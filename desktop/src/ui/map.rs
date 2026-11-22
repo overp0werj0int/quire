@@ -226,6 +226,13 @@ pub(super) fn canvas(v: V) -> El {
             );
         }
     }
+    // The sheet rings itself while files hover over it (RD-97); the canvas would cover that.
+    let ring = s.drop_over.then(|| {
+        el().key("map-drop")
+            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+            .inert()
+            .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: v.p.acc, inset: true })
+    });
     el().key("map-canvas")
         .grow(1.0)
         .min_w(0.0)
@@ -236,6 +243,7 @@ pub(super) fn canvas(v: V) -> El {
         .role("tree")
         .label("Map")
         .child(world)
+        .child(ring.unwrap_or_else(el))
         .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             // The window sends Ctrl + wheel as a pinch (`on_magnify`); a wheel that still holds

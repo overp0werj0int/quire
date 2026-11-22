@@ -1,0 +1,7 @@
+Files held over the map ring the canvas in the accent colour (RD-97), which the sheet's own ring would sit under.
+note: Trip.md
+events: key:m+cmd@0.3 drop:tests/cases/map/fixtures/wide.png>map-canvas@1.0
+at: 1.2
+expect: rect:map-drop: [248.0, 41.0, 1032.0, 759.0]
+--- before
+# Trip

@@ -1,0 +1,9 @@
+An image dropped on the map is one undo step.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-node:3@0.7 drop:tests/cases/map/fixtures/wide.png,tests/cases/map/fixtures/small.png>map-canvas@1.0 key:z+cmd@2.0 key:s+cmd@2.4
+--- before
+# Trip
+
+## Days
+
+Text.

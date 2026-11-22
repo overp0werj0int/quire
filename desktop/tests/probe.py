@@ -25,6 +25,7 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
     drop:FILE[,FILE...]>WHERE@T     image files from another app, held over WHERE (a KEY or
                       X,Y) for 0.4 s, then dropped; FILE is a path from desktop/
     pastepng:FILE@T   a paste of a copied image: FILE's PNG bytes on the clipboard
+    pick:FILE@T       FILE picked in the open file dialog
 
 T is seconds on the app's own clock. `cmd` is Ctrl on Linux and Windows. Typed text arrives at
 about 30 letters a second, so leave it time before the next event.
@@ -95,7 +96,7 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|scroll|drag|wheel|pinch|drop):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|pick|scroll|drag|wheel|pinch|drop):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
@@ -134,6 +135,8 @@ def parse_events(arg):
             place = at(where)
             spec.update({"key": place["key"]} if "key" in place else {"at": [place["x"], place["y"]]})
             events.append({"t": t, "drop_files": spec})
+        elif kind == "pick":
+            events.append({"t": t, "type": "file-dialog", "path": os.path.abspath(body)})
         elif kind == "pastepng":
             events.append({"t": t, "type": "paste", "png": os.path.abspath(body)})
         elif kind == "paste":

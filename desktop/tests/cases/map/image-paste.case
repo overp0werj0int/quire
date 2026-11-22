@@ -1,0 +1,19 @@
+A copied image pasted on the map is saved in attachments/ and goes in as a sibling after the selected paragraph.
+note: Trip.md
+events: key:m+cmd@0.3 tap:map-node:5@0.7 pastepng:tests/cases/map/fixtures/small.png@1.0 key:s+cmd@1.8
+expect: selected: map-node:7
+expect: file:attachments/*: attachments/Pasted image {any}.png (128 bytes)
+--- before
+# Trip
+
+## Days
+
+Text.
+--- after
+# Trip
+
+## Days
+
+Text.
+
+![Pasted image {any}](attachments/Pasted%20image%20{any}.png)

@@ -1145,6 +1145,38 @@ impl App {
         }
     }
 
+    /// Where an image added on the map goes (MAP-048): a child of the selected container, else
+    /// a sibling after it. None, with a toast, on the footnotes, which take no images (MAP-008).
+    pub(crate) fn map_image_place(&mut self, tx: &mut Tx) -> Option<map::Add> {
+        let t = self.map_tree();
+        let i = self.map_selected();
+        if matches!(t.nodes[i].kind, NodeKind::Footnotes | NodeKind::Footnote { .. }) {
+            self.toast(map::FOOTNOTES, tx);
+            return None;
+        }
+        Some(if map::takes_children(&t, i) { map::Add::Child(i) } else { map::Add::After(i) })
+    }
+
+    /// Image links `lines` go in as one node, one undo step, at the place for images. Several
+    /// make one gallery, as they do at the editor's caret.
+    pub(crate) fn map_insert_images(&mut self, lines: &[String], tx: &mut Tx) -> bool {
+        self.map_commit(tx);
+        let Some(at) = self.map_image_place(tx) else { return false };
+        let t = self.map_tree();
+        match map::add_block(self.active_text(), &t, at, &lines.join("\n")) {
+            Ok(s) => {
+                self.map_apply(&t, &s, tx);
+                true
+            }
+            Err(why) => {
+                if let Some(why) = why {
+                    self.toast(why, tx);
+                }
+                false
+            }
+        }
+    }
+
     fn map_open_field(&mut self, what: Editing, edit: TextEdit, multi: bool, preview: Option<(u64, String)>, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let tree = self.map_tree();

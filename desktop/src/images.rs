@@ -219,6 +219,10 @@ impl App {
             }
             return false;
         }
+        // Nothing is copied for a place on the map that takes no image.
+        if self.mode == crate::app::Mode::Map && self.map_image_place(tx).is_none() {
+            return false;
+        }
         let mut rels = Vec::new();
         for p in images {
             let inside = p.canonicalize().ok().zip(root.canonicalize().ok()).and_then(|(p, r)| p.strip_prefix(&r).ok().map(Path::to_path_buf));
@@ -247,7 +251,7 @@ impl App {
     /// Saves pasted PNG bytes into `attachments/` and links them at the caret.
     pub fn paste_image(&mut self, png: &[u8], tx: &mut Tx) -> bool {
         let Some(root) = self.vault.as_ref().map(|v| v.path.clone()) else { return false };
-        if self.active.is_none() {
+        if self.active.is_none() || (self.mode == crate::app::Mode::Map && self.map_image_place(tx).is_none()) {
             return false;
         }
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
@@ -289,7 +293,8 @@ impl App {
         });
     }
 
-    /// Writes `![name](path)` lines at the caret, each on a line of its own.
+    /// Writes `![name](path)` lines at the caret, each on a line of its own; on the map, as a
+    /// new node (MAP-048).
     fn link_images(&mut self, rels: &[String], tx: &mut Tx) -> bool {
         if rels.is_empty() {
             return false;
@@ -303,6 +308,10 @@ impl App {
                 format!("![{}]({})", alt.replace(['[', ']'], ""), md::link_path(&md::relative(&dir, r)))
             })
             .collect();
+        if self.mode == crate::app::Mode::Map {
+            self.images.forget_index();
+            return self.map_insert_images(&lines, tx);
+        }
         let e = self.cur_edit();
         let caret = e.focus.min(e.text.len());
         let before = e.text[..caret].chars().last();

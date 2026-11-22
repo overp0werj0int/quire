@@ -1,0 +1,12 @@
+An image dropped while the footnotes are selected is refused with a toast, and nothing is copied.
+note: Fn.md
+events: key:m+cmd@0.3 tap:map-node:footnotes@0.7 drop:tests/cases/map/fixtures/wide.png>map-canvas@1.0
+at: 1.6
+expect: text:toast-row: 'Edit footnotes in Source or the Edit Sheet'
+expect: file:attachments/*: none
+--- before
+# Trip
+
+See this.[^1]
+
+[^1]: A note.
