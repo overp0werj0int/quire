@@ -312,6 +312,7 @@ const MAP_HELP: &[(&str, &[HelpRow])] = &[
         "Edit",
         &[
             h("Edit the node / its branch", &["map.edit", "map.edit-subtree"]),
+            h("Node menu", &["map.node-menu"]),
             h("Add a child / sibling / sibling before", &["map.add-child", "map.add-sibling", "map.add-sibling-before"]),
             h("Delete the branch", &["map.delete"]),
             h("Tick the task", &["map.toggle-task"]),
@@ -320,7 +321,8 @@ const MAP_HELP: &[(&str, &[HelpRow])] = &[
             h("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
             h("Undo / redo", &["map.undo", "map.redo"]),
             h("Copy the node / its branch", &["map.copy-node", "map.copy-subtree"]),
-            h("Paste as a child", &["map.paste"]),
+            h("Copy the whole note", &["map.copy-all"]),
+            h("Paste as child / sibling", &["map.paste"]),
         ],
     ),
     (
@@ -331,7 +333,6 @@ const MAP_HELP: &[(&str, &[HelpRow])] = &[
             h("Outline", &["map.toggle-outline"]),
             h("Source or preview", &["app.toggle-mode"]),
             h("Leave the map", &["app.toggle-map"]),
-            h("Copy the whole note", &["map.copy-all"]),
             h("Read from disk", &["map.read-from-disk"]),
             h("Close the tab", &["map.close-tab"]),
             h("This sheet", &["map.help"]),
@@ -401,7 +402,14 @@ pub(super) fn help_sheet(v: V) -> Card {
         );
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();
-            for id in r.ids {
+            let is_range = matches!(r.ids, ["map.heading-1", "map.heading-6"] | ["writer.heading-1", "writer.heading-6", ..]);
+            for (idx, id) in r.ids.iter().enumerate() {
+                if is_range && idx == 1 {
+                    keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(v.p.mute));
+                }
+                if *id == "map.node-menu" {
+                    keys = keys.child(cap(keymap::label_of("Shift+F10"), v.p));
+                }
                 if let Some(a) = keymap::action(id) {
                     let chords = a.chords(preset);
                     let show = if matches!(*id, "reader.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };

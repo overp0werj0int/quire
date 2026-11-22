@@ -41,18 +41,19 @@ pub(super) fn lite(cx: &Cx, bl: &Block, w: f32, h: f32, tail: &str) -> El {
         Kind::Gallery { .. } => "GALLERY",
         _ => "CARD",
     };
-    let base = (h * 0.34).clamp(11.0, 28.0);
+    let max_h_sz = (h - 4.0).max(11.0);
+    let base = (h * 0.48).clamp(14.0, 32.0).min(max_h_sz);
     let mut sz = base;
     let mut st = cx.look.mono_at(sz, 1.2).tracking(1.0);
     st.weight = 700.0;
-    let avail = (w - 10.0).max(8.0);
+    let avail = (w - 8.0).max(8.0);
     let adv = rune::text::advance(kind_label, st);
     if adv > avail && adv > 0.0 {
-        sz = (sz * (avail / adv)).clamp(8.0, base);
+        sz = (sz * (avail / adv)).clamp(10.0, base);
         st = cx.look.mono_at(sz, 1.2).tracking(0.5);
         st.weight = 700.0;
     }
-    let edge = Roles::readable_on(c.on_page(c.hairline), c.bg, 2.2);
+    let edge = Roles::readable_on(c.on_page(c.hairline), c.bg, 3.0);
     let ink = Roles::readable_on(c.dim, c.on_page(c.panel), 4.8);
     el().key(format!("map-lite:{tail}"))
         .size(w, h)
@@ -306,9 +307,11 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     (out, [w, h])
 }
 
-/// MAP-051: the reader's table at the card's widest, capped at 8 body rows.
+/// MAP-051: the reader's table at the card's widest, capped at 8 body rows. When truncated,
+/// `"+N more rows"` sits inside the same bordered table card with matching horizontal inset.
 fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
     let look = cx.look;
+    let c = &look.c;
     let b = look.b;
     let g = Grid::new(cx, t, tone, look.width - 2.0);
     let heights = g.heights();
@@ -317,15 +320,39 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
     // The frame's 1 point of padding each side, round the grid.
     let natural = g.widths.iter().sum::<f32>() + 2.0;
     let w = natural.min(look.width);
-    let grid_h = heights[..=shown].iter().sum::<f32>() + 2.0;
-    let more_h = if rest > 0 { more_style(cx, pcode::badge_size(b)).line_height } else { 0.0 };
+    let inner_h = heights[..=shown].iter().sum::<f32>();
     let fades = (if natural > w { r(b * 2.8) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
-    let frame = g.frame(cx, shown).pin(Some(0.0), Some(0.0), None, None);
-    let mut out = el().size(w, grid_h + more_h).child(el().size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(frame));
-    if rest > 0 {
-        out = out.child(more(cx, rest, "row", tail).pin(Some(0.0), Some(grid_h), None, None));
+    if rest == 0 {
+        let grid_h = inner_h + 2.0;
+        let frame = g.frame(cx, shown).pin(Some(0.0), Some(0.0), None, None);
+        let out = el().size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, 0.0).child(frame);
+        return (out, [w, grid_h]);
     }
-    (out, [w, grid_h + more_h])
+    let pad_x = r(b * 0.85);
+    let foot_py = r(b * 0.3);
+    let foot_h = more_style(cx, pcode::badge_size(b)).line_height + 2.0 * foot_py;
+    let total_h = inner_h + foot_h + 2.0;
+    let grid = el()
+        .pin(Some(1.0), Some(1.0), None, None)
+        .size(w - 2.0, inner_h)
+        .clip_fade_linear(0.0, 0.0, fades.0, fades.1)
+        .child(g.inner(cx, shown).pin(Some(0.0), Some(0.0), None, None));
+    let foot = row()
+        .pin(Some(1.0), Some(1.0 + inner_h), None, None)
+        .size(w - 2.0, foot_h)
+        .px(pad_x)
+        .center_y()
+        .fill(c.bg)
+        .border_sides([1.0, 0.0, 0.0, 0.0], c.hairline_soft)
+        .child(more(cx, rest, "row", tail));
+    let out = el()
+        .size(w, total_h)
+        .radius(4.0)
+        .clip_rounded(4.0)
+        .border(1.0, c.hairline)
+        .child(grid)
+        .child(foot);
+    (out, [w, total_h])
 }
 
 /// MAP-046: the picture at its natural size, never larger, at most `B × 20` by `B × 14`, with

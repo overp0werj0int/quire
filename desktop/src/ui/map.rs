@@ -272,12 +272,16 @@ pub(super) fn canvas(v: V) -> El {
         }
         if t.nodes.len() == 1 {
             let y = p.bottom() + 6.0 + if t.props > 0 { 28.0 } else { 0.0 };
+            let hint_text = "Press Tab to add a branch, or F2 to name the root";
+            let hint_font = styles::sans((b * 0.86).round(), 400.0);
+            let hint_w = rune::text::measure(hint_text, &[], hint_font, None).0.ceil();
+            let hint_x = p.x + p.w / 2.0 - hint_w / 2.0;
             world = world.child(
-                text("Press Tab to add a branch, or F2 to name the root")
+                text(hint_text)
                     .key("map-hint")
-                    .font(styles::sans(12.0, 400.0))
+                    .font(hint_font)
                     .color(c.dim)
-                    .pin(Some(p.x + l.metrics.pad_x + W), Some(y + W), None, None),
+                    .pin(Some(hint_x + W), Some(y + W), None, None),
             );
         }
     }
@@ -324,13 +328,26 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
     let lw = line_width(p.depth);
     let (x0, x1) = (q.right(), p.x);
     let (ya, yb) = (q.line_y(), p.line_y());
+    let key = format!("map-link:{}", key_tail(&node_key(t, i)));
+    let color = branch_color(c, t.nodes[i].branch);
+    let w = (x1 - x0).max(1.0);
+    // Draw straight horizontal links as a crisp solid bar so they match underlines seamlessly
+    // instead of rasterizing a degenerate 0-height cubic Bézier.
+    if (ya - yb).abs() < 0.5 {
+        return el()
+            .key(key)
+            .pin(Some(x0 + W), Some((ya + yb) / 2.0 - lw / 2.0 + W), None, None)
+            .size(w, lw)
+            .fill(color)
+            .inert();
+    }
     let top = ya.min(yb) - lw;
-    let (w, h) = ((x1 - x0).max(1.0), (ya.max(yb) - top + lw).max(1.0));
+    let h = (ya.max(yb) - top + lw).max(1.0);
     let mid = w / 2.0;
     let (a, z) = ([0.0, ya - top], [w, yb - top]);
     let path = Path::new().move_to(a).cubic_to([mid, a[1]], [mid, z[1]], z);
-    rune::canvas(Shape::new().stroke_path(&path, lw, LineCap::Round, branch_color(c, t.nodes[i].branch)))
-        .key(format!("map-link:{}", key_tail(&node_key(t, i))))
+    rune::canvas(Shape::new().stroke_path(&path, lw, LineCap::Round, color))
+        .key(key)
         .pin(Some(x0 + W), Some(top + W), None, None)
         .size(w, h)
         .inert()
@@ -444,7 +461,9 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
-                    Body::Card(bl) if lite => Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
+                    Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
+                        Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail))
+                    }
                     Body::Card(bl) => card::card(cx, bl, i, &tail, chip_scale).map(|(e, _)| e),
                     _ => None,
                 };

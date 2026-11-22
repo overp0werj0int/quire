@@ -95,8 +95,9 @@ impl<'t> Grid<'t> {
         std::iter::once(head).chain(rows).map(|h| h + 2.0 * self.py).collect()
     }
 
-    /// The framed table with its first `rows` body rows.
-    pub(in crate::ui) fn frame(self, cx: &Cx, rows: usize) -> El {
+    /// The unframed table grid (header + first `rows` body rows), so map cards can place a
+    /// `"+N more rows"` footer inside the same outer hairline frame.
+    pub(in crate::ui) fn inner(self, cx: &Cx, rows: usize) -> El {
         let look = cx.look;
         let c = &look.c;
         let mut head = row().key("head").fill(c.raised).border_sides([0.0, 0.0, 1.0, 0.0], c.hairline);
@@ -107,8 +108,7 @@ impl<'t> Grid<'t> {
             head = head.child(el().key(format!("c-{i}")).w(*w).px(self.px).py(self.py).child(cell));
         }
         let zebra = c.text.alpha(look.ld(0.022, 0.018));
-        // The grid sits inside the 1 px frame, as in omarky, not under it (BLK-62).
-        let mut frame = col().key("frame").border(1.0, c.hairline).padding(1.0).radius(4.0).clip_rounded(4.0).child(head);
+        let mut body = col().key("grid").child(head);
         let styles: Vec<(TextStyle, RAlign)> = (0..self.widths.len()).map(|i| (self.style_of(i), self.align(i))).collect();
         for (ri, cells) in self.body.into_iter().take(rows).enumerate() {
             let mut rw = row().key(format!("r-{ri}"));
@@ -124,9 +124,16 @@ impl<'t> Grid<'t> {
                 let e = cell.el(styles[i].0, self.tone.color, cx.sel()).wrap_anywhere().align(styles[i].1).w_full();
                 rw = rw.child(el().key(format!("c-{i}")).w(self.widths[i]).px(self.px).py(self.py).child(e));
             }
-            frame = frame.child(rw);
+            body = body.child(rw);
         }
-        frame
+        body
+    }
+
+    /// The framed table with its first `rows` body rows.
+    pub(in crate::ui) fn frame(self, cx: &Cx, rows: usize) -> El {
+        let c = &cx.look.c;
+        // The grid sits inside the 1 px frame, as in omarky, not under it (BLK-62).
+        col().key("frame").border(1.0, c.hairline).padding(1.0).radius(4.0).clip_rounded(4.0).child(self.inner(cx, rows))
     }
 }
 
