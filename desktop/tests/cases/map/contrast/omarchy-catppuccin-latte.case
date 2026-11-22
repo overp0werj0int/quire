@@ -7,7 +7,7 @@ file: attachments/tall.png ../fixtures/tall.png
 file: ~/.config/omarchy/current/theme/colors.toml ../../../fixtures/omarchy-themes/catppuccin-latte/colors.toml
 size: 1600x1000
 events: key:0@0.5
-expect: contrast:map-canvas: 34 texts at 4.5:1 or more, 20 marks at 3:1 or more
+expect: contrast:map-canvas: 35 texts at 4.5:1 or more, 23 marks at 3:1 or more
 --- before
 ---
 tags: test

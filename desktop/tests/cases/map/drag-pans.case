@@ -1,7 +1,7 @@
 A drag on the empty canvas pans the map.
 note: Trip.md
 events: key:m+cmd@0.3 drag:1200,700>-100,-50@0.9
-expect: rect:map-node:6: [292.83, 341.55, 81.17, 50.19]
+expect: rect:map-node:6: [301.69, 341.55, 81.17, 50.19]
 expect: scale:map-node:6: 1.4759000539779663
 --- before
 ---

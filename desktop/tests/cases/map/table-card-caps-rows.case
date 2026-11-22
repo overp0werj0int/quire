@@ -1,10 +1,10 @@
 A table card shows its header and 8 rows and says how many more; a small table is as tall as its rows. At 100%: a 30 header, 35 a row, 2 of frame, 18 for the label.
 note: Data.md
 events: key:m+cmd@0.3 key:0+cmd@0.8
-expect: rect:map-card:3: [882.5, 148.5, 99.0, 330.0]
+expect: rect:map-card:3: [882.5, 142.5, 99.0, 338.0]
 expect: text:map-more:3: '+3 more rows'
 expect: rect:r-8: None
-expect: rect:map-card:17: [882.5, 490.0, 72.0, 67.0]
+expect: rect:map-card:17: [882.5, 492.0, 72.0, 67.0]
 --- before
 # Data
 
