@@ -6,14 +6,15 @@
 use rune::{El, TextStyle, el, row, text};
 
 use crate::app::App;
-use crate::blocks::{Block, DiffKind, DiffLine, Kind, Table};
+use crate::blocks::{Block, DiffKind, DiffLine, GalleryItem, Kind, Table};
+use crate::md::Img;
 use crate::page::{self, line, r};
 use crate::roles::mix;
 use crate::ui::chip::Chip;
 use crate::ui::icons;
 use crate::ui::preview::code as pcode;
 use crate::ui::preview::table::Grid;
-use crate::ui::preview::{Cx, Tone};
+use crate::ui::preview::{Cx, LOADING, Pic, Tone};
 
 /// Code and diff cards show this many lines (MAP-049).
 const CODE_LINES: usize = 12;
@@ -42,6 +43,8 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str) -> Option<(El, [f3
             capped(cx.alert(*kind, blocks, tone), [w, h], text_h + TEXT_LINES * line(cx.look.b, 1.6))
         }
         Kind::Html { text } => capped(cx.html(text), cx.html_size(text, max), HTML_LINES * line(r(cx.look.b * 0.8), 1.5)),
+        Kind::Image { img, .. } => image(cx, img, i, tail),
+        Kind::Gallery { items } => gallery(cx, items, i, tail),
         _ => return None,
     };
     Some((e.key(format!("map-card:{tail}")), size))
@@ -251,4 +254,102 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
         out = out.child(more(cx, rest, "row", tail).pin(Some(0.0), Some(grid_h), None, None));
     }
     (out, [w, grid_h + more_h])
+}
+
+/// MAP-046: the picture at its natural size, never larger, at most `B × 20` by `B × 14`, with
+/// its alt text under it in at most two lines; the placeholder while it loads or when it is
+/// missing. MAP-047: the Expand chip at its top-right corner under the pointer.
+fn image(cx: &Cx, img: &Img, i: usize, tail: &str) -> (El, [f32; 2]) {
+    let look = cx.look;
+    let c = &look.c;
+    let b = look.b;
+    let (pic, [pw, ph]) = thumb(cx, img, [r(b * 20.0), r(b * 14.0)]);
+    let pic = pic.key(format!("map-pic:{tail}")).child(expand_chip(cx, i, tail).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+    let mut w = pw;
+    let mut h = ph;
+    let mut out = rune::col().items_center().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).child(pic);
+    if !img.alt.is_empty() {
+        let style = look.prose(r(b * 0.84), 1.5).italic();
+        w = w.max(rune::text::measure(&img.alt, &[], style, None).0.ceil().min(r(b * 20.0)));
+        let cap_h = rune::text::measure(&img.alt, &[], style, Some(w)).1.min(2.0 * style.line_height);
+        let gap = r(b * 0.6);
+        h += gap + cap_h;
+        out = out.child(text(img.alt.clone()).key(format!("map-caption:{tail}")).font(style).color(c.dim).wrap().max_lines(2).align(rune::Align::Center).w(w).h(cap_h).mt(gap));
+    }
+    (out.size(w, h), [w, h])
+}
+
+/// Image `img` fitted inside `max` without growing, its corners rounded under a hairline, or
+/// the placeholder at its own width up to `max`'s.
+fn thumb(cx: &Cx, img: &Img, [max_w, max_h]: [f32; 2]) -> (El, [f32; 2]) {
+    let c = &cx.look.c;
+    let ready = match cx.pic(img) {
+        Pic::Ready(im) => im.size().filter(|[w, h]| *w > 0 && *h > 0).map(|[w, h]| (im, [w as f32, h as f32])).ok_or_else(|| LOADING.to_string()),
+        Pic::Loading => Err(LOADING.to_string()),
+        Pic::Missing(msg) => Err(msg),
+    };
+    match ready {
+        Ok((im, [nw, nh])) => {
+            let k = 1f32.min(max_w / nw).min(max_h / nh);
+            let [w, h] = [(nw * k).round().max(1.0), (nh * k).round().max(1.0)];
+            let alt = if img.alt.is_empty() { "Image".to_string() } else { img.alt.clone() };
+            let edge = el().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(4.0).border(1.0, c.hairline);
+            (el().size(w, h).radius(4.0).clip_rounded(4.0).role("img").label(alt).child(el().pixels(im.pixels()).size(w, h)).child(edge), [w, h])
+        }
+        Err(msg) => {
+            let w = cx.placeholder_w(&msg).min(max_w);
+            let h = r(cx.look.b * 3.4).min(max_h);
+            (cx.placeholder(msg, None).size(w, h), [w, h])
+        }
+    }
+}
+
+/// The Expand chip: the lightbox on the image (MAP-047).
+fn expand_chip(cx: &Cx, i: usize, tail: &str) -> El {
+    let c = &cx.look.c;
+    let size = pcode::chip_size(cx.look.b);
+    let key = format!("map-expand:{tail}");
+    Chip { key: &key, glyph: &icons::EXPAND, size, icon: r(size * 1.1), label: "", mono: cx.look.mono, tint: c.readable_dim(), active: false, fill: Some(c.panel) }
+        .el(c)
+        .label("Expand the image")
+        .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, 0, tx))
+}
+
+/// MAP-047: a gallery's images as thumbnails at most `B × 8` tall, in rows that wrap at the
+/// card's widest, each opening the lightbox on itself.
+fn gallery(cx: &Cx, items: &[GalleryItem], i: usize, tail: &str) -> (El, [f32; 2]) {
+    let look = cx.look;
+    let c = &look.c;
+    let b = look.b;
+    let pad = r(b * 0.5);
+    let gap = r(b * 0.5);
+    let room = look.width - 2.0 * pad;
+    let mut rows: Vec<(El, [f32; 2])> = Vec::new();
+    let mut line = row().gap(gap).items_end();
+    let [mut lw, mut lh] = [0f32; 2];
+    for (k, it) in items.iter().enumerate() {
+        let (t, [tw, th]) = thumb(cx, &it.img, [room, r(b * 8.0)]);
+        if lw > 0.0 && lw + gap + tw > room {
+            rows.push((std::mem::replace(&mut line, row().gap(gap).items_end()), [lw, lh]));
+            [lw, lh] = [0.0, 0.0];
+        }
+        let tip = if it.title.is_empty() { &it.img.alt } else { &it.title };
+        let mut t = t.key(format!("map-thumb:{tail}:{k}")).cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, k, tx));
+        if !tip.is_empty() {
+            t = t.help(tip.clone());
+        }
+        line = line.child(t);
+        lw += if lw > 0.0 { gap } else { 0.0 } + tw;
+        lh = lh.max(th);
+    }
+    if lw > 0.0 {
+        rows.push((line, [lw, lh]));
+    }
+    let w = rows.iter().map(|(_, [w, _])| *w).fold(0.0, f32::max) + 2.0 * pad;
+    let h = rows.iter().map(|(_, [_, h])| *h).sum::<f32>() + gap * rows.len().saturating_sub(1) as f32 + 2.0 * pad;
+    let mut out = rune::col().key(format!("map-gallery:{tail}")).size(w, h).padding(pad).gap(gap).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft));
+    for (k, (rw, _)) in rows.into_iter().enumerate() {
+        out = out.child(rw.key(format!("row-{k}")));
+    }
+    (out, [w, h])
 }

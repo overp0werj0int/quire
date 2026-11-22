@@ -1,0 +1,18 @@
+The lightbox's Edit Markdown opens the Edit Sheet on the image's line; saving writes the note.
+note: Pics.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 tap:map-card:3@0.8 key:e@1.2 tap:lightbox-edit@1.6 key:Home+cmd@2.0 key:Right@2.1 key:Right@2.2 type:Big_@2.3 key:s+cmd@2.8
+expect: rect:lightbox: None
+expect: selected: map-node:3
+--- before
+# Pics
+
+![A wide checkerboard](attachments/wide.png)
+
+Text.
+--- after
+# Pics
+
+![Big A wide checkerboard](attachments/wide.png)
+
+Text.

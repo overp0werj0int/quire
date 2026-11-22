@@ -1,0 +1,10 @@
+An image whose file is not there shows the placeholder card saying so, 280 wide at most, with the caption under it.
+note: Pics.md
+events: key:m+cmd@0.3 key:0+cmd@0.8
+expect: text:map-pic:3: 'Image not found · attachments/gone.png'
+expect: rect:map-pic:3: [881.0, 381.5, 280.0, 48.0]
+expect: text:map-caption:3: 'Lost'
+--- before
+# Pics
+
+![Lost](attachments/gone.png)

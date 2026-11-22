@@ -1,0 +1,13 @@
+Esc closes the lightbox and the map has the keys again.
+note: Pics.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 tap:map-card:3@0.8 key:e@1.2 key:Escape@1.8
+expect: rect:lightbox: None
+expect: focus: note-keys (no ring)
+expect: selected: map-node:3
+--- before
+# Pics
+
+![A wide checkerboard](attachments/wide.png)
+
+Text.

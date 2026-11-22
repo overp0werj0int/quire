@@ -90,6 +90,11 @@ impl Node {
     pub fn card(&self) -> bool {
         matches!(self.body, Body::Card(_))
     }
+
+    /// An image or a gallery card, whose size changes as its pictures load.
+    pub fn pictures(&self) -> bool {
+        matches!(&self.body, Body::Card(bl) if matches!(bl.kind, Kind::Image { .. } | Kind::Gallery { .. }))
+    }
 }
 
 /// The `markmap:` options in fenced front matter that Quire honours (MAP-011), clamped.

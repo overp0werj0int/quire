@@ -374,6 +374,17 @@ struct Hl {
     place: Option<u32>,
 }
 
+/// What an image shows (BLK-72).
+pub(in crate::ui) enum Pic {
+    Ready(rune::Image),
+    Loading,
+    /// Not there, with the placeholder's message.
+    Missing(String),
+}
+
+/// The placeholder's message while an image loads.
+pub(in crate::ui) const LOADING: &str = "Loading image…";
+
 /// What every block needs: the view, the page's look, the whole document (for anchors) and
 /// the find query.
 #[derive(Clone, Copy)]
@@ -697,23 +708,35 @@ impl Cx<'_> {
         [w, rune::text::measure_with(if t.is_empty() { " " } else { t }, &[], style, Some(w - ml), anywhere).1]
     }
 
+    /// Where image `img` stands: its pixels, still on its way, or why it is not there.
+    pub(in crate::ui) fn pic(&self, img: &Img) -> Pic {
+        use crate::images::{Remote, Source};
+        let s = self.v.s;
+        if img.src.trim().is_empty() {
+            return Pic::Missing("No image".into());
+        }
+        let i = match s.image_source(img) {
+            Source::File(path) => match s.images.file(&path) {
+                Some(i) => i,
+                None => return Pic::Loading,
+            },
+            Source::Url(url) => match s.images.remote(&url) {
+                Remote::Ready(i) => i,
+                Remote::Loading => return Pic::Loading,
+                Remote::Failed(e) => return Pic::Missing(format!("Image not found · {url} ({e})")),
+            },
+            Source::Missing(src) => return Pic::Missing(format!("Image not found · {src}")),
+        };
+        if i.error().is_some() { Pic::Missing(format!("Image not found · {}", img.src)) } else { Pic::Ready(i) }
+    }
+
     /// An image's pixels, or the placeholder card (BLK-70, BLK-72). `size` is a gallery's shown
     /// size; without one the image keeps its natural size, capped at the column.
     pub(super) fn picture(&self, img: &Img, size: Option<(f32, f32)>) -> El {
         let look = self.look;
-        let s = self.v.s;
-        let handle = match s.image_source(img) {
-            crate::images::Source::File(path) => s.images.file(&path).map(Ok),
-            crate::images::Source::Url(url) => match s.images.remote(&url) {
-                crate::images::Remote::Ready(i) => Some(Ok(i)),
-                crate::images::Remote::Loading => None,
-                crate::images::Remote::Failed(e) => Some(Err(format!("Image not found · {url} ({e})"))),
-            },
-            crate::images::Source::Missing(src) => Some(Err(format!("Image not found · {src}"))),
-        };
         let alt = if img.alt.is_empty() { "Image".to_string() } else { img.alt.clone() };
-        match handle {
-            Some(Ok(i)) if i.error().is_none() => {
+        match self.pic(img) {
+            Pic::Ready(i) => {
                 let mut pic = el().pixels(i.pixels()).radius(4.0).clip_rounded(4.0).role("img").label(alt.clone()).help(alt);
                 match (size, i.size()) {
                     (Some((w, h)), _) => pic = pic.size(w, h),
@@ -725,14 +748,12 @@ impl Cx<'_> {
                 }
                 pic
             }
-            None => self.placeholder("Loading image…".into(), size),
-            _ if img.src.is_empty() => self.placeholder("No image".into(), size),
-            Some(Err(msg)) => self.placeholder(msg, size),
-            Some(Ok(_)) => self.placeholder(format!("Image not found · {}", img.src), size),
+            Pic::Loading => self.placeholder(LOADING.into(), size),
+            Pic::Missing(msg) => self.placeholder(msg, size),
         }
     }
 
-    pub(super) fn placeholder(&self, msg: String, size: Option<(f32, f32)>) -> El {
+    pub(in crate::ui) fn placeholder(&self, msg: String, size: Option<(f32, f32)>) -> El {
         let look = self.look;
         let b = look.b;
         let ts = r(b * 0.76);
@@ -750,22 +771,22 @@ impl Cx<'_> {
         match size {
             // A gallery cell: the message wraps inside the cell and never spills out of it.
             Some((w, h)) => card.size(w, h).px(r(b * 0.6)).items_start().pt(r(b * 0.6)).clip_rounded(4.0).child(msg.wrap_anywhere().grow(1.0)),
-            None => card.child(msg.shrink()),
+            None => card.child(msg.shrink().truncate()),
         }
     }
 
+    /// The placeholder's natural width with `msg`, as `placeholder` lays it out without a size.
+    pub(in crate::ui) fn placeholder_w(&self, msg: &str) -> f32 {
+        let b = self.look.b;
+        (2.0 * r(b * 1.2) + r(b * 1.05) + r(b * 0.5) + rune::text::advance(msg, self.look.mono_at(r(b * 0.76), 1.3))).ceil()
+    }
+
     /// The natural size of an image once it has loaded.
-    pub(super) fn natural(&self, img: &Img) -> Option<[f32; 2]> {
-        let s = self.v.s;
-        let i = match s.image_source(img) {
-            crate::images::Source::File(path) => s.images.file(&path)?,
-            crate::images::Source::Url(url) => match s.images.remote(&url) {
-                crate::images::Remote::Ready(i) => i,
-                _ => return None,
-            },
-            crate::images::Source::Missing(_) => return None,
-        };
-        i.size().filter(|[w, h]| *w > 0 && *h > 0).map(|[w, h]| [w as f32, h as f32])
+    pub(in crate::ui) fn natural(&self, img: &Img) -> Option<[f32; 2]> {
+        match self.pic(img) {
+            Pic::Ready(i) => i.size().filter(|[w, h]| *w > 0 && *h > 0).map(|[w, h]| [w as f32, h as f32]),
+            _ => None,
+        }
     }
 
     /// An image block: the picture centred, its alt text as the caption (BLK-70, BLK-73).

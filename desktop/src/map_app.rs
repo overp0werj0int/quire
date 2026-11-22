@@ -61,9 +61,10 @@ pub enum Tier {
     Card,
 }
 
-/// A node's source hash (`Node::src`), tier, body size and wrap width.
-type SizeKey = (u64, Tier, u32, u32);
-type LaidKey = (String, u64, u64, u32, u64, &'static str, &'static str);
+/// A node's source hash (`Node::src`), tier, body size, wrap width and, for pictures, the
+/// images epoch.
+type SizeKey = (u64, Tier, u32, u32, u64);
+type LaidKey = (String, u64, u64, u32, u64, &'static str, &'static str, u64);
 /// Label sizes, kept while the font epoch and the two fonts stay the same.
 type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
 
@@ -269,7 +270,8 @@ impl App {
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
         let (folded, fold_ver) = self.map_view().map_or((&empty, 0), |v| (&v.folded, v.fold_ver));
-        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id);
+        let pics = self.images.epoch.get();
+        let key: LaidKey = (self.active.clone().unwrap_or_default(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics);
         if let Some((k, l)) = &*self.map.laid.borrow()
             && *k == key
         {
@@ -284,7 +286,8 @@ impl App {
         let sizer = crate::ui::MapSizer::new(self);
         let laid = Rc::new(crate::map_layout::layout(&t, folded, m, |i| {
             let n = &t.nodes[i];
-            let [w, h] = *cache.entry((n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits())).or_insert_with(|| sizer.size(&t, i, m.max_w));
+            let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
+            let [w, h] = *cache.entry(key).or_insert_with(|| sizer.size(&t, i, m.max_w));
             [w + task_room(n, b), h]
         }));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
@@ -988,8 +991,11 @@ impl App {
         if !self.map_editable() || self.map.inline.is_some() {
             return;
         }
-        let t = self.map_tree();
         let i = self.map_selected();
+        if self.open_lightbox(i, 0, tx) {
+            return;
+        }
+        let t = self.map_tree();
         match map::in_place(self.active_text(), &t, i) {
             map::InPlace::Field { text, multi } => {
                 let mut edit = TextEdit::new(text);
@@ -1001,6 +1007,67 @@ impl App {
             map::InPlace::FileName => self.start_rename(tx),
             map::InPlace::Nothing => {}
         }
+    }
+
+    /// A press on node `i`'s Expand chip, or on image `k` of its gallery (MAP-047): the node is
+    /// selected and its image opens in the lightbox.
+    pub fn map_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) {
+        let Some(i) = self.map_press_node(i, tx) else { return };
+        let id = self.map_tree().nodes[i].id;
+        if let Some(v) = self.map_view_mut() {
+            v.selected = id;
+        }
+        self.open_lightbox(i, k, tx);
+    }
+
+    /// The lightbox on node `i`'s image, or on image `k` of its gallery; false when it has none.
+    fn open_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) -> bool {
+        let t = self.map_tree();
+        let Some(n) = t.nodes.get(i) else { return false };
+        let map::Body::Card(bl) = &n.body else { return false };
+        let img = match &bl.kind {
+            crate::blocks::Kind::Image { img, .. } => img,
+            crate::blocks::Kind::Gallery { items } => match items.get(k) {
+                Some(it) => &it.img,
+                None => return false,
+            },
+            _ => return false,
+        };
+        let lb = crate::layer::Lightbox { img: img.clone(), lines: n.own.clone() };
+        self.open_layer(crate::layer::Layer::Lightbox(lb), tx);
+        true
+    }
+
+    /// Ctrl+Enter on the selected node (MAP-054): the lightbox on an image.
+    pub fn map_follow_link(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Map || self.map.inline.is_some() {
+            return;
+        }
+        let i = self.map_selected();
+        self.open_lightbox(i, 0, tx);
+    }
+
+    /// The lightbox's Open externally: the image in the system's viewer or the browser.
+    pub fn lightbox_open(&mut self, tx: &mut Tx) {
+        let Some(crate::layer::Layer::Lightbox(lb)) = self.layer() else { return };
+        let url = match self.image_source(&lb.img) {
+            crate::images::Source::File(p) => format!("file://{}", p.display()),
+            crate::images::Source::Url(u) => u,
+            crate::images::Source::Missing(src) => {
+                self.notice = Some(format!("No image at {src}"));
+                return;
+            }
+        };
+        if let Err(e) = tx.open_url(&url) {
+            self.notice = Some(format!("Could not open {url}: {e}"));
+        }
+    }
+
+    /// The lightbox's Edit Markdown: the Edit Sheet on the image's lines, in its place.
+    pub fn lightbox_edit(&mut self, tx: &mut Tx) {
+        let Some(crate::layer::Layer::Lightbox(lb)) = self.layer() else { return };
+        let lines = lb.lines.clone();
+        self.open_sheet_lines(lines, crate::sheet::Scope::Block, tx);
     }
 
     /// `E` (MAP-020): the Edit Sheet on the selected node's whole branch.

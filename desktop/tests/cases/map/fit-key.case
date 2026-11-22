@@ -1,8 +1,8 @@
 0 fits the map again after a zoom.
 note: Trip.md
 events: key:m+cmd@0.3 key:0+cmd@0.9 key:0@1.5
-expect: rect:map-node:6: [369.7, 387.72, 91.91, 56.81]
-expect: scale:map-node:6: 1.670799970626831
+expect: rect:map-node:6: [392.83, 391.55, 81.17, 50.19]
+expect: scale:map-node:6: 1.4759000539779663
 --- before
 ---
 title: Trip

@@ -1,0 +1,13 @@
+The Expand chip on an image card opens the lightbox: the picture at its own size, its caption, the node selected.
+note: Pics.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 hover:map-card:3@0.8 tap:map-expand:3@1.1
+expect: rect:lightbox-pic: [240.0, 130.0, 800.0, 500.0]
+expect: text:lightbox-caption: 'A wide checkerboard'
+expect: selected: map-node:3
+--- before
+# Pics
+
+![A wide checkerboard](attachments/wide.png)
+
+Text.

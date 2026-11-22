@@ -22,6 +22,9 @@ EVENTS is a JSON file of script events, or `-` for stdin, or a short form:
                       seconds (default 0.3), then released; MOD is middle or a key modifier
     wheel:DX,DY[,X,Y][+MOD]@T       one raw wheel delta, at X,Y or where the pointer is
     pinch:DELTA[,X,Y]@T             a touchpad pinch (0.1 zooms in by about a tenth)
+    drop:FILE[,FILE...]>WHERE@T     image files from another app, held over WHERE (a KEY or
+                      X,Y) for 0.4 s, then dropped; FILE is a path from desktop/
+    pastepng:FILE@T   a paste of a copied image: FILE's PNG bytes on the clipboard
 
 T is seconds on the app's own clock. `cmd` is Ctrl on Linux and Windows. Typed text arrives at
 about 30 letters a second, so leave it time before the next event.
@@ -40,6 +43,7 @@ WHAT is any of (default `focus,doc-y`):
     nodes             the map nodes built now, by key, in the order drawn: what culling kept
     keys              every keyed element with its rectangle: the way to find a KEY
     notes             the first 60 characters of each note on disk after the replay
+    file:GLOB         the files in the notes folder that match GLOB, with their sizes
 
 --at takes the reading at that time; without it, 0.8 s after the last event.
 
@@ -91,7 +95,7 @@ def parse_events(arg):
         return d["events"] if isinstance(d, dict) else d
     events = []
     for tok in arg.split():
-        m = re.fullmatch(r"(tap|rtap|hover|key|type|paste|scroll|drag|wheel|pinch):(.*)@([0-9.]+)", tok)
+        m = re.fullmatch(r"(tap|rtap|hover|key|type|pastepng|paste|scroll|drag|wheel|pinch|drop):(.*)@([0-9.]+)", tok)
         if not m:
             raise SystemExit("probe: cannot read %r (see --help)" % tok)
         kind, body, t = m.group(1), m.group(2), float(m.group(3))
@@ -124,6 +128,14 @@ def parse_events(arg):
             events.append(ev)
         elif kind == "type":
             events.append({"t": t, "type": "type", "text": body.replace("_", " ")})
+        elif kind == "drop":
+            files, _, where = body.partition(">")
+            spec = {"paths": [os.path.abspath(f) for f in files.split(",")], "hover": 0.4}
+            place = at(where)
+            spec.update({"key": place["key"]} if "key" in place else {"at": [place["x"], place["y"]]})
+            events.append({"t": t, "drop_files": spec})
+        elif kind == "pastepng":
+            events.append({"t": t, "type": "paste", "png": os.path.abspath(body)})
         elif kind == "paste":
             events.append({"t": t, "type": "paste", "text": body.replace("_", " ").replace("\\n", "\n")})
         else:
@@ -132,8 +144,9 @@ def parse_events(arg):
     return events
 
 
-def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None):
-    """One headless run; returns the element tree (a list of dicts) and the home folder."""
+def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None):
+    """One headless run; returns the element tree (a list of dicts) and the home folder.
+    `extra` maps paths in the notes folder to bytes written there beside `note`."""
     home = os.path.join(work, "home")
     script = os.path.join(work, "events.json")
     tree = os.path.join(work, "tree.json")
@@ -156,6 +169,10 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
             shutil.rmtree(notes, ignore_errors=True)
             os.makedirs(notes)
             shutil.copy(note, notes)
+            for rel, data in (extra or {}).items():
+                os.makedirs(os.path.dirname(os.path.join(notes, rel)), exist_ok=True)
+                with open(os.path.join(notes, rel), "wb") as f:
+                    f.write(data)
             env.update(QUIRE_FOLDER=notes, QUIRE_NOTE=os.path.basename(note))
         elif folder:
             name = os.path.basename(os.path.normpath(folder)) or "notes"
@@ -219,6 +236,11 @@ def answer(what, els, home):
         return "selected: %s" % (e.get("key") if e else None)
     if what == "nodes":
         return "nodes: %s" % " ".join(e["key"][9:] for e in els if e.get("key", "").startswith("map-node:"))
+    if what.startswith("file:"):
+        import glob
+        notes = os.path.join(os.path.dirname(home), "notes")
+        hits = sorted(glob.glob(os.path.join(notes, what[5:])))
+        return "%s: %s" % (what, ", ".join("%s (%d bytes)" % (os.path.relpath(h, notes), os.path.getsize(h)) for h in hits) or "none")
     if what == "doc-y":
         r = rect(els, "doc-col")
         return "doc-y: %s" % (r[1] if r else None)

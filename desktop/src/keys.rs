@@ -344,6 +344,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.zoom-out" => |s, tx| s.map_zoom_step(0.8, tx),
         "map.delete" => |s, tx| s.map_delete(tx),
         "map.edit" => |s, tx| s.map_edit(tx),
+        "map.follow-link" => |s, tx| s.map_follow_link(tx),
         "map.edit-subtree" => |s, tx| s.map_edit_branch(tx),
         "map.add-child" => |s, tx| s.map_add(crate::map_app::Place::Child, tx),
         "map.add-sibling" => |s, tx| s.map_add(crate::map_app::Place::After, tx),

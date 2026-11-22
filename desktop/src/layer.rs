@@ -30,6 +30,14 @@ pub enum Layer {
     /// The sidebar or the outline over the page, in a window too narrow to dock it.
     Drawer(Drawer),
     Menu(Menu),
+    /// An image on the map, large (MAP-047).
+    Lightbox(Lightbox),
+}
+
+/// The lightbox's image, and the source lines its Edit Markdown button opens.
+pub struct Lightbox {
+    pub img: crate::md::Img,
+    pub lines: std::ops::Range<usize>,
 }
 
 /// A menu, at the point it opened at, on what it opened on.
@@ -66,6 +74,7 @@ pub enum Kind {
     Sheet,
     Drawer(Drawer),
     Menu,
+    Lightbox,
 }
 
 impl Layer {
@@ -78,6 +87,7 @@ impl Layer {
             Layer::Sheet(_) => Kind::Sheet,
             Layer::Drawer(d) => Kind::Drawer(*d),
             Layer::Menu(_) => Kind::Menu,
+            Layer::Lightbox(_) => Kind::Lightbox,
         }
     }
 }

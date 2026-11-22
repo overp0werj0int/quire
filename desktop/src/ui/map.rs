@@ -4,12 +4,14 @@
 //! its overscan is built.
 
 mod card;
+mod lightbox;
 
 use std::hash::{Hash, Hasher};
 
 use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextStyle, Tx, WheelEvent, el, text};
 
 use super::preview::{Cx, Look, Rich, Tone, look_at};
+pub(super) use lightbox::lightbox;
 use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Run;
@@ -321,7 +323,8 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
     let mut h = std::collections::hash_map::DefaultHasher::new();
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied).hash(&mut h);
+    let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics).hash(&mut h);
     let pad_x = l.metrics.pad_x;
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);

@@ -1,0 +1,13 @@
+e on a selected image node opens the lightbox, not the Edit Sheet.
+note: Pics.md
+file: attachments/wide.png fixtures/wide.png
+events: key:m+cmd@0.3 tap:map-card:3@0.8 key:e@1.2
+expect: rect:lightbox-pic: [240.0, 130.0, 800.0, 500.0]
+expect: text:lightbox-caption: 'A wide checkerboard'
+expect: selected: map-node:3
+--- before
+# Pics
+
+![A wide checkerboard](attachments/wide.png)
+
+Text.

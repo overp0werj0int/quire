@@ -1,8 +1,8 @@
 - zooms out by a fifth about the canvas's middle.
 note: Trip.md
 events: key:m+cmd@0.3 key:-@0.9
-expect: rect:map-node:6: [448.56, 394.27, 73.52, 45.45]
-expect: scale:map-node:6: 1.3365999460220337
+expect: rect:map-node:6: [467.06, 397.33, 64.94, 40.14]
+expect: scale:map-node:6: 1.1806999444961548
 --- before
 ---
 title: Trip

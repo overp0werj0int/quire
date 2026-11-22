@@ -23,7 +23,7 @@ The first line says what the case checks. `note` names the file (default Note.md
 is the state file as for probe.py --state, `events` is probe.py's short form (it may run over
 several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
 that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`opacity:KEY`, `color:KEY`, `selected`, `nodes`), compared exactly. `at` takes the readings at that time instead of 0.8 s
+`opacity:KEY`, `color:KEY`, `selected`, `nodes`, `file:GLOB`), compared exactly. `at` takes the readings at that time instead of 0.8 s
 after the last event, to read the app mid-gesture: a drag's drop zone before the release, or a
 node part way through a glide. Each `env` line is NAME=VALUE for the app's environment, such
 as QUIRE_REDUCED_MOTION=1. With `password`, the note on disk must be a locked note (SYNC.md),
@@ -31,6 +31,12 @@ and its text opened with that password is what `--- after` holds. The text after
 `--- before` is the note as it starts. The text after `--- after` is the note expected on disk
 after the replay; without that section the note must be unchanged. Each line of a section is a
 line of the note, ended by a newline, so both notes end in one.
+
+Other files can sit beside the note. Each `file` line is NAME SOURCE: the file's path in the
+notes folder, then `base64:DATA` or a path from the case's own folder, such as
+`file: attachments/wide.png fixtures/wide.png`. A `--- file NAME` section, after `--- before`,
+is one more note, written as `--- before` is. `{any}` in an `--- after` line or an `expect`
+line stands for any text on that line, for what the app names by the clock (a pasted image).
 
 Each case is a whole copy of the app, run one at a time. --keep leaves each run's folder.
 """
@@ -47,7 +53,7 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "color:", "selected", "nodes")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "color:", "selected", "nodes", "file:")
 
 
 class Case:
@@ -56,12 +62,13 @@ class Case:
         self.name = os.path.relpath(path, os.path.join(HERE, "cases"))
         self.note, self.state, self.size, self.password, self.at = "Note.md", None, "1280x800", None, None
         self.events, self.expect, self.before, self.after, self.env = [], [], None, None, {}
+        self.files = {}
         text = open(path).read()
         lines = (text[:-1] if text.endswith("\n") else text).split("\n")
         self.says = lines[0]
         section, body = None, []
         for line in lines[1:]:
-            if line in ("--- before", "--- after"):
+            if line in ("--- before", "--- after") or line.startswith("--- file "):
                 self._close(section, body)
                 section, body = line[4:], []
             elif section:
@@ -86,6 +93,13 @@ class Case:
                     self.events.append(value)
                 elif key == "expect":
                     self.expect.append(value)
+                elif key == "file":
+                    name, source = value.split(None, 1)
+                    if source.startswith("base64:"):
+                        import base64
+                        self.files[name] = base64.b64decode(source[7:])
+                    else:
+                        self.files[name] = open(os.path.join(os.path.dirname(path), source), "rb").read()
                 else:
                     raise SystemExit("%s: unknown line %r" % (self.name, line))
         self._close(section, body)
@@ -93,8 +107,11 @@ class Case:
             raise SystemExit("%s: a case needs events and a --- before section" % self.name)
 
     def _close(self, section, body):
-        if section:
-            setattr(self, section, "".join(line + "\n" for line in body))
+        text = "".join(line + "\n" for line in body)
+        if section and section.startswith("file "):
+            self.files[section[5:]] = text.encode()
+        elif section:
+            setattr(self, section, text)
 
 
 def unlock(text, password):
@@ -113,6 +130,14 @@ def unlock(text, password):
     return AESGCM(key).decrypt(blob[6:18], blob[18:], None).decode()
 
 
+def same(want, got):
+    """`got` is `want`, where each `{any}` in `want` stands for any text on its line."""
+    import re
+    if "{any}" not in want:
+        return got == want
+    return re.fullmatch(".*?".join(re.escape(p) for p in want.split("{any}")), got) is not None
+
+
 def reading(line):
     # A key may hold a colon (`map-node:12`), never a space: the reading ends at the first ": ".
     what = line.split(": ", 1)[0]
@@ -129,18 +154,18 @@ def run(case, binary, keep):
         with open(os.path.join(src, case.note), "w") as f:
             f.write(case.before)
         events = probe.parse_events(" ".join(case.events))
-        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env)
+        els, home = probe.replay(binary, events, case.at, case.size, 1, None, work, note=os.path.join(src, case.note), state=case.state, env_add=case.env, extra=case.files)
         problems = []
         saved = open(os.path.join(work, "notes", case.note)).read()
         if case.password:
             saved = unlock(saved, case.password)
         want = case.before if case.after is None else case.after
-        if saved != want:
+        if not same(want, saved):
             diff = difflib.unified_diff(want.splitlines(True), saved.splitlines(True), "expected", "on disk")
             problems.append("the note on disk differs:\n" + "".join(diff).rstrip("\n"))
         for line in case.expect:
             got = probe.answer(reading(line), els, home)
-            if got != line:
+            if not same(line, got):
                 problems.append("expected %r, got %r" % (line, got))
         return problems
     finally:
