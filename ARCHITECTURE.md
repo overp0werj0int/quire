@@ -72,12 +72,17 @@ flowchart LR
 
 Map mode is the third value of `App::mode`, beside Source and Preview. Its canvas
 (`ui::map::canvas`) holds one world element that draws the camera from two live values per
-tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`). The view builds only the nodes,
-links and fold circles that meet the canvas and 160 points around it (`App::map_mounted`).
-A pan or zoom sets the live values, and runs the view only when that set of nodes, or the
-zoom's power of two, changes (`App::map_move`, `Tx::live_only`). Each node is a
+tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`), plus a quiet bottom-right zoom HUD
+(`map-zoom-hud`, painted in `doc-area` above `toast-band`). The view builds only the nodes,
+links and fold controls (hover-only when expanded, snug `+N` pill when folded) that meet the
+canvas and 160 points around it (`App::map_mounted`). A pan or zoom sets the live values, and
+runs the view only when that set of nodes, a detail threshold (`LITE_ZOOM` `0.35`,
+`NO_HOVER_ZOOM` `0.25`, `PLAIN_LABEL_ZOOM` `0.20`), or the zoom's power of two changes
+(`App::map_move`, `Tx::live_only`). Each node's inner body is a translation-invariant
 `rune::memo`, so a view that does run builds again only the nodes whose label, fold or
-selection changed. The tree and its layout are cached per text, folds and fonts.
+selection changed; below `0.20×` zoom opaque links batch into one memoized canvas
+(`map-links-batch`) and text nodes mount as flat plain labels. The tree, node sizes and layout
+are cached per text, folds and fonts.
 
 A node draws what the reader would. `map::Node::body` says what that is: plain text, a
 paragraph's or heading's inline runs, which the reader's `Rich` draws, or a block shown as a
