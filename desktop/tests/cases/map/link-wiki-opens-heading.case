@@ -1,0 +1,25 @@
+A click on a wiki link with a heading opens that note on the map, unfolds the heading's branch, selects it and centres it at 100%.
+note: Links.md
+events: key:m+cmd@0.3 tap:map-node:3@1.0
+expect: selected: map-node:12
+expect: rect:map-node:12: [739.0, 408.5, 50.0, 25.75]
+expect: scale:map-node:1: 1.0
+--- before
+# Links
+
+- [[Other#Deep]]
+--- file Other.md
+# Other
+
+## Branch
+
+- item
+
+## Far <!-- markmap: fold -->
+
+- one
+- two
+
+### Deep
+
+- deep item

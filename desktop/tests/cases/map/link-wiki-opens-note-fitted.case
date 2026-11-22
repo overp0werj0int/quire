@@ -1,0 +1,15 @@
+A click on a wiki link opens that note on the map with its first camera, fitted as on entry, not where the last note's camera was.
+note: Plain.md
+events: key:m+cmd@0.3 tap:map-node:3@1.0
+expect: selected: map-node:1
+expect: scale:map-node:1: 2.0
+--- before
+# Plain
+
+- [[Other]]
+--- file Other.md
+# Other
+
+## Branch
+
+- item

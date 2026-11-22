@@ -1647,7 +1647,8 @@ impl App {
     }
 
     /// A wiki link: opens the note it names, or creates it. A `#Heading` after the name
-    /// travels to that heading in the reader once the note is shown (RD-102, RD-04).
+    /// travels to that heading in the reader, or to its node on the map, once the note is
+    /// shown (RD-102, RD-04, MAP-054).
     pub fn open_link(&mut self, name: &str, tx: &mut Tx) {
         let (t, frag) = md::wiki_parts(name);
         if t.is_empty() {
@@ -1659,7 +1660,7 @@ impl App {
         match self.names.resolve(&t).map(str::to_string) {
             Some(p) => {
                 self.open_file(&p, None, tx);
-                if let Some(f) = frag.filter(|_| self.mode == Mode::Preview) {
+                if let Some(f) = frag.filter(|_| self.mode != Mode::Source) {
                     self.go_anchor(&f, tx);
                 }
             }

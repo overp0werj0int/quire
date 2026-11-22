@@ -1,0 +1,11 @@
+A click on a tag searches for it and leaves the selection where it was.
+note: Links.md
+events: key:m+cmd@0.3 tap:map-node:5@0.8 tap:map-node:3@1.2
+expect: selected: map-node:5
+expect: text:search: '#trip'
+--- before
+# Links
+
+- #trip
+
+## Other

@@ -121,6 +121,16 @@ dropped or pasted, copied into `attachments/`, then linked. On the map the link 
 at the selection (`App::map_insert_images`, `map::add_block`), and several images make one
 gallery node. The lightbox (`Layer::Lightbox`, `ui/map/lightbox.rs`) shows one image large.
 
+A link in a node's label is followed as in the reader (`preview::on_link`). The link takes the
+press, so the node is not selected and no drag starts. On the map an anchor goes to a node
+(`App::go_anchor`, `App::map_go_line`): the node is selected, the folds above it open and the
+camera centres it. Every footnote's anchor names the one footnotes block, so the map finds the
+footnote by its own lines. A wiki link opens its note on the map and goes to its `#Heading` the
+same way. Ctrl+Enter follows the selected node's first link (`App::map_follow_link`). A tab
+shown on the map for the first time gets its first camera once the canvas has a size
+(`App::place_due`). The canvas reports its size only when it changes, so a note opened while
+the map shows is placed from `App::poll`.
+
 `main.rs` connects these parts. It builds a `rune::AppSpec` from `app::init`, `ui::view`,
 `keys::on_key`, `App::poll` and `App::set_waker`. It calls `App::flush_all` when the window
 closes. If the first argument is a subcommand, such as `quire mcp`, `cli::run_subcommand`

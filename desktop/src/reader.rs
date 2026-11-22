@@ -1470,14 +1470,22 @@ impl App {
         }
     }
 
-    /// A heading slug or footnote anchor in the open note (RD-04, RD-62).
+    /// A heading slug or footnote anchor in the open note (RD-04, RD-62), or its node on the
+    /// map (MAP-054).
     pub fn go_anchor(&mut self, anchor: &str, tx: &mut Tx) {
         let doc = self.doc();
         let a = crate::md::percent_decode(anchor);
-        let i = doc.anchors.get(a.as_str()).or_else(|| doc.anchors.get(blocks::slugify(&a).as_str()));
-        if let Some(&i) = i {
-            self.land(i, true, tx);
+        let a = if doc.anchors.contains_key(a.as_str()) { a } else { blocks::slugify(&a) };
+        let Some(&i) = doc.anchors.get(a.as_str()) else { return };
+        if self.mode != Mode::Map {
+            return self.land(i, true, tx);
         }
+        // Every footnote's anchor names the footnotes block; on the map each has its own node.
+        let line = match &doc.blocks[i].kind {
+            blocks::Kind::Footnotes { items } => items.iter().find(|f| f.anchor == a).map(|f| f.lines.start),
+            _ => None,
+        };
+        self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx);
     }
 }
 

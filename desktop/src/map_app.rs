@@ -14,7 +14,8 @@ use std::time::Duration;
 use rune::{Family, Live, TextEdit, TextStyle, Tx};
 
 use crate::app::{App, Mode};
-use crate::map::{self, NodeId, NodeKind, ROOT, Tree};
+use crate::blocks::Link;
+use crate::map::{self, Body, NodeId, NodeKind, ROOT, Tree};
 use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
@@ -375,7 +376,7 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let committed = self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
+        let committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
         let Some(g) = &self.map.glide else { return committed };
         let u = ((t - g.start) / GLIDE).clamp(0.0, 1.0) as f32;
         let e = 1.0 - (1.0 - u).powi(3);
@@ -625,10 +626,18 @@ impl App {
         let size = [w, h];
         self.map.origin.set([x, y]);
         self.map.size.set(size);
-        let placed = self.map_view_mut().is_none_or(|v| v.placed);
-        if !placed && size[0] > 0.0 && !self.active_locked() {
+        self.place_due();
+    }
+
+    /// A tab shown on the map for the first time gets its first camera once the canvas has a
+    /// size. The canvas reports its size only when it changes, so a note opened while the map
+    /// shows is placed from `poll_map`.
+    fn place_due(&mut self) -> bool {
+        let due = self.mode == Mode::Map && self.map.size.get()[0] > 0.0 && !self.active_locked() && self.map_view_mut().is_some_and(|v| !v.placed);
+        if due {
             self.place_camera();
         }
+        due
     }
 
     /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 on the
@@ -647,18 +656,8 @@ impl App {
     /// The selected node becomes the one holding source line `line`, its folds open, and
     /// the camera finds it (MAP-065).
     fn map_land(&mut self, line: usize, tx: &mut Tx) {
-        let t = self.map_tree();
-        let i = t.at_line(line);
-        let Some(v) = self.map_view_mut() else { return };
-        v.selected = t.nodes[i].id;
-        let mut a = i;
-        while let Some(p) = t.nodes[a].parent {
-            if v.folded.remove(&t.nodes[p].id) {
-                v.fold_ver += 1;
-            }
-            a = p;
-        }
-        let placed = v.placed;
+        let i = self.map_tree().at_line(line);
+        let Some(placed) = self.map_open_to(i) else { return };
         self.map.glide = None;
         if !placed {
             if self.map.size.get()[0] > 0.0 {
@@ -842,8 +841,16 @@ impl App {
 
     /// Node `i` is selected, the folds above it open, and the camera keeps it in view.
     fn map_reveal(&mut self, i: usize, tx: &mut Tx) {
+        if self.map_open_to(i).is_some() {
+            self.ensure_visible(i, tx);
+        }
+    }
+
+    /// Node `i` is selected and the folds above it open. Whether the tab's camera has been
+    /// placed, or None with no note shown.
+    fn map_open_to(&mut self, i: usize) -> Option<bool> {
         let t = self.map_tree();
-        let Some(v) = self.map_view_mut() else { return };
+        let v = self.map_view_mut()?;
         v.selected = t.nodes[i].id;
         let mut a = i;
         while let Some(p) = t.nodes[a].parent {
@@ -852,7 +859,25 @@ impl App {
             }
             a = p;
         }
-        self.ensure_visible(i, tx);
+        Some(v.placed)
+    }
+
+    /// A link's target on the map (MAP-054): the node holding source line `line` selected,
+    /// its folds open and centred. A tab shown for the first time opens on it at 100%.
+    pub fn map_go_line(&mut self, line: usize, tx: &mut Tx) {
+        let i = self.map_tree().at_line(line);
+        let Some(placed) = self.map_open_to(i) else { return };
+        if placed {
+            self.map_relayout(None, tx);
+            let cam = self.centred_on(i, self.map_camera().1);
+            self.map_glide(cam, tx);
+        } else {
+            let (pan, zoom) = self.centred_on(i, 1.0);
+            self.set_camera(pan, zoom);
+            if let Some(v) = self.map_view_mut() {
+                v.placed = true;
+            }
+        }
     }
 
     /// `Delete` and `Backspace` (MAP-025).
@@ -1024,7 +1049,7 @@ impl App {
     fn open_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) -> bool {
         let t = self.map_tree();
         let Some(n) = t.nodes.get(i) else { return false };
-        let map::Body::Card(bl) = &n.body else { return false };
+        let Body::Card(bl) = &n.body else { return false };
         let img = match &bl.kind {
             crate::blocks::Kind::Image { img, .. } => img,
             crate::blocks::Kind::Gallery { items } => match items.get(k) {
@@ -1038,13 +1063,25 @@ impl App {
         true
     }
 
-    /// Ctrl+Enter on the selected node (MAP-054): the lightbox on an image.
+    /// Ctrl+Enter on the selected node (MAP-054): the lightbox on an image, else its label's
+    /// first link or tag, as a click on it.
     pub fn map_follow_link(&mut self, tx: &mut Tx) {
         if self.mode != Mode::Map || self.map.inline.is_some() {
             return;
         }
         let i = self.map_selected();
-        self.open_lightbox(i, 0, tx);
+        if self.open_lightbox(i, 0, tx) {
+            return;
+        }
+        let t = self.map_tree();
+        let Body::Runs(runs) = &t.nodes[i].body else { return };
+        match runs.iter().filter(|r| r.img.is_none()).find_map(|r| r.link.clone()) {
+            Some(Link::Wiki(w)) => self.open_link(w.trim(), tx),
+            Some(Link::Anchor(a)) => self.go_anchor(&a, tx),
+            Some(Link::Tag(tag)) => self.search_tag(&tag, tx),
+            Some(Link::Url(u)) => self.follow(&u, tx),
+            None => {}
+        }
     }
 
     /// The lightbox's Open externally: the image in the system's viewer or the browser.

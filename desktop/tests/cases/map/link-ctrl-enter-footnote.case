@@ -1,0 +1,13 @@
+Ctrl+Enter on a node follows its first link: a footnote reference unfolds the footnotes and centres its footnote.
+note: Links.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Enter+cmd@1.2
+expect: selected: map-node:7
+expect: rect:map-node:7: [636.0, 396.5, 256.0, 51.5]
+--- before
+# Links
+
+- Cited[^1] and [[Links#Other]]
+
+## Other
+
+[^1]: The note.

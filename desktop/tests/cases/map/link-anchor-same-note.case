@@ -1,0 +1,15 @@
+A click on a link to a heading in the same note selects the heading's node and centres it.
+note: Links.md
+events: key:m+cmd@0.3 tap:map-node:3@1.0
+expect: selected: map-node:7
+expect: rect:map-node:7: [701.0, 396.5, 126.0, 51.5]
+--- before
+# Links
+
+- [Same](#target)
+
+## Folded <!-- markmap: fold -->
+
+### Target
+
+- a
