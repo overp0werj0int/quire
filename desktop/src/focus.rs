@@ -297,12 +297,14 @@ impl App {
         let doc = self.active_text();
         let heads = crate::md::headings(doc);
         let shown: Vec<usize> = (0..heads.len()).filter(|&i| heads[i].level <= 4).collect();
-        let cur = self.reader.map.borrow().outline.marked.or_else(|| {
-            (self.mode == Mode::Source).then(|| {
+        let cur = self.reader.map.borrow().outline.marked.or_else(|| match self.mode {
+            Mode::Source => {
                 let caret = self.active.as_ref().and_then(|a| self.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
                 let (line, _) = crate::md::line_col(doc, caret);
                 shown.iter().rposition(|&i| heads[i].line <= line)
-            }).flatten()
+            }
+            Mode::Map => self.map_heading_line(4).and_then(|l| shown.iter().position(|&i| heads[i].line == l)),
+            Mode::Preview => None,
         });
         match cur.or((!shown.is_empty()).then_some(0)) {
             Some(n) => format!("ol-{}", shown[n]),

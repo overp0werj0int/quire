@@ -2045,14 +2045,18 @@ impl App {
         true
     }
 
-    /// Moves the caret, or the preview, to line `line`.
+    /// Moves the caret, the preview or the map to line `line`. On the map its node is selected
+    /// and centred, and the map gets the keyboard (MAP-067).
     pub fn jump(&mut self, line: usize, tx: &mut Tx) {
         // From the outline's drawer: the page moves, and the drawer gives it back.
         self.close_layers(tx);
-        if self.mode == Mode::Source {
-            self.source_jump(line, tx);
-        } else {
-            self.jump_block(line, tx);
+        match self.mode {
+            Mode::Source => self.source_jump(line, tx),
+            Mode::Preview => self.jump_block(line, tx),
+            Mode::Map => {
+                self.map_go_line(line, tx);
+                self.keys_to_note(tx);
+            }
         }
     }
 

@@ -1,0 +1,28 @@
+The outline marks the H1 to H4 heading that holds the selected node, Day one for an item under an H5 below it, with the word count and reading time at its foot and no line and column.
+note: Plan.md
+state: {"mode": "map", "right_open": true}
+events: key:j@0.8 key:l@1.1 key:l@1.4 key:j@1.7 key:l@2.0 key:j@2.3 key:l@2.6
+expect: selected: map-node:17
+expect: color:ol-4: #e9e3d8ff
+expect: color:ol-3: #aea9a1ff
+expect: text:word-count: '13 words'
+expect: text:read-time: '1 min read'
+expect: rect:status: None
+--- before
+# Plan
+
+## Packing <!-- markmap: fold -->
+
+### Clothes
+
+- Socks
+
+## Route
+
+### Day one
+
+- Walk
+
+##### Deep note
+
+- far

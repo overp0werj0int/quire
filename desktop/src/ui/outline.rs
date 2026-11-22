@@ -48,11 +48,13 @@ pub fn outline(v: V) -> El {
         }
         (map.reading || map.writing, map.reading, map.outline_gen)
     };
+    // On the map the row of the heading holding the selected node is marked (MAP-067).
+    let on_map = super::mapping(s).then(|| s.map_heading_line(4).and_then(|l| shown.iter().position(|&j| heads[j].line == l)));
     let pal_id = p as *const crate::theme::Pal as usize;
     let panel_font = &s.settings().panel_font;
     let heads_version = {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (heads_ver, live, reading, outline_gen, if reading { s.doc_hash() } else { None }, pal_id, panel_font).hash(&mut h);
+        (heads_ver, live, reading, outline_gen, if reading { s.doc_hash() } else { None }, pal_id, panel_font, on_map).hash(&mut h);
         h.finish()
     };
     let contents = rune::memo("outline-heads", heads_version, || {
@@ -85,7 +87,7 @@ pub fn outline(v: V) -> El {
                 None
             }
         } else {
-            None
+            on_map.flatten()
         };
         let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
         let mut contents = lists::list(col().w_full(), "list");

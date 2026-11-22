@@ -67,7 +67,9 @@ pub enum Tier {
 /// A node's source hash (`Node::src`), tier, body size, wrap width and, for pictures, the
 /// images epoch.
 type SizeKey = (u64, Tier, u32, u32, u64);
-type LaidKey = (String, u64, u64, u32, u64, &'static str, &'static str, u64);
+/// The fold version is None before the tab has a view: a new view's first folds, from the
+/// note's fold comments, are version 0 and need a layout of their own.
+type LaidKey = (String, u64, Option<u64>, u32, u64, &'static str, &'static str, u64);
 /// Label sizes, kept while the font epoch and the two fonts stay the same.
 type Sizes = (u64, &'static str, &'static str, HashMap<SizeKey, [f32; 2]>);
 
@@ -264,6 +266,20 @@ impl App {
         self.map_view().and_then(|v| t.find(v.selected)).unwrap_or(ROOT)
     }
 
+    /// The first line of the nearest heading of level `max` or above that holds the selected
+    /// node, or is it: what the outline marks on the map (MAP-067).
+    pub fn map_heading_line(&self, max: usize) -> Option<usize> {
+        let t = self.map_tree();
+        let mut i = Some(self.map_selected());
+        while let Some(k) = i {
+            if matches!(t.nodes[k].kind, NodeKind::Heading { level, .. } if level <= max) {
+                return Some(t.nodes[k].own.start);
+            }
+            i = t.nodes[k].parent;
+        }
+        None
+    }
+
     /// The layout of the note shown, run again only when the text, the folds, the text size or
     /// the fonts change (MAP-045).
     pub fn map_laid(&self) -> Rc<Laid> {
@@ -272,7 +288,7 @@ impl App {
         let (_, _, prose_id, mono_id) = self.fonts();
         let epoch = rune::text::font_epoch();
         let empty = HashSet::new();
-        let (folded, fold_ver) = self.map_view().map_or((&empty, 0), |v| (&v.folded, v.fold_ver));
+        let (folded, fold_ver) = self.map_view().map_or((&empty, None), |v| (&v.folded, Some(v.fold_ver)));
         let pics = self.images.epoch.get();
         let key: LaidKey = (self.active.clone().unwrap_or_default(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics);
         if let Some((k, l)) = &*self.map.laid.borrow()

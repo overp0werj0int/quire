@@ -246,6 +246,9 @@ fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
         };
         map.shelf.marked = cur;
         cur
+    } else if crate::ui::mapping(s) {
+        // On the map the H1 holding the selected node is marked (MAP-067).
+        s.map_heading_line(1).and_then(|l| heads.iter().position(|h| h.line == l))
     } else {
         None
     };

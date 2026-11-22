@@ -1,0 +1,16 @@
+The sidebar shelf's outline marks the H1 holding the selected node, and an entry clicked selects its heading on the map.
+note: Two.md
+state: {"mode": "map"}
+events: tap:tab:Two.md@0.6 key:l@1.2 key:j@1.5 key:l@1.8 tap:toc:0@2.2
+expect: selected: map-node:1
+expect: focus: note-keys (no ring)
+expect: color:toc:0: #b597e8ff
+expect: color:toc:1: #9e9a91ff
+--- before
+# Alpha
+
+- one
+
+# Beta
+
+- two

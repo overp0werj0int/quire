@@ -1,0 +1,27 @@
+Clicking an outline heading on the map unfolds the branch it sits in, selects its node, centres it and gives the map the keyboard.
+note: Plan.md
+state: {"mode": "map", "right_open": true}
+events: tap:ol-2@0.8
+at: 1.8
+expect: focus: note-keys (no ring)
+expect: selected: map-node:5
+expect: label:map-node:3: 'Packing, level 2, expanded'
+expect: rect:map-node:5: [605.5, 406.42, 81.03, 30.23]
+--- before
+# Plan
+
+## Packing <!-- markmap: fold -->
+
+### Clothes
+
+- Socks
+
+## Route
+
+### Day one
+
+- Walk
+
+##### Deep note
+
+- far
