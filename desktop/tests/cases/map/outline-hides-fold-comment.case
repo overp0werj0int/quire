@@ -1,0 +1,13 @@
+The outline names a heading without its comment, such as the map's fold directive, as Preview shows it.
+note: Trip.md
+state: {"mode": "map"}
+events: key:j@0.5
+expect: text:outline-heads: 'A B E'
+--- before
+# A
+
+## B <!-- markmap: fold -->
+
+- c
+
+## E <!-- note -->

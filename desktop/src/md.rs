@@ -285,8 +285,14 @@ pub fn headings(text: &str) -> Vec<Heading> {
             continue;
         }
         if let Some((h, start)) = heading_line(ln) {
-            let mut t = ln[start..].trim_end();
-            t = t.trim_end_matches('#').trim_end();
+            let mut t = ln[start..].to_string();
+            // Preview hides a comment in a heading, such as a map's `<!-- markmap: fold -->`.
+            while let Some(a) = t.find("<!--")
+                && let Some(b) = t[a..].find("-->")
+            {
+                t.replace_range(a..a + b + 3, "");
+            }
+            let t = t.trim_end().trim_end_matches('#').trim_end();
             if t.is_empty() {
                 continue;
             }
