@@ -110,8 +110,8 @@ pub struct MapState {
     pub spare: TextEdit,
     /// True while keyboard focus sits on the map canvas (`note-keys` or `map-inline-edit`).
     pub canvas_focused: bool,
-    /// Pan saved before nudging the selected node clear of an overlay drawer.
-    pub(crate) drawer_return_pan: Option<[f32; 2]>,
+    /// Pan saved before nudging the selected node clear of an overlay drawer, keyed by note path.
+    pub(crate) drawer_return_pan: Option<(String, [f32; 2])>,
 }
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
@@ -629,17 +629,24 @@ impl App {
             0.0
         };
         if dx != 0.0 {
-            self.map.drawer_return_pan.get_or_insert([px, py]);
+            if let Some(rel) = self.active.clone() {
+                self.map.drawer_return_pan.get_or_insert((rel, [px, py]));
+            }
             self.map_glide(([px + dx, py], z), tx);
         }
     }
 
     /// When an overlay drawer closes, restore the camera pan if we nudged it clear of the drawer.
+    /// If the user switched to another note while the drawer was open, restore the old note's
+    /// saved pan quietly instead of moving the newly active note.
     pub(crate) fn map_drawer_closed(&mut self, tx: &mut Tx) {
-        let Some(pan) = self.map.drawer_return_pan.take() else { return };
-        if self.mode == Mode::Map && !self.active_locked() {
+        let Some((rel, pan)) = self.map.drawer_return_pan.take() else { return };
+        if self.mode == Mode::Map && !self.active_locked() && self.active.as_deref() == Some(rel.as_str()) {
             let z = self.map.glide.as_ref().map_or_else(|| self.map_camera().1, |g| g.to.1);
             self.map_glide((pan, z), tx);
+        } else if let Some(v) = self.map.views.get_mut(&rel) {
+            v.pan = pan;
+            v.live_pan.set(pan);
         }
     }
 
@@ -654,6 +661,7 @@ impl App {
     }
 
     pub fn map_fit(&mut self, tx: &mut Tx) {
+        self.map.drawer_return_pan = None;
         let [x0, y0, x1, y1] = self.map_extent();
         let [fx0, fy0, fx1, fy1] = self.map_free();
         let (w, h) = (fx1 - fx0, fy1 - fy0);
@@ -687,12 +695,14 @@ impl App {
 
     /// `c`: the selected node to the middle at the current zoom (MAP-036).
     pub fn map_center(&mut self, tx: &mut Tx) {
+        self.map.drawer_return_pan = None;
         let cam = self.centred_on(self.map_selected(), self.map_camera().1);
         self.map_glide(cam, tx);
     }
 
     /// `Ctrl+0`: zoom 1.0 on the selected node (MAP-034).
     pub fn map_zoom_reset(&mut self, tx: &mut Tx) {
+        self.map.drawer_return_pan = None;
         let cam = self.centred_on(self.map_selected(), 1.0);
         self.map_glide(cam, tx);
     }
@@ -767,9 +777,9 @@ impl App {
     }
 
     /// Shifts the camera pan so node `anchor` stays at its pre-change screen position `(old_p)`,
-    /// runs a shifted relayout glide around it, and only calls `ensure_visible` if the anchored
-    /// node was completely outside the free viewport (MAP-043).
-    fn finish_anchored_fold(&mut self, anchor: usize, old_p: Option<map_layout::Place>, tx: &mut Tx) {
+    /// runs a shifted relayout glide around it, and when `reveal_clipped` is true (keyboard
+    /// expand/collapse-all), reveals the anchor if it sits clipped outside the free viewport (MAP-043).
+    fn finish_anchored_fold(&mut self, anchor: usize, old_p: Option<map_layout::Place>, reveal_clipped: bool, tx: &mut Tx) {
         let new_p = self.map_laid().at[anchor];
         let shift = match (old_p, new_p) {
             (Some(a), Some(b)) => [b.right() - a.right(), b.line_y() - a.line_y()],
@@ -786,7 +796,9 @@ impl App {
             }
         }
         self.map_relayout_shifted(None, shift, tx);
-        if let Some(p) = new_p {
+        if reveal_clipped
+            && let Some(p) = new_p
+        {
             let ([px, py], z) = self.map_camera();
             let [fx0, fy0, fx1, fy1] = self.map_free();
             let clipped = px + p.x * z < fx0 || px + p.right() * z > fx1 || py + p.y * z < fy0 || py + p.bottom() * z > fy1;
@@ -817,7 +829,7 @@ impl App {
         }
         v.fold_ver += 1;
         self.keep_selection_shown();
-        self.finish_anchored_fold(i, old_p, tx);
+        self.finish_anchored_fold(i, old_p, false, tx);
     }
 
     pub fn map_toggle_selected(&mut self, all: bool, tx: &mut Tx) {
@@ -835,7 +847,7 @@ impl App {
             v.folded.clear();
             v.fold_ver += 1;
         }
-        self.finish_anchored_fold(anchor, old_p, tx);
+        self.finish_anchored_fold(anchor, old_p, true, tx);
     }
 
     /// `[`: folds every branch at depth 2 and below, or from depth 1 when those are folded
@@ -851,7 +863,7 @@ impl App {
         self.keep_selection_shown();
         let anchor = self.map_selected();
         let old_p = old_drawn.laid.at[anchor];
-        self.finish_anchored_fold(anchor, old_p, tx);
+        self.finish_anchored_fold(anchor, old_p, true, tx);
     }
 
     /// A fold that hides the selected node selects the fold instead (MAP-055).
@@ -892,19 +904,19 @@ impl App {
     // ---------- The camera and the mode ----------
 
     /// The canvas laid out: its size, origin compensation when a docked panel or Zen bar shifts
-    /// its left/top edge on an already-placed map, and the camera's first place once known.
-    pub fn map_laid_out(&mut self, [x, y, w, h]: [f32; 4]) {
+    /// its left/top edge on an already-placed map (nudging the selected node clear only if a
+    /// newly docked sidebar/outline now covers it), and the camera's first place once known.
+    pub fn map_laid_out(&mut self, [x, y, w, h]: [f32; 4], tx: &mut Tx) {
         let old_origin = self.map.origin.get();
         let old_size = self.map.size.get();
         let size = [w, h];
         self.map.origin.set([x, y]);
         self.map.size.set(size);
-        if old_size[0] > 0.0 && (old_origin[0] != x || old_origin[1] != y) {
+        let placed = old_size[0] > 0.0 && self.map_view().is_some_and(|v| v.placed);
+        if placed && (old_origin[0] != x || old_origin[1] != y) {
             let dx = old_origin[0] - x;
             let dy = old_origin[1] - y;
-            if let Some(v) = self.map_view_mut()
-                && v.placed
-            {
+            if let Some(v) = self.map_view_mut() {
                 let pan = [v.pan[0] + dx, v.pan[1] + dy];
                 let z = v.zoom;
                 self.set_camera(pan, z);
@@ -913,6 +925,29 @@ impl App {
                     g.from.0[1] += dy;
                     g.to.0[0] += dx;
                     g.to.0[1] += dy;
+                }
+            }
+        }
+        let left_shrunk = placed && x > old_origin[0];
+        let right_shrunk = placed && (x + w) < (old_origin[0] + old_size[0]);
+        if (left_shrunk || right_shrunk) && self.mode == Mode::Map && !self.active_locked() {
+            let sel = self.map_selected();
+            if let Some(p) = self.map_laid().at[sel] {
+                let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+                let pad = 16.0;
+                let nudge = if left_shrunk && px + p.x * z < 0.0 {
+                    pad - (px + p.x * z)
+                } else if right_shrunk && px + p.right() * z > w {
+                    if p.w * z <= (w - 2.0 * pad).max(0.0) {
+                        (w - pad) - (px + p.right() * z)
+                    } else {
+                        pad - (px + p.x * z)
+                    }
+                } else {
+                    0.0
+                };
+                if nudge != 0.0 {
+                    self.map_glide(([px + nudge, py], z), tx);
                 }
             }
         }
@@ -1096,11 +1131,22 @@ impl App {
         if self.map_open_to(i).is_some() {
             if !only_if_clipped {
                 self.ensure_visible(i, tx);
-            } else if let Some(p) = self.map_laid().at[i] {
-                let ([px, py], z) = self.map_camera();
-                let [fx0, fy0, fx1, fy1] = self.map_free();
-                if px + p.x * z < fx0 || px + p.right() * z > fx1 || py + p.y * z < fy0 || py + p.bottom() * z > fy1 {
-                    self.ensure_visible(i, tx);
+            } else {
+                let l = self.map_laid();
+                if let Some(p) = l.at[i] {
+                    let ([px, py], z) = self.map_camera();
+                    let [fx0, fy0, fx1, fy1] = self.map_free();
+                    let b = self.settings().size as f32;
+                    let room = task_room(&t.nodes[i], b);
+                    let (x_lo, x_hi, y_lo, y_hi) = if room > 0.0 {
+                        let lh = page::line(b, 1.45);
+                        (p.x + l.metrics.pad_x, p.x + l.metrics.pad_x + room, p.y, p.y + lh.min(p.h))
+                    } else {
+                        (p.x, p.right(), p.y, p.bottom())
+                    };
+                    if px + x_lo * z < fx0 || px + x_hi * z > fx1 || py + y_lo * z < fy0 || py + y_hi * z > fy1 {
+                        self.ensure_visible(i, tx);
+                    }
                 }
             }
         }
@@ -1207,6 +1253,7 @@ impl App {
 
     /// Node `i` selected, its folds open and centred, as `map_go_line`.
     pub(crate) fn map_go_node(&mut self, i: usize, tx: &mut Tx) {
+        self.map.drawer_return_pan = None;
         let Some(placed) = self.map_open_to(i) else { return };
         if placed {
             self.map_relayout(None, tx);

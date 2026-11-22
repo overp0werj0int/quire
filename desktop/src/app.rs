@@ -1524,7 +1524,7 @@ impl App {
                 }
             }
         }
-        self.close_drawer();
+        self.close_drawer(tx);
         self.keys_to_note(tx);
     }
 
@@ -1977,7 +1977,7 @@ impl App {
             _ => None,
         };
         self.open_result(row.note().unwrap_or_default(), at, tx);
-        self.close_drawer();
+        self.close_drawer(tx);
         self.keys_to_note(tx);
     }
 

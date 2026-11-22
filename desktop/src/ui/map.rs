@@ -307,7 +307,7 @@ pub(super) fn canvas(v: V) -> El {
         .child(world)
         .child(ring.unwrap_or_else(el))
         .children(ghost_el)
-        .on_layout_tx(|s: &mut App, r, _| s.map_laid_out(r))
+        .on_layout_tx(|s: &mut App, r, tx| s.map_laid_out(r, tx))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             // The window sends Ctrl + wheel as a pinch (`on_magnify`); a wheel that still holds
             // Ctrl zooms the same way.

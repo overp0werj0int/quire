@@ -365,13 +365,17 @@ impl App {
     /// A row's menu deleted what the row showed. The row cannot take focus back, so the drawer
     /// it was in closes and the note gets the keys, as when the open note is deleted.
     pub fn row_deleted(&mut self, tx: &mut Tx) {
-        self.close_drawer();
+        self.close_drawer(tx);
         self.keys_to_note(tx);
     }
 
     /// Closes a drawer that is open, with no hand-back: the caller gives the keyboard on.
-    pub(crate) fn close_drawer(&mut self) {
+    pub(crate) fn close_drawer(&mut self, tx: &mut Tx) {
+        let had_drawer = self.drawer().is_some();
         self.layers.retain(|o| !matches!(o.layer, Layer::Drawer(_)));
+        if had_drawer {
+            self.map_drawer_closed(tx);
+        }
     }
 
     /// Closes every open layer.

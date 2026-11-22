@@ -49,7 +49,7 @@ pub(super) fn item(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut T
 pub(super) fn opener(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     item(el, p, current, move |s, tx| {
         run(s, tx);
-        s.close_drawer();
+        s.close_drawer(tx);
         s.keys_to_note(tx);
     })
 }

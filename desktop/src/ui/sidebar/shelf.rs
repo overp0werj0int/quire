@@ -194,7 +194,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
                 s.open_note(f);
             }
         }
-        s.close_drawer();
+        s.close_drawer(tx);
         s.keys_to_note(tx);
     });
     el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, sections, ev, tx)).child(close)
@@ -279,7 +279,7 @@ fn entry(v: V, t: &Shelved, n: usize, h: &md::Heading, name: El) -> El {
     lists::item(el, v.p, false, move |s: &mut App, tx| {
         s.jump(line, tx);
         if tx.by_keys() {
-            s.close_drawer();
+            s.close_drawer(tx);
             s.keys_to_note(tx);
         }
     })
