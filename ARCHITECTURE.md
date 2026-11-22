@@ -149,9 +149,10 @@ with it (`Parked::map`) and `App::open_note` puts it back. Opening a folder drop
 (`App::map_new_notes`). Both first settle the inline field (`App::map_settle`), writing what
 it holds if its note is unchanged.
 
-A fold circle's and a task box's press target is 24 screen points at any zoom: 24 / 2^b world
-points, where `b` is the zoom's power of two (`map_app::hit_bucket`), so it changes only when
-the view runs anyway. The map draws with the page's colours with three changes: `map_look`
+A fold circle's and a task box's press target aims for 24 screen points at any zoom (`24 / 2^b` world
+points, where `b` is the zoom's power of two, `map_app::hit_bucket`), clamped to the node's own
+vertical clearance (`Laid::clear`) and clear of its label text so zoomed-out rows and short headings
+never steal each other's clicks. The map draws with the page's colours with three changes: `map_look`
 lifts dim to `Roles::readable_dim`, so a done task, a quote or a caption reads at 4.5:1 on the
 canvas and on cards; a diff card lifts its line inks to 4.5:1 on their washes; and the
 branches, the selection and the drop marks keep 3.1:1 against the page (`ui::map::GRAPHIC`),

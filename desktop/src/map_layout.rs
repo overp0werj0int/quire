@@ -73,6 +73,9 @@ impl Place {
 pub struct Laid {
     /// Each node's box by index, None while a fold hides it.
     pub at: Vec<Option<Place>>,
+    /// Vertical `[top, bottom]` hit-target bounds per node so zoomed-out checkboxes and fold
+    /// circles never overlap adjacent rows in the same horizontal band.
+    pub clear: Vec<[f32; 2]>,
     /// The shown nodes in preorder.
     pub shown: Vec<usize>,
     /// `[x0, y0, x1, y1]` around every shown node.
@@ -149,7 +152,29 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(pl.right()), bounds[3].max(pl.bottom())];
         at[v] = Some(pl);
     }
-    Laid { at, shown, bounds, metrics: m }
+    let mut clear = vec![[f32::NEG_INFINITY, f32::INFINITY]; n];
+    let mut by_y: Vec<(usize, Place)> = shown.iter().filter_map(|&v| at[v].map(|p| (v, p))).collect();
+    by_y.sort_by(|a, b| a.1.y.total_cmp(&b.1.y));
+    const MAX_SCAN: f32 = 256.0;
+    for idx in 0..by_y.len() {
+        let (a, pa) = by_y[idx];
+        let (ax0, ax1) = (pa.x - m.sh / 2.0, pa.right() + m.sh / 2.0);
+        for &(b, pb) in &by_y[idx + 1..] {
+            if pb.y - pa.bottom() > MAX_SCAN {
+                break;
+            }
+            if pb.y < pa.bottom() - 0.5 {
+                continue;
+            }
+            let (bx0, bx1) = (pb.x - m.sh / 2.0, pb.right() + m.sh / 2.0);
+            if ax0.max(bx0) < ax1.min(bx1) {
+                let mid = (pa.bottom() + pb.y) / 2.0;
+                clear[a][1] = clear[a][1].min(mid);
+                clear[b][0] = clear[b][0].max(mid);
+            }
+        }
+    }
+    Laid { at, clear, shown, bounds, metrics: m }
 }
 
 fn shift(p: &[Seg], dx: f32, dy: f32) -> Vec<Seg> {

@@ -171,7 +171,7 @@ fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn 
         }
     }
     shown.sort_unstable();
-    Drawn { laid: Rc::new(Laid { at, shown, bounds: laid.bounds, metrics: laid.metrics }), fade }
+    Drawn { laid: Rc::new(Laid { at, clear: laid.clear.clone(), shown, bounds: laid.bounds, metrics: laid.metrics }), fade }
 }
 
 /// Place `p` moved so its underline starts where node `a`'s branches leave it.
