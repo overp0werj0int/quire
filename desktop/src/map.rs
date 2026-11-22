@@ -801,14 +801,14 @@ pub fn rename(src: &str, t: &Tree, i: usize, text_in: &str) -> Option<Splice> {
         if has_h1(t) {
             return None;
         }
+        let fe = front_end(&old);
         let real = old.len() - usize::from(src.ends_with('\n'));
-        let at = (front_end(&old)..real).find(|&l| !blank(old[l])).unwrap_or(real);
-        let mut add = vec![format!("# {label}")];
-        if at < real {
-            add.push(String::new());
+        if let Some(at) = (fe..real).find(|&l| !blank(old[l])) {
+            new.splice(at..at, [format!("# {label}"), String::new()]);
+            return Some(splice_of(&old, &new, Some(at)));
         }
-        new.splice(at..at, add);
-        return Some(splice_of(&old, &new, Some(at)));
+        new.splice(fe..new.len(), [format!("# {label}"), String::new()]);
+        return Some(splice_of(&old, &new, Some(fe)));
     }
     let x = text(&old, t, i)?;
     let typed: Vec<&str> = lines.iter().map(String::as_str).collect();

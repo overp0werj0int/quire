@@ -112,7 +112,9 @@ impl<'a> Sizer<'a> {
 /// What a screen reader hears for node `i` (MAP-075).
 fn spoken(t: &Tree, i: usize, folded: bool) -> String {
     let n = &t.nodes[i];
-    let mut s = format!("{}, level {}", map_app::shown_label(n), n.depth + 1);
+    let shown = map_app::shown_label(n);
+    let name = if n.label.is_empty() || n.label == "\u{200b}" || shown == "\u{200b}" { "New node" } else { shown.as_str() };
+    let mut s = format!("{name}, level {}", n.depth + 1);
     if !n.children.is_empty() {
         if folded {
             s += &format!(", collapsed, {} hidden", n.end - i - 1);
@@ -175,7 +177,7 @@ pub(super) fn canvas(v: V) -> El {
         let (e, p) = (s.map.inline.as_ref()?, l.at[i]?);
         let room = map_app::task_room(&t.nodes[i], b);
         let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
-        Some((i, p, room, st, field_size(e, p, room, st, l.metrics)))
+        Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
     });
     if nodes.contains(&sel)
         && let Some(p) = l.at[sel]
@@ -292,17 +294,11 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles) -> El {
         .inert()
 }
 
-/// The inline field's size for its text: as wide as the text, at least the label's width and
-/// at most a node's widest, and as tall as the text wraps to at that width.
-fn field_size(e: &map_app::Inline, p: Place, room: f32, st: rune::TextStyle, m: crate::map_layout::Metrics) -> [f32; 2] {
-    let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
-    let w = (rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0).max(p.w - 2.0 * m.pad_x - room).min(m.max_w);
-    [w, rune::text::measure(shown, &[], st, e.multi.then_some(w)).1.ceil()]
-}
-
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
 fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> El {
     let Some(e) = &v.s.map.inline else { return el() };
+    let c = Roles::new(v.p);
+    let surface = c.on_page(c.raised);
     let mut f = rune::text_input(&e.edit, st)
         .key(map_app::FIELD)
         .label("Node text")
@@ -315,7 +311,8 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
         .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
         .pin(Some(p.x + pad_x + room + W), Some(p.y + W), None, None)
         .w(w)
-        .fill(Roles::new(v.p).bg);
+        .radius(3.0)
+        .fill(surface);
     if !e.multi {
         f = f.single_line();
     }

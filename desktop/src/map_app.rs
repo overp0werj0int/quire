@@ -128,6 +128,11 @@ pub struct Inline {
     anchor: NodeId,
     /// The field has had focus, so losing it commits (MAP-017).
     held: bool,
+    /// Camera saved when auto-zooming from overview zoom (< 0.85) on `Editing::Node`, restored
+    /// on Enter commit or Esc cancel unless the user manually moved the camera.
+    edit_return_cam: Option<([f32; 2], f32)>,
+    /// Hash of `edit.text` last checked for live field visibility.
+    last_hash: u64,
 }
 
 impl Inline {
@@ -227,6 +232,23 @@ pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f
 /// A pill's padding either side of its text.
 pub const PILL_PAD: f32 = 5.0;
 
+/// The inline field's size for its text: as wide as the text, at least the label's width and
+/// at most a node's widest, and as tall as the text wraps to at that width.
+pub fn field_size(e: &Inline, p: map_layout::Place, room: f32, st: TextStyle, m: Metrics) -> [f32; 2] {
+    let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
+    let w = (rune::text::measure(shown, &[], st, Some(m.max_w)).0.ceil() + 2.0).max(p.w - 2.0 * m.pad_x - room).min(m.max_w);
+    [w, rune::text::measure(shown, &[], st, e.multi.then_some(w)).1.ceil()]
+}
+
+fn text_hash(s: &str) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+/// Minimum zoom at which inline editing is legible without auto-zooming to 1.0.
+const EDIT_ZOOM_MIN: f32 = 0.85;
+
 /// What a node shows: an ordered item's number before its text.
 pub fn shown_label(n: &map::Node) -> String {
     match &n.kind {
@@ -291,10 +313,21 @@ impl App {
     }
 
     /// The first line of the nearest heading of level `max` or above that holds the selected
-    /// node, or is it: what the outline marks on the map (MAP-067).
+    /// node, or is it: what the outline marks on the map (MAP-067). While a provisional new node
+    /// is being named, resolve from the base tree so Outline stays on the real owning heading.
     pub fn map_heading_line(&self, max: usize) -> Option<usize> {
-        let t = self.map_tree();
-        let mut i = Some(self.map_selected());
+        let name = self.active.as_deref().unwrap_or("");
+        let (t, mut i) = match self.map.inline.as_ref().filter(|e| e.rel == name && e.preview.is_some()) {
+            Some(e) => {
+                let start = match e.what {
+                    Editing::New(map::Add::Child(j)) => Some(j),
+                    Editing::New(map::Add::Before(j) | map::Add::After(j)) => e.tree.nodes[j].parent.or(Some(j)),
+                    Editing::Node(j) => Some(j),
+                };
+                (e.tree.clone(), start)
+            }
+            None => (self.map_tree(), Some(self.map_selected())),
+        };
         while let Some(k) = i {
             if matches!(t.nodes[k].kind, NodeKind::Heading { level, .. } if level <= max) {
                 return Some(t.nodes[k].own.start);
@@ -389,6 +422,9 @@ impl App {
         let before = self.map_signature();
         self.map.glide = None;
         self.map.throw.stop();
+        if let Some(e) = &mut self.map.inline {
+            e.edit_return_cam = None;
+        }
         self.set_camera(pan, zoom);
         if self.map_signature() == before {
             tx.live_only();
@@ -1263,8 +1299,9 @@ impl App {
                 if let Some(e) = &mut self.map.inline {
                     e.multi = !matches!(shown.nodes[n].kind, NodeKind::Heading { .. } | NodeKind::Root);
                 }
-                self.map_reveal(n, tx);
+                self.map_open_to(n);
                 self.map_relayout(Some((&*t, &s)), tx);
+                self.frame_inline_edit(n, tx);
             }
             Err(Some(why)) => self.toast(why, tx),
             Err(None) => {}
@@ -1331,21 +1368,80 @@ impl App {
         }
     }
 
+    /// Ensures the active inline-edit field is framed at a legible scale (>= `EDIT_ZOOM_MIN`)
+    /// and fully visible inside the free canvas.
+    fn frame_inline_edit(&mut self, i: usize, tx: &mut Tx) {
+        let cam = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+        if cam.1 < EDIT_ZOOM_MIN {
+            let to = self.centred_on(i, 1.0);
+            self.map_glide(to, tx);
+        } else {
+            self.ensure_inline_visible(tx);
+        }
+    }
+
+    /// Pans by the least needed to keep the live inline-edit field rect (growing as text is
+    /// typed) `MARGIN` points inside the canvas's free part.
+    fn ensure_inline_visible(&mut self, tx: &mut Tx) {
+        let Some(i) = self.map_editing() else { return };
+        let Some(e) = &self.map.inline else { return };
+        let t = self.map_tree();
+        let l = self.map_laid();
+        let Some(p) = l.at[i] else { return };
+        let b = self.settings().size as f32;
+        let (prose, mono, _, _) = self.fonts();
+        let room = task_room(&t.nodes[i], b);
+        let st = style(tier(&t, i), b, prose, mono);
+        let [fw, fh] = field_size(e, p, room, st, l.metrics);
+        let w = p.w.max(fw + room + 2.0 * l.metrics.pad_x);
+        let h = p.h.max(fh + l.metrics.pad_b) + map_layout::line_width(p.depth);
+        let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+        let [x0, y0, x1, y1] = self.map_free();
+        let least = |lo: f32, hi: f32, a: f32, b: f32| {
+            if hi - lo > b - a - 2.0 * MARGIN || lo < a + MARGIN {
+                a + MARGIN - lo
+            } else if hi > b - MARGIN {
+                b - MARGIN - hi
+            } else {
+                0.0
+            }
+        };
+        let dx = least(px + p.x * z, px + (p.x + w) * z, x0, x1);
+        let dy = least(py + p.y * z, py + (p.y + h) * z, y0, y1);
+        if dx != 0.0 || dy != 0.0 {
+            self.map_glide(([px + dx, py + dy], z), tx);
+        }
+    }
+
     fn map_open_field(&mut self, what: Editing, edit: TextEdit, multi: bool, preview: Option<(u64, String)>, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let tree = self.map_tree();
         let base = self.active_text().to_string();
         let anchor = tree.nodes[self.map_selected()].id;
-        self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false });
+        let cam = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+        let edit_return_cam = matches!(what, Editing::Node(_)).then_some(cam).filter(|c| c.1 < EDIT_ZOOM_MIN);
+        let last_hash = text_hash(&edit.text);
+        self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false, edit_return_cam, last_hash });
         tx.focus(FIELD, false);
+        if let Editing::Node(i) = what {
+            self.frame_inline_edit(i, tx);
+        }
     }
 
     /// Enter, Tab, a click away (MAP-017): the field's text goes into the note, unless it is
     /// empty or unchanged (MAP-018). True when a field was open and has closed.
     pub fn map_commit(&mut self, tx: &mut Tx) -> bool {
+        self.map_commit_inner(false, tx)
+    }
+
+    fn map_commit_inner(&mut self, restore_cam: bool, tx: &mut Tx) -> bool {
         let Some(e) = self.map.inline.take() else { return false };
+        let return_cam = restore_cam.then_some(e.edit_return_cam).flatten();
         let Some(s) = e.splice() else {
             self.map_back_to(&e, tx);
+            if let Some(cam) = return_cam {
+                self.map_glide(cam, tx);
+            }
             return true;
         };
         if self.note_text(&e.rel) != Some(e.base.as_str()) {
@@ -1360,6 +1456,9 @@ impl App {
         }
         if Some(e.rel.as_str()) == self.active.as_deref() {
             self.map_apply(&e.tree, &s, tx);
+            if let Some(cam) = return_cam {
+                self.map_glide(cam, tx);
+            }
         } else {
             self.splice_into(&e.rel, &e.base, &s);
         }
@@ -1398,6 +1497,9 @@ impl App {
     pub fn map_cancel(&mut self, tx: &mut Tx) {
         if let Some(e) = self.map.inline.take() {
             self.map_back_to(&e, tx);
+            if let Some(cam) = e.edit_return_cam {
+                self.map_glide(cam, tx);
+            }
         }
         self.keys_to_note(tx);
     }
@@ -1418,7 +1520,7 @@ impl App {
             match a.id {
                 "mapedit.newline" if multi => return false,
                 "mapedit.commit" | "mapedit.newline" => {
-                    if self.map_commit(tx) {
+                    if self.map_commit_inner(true, tx) {
                         self.keys_to_note(tx);
                     }
                 }
@@ -1465,10 +1567,16 @@ impl App {
     }
 
     /// Before each frame: a field that lost focus, or whose note or mode went, commits.
+    /// While focused, re-checks visibility whenever the typed text changes.
     fn poll_field(&mut self, tx: &mut Tx) -> bool {
         let Some(e) = &mut self.map.inline else { return false };
         if tx.focused() == Some(FIELD) && self.mode == Mode::Map {
             e.held = true;
+            let h = text_hash(&e.edit.text);
+            if h != e.last_hash {
+                e.last_hash = h;
+                self.ensure_inline_visible(tx);
+            }
             return false;
         }
         if !e.held && self.mode == Mode::Map && Some(e.rel.as_str()) == self.active.as_deref() {
