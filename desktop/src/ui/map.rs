@@ -543,7 +543,8 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, at: [f32; 2]) -> El {
         Tier::Root | Tier::Head1 | Tier::Head => 700.0,
         _ => 400.0,
     };
-    let st = TextStyle::new(b, weight).family(cx.look.family).lh(page::line(b, 1.35));
+    let mut st = styles::note(cx.look.family, b, page::line(b, 1.35));
+    st.weight = weight;
     let small = (b * 0.72).round();
     let pill_h = small + 6.0;
     let below = n.end - i - 1;

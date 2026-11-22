@@ -43,12 +43,14 @@ pub(super) fn lite(cx: &Cx, bl: &Block, w: f32, h: f32, tail: &str) -> El {
     };
     let base = (h * 0.34).clamp(11.0, 28.0);
     let mut sz = base;
-    let mut st = TextStyle::new(sz, 700.0).family(cx.look.mono).lh(line(sz, 1.2)).tracking(1.0);
+    let mut st = cx.look.mono_at(sz, 1.2).tracking(1.0);
+    st.weight = 700.0;
     let avail = (w - 10.0).max(8.0);
     let adv = rune::text::advance(kind_label, st);
     if adv > avail && adv > 0.0 {
         sz = (sz * (avail / adv)).clamp(8.0, base);
-        st = TextStyle::new(sz, 700.0).family(cx.look.mono).lh(line(sz, 1.2)).tracking(0.5);
+        st = cx.look.mono_at(sz, 1.2).tracking(0.5);
+        st.weight = 700.0;
     }
     let edge = Roles::readable_on(c.on_page(c.hairline), c.bg, 2.2);
     let ink = Roles::readable_on(c.dim, c.on_page(c.panel), 4.8);
