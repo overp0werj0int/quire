@@ -1,0 +1,19 @@
+Esc in the find field closes the bar and its marks and gives the keyboard back to the map, the match still selected.
+note: Trip.md
+events: key:m+cmd@0.3 key:f+cmd@0.8 type:walk@1.0 key:Escape@2.0
+expect: rect:find-bar: None
+expect: rect:find-cur: None
+expect: selected: map-node:11
+expect: focus: note-keys (no ring)
+--- before
+# Trip
+
+## Packing
+
+- Clothes
+  - Socks for the beach
+- Passport
+
+## Route
+
+Walk to the beach.

@@ -22,7 +22,7 @@ const MIN_W: f32 = 360.0;
 
 pub(in crate::ui) fn lightbox(v: V, lb: &Lightbox) -> Card {
     let look = map_look(v);
-    let cx = Cx::map(v, &look);
+    let cx = Cx::map(v, &look, None);
     let c = Roles::new(v.p);
     let room = [v.vw * 0.9 - 2.0 * PAD, v.vh * 0.9 - 2.0 * PAD - GAP - BAR_H];
     let natural = match cx.pic(&lb.img) {

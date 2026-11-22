@@ -8,9 +8,9 @@ mod lightbox;
 
 use std::hash::{Hash, Hasher};
 
-use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextStyle, Tx, WheelEvent, el, text};
+use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextHighlight, TextStyle, Tx, WheelEvent, el, text};
 
-use super::preview::{Cx, Look, Rich, Tone, look_at};
+use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
 pub(super) use lightbox::lightbox;
 use super::{V, styles};
 use crate::app::App;
@@ -84,7 +84,7 @@ impl<'a> Sizer<'a> {
     /// Node `i`'s content size: its card's, or its label wrapped at `max_w`, at least a line
     /// tall.
     pub(crate) fn size(&self, t: &Tree, i: usize, max_w: f32) -> [f32; 2] {
-        let cx = Cx::map(self.v, &self.look);
+        let cx = Cx::map(self.v, &self.look, None);
         if let Body::Card(bl) = &t.nodes[i].body
             && let Some((_, size)) = card::card(&cx, bl, i, "")
         {
@@ -124,7 +124,7 @@ fn spoken(t: &Tree, i: usize, folded: bool) -> String {
 pub(super) fn canvas(v: V) -> El {
     let s = v.s;
     let look = map_look(v);
-    let cx = Cx::map(v, &look);
+    let cx = Cx::map(v, &look, None);
     let c = &look.c;
     let t = s.map_tree();
     let drawn = s.map_drawn();
@@ -152,8 +152,12 @@ pub(super) fn canvas(v: V) -> El {
         world = world.child(link(&t, &l, i, c).opacity(dim(i)));
     }
     let editing = s.map_editing();
+    let query = s.find_query();
+    let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
-        world = world.child(node(&cx, &t, &l, i, folded(i), i == sel, editing == Some(i), dim(i), cam.1 < map_app::LITE_ZOOM));
+        let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, found };
+        world = world.child(node(&cx, &t, &l, i, st));
         if !t.nodes[i].children.is_empty() {
             world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
         }
@@ -313,7 +317,33 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, editing: bool, alpha: f32, lite: bool) -> El {
+/// The find query and, when the current match is in this node, where: (card piece or None
+/// for the label, match in it) (MAP-066).
+#[derive(Clone, Copy, Hash)]
+struct Found<'a> {
+    q: &'a str,
+    cur: Option<(Option<usize>, usize)>,
+}
+
+/// How node `i` draws, besides its place.
+struct State<'a> {
+    folded: bool,
+    selected: bool,
+    editing: bool,
+    alpha: f32,
+    lite: bool,
+    found: Option<Found<'a>>,
+}
+
+/// Find's highlights over a label's text (MAP-066): the find colour, the current match solid.
+fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
+    let cur = f.cur.filter(|(pid, _)| pid.is_none()).map(|(_, k)| k);
+    let mark = |(k, r)| if Some(k) == cur { TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR) } else { TextHighlight::new(r, c.find) };
+    crate::writer_app::find_in(text, f.q).into_iter().enumerate().map(mark).collect()
+}
+
+fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
+    let State { folded, selected, editing, alpha, lite, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -332,11 +362,13 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, found).hash(&mut h);
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
+        let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));
+        let cx = &Cx::map(cx.v, cx.look, hl.as_ref());
         let tail = key_tail(&key).to_string();
         let mut e = el().key(key)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
@@ -360,7 +392,14 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, folded: bool, selected: bool, edi
                     Body::Card(bl) => card::card(cx, bl, i, &tail).map(|(e, _)| e),
                     _ => None,
                 };
-                shown.unwrap_or_else(|| label(cx, n, st, color).el(st, color, None).w(p.w - 2.0 * pad_x - room).clip_soft(0.0)).pin(Some(pad_x + room), Some(0.0), None, None)
+                let text = || {
+                    let mut r = label(cx, n, st, color);
+                    if let Some(f) = found {
+                        r.marks = label_marks(c, &r.text, f);
+                    }
+                    r.el(st, color, None).w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
+                };
+                shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
             }))
             .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
     })

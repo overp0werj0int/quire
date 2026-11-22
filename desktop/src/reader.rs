@@ -1161,7 +1161,7 @@ impl App {
     /// (Preview at any width, or toolbar-hidden Source / zen mode).
     fn has_find_slot(&self) -> bool {
         let has_doc = self.screen == crate::app::Screen::Vault && self.active.as_ref().is_some_and(|a| self.files().contains_key(a));
-        if !has_doc || self.active_locked() {
+        if !has_doc || self.active_locked() || self.mode == Mode::Map {
             return false;
         }
         let shows_toolbar = !self.focus && self.mode == Mode::Source && self.settings().toolbar;
@@ -1286,9 +1286,29 @@ impl App {
         }
     }
 
-    /// How many matches the find bar counts, in either mode.
+    /// How many matches the find bar counts, in any mode.
     pub fn find_count(&self) -> usize {
-        if self.mode == crate::app::Mode::Source { self.source_matches().len() } else { self.find_matches().len() }
+        match self.mode {
+            Mode::Source => self.source_matches().len(),
+            Mode::Map => self.map_hits().len(),
+            Mode::Preview => self.find_matches().len(),
+        }
+    }
+
+    /// How many matches there are and the one a search starts from: the first at or below the
+    /// top block (RD-57), or on the map at or after the selected node (MAP-066).
+    fn find_start(&self) -> (usize, usize) {
+        if self.mode == Mode::Map {
+            let h = self.map_hits();
+            return (h.len(), self.map_first_hit(&h));
+        }
+        let m = self.find_matches();
+        (m.len(), first_match(&m, self.top()))
+    }
+
+    /// Brings the current match into view: on the page, or on the map.
+    pub(crate) fn show_match(&mut self, glide: bool, tx: &mut Tx) {
+        if self.mode == Mode::Map { self.map_show_hit(tx) } else { self.center_match(glide, tx) }
     }
 
     /// The matches of the find query in the open note.
@@ -1330,10 +1350,8 @@ impl App {
             None => return false,
         }
         f.searched = f.q.text.clone();
-        let m = self.find_matches();
-        let top = self.top();
-        self.reader.find.cur = first_match(&m, top);
-        self.center_match(false, tx);
+        self.reader.find.cur = self.find_start().1;
+        self.show_match(false, tx);
         true
     }
 
@@ -1350,17 +1368,15 @@ impl App {
             let f = &mut self.reader.find;
             f.searched = f.q.text.clone();
             f.due = None;
-            let m = self.find_matches();
-            let top = self.top();
-            let first = first_match(&m, top);
-            self.reader.find.cur = if forward { first } else { step(first, m.len(), false) };
-            self.center_match(true, tx);
+            let (n, first) = self.find_start();
+            self.reader.find.cur = if forward { first } else { step(first, n, false) };
+            self.show_match(true, tx);
             return;
         }
-        let n = self.find_matches().len();
+        let n = self.find_count();
         let f = &mut self.reader.find;
         f.cur = step(f.cur, n, forward);
-        self.center_match(true, tx);
+        self.show_match(true, tx);
     }
 
     /// `?` or F1 in the reader and F1 in the writer: the keyboard help, or closes it. As it

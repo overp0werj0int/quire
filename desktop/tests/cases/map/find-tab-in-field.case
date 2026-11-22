@@ -1,0 +1,12 @@
+From the find field, Tab, Shift+Tab, Delete and Alt+Up do nothing to the map: the note stays as it was.
+note: Trip.md
+events: key:m+cmd@0.3 key:f+cmd@0.8 type:beach@1.0 key:Tab+shift@1.8 key:f+cmd@2.1 key:Tab@2.4 key:f+cmd@2.7 key:Up+alt@3.0 key:Delete@3.3
+expect: selected: map-node:6
+--- before
+# Trip
+
+## Packing
+
+- Clothes
+  - Socks for the beach
+- Passport

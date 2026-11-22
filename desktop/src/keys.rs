@@ -97,6 +97,15 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             if *ctx == Ctx::Map && s.active_locked() && !matches!(a.id, "map.close-tab" | "map.toggle-outline" | "map.help" | "map.read-from-disk") {
                 continue;
             }
+            // From Find or another text field the map's own keys do nothing but find, help and
+            // reading from disk (MAP-060, MAP-066): Tab in the find field adds no child.
+            if *ctx == Ctx::Map && field && !matches!(a.id, "map.find" | "map.find-next" | "map.find-previous" | "map.help" | "map.read-from-disk") {
+                continue;
+            }
+            // n and N step only while a query exists; F3 and Ctrl+G open Find (MAP-066, WR-120).
+            if matches!(a.id, "map.find-next" | "map.find-previous") && s.find_query().is_none() && matches!(ev.key, rune::Key::Text(_)) {
+                continue;
+            }
             if let Some(run) = handler(a.id) {
                 run(s, tx);
                 return true;
@@ -364,6 +373,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.redo" => |s, tx| s.map_undo(true, tx),
         "map.copy-node" => |s, tx| s.map_copy(false, tx),
         "map.copy-subtree" => |s, tx| s.map_copy(true, tx),
+        "map.find" => |s, tx| s.open_find(tx),
+        "map.find-next" => |s, tx| map_find_step(s, true, tx),
+        "map.find-previous" => |s, tx| map_find_step(s, false, tx),
+        "map.help" => |s, tx| s.toggle_help(tx),
         "map.escape" => |s, tx| {
             s.map_escape(tx);
         },
@@ -371,4 +384,14 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.follow-link-click" => |_, _| {},
         _ => return None,
     })
+}
+
+/// F3, Ctrl+G, n and their reverses on the map: the next or previous match, or Find opening
+/// when no query exists (MAP-066).
+fn map_find_step(s: &mut App, forward: bool, tx: &mut Tx) {
+    if s.find_query().is_some() {
+        s.find_step(forward, tx);
+    } else {
+        s.open_find(tx);
+    }
 }

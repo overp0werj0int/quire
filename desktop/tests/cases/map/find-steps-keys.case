@@ -1,0 +1,22 @@
+Enter, Shift+Enter, n, N, F3 and Shift+F3 step through the map's matches, a code card's included, and wrap.
+note: Trip.md
+events: key:m+cmd@0.3 key:/@0.8 type:beach@1.0 key:Enter@1.8 key:Enter@2.1 key:Enter+shift@2.4 tap:260,780@2.8
+events: key:n@3.1 key:n@3.4 key:N@3.7 key:F3@4.0 key:F3@4.3 key:F3+shift@4.6 key:F3+shift@4.9
+expect: selected: map-node:13
+expect: text:find-count: '3 / 3'
+--- before
+# Trip
+
+## Packing
+
+- Clothes
+  - Socks for the beach
+- Passport
+
+## Route
+
+Walk to the beach.
+
+```sh
+echo beach
+```

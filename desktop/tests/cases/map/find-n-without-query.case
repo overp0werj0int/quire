@@ -1,0 +1,11 @@
+n does nothing on the map until a query exists; F3 then opens Find.
+note: Trip.md
+events: key:m+cmd@0.3 key:n@0.8 key:N@1.1 key:F3@1.4
+expect: focus: find-input (no ring)
+expect: selected: map-node:1
+--- before
+# Trip
+
+## Packing
+
+- Clothes

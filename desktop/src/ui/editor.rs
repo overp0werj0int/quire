@@ -104,6 +104,9 @@ pub fn body(v: V) -> El {
         .child(view);
     if reading || writer {
         area = area.children(progress).child(super::reader::find_bar(v));
+    } else if mapping {
+        // Over the canvas, which needs no slot: the map centres matches clear of the bar.
+        area = area.child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))

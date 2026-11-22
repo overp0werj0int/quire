@@ -1,0 +1,23 @@
+Find on the map opens a folded branch to show its first match, selects it and steps on with Enter.
+note: Trip.md
+events: key:m+cmd@0.3 key:f+cmd@0.8 type:beach@1.0
+expect: focus: find-input (no ring)
+expect: selected: map-node:6
+expect: label:map-node:3: 'Packing, level 2, expanded'
+expect: text:find-count: '1 / 3'
+--- before
+# Trip
+
+## Packing <!-- markmap: fold -->
+
+- Clothes
+  - Socks for the beach
+- Passport
+
+## Route
+
+Walk to the beach.
+
+```sh
+echo beach
+```

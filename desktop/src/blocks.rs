@@ -1334,6 +1334,24 @@ fn stamp(b: &mut Block, top: usize, out: &mut Vec<Piece>) {
     }
 }
 
+/// The find pieces inside block `bl`, as `stamp` numbered them: (piece, its text).
+pub fn pieces_in(bl: &Block, out: &mut Vec<(usize, String)>) {
+    match &bl.kind {
+        Kind::Paragraph { runs } | Kind::Heading { runs, .. } => out.extend(bl.pid.map(|p| (p, plain(runs)))),
+        Kind::Code { text, .. } | Kind::Diff { text, .. } => out.extend(bl.pid.map(|p| (p, text.clone()))),
+        Kind::List(l) => l.items.iter().flat_map(|it| &it.blocks).for_each(|c| pieces_in(c, out)),
+        Kind::Quote { blocks } | Kind::Alert { blocks, .. } => blocks.iter().for_each(|c| pieces_in(c, out)),
+        Kind::Footnotes { items } => items.iter().flat_map(|it| &it.blocks).for_each(|c| pieces_in(c, out)),
+        Kind::Table(t) => {
+            out.extend(t.header_pids.iter().zip(&t.header).map(|(&p, c)| (p, plain(c))));
+            for (pids, row) in t.row_pids.iter().zip(&t.rows) {
+                out.extend(pids.iter().zip(row).map(|(&p, c)| (p, plain(c))));
+            }
+        }
+        _ => {}
+    }
+}
+
 /// A find match: the piece, its top-level block, and which match within the piece it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Match {

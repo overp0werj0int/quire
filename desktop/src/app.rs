@@ -1936,7 +1936,7 @@ impl App {
         f.searched = q;
         f.due = None;
         f.cur = 0;
-        self.center_match(false, tx);
+        self.show_match(false, tx);
     }
 
     /// Chooses the result keyed `key`, by a click, Enter or Space on its row or Enter in the

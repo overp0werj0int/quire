@@ -432,13 +432,23 @@ impl App {
         boxes.into_iter().fold(l.bounds, |[x0, y0, x1, y1], [x, y, w, h]| [x0.min(x), y0.min(y), x1.max(x + w), y1.max(y + h)])
     }
 
+    /// The part of the canvas that an open find bar and a pill at the foot leave clear,
+    /// `[x0, y0, x1, y1]` (MAP-035).
+    fn map_free(&self) -> [f32; 4] {
+        let [w, h] = self.map_size();
+        let top = if self.reader.find.open { crate::ui::reader::find_slot_h_for_width(w) } else { 0.0 };
+        let bottom = if self.foot_shows() { self.reader.reveal.band } else { 0.0 };
+        [0.0, top.min(h / 2.0), w, (h - bottom).max(h / 2.0)]
+    }
+
     /// The camera that fits everything the map draws (MAP-035).
     fn fit_camera(&self) -> ([f32; 2], f32) {
         let [x0, y0, x1, y1] = self.map_extent();
-        let [w, h] = self.map_size();
+        let [fx0, fy0, fx1, fy1] = self.map_free();
+        let (w, h) = (fx1 - fx0, fy1 - fy0);
         let (bw, bh) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
         let z = (w / bw * 0.95).min(h / bh * 0.95).min(2.0).clamp(ZOOM_MIN, ZOOM_MAX);
-        ([w / 2.0 - (x0 + bw / 2.0) * z, h / 2.0 - (y0 + bh / 2.0) * z], z)
+        ([fx0 + w / 2.0 - (x0 + bw / 2.0) * z, fy0 + h / 2.0 - (y0 + bh / 2.0) * z], z)
     }
 
     pub fn map_fit(&mut self, tx: &mut Tx) {
@@ -446,12 +456,12 @@ impl App {
         self.map_glide(cam, tx);
     }
 
-    /// The camera at zoom `z` with node `i`'s centre at the canvas's centre.
+    /// The camera at zoom `z` with node `i`'s centre at the centre of the canvas's free part.
     fn centred_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
         let l = self.map_laid();
-        let [w, h] = self.map_size();
+        let [x0, y0, x1, y1] = self.map_free();
         let Some(p) = l.at[i] else { return self.map_camera() };
-        ([w / 2.0 - (p.x + p.w / 2.0) * z, h / 2.0 - (p.y + p.h / 2.0) * z], z)
+        ([(x0 + x1) / 2.0 - (p.x + p.w / 2.0) * z, (y0 + y1) / 2.0 - (p.y + p.h / 2.0) * z], z)
     }
 
     /// `c`: the selected node to the middle at the current zoom (MAP-036).
@@ -466,23 +476,23 @@ impl App {
         self.map_glide(cam, tx);
     }
 
-    /// Pans by the least that keeps node `i` 40 points inside the canvas (MAP-036).
+    /// Pans by the least that keeps node `i` 40 points inside the canvas's free part (MAP-036).
     fn ensure_visible(&mut self, i: usize, tx: &mut Tx) {
         let l = self.map_laid();
         let Some(p) = l.at[i] else { return };
         let ([px, py], z) = self.map_camera();
-        let [w, h] = self.map_size();
-        let least = |lo: f32, hi: f32, size: f32| {
-            if hi - lo > size - 2.0 * MARGIN || lo < MARGIN {
-                MARGIN - lo
-            } else if hi > size - MARGIN {
-                size - MARGIN - hi
+        let [x0, y0, x1, y1] = self.map_free();
+        let least = |lo: f32, hi: f32, a: f32, b: f32| {
+            if hi - lo > b - a - 2.0 * MARGIN || lo < a + MARGIN {
+                a + MARGIN - lo
+            } else if hi > b - MARGIN {
+                b - MARGIN - hi
             } else {
                 0.0
             }
         };
-        let dx = least(px + p.x * z, px + p.right() * z, w);
-        let dy = least(py + p.y * z, py + p.bottom() * z, h);
+        let dx = least(px + p.x * z, px + p.right() * z, x0, x1);
+        let dy = least(py + p.y * z, py + p.bottom() * z, y0, y1);
         if dx != 0.0 || dy != 0.0 {
             self.map_glide(([px + dx, py + dy], z), tx);
         }
@@ -869,6 +879,11 @@ impl App {
     /// its folds open and centred. A tab shown for the first time opens on it at 100%.
     pub fn map_go_line(&mut self, line: usize, tx: &mut Tx) {
         let i = self.map_tree().at_line(line);
+        self.map_go_node(i, tx);
+    }
+
+    /// Node `i` selected, its folds open and centred, as `map_go_line`.
+    pub(crate) fn map_go_node(&mut self, i: usize, tx: &mut Tx) {
         let Some(placed) = self.map_open_to(i) else { return };
         if placed {
             self.map_relayout(None, tx);

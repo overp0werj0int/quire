@@ -1,0 +1,18 @@
+A sidebar search result chosen in Map mode opens its note on the map, with Find holding the query and its first match selected.
+note: Trip.md
+events: key:m+cmd@0.3 tap:search@0.8 type:potato@1.0 tap:res-text:Garden.md@2.4
+expect: text:find-input: 'potato'
+expect: text:find-count: '1 / 2'
+expect: selected: map-node:5
+expect: rect:find-cur: {any}
+--- before
+# Trip
+
+Nothing here.
+--- file Garden.md
+# Garden
+
+## Beds <!-- markmap: fold -->
+
+- Bed one: potatoes
+- Bed two: more potatoes

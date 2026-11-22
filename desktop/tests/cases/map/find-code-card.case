@@ -1,0 +1,14 @@
+A match inside a code card is painted in the card, the current one solid, and its node selected.
+note: Trip.md
+events: key:m+cmd@0.3 key:f+cmd@0.8 type:echo@1.0
+expect: selected: map-node:5
+expect: text:find-count: '1 / 1'
+expect: rect:find-cur: [{any}]
+--- before
+# Trip
+
+Walk to the beach.
+
+```sh
+echo beach
+```

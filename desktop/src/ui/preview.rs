@@ -98,7 +98,7 @@ pub(super) struct Rich {
     strikes: Vec<(usize, usize, Option<Color>)>,
     links: Vec<(std::ops::Range<usize>, String, Color)>,
     /// Find matches painted over the text (RD-59).
-    marks: Vec<TextHighlight>,
+    pub(super) marks: Vec<TextHighlight>,
     /// Inline-code chips, which get a hairline edge (PAGE-76).
     chips: Vec<(usize, usize, Color)>,
     /// Visual padding spaces around inline-code chips that copying skips.
@@ -365,7 +365,7 @@ pub fn context(v: V, doc: &Doc, i: usize) -> El {
 }
 
 /// The find query, lower-cased, and the current match as (piece, match in the piece).
-struct Hl {
+pub(super) struct Hl {
     q: String,
     /// For text whose lower case changes its length, where byte offsets would not line up.
     q_ascii: String,
@@ -398,10 +398,17 @@ pub(super) struct Cx<'a> {
     selectable: bool,
 }
 
+impl Hl {
+    /// Query `q`, with `cur` the current match as (piece, match in the piece).
+    pub(super) fn new(q: &str, cur: Option<(usize, usize)>) -> Hl {
+        Hl { q: q.to_lowercase(), q_ascii: q.to_ascii_lowercase(), cur, place: None }
+    }
+}
+
 impl<'a> Cx<'a> {
-    /// The reader's renderer for the map's labels and cards.
-    pub(super) fn map(v: V<'a>, look: &'a Look) -> Cx<'a> {
-        Cx { v, look, doc: None, find: None, selectable: false }
+    /// The reader's renderer for the map's labels and cards, marking `find`'s matches.
+    pub(super) fn map(v: V<'a>, look: &'a Look, find: Option<&'a Hl>) -> Cx<'a> {
+        Cx { v, look, doc: None, find, selectable: false }
     }
 }
 
@@ -439,7 +446,7 @@ impl Cx<'_> {
     /// Find highlights over `text`, piece `pid`, numbering matches from `k0` (RD-59): the find
     /// colour, and the current match solid accent with its key for scrolling. Returns the
     /// highlights and the number of matches.
-    fn marks(&self, pid: Option<usize>, text: &str, k0: usize) -> (Vec<TextHighlight>, usize) {
+    pub(super) fn marks(&self, pid: Option<usize>, text: &str, k0: usize) -> (Vec<TextHighlight>, usize) {
         let (Some(h), Some(pid)) = (self.find, pid) else { return (Vec::new(), 0) };
         let lower = text.to_lowercase();
         let (hay, q) = if lower.len() == text.len() { (lower, &h.q) } else { (text.to_ascii_lowercase(), &h.q_ascii) };

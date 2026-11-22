@@ -38,8 +38,8 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str) -> Option<(El, [f3
     let tone = Tone::top(cx.look.c.text, cx.look.b, 1.6);
     let max = cx.look.width;
     let (e, size) = match &bl.kind {
-        Kind::Code { lang, text } => code(cx, lang, text, at, i, tail),
-        Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), at, i, tail),
+        Kind::Code { lang, text } => code(cx, lang, text, bl.pid, at, i, tail),
+        Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail),
         Kind::Table(t) => table(cx, t, tone, tail),
         Kind::Quote { blocks } => capped(cx.quote(blocks, tone), cx.quote_size(blocks, tone, max), TEXT_LINES * line(page::quote_size(cx.look.b), 1.6)),
         Kind::Alert { kind, blocks } => {
@@ -110,7 +110,8 @@ fn chips_w(cx: &Cx) -> f32 {
 }
 
 /// MAP-049: the reader's code block, capped at 12 lines, with no scrolling.
-fn code(cx: &Cx, lang: &str, src: &str, at: usize, i: usize, tail: &str) -> (El, [f32; 2]) {
+#[allow(clippy::too_many_arguments)]
+fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize, tail: &str) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -139,7 +140,8 @@ fn code(cx: &Cx, lang: &str, src: &str, at: usize, i: usize, tail: &str) -> (El,
         let nums = (1..=shown).map(|k| k.to_string()).collect::<Vec<_>>().join("\n");
         lines = lines.child(text(nums).font(style.features("'tnum' 1")).color(c.ghost).align(rune::Align::End).w(nw).mr(gap));
     }
-    lines = lines.child(text(body).spans(spans).key("code").font(style).color(c.text));
+    let marks = cx.marks(pid, &body, 0).0;
+    lines = lines.child(text(body).spans(spans).key("code").font(style).color(c.text).text_highlights(marks));
     let fades = (if natural > look.width { r(b * 2.4) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     let clip = el().pin(Some(pad_x), Some(pad_top), None, None).size(w - 2.0 * pad_x, shown as f32 * lh).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(lines);
     let copied = pcode::copied(cx, at);
@@ -163,7 +165,7 @@ fn code(cx: &Cx, lang: &str, src: &str, at: usize, i: usize, tail: &str) -> (El,
 
 /// MAP-050: the reader's diff block in the capped code card, with Copy and Edit in its header.
 #[allow(clippy::too_many_arguments)]
-fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (usize, usize), at: usize, i: usize, tail: &str) -> (El, [f32; 2]) {
+fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (usize, usize), pid: Option<usize>, at: usize, i: usize, tail: &str) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -201,7 +203,10 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
         .child(el().key("space").grow(1.0))
         .child(if lang.is_empty() { el() } else { pcode::badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0) });
     let mut rows = rune::col().pin(Some(0.0), Some(py), None, None).min_w(w);
+    let mut found = 0;
     for (k, (l, t)) in lines.iter().zip(texts).enumerate() {
+        let (marks, n) = cx.marks(pid, &t, found);
+        found += n;
         let (band, ink) = match l.kind {
             DiffKind::Add => (Some(c.green.alpha(0.14)), mix(c.text, c.green, 0.3)),
             DiffKind::Del => (Some(c.red.alpha(0.14)), mix(c.text, c.red, 0.3)),
@@ -213,7 +218,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
             .key(format!("l-{k}"))
             .px(pad_x)
             .child(text(l.sign).key("sign").font(style).color(ink).w(sign_w))
-            .child(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink));
+            .child(text(if t.is_empty() { " ".to_string() } else { t }).key("text").font(style).color(ink).text_highlights(marks));
         if let Some(f) = band {
             rw = rw.fill(f);
         }

@@ -21,6 +21,7 @@ mod lock_app;
 mod map;
 mod map_app;
 mod map_drag;
+mod map_find;
 mod map_layout;
 mod map_motion;
 mod mcp;
