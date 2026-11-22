@@ -77,13 +77,20 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
         Kind::Code { lang, text } => code(cx, lang, text, bl.pid, at, i, tail, chip_compact),
         Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail, chip_compact),
         Kind::Table(t) => table(cx, t, tone, tail),
-        Kind::Quote { blocks } => capped(cx.quote(blocks, tone), cx.quote_size(blocks, tone, max), TEXT_LINES * line(page::quote_size(cx.look.b), 1.6)),
+        Kind::Quote { blocks } => {
+            let lh = line(page::quote_size(cx.look.b), 1.6);
+            capped(cx, cx.quote(blocks, tone), cx.quote_size(blocks, tone, max), TEXT_LINES * lh, lh, tail, r(cx.look.b * 0.9))
+        }
         Kind::Alert { kind, blocks } => {
             let [w, h] = cx.alert_size(*kind, blocks, tone, max);
             let text_h = cx.alert_size(*kind, &[], tone, max)[1];
-            capped(cx.alert(*kind, blocks, tone), [w, h], text_h + TEXT_LINES * line(cx.look.b, 1.6))
+            let lh = line(cx.look.b, 1.6);
+            capped(cx, cx.alert(*kind, blocks, tone), [w, h], text_h + TEXT_LINES * lh, lh, tail, r(cx.look.b * 0.85))
         }
-        Kind::Html { text } => capped(cx.html(text), cx.html_size(text, max), HTML_LINES * line(r(cx.look.b * 0.8), 1.5)),
+        Kind::Html { text } => {
+            let lh = line(r(cx.look.b * 0.8), 1.5);
+            capped(cx, cx.html(text), cx.html_size(text, max), HTML_LINES * lh, lh, tail, 0.0)
+        }
         Kind::Image { img, .. } => image(cx, img, i, tail, chip_compact),
         Kind::Gallery { items } => gallery(cx, items, i, tail),
         _ => return None,
@@ -92,11 +99,26 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
 }
 
 /// A card drawn by a reader builder: `inner` at its natural size `[w, h]`, shown at most `cap`
-/// tall with its bottom fading out when it is taller.
-fn capped(inner: El, [w, h]: [f32; 2], cap: f32) -> (El, [f32; 2]) {
+/// tall with its bottom fading out and a `"+N more lines"` footer when it is taller (MAP-052).
+fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, lh: f32, tail: &str, inset_x: f32) -> (El, [f32; 2]) {
     let shown = h.min(cap).ceil();
-    let fade = if h > cap { BOTTOM_FADE } else { 0.0 };
-    (el().size(w, shown).clip_fade_linear(0.0, 0.0, 0.0, fade).child(inner.pin(Some(0.0), Some(0.0), None, None).w(w)), [w, shown])
+    if h <= cap {
+        return (el().size(w, shown).child(inner.pin(Some(0.0), Some(0.0), None, None).w(w)), [w, shown]);
+    }
+    let extra = ((h - cap) / lh.max(1.0)).ceil().max(1.0) as usize;
+    let more_el = more(cx, extra, "line", tail);
+    let foot_h = more_style(cx, pcode::badge_size(cx.look.b)).line_height + 4.0;
+    let total_h = shown + foot_h;
+    let clipped = el()
+        .pin(Some(0.0), Some(0.0), None, None)
+        .size(w, shown)
+        .clip_fade_linear(0.0, 0.0, 0.0, BOTTOM_FADE)
+        .child(inner.pin(Some(0.0), Some(0.0), None, None).w(w));
+    let out = el()
+        .size(w, total_h)
+        .child(clipped)
+        .child(more_el.pin(Some(inset_x), Some(shown + 2.0), None, None));
+    (out, [w, total_h])
 }
 
 /// "+N more lines" under a clipped card, in the badge's type.

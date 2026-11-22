@@ -403,14 +403,15 @@ pub(super) fn help_sheet(v: V) -> Card {
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();
             let is_range = matches!(r.ids, ["map.heading-1", "map.heading-6"] | ["writer.heading-1", "writer.heading-6", ..]);
+            let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
             for (idx, id) in r.ids.iter().enumerate() {
                 if is_range && idx == 1 {
-                    keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(v.p.mute));
+                    keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(help_muted));
                 }
                 if *id == "map.node-menu" {
                     keys = keys
                         .child(cap(keymap::label_of("Shift+F10"), v.p))
-                        .child(text("or right-click").font(sans(11.5, 400.0)).color(v.p.mute));
+                        .child(text("or right-click").font(sans(11.5, 400.0)).color(help_muted));
                 } else if let Some(a) = keymap::action(id) {
                     let chords = a.chords(preset);
                     let show = if matches!(*id, "reader.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };
@@ -546,17 +547,69 @@ pub fn find_placed(v: V) -> Option<El> {
     Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.place_match(n, r, view, roof, band, tx)))
 }
 
+/// Estimated screen width of the active foot pill(s) (toast, undo toast, or notice) so Map mode
+/// scopes `toast-band` around the pill instead of fading the entire canvas bottom strip.
+fn foot_pill_w(v: V) -> f32 {
+    let body = styles::popup();
+    let room = foot_room(v);
+    let toast_w = if let Some(d) = &v.s.deleted {
+        let key = keymap::label(v.s.preset(), "app.undo-delete");
+        let fit = undo_fit(room, &d.name, &key);
+        let hint = matches!(fit, UndoFit::Named(_, true));
+        let btn_w = 20.0 + width("Undo", body) + if hint { 8.0 + width(&key, keys(11.0)) } else { 0.0 };
+        let msg_w = match fit {
+            UndoFit::Named(shown, _) => width("Moved ", body) + width(&shown, body) + width(" to the trash", body),
+            UndoFit::Short => width("Moved to the trash", body),
+        };
+        (14.0 + msg_w + 6.0 + btn_w + 4.0).ceil().min(room)
+    } else if let Some((msg, _)) = &v.s.reader.toast {
+        (width(msg, body) + 28.0).ceil().min(room)
+    } else {
+        0.0
+    };
+    let notice_w = v.s.notice.as_deref().map_or(0.0, |m| {
+        let (w, _) = notice_fit(v, m);
+        (14.0 + w + 6.0 + 20.0 + width("Dismiss", body) + 4.0).ceil().min(room)
+    });
+    toast_w.max(notice_w)
+}
+
 /// While a pill shows at the note area's foot, the page fades out under it, in both modes, so
 /// no line of the note reads behind or beside it: the page's colour from the note area's bottom
-/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). Presses go
-/// through it to the page, and it fades in and out over 140 ms. As it appears or grows, what
-/// the user is on comes above it (`App::band_laid_out`).
+/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). In Map mode the
+/// band scopes horizontally around the active pill rather than spanning the full canvas width.
+/// Presses go through it to the page, and it fades in and out over 140 ms. As it appears or
+/// grows, what the user is on comes above it (`App::band_laid_out`).
 pub fn toast_band(v: V) -> Option<El> {
     let h = band_h(v)?;
     let (caret, find_at, roof) = (v.caret, v.find_at, super::editor::match_roof(v));
     let bg = Roles::new(v.p).bg;
     let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
+    if super::mapping(v.s) {
+        let left = if v.left_over() { super::sidebar::W } else { 0.0 };
+        let right = if v.right_over() { super::outline::PANEL_W } else { 0.0 };
+        let max_w = (foot_room(v) + 32.0).max(0.0);
+        let pill_w = foot_pill_w(v);
+        let band_w = (pill_w + 64.0).min(max_w).max(pill_w);
+        let band = el()
+            .key("toast-band")
+            .w(band_w)
+            .h(h)
+            .corners([18.0, 18.0, 0.0, 0.0])
+            .linear_gradient(std::f32::consts::PI, stops)
+            .inert()
+            .transition(rune::Transition::opacity().springs(fade))
+            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, roof, tx));
+        return Some(
+            row()
+                .key("toast-band-row")
+                .pin(Some(left), None, Some(right), Some(0.0))
+                .justify_center()
+                .inert()
+                .child(band),
+        );
+    }
     Some(
         el().key("toast-band")
             .pin(Some(0.0), None, Some(0.0), Some(0.0))
