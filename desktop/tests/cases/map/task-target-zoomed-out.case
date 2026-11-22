@@ -1,0 +1,29 @@
+Zoomed out, a task box keeps a target 24 points across on screen: a click near its corner still ticks it.
+note: T.md
+events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 tap:795,389@2.4 key:s+cmd@2.8
+expect: rect:map-task:5: [793.63, 387.14, 25.17, 25.17]
+expect: rect:map-fold:3: [744.08, 403.98, 25.17, 25.17]
+--- before
+# Plan
+
+## Budget
+
+- [ ] Rent
+- [x] Food
+
+## Dates
+
+- May
+  - June
+--- after
+# Plan
+
+## Budget
+
+- [x] Rent
+- [x] Food
+
+## Dates
+
+- May
+  - June

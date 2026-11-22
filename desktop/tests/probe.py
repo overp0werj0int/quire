@@ -43,9 +43,13 @@ WHAT is any of (default `focus,doc-y`):
     text:KEY          an element's text, or the text inside it joined by spaces
     doc-y             the page's top edge, which tells you how far it has scrolled
     label:KEY         an element's accessible label (a map node's reads its text and state)
+    role:KEY          an element's accessible role
     scale:KEY         how much an element is drawn scaled (a map node's is the map's zoom)
     opacity:KEY       how opaque an element is drawn: sample it with --series to see a fade
     color:KEY         an element's text colour, or that of the first text inside it
+    contrast:KEY      the text inside an element against the fills behind it (WCAG 4.5:1) and
+                      the marks drawn there, such as underlines and icons (3:1): how many it
+                      measured, or what falls short
     selected          the map's selected node, by key
     nodes             the map nodes built now, by key, in the order drawn: what culling kept
     keys              every keyed element with its rectangle: the way to find a KEY
@@ -188,8 +192,9 @@ def run_outside(cmd, env, notes, outside):
 
 def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, folder=None, open_note=None, state=None, env_add=None, extra=None, outside=None, scene=None):
     """One headless run; returns the element tree (a list of dicts) and the home folder.
-    `extra` maps paths in the notes folder to bytes written there beside `note`; `outside` maps
-    them to the bytes a `write` event writes mid-run."""
+    `extra` maps paths in the notes folder, or in the home folder for one starting `~/`, to the
+    bytes written there beside `note`; `outside` maps them to the bytes a `write` event writes
+    mid-run."""
     home = os.path.join(work, "home")
     script = os.path.join(work, "events.json")
     tree = os.path.join(work, "tree.json")
@@ -215,8 +220,9 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
             os.makedirs(notes)
             shutil.copy(note, notes)
             for rel, data in (extra or {}).items():
-                os.makedirs(os.path.dirname(os.path.join(notes, rel)), exist_ok=True)
-                with open(os.path.join(notes, rel), "wb") as f:
+                path = os.path.join(home, rel[2:]) if rel.startswith("~/") else os.path.join(notes, rel)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as f:
                     f.write(data)
             env.update(QUIRE_FOLDER=notes, QUIRE_NOTE=os.path.basename(note))
         elif folder:
@@ -251,6 +257,59 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
     raise SystemExit("probe: the run failed: %s" % (r.stderr.strip().splitlines() or ["?"])[-1])
 
 
+def luminance(c):
+    lin = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c[:3]]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def ratio(a, b):
+    la, lb = luminance(a) + 0.05, luminance(b) + 0.05
+    return max(la, lb) / min(la, lb)
+
+
+def contrast(els, key):
+    """Each text and mark drawn inside the element `key`, against what is behind it: the fills
+    of the elements it sits in, laid over each other from `key` down. A mark is an icon, or a
+    filled element with nothing in it drawn straight on `key`'s own fill, as a map's underlines
+    and folded circles are. A map card draws its block as Preview does, so a quote's bar in it
+    is the block's decoration, not a mark.
+    Returns (shortfalls, texts, marks, lowest text, lowest mark)."""
+    top = next((e for e in els if e.get("key") == key), None)
+    if not top:
+        return None
+    rgba = lambda h: [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5, 7)]
+    over = lambda a, b: [a[i] * a[3] + b[i] * (1 - a[3]) for i in range(3)] + [1.0]
+    at = {e["path"]: e for e in els}
+    parents = {e["path"].rsplit("/", 1)[0] for e in els}
+    low, texts, marks = [], [], []
+    for e in els:
+        path = e.get("path", "")
+        if not path.startswith(top["path"] + "/"):
+            continue
+        tail = path[len(top["path"]):].split("/")
+        chain = [at[top["path"] + "/".join(tail[:k])] for k in range(1, len(tail) + 1) if top["path"] + "/".join(tail[:k]) in at]
+        if any(a.get("opacity", 1.0) == 0 for a in chain + [top]):
+            continue
+        back = rgba(top.get("fill") or "#000000ff")
+        for a in chain[:-1]:
+            back = over(rgba(a.get("fill") or "#00000000"), back)
+        if e.get("text") is not None and e.get("color"):
+            back = over(rgba(e.get("fill") or "#00000000"), back)
+            kind, ink, need, into = "text", rgba(e["color"]), 4.5, texts
+        elif e.get("role") == "icon" and e.get("color"):
+            back = over(rgba(e.get("fill") or "#00000000"), back)
+            kind, ink, need, into = "icon", rgba(e["color"]), 3.0, marks
+        elif path not in parents and e.get("fill") and rgba(e["fill"])[3] > 0 and over(rgba(e["fill"]), back) != back and not any(rgba(a.get("fill") or "#00000000")[3] > 0 or a.get("key", "").startswith("map-card:") for a in chain[1:-1]):
+            kind, ink, need, into = "mark", rgba(e["fill"]), 3.0, marks
+        else:
+            continue
+        r = ratio(over(ink, back), back)
+        into.append(r)
+        if r < need:
+            low.append("%s %s %s %.2f:1 on #%02x%02x%02x" % (kind, path[len(top["path"]) + 1:], repr(e["text"]) if kind == "text" else e.get("color") or e.get("fill"), r, *[round(v * 255) for v in back[:3]]))
+    return low, len(texts), len(marks), min(texts, default=None), min(marks, default=None)
+
+
 def rect(els, key):
     e = next((e for e in els if e.get("key") == key), None)
     return e.get("rect") if e else None
@@ -271,6 +330,9 @@ def answer(what, els, home):
     if what.startswith("label:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %r" % (what, e.get("label") if e else None)
+    if what.startswith("role:"):
+        e = next((e for e in els if e.get("key") == what[5:]), None)
+        return "%s: %s" % (what, e.get("role") if e else None)
     if what.startswith("scale:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %s" % (what, e.get("scale") if e else None)
@@ -279,6 +341,12 @@ def answer(what, els, home):
         if e and e.get("color") is None:
             e = next((d for d in els if d.get("color") and d.get("text") is not None and d.get("path", "").startswith(e.get("path", "") + "/")), None)
         return "%s: %s" % (what, e.get("color") if e else None)
+    if what.startswith("contrast:"):
+        got = contrast(els, what[9:])
+        if got is None:
+            return "%s: None" % what
+        low, texts, marks = got[:3]
+        return "%s: %s" % (what, "; ".join(low) if low else "%d texts at 4.5:1 or more, %d marks at 3:1 or more" % (texts, marks))
     if what.startswith("opacity:"):
         e = next((e for e in els if e.get("key") == what[8:]), None)
         return "%s: %s" % (what, e.get("opacity") if e else None)

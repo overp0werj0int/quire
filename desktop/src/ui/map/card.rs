@@ -67,7 +67,7 @@ fn capped(inner: El, [w, h]: [f32; 2], cap: f32) -> (El, [f32; 2]) {
 fn more(cx: &Cx, n: usize, what: &str, tail: &str) -> El {
     let size = pcode::badge_size(cx.look.b);
     let what = if n == 1 { what.to_string() } else { format!("{what}s") };
-    text(format!("+{n} more {what}")).key(format!("map-more:{tail}")).font(more_style(cx, size)).color(cx.look.c.readable_dim())
+    text(format!("+{n} more {what}")).key(format!("map-more:{tail}")).font(more_style(cx, size)).color(cx.look.c.dim)
 }
 
 fn more_style(cx: &Cx, size: f32) -> TextStyle {
@@ -204,6 +204,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
         .child(if lang.is_empty() { el() } else { pcode::badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0) });
     let mut rows = rune::col().pin(Some(0.0), Some(py), None, None).min_w(w);
     let mut found = 0;
+    let card = c.on_page(c.panel);
     for (k, (l, t)) in lines.iter().zip(texts).enumerate() {
         let (marks, n) = cx.marks(pid, &t, found);
         found += n;
@@ -211,9 +212,11 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
             DiffKind::Add => (Some(c.green.alpha(0.14)), mix(c.text, c.green, 0.3)),
             DiffKind::Del => (Some(c.red.alpha(0.14)), mix(c.text, c.red, 0.3)),
             DiffKind::Hunk => (Some(c.blue.alpha(0.07)), c.blue),
-            DiffKind::Meta => (None, c.faint),
+            DiffKind::Meta => (None, c.dim),
             DiffKind::Ctx => (None, c.text),
         };
+        // Preview's inks fall just short on some bands; the map lifts them to 4.5:1 (MAP-074).
+        let ink = Roles::readable_on(ink, band.map_or(card, |f| mix(card, f.alpha(1.0), f.a)), 4.8);
         let mut rw = row()
             .key(format!("l-{k}"))
             .px(pad_x)

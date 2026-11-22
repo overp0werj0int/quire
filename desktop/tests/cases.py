@@ -19,27 +19,30 @@ contains any of the words. A case file:
 
     ## Budget
 
-The first line says what the case checks. `note` names the file (default Note.md), `state`
-is the state file as for probe.py --state, `scene` a scene as for probe.py --scene (`note` for
-Note mode), `events` is probe.py's short form (it may run over
-several `events:` lines), `size` is WxH, and each `expect` is one line probe.py would print for
-that reading (`focus`, `rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `scale:KEY`,
-`opacity:KEY`, `color:KEY`, `selected`, `nodes`, `file:GLOB`, `state:KEY`), compared exactly. `at` takes the readings at that time instead of 0.8 s
-after the last event, to read the app mid-gesture: a drag's drop zone before the release, or a
-node part way through a glide. Each `env` line is NAME=VALUE for the app's environment, such
-as QUIRE_REDUCED_MOTION=1. With `password`, the note on disk must be a locked note (SYNC.md),
-and its text opened with that password is what `--- after` holds. The text after
-`--- before` is the note as it starts. The text after `--- after` is the note expected on disk
-after the replay; without that section the note must be unchanged. Each line of a section is a
-line of the note, ended by a newline, so both notes end in one.
+The first line says what the case checks. `note` names the file (default Note.md), `state` is
+the state file as for probe.py --state, `scene` a scene as for probe.py --scene (`note` for
+Note mode), `events` is probe.py's short form (it may run over several `events:` lines), `size`
+is WxH, and each `expect` is one line probe.py would print for that reading (`focus`,
+`rect:KEY`, `text:KEY`, `doc-y`, `label:KEY`, `role:KEY`, `scale:KEY`, `opacity:KEY`,
+`color:KEY`, `contrast:KEY`, `selected`, `nodes`, `file:GLOB`, `state:KEY`), compared exactly.
+`at` takes the readings at that time instead of 0.8 s after the last event, to read the app
+mid-gesture: a drag's drop zone before the release, or a node part way through a glide. Each
+`env` line is NAME=VALUE for the app's environment, such as QUIRE_REDUCED_MOTION=1. With
+`password`, the note on disk must be a locked note (SYNC.md), and its text opened with that
+password is what `--- after` holds. The text after `--- before` is the note as it starts. The
+text after `--- after` is the note expected on disk after the replay; without that section the
+note must be unchanged. Each line of a section is a line of the note, ended by a newline, so
+both notes end in one.
 
 Other files can sit beside the note. Each `file` line is NAME SOURCE: the file's path in the
 notes folder, then `base64:DATA` or a path from the case's own folder, such as
-`file: attachments/wide.png fixtures/wide.png`. A `--- file NAME` section, after `--- before`,
-is one more note, written as `--- before` is. A `--- outside NAME` section is the text another
-app writes to NAME when the replay reaches a `write:NAME@T` event; a case whose note another
-app deletes says so with `expect: file:NOTE: none`. `{any}` in an `--- after` line or an `expect`
-line stands for any text on that line, for what the app names by the clock (a pasted image).
+`file: attachments/wide.png fixtures/wide.png`. A NAME starting `~/` is a path in the app's
+home folder instead, for what the app reads there, such as an Omarchy theme. A `--- file NAME`
+section, after `--- before`, is one more note, written as `--- before` is. A `--- outside NAME`
+section is the text another app writes to NAME when the replay reaches a `write:NAME@T` event;
+a case whose note another app deletes says so with `expect: file:NOTE: none`. `{any}` in an
+`--- after` line or an `expect` line stands for any text on that line, for what the app names
+by the clock (a pasted image).
 
 Each case is a whole copy of the app, run one at a time. --keep leaves each run's folder.
 """
@@ -56,7 +59,7 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "scale:", "opacity:", "color:", "selected", "nodes", "file:", "state:")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "role:", "scale:", "opacity:", "color:", "contrast:", "selected", "nodes", "file:", "state:")
 
 
 class Case:

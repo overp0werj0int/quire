@@ -42,19 +42,26 @@ fn key_tail(key: &str) -> &str {
     key.strip_prefix("map-node:").unwrap_or(key)
 }
 
-/// A branch's colour on the page: the accent at the root, else the palette, lifted to 3:1
-/// (MAP-040).
+/// The contrast the map's lines and marks keep against the page: 3:1 with room for the
+/// rounding to 8-bit colour (MAP-074).
+const GRAPHIC: f32 = 3.1;
+
+/// A branch's colour on the page: the accent at the root, else the palette (MAP-040).
 fn branch_color(c: &Roles, branch: usize) -> Color {
     if branch == 0 {
-        return Roles::readable_on(c.accent, c.bg, 3.0);
+        return Roles::readable_on(c.accent, c.bg, GRAPHIC);
     }
     let pal = [c.blue, c.green, c.orange, c.magenta, c.cyan, c.yellow];
-    Roles::readable_on(pal[(branch - 1) % pal.len()], c.bg, 3.0)
+    Roles::readable_on(pal[(branch - 1) % pal.len()], c.bg, GRAPHIC)
 }
 
-/// The look the map's labels and cards draw in: the page's, at a card's widest (MAP-038).
+/// The look the map's labels and cards draw in: the page's, at a card's widest (MAP-038), with
+/// dim lifted to read on the canvas and on cards, where Preview's dim text, such as a quote's,
+/// can fall short (MAP-074).
 fn map_look(v: V) -> Look {
-    look_at(v, page::r(v.s.settings().size as f32 * 30.0))
+    let mut look = look_at(v, page::r(v.s.settings().size as f32 * 30.0));
+    look.c.dim = look.c.readable_dim();
+    look
 }
 
 /// Node `n`'s text as the reader sets it, in `st` (MAP-038): its inline runs after an ordered
@@ -135,8 +142,9 @@ pub(super) fn canvas(v: V) -> El {
     let view = s.map_view();
     let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));
     let (b, prose, mono) = (look.b, look.family, look.mono);
-    // A fold circle's target is at least 24 points on screen (MAP-041).
-    let hit = (24.0 / 2f32.powi(map_app::hit_bucket(cam.1))).max(2.0 * FOLD_R);
+    // A fold circle's or task box's target is at least 24 points on screen (MAP-041, MAP-073).
+    let target = 24.0 / 2f32.powi(map_app::hit_bucket(cam.1));
+    let hit = target.max(2.0 * FOLD_R);
     let mut world = el().key("map-world").pin(Some(-W), Some(-W), None, None).size(2.0 * W, 2.0 * W);
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);
@@ -156,7 +164,7 @@ pub(super) fn canvas(v: V) -> El {
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, found };
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite: cam.1 < map_app::LITE_ZOOM, target, found };
         world = world.child(node(&cx, &t, &l, i, st));
         if !t.nodes[i].children.is_empty() {
             world = world.children(fold(&t, &l, i, folded(i), hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
@@ -181,7 +189,7 @@ pub(super) fn canvas(v: V) -> El {
                 .pin(Some(p.x - 3.0 + W), Some(p.y - 3.0 + W), None, None)
                 .size(w + 6.0, h + line_width(p.depth) + 6.0)
                 .radius(4.0)
-                .border(2.0, c.accent)
+                .border(2.0, Roles::readable_on(c.accent, c.bg, GRAPHIC))
                 .inert(),
         );
     }
@@ -212,7 +220,7 @@ pub(super) fn canvas(v: V) -> El {
                 text(badge)
                     .key("map-props")
                     .font(font)
-                    .color(c.faint)
+                    .color(c.dim)
                     .role("button")
                     .cursor(rune::Cursor::Pointer)
                     .on_press_tx(|s: &mut App, tx: &mut Tx| s.map_props(tx))
@@ -225,7 +233,7 @@ pub(super) fn canvas(v: V) -> El {
                 text("Press Tab to add a branch, or F2 to name the root")
                     .key("map-hint")
                     .font(styles::sans(12.0, 400.0))
-                    .color(c.faint)
+                    .color(c.dim)
                     .pin(Some(p.x + l.metrics.pad_x + W), Some(y + W), None, None),
             );
         }
@@ -332,6 +340,8 @@ struct State<'a> {
     editing: bool,
     alpha: f32,
     lite: bool,
+    /// A task box's least target, in map points.
+    target: f32,
     found: Option<Found<'a>>,
 }
 
@@ -343,15 +353,14 @@ fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
 }
 
 fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
-    let State { folded, selected, editing, alpha, lite, found } = st;
+    let State { folded, selected, editing, alpha, lite, target, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
     let tier = map_app::tier(t, i);
     let color = match (tier, &n.kind) {
         (Tier::Root | Tier::Head1 | Tier::Head, _) => c.strong,
-        (_, NodeKind::Item { task: crate::blocks::Task::Done, .. }) => c.dim,
-        (Tier::Card, _) => c.dim,
+        (_, NodeKind::Item { task: crate::blocks::Task::Done, .. }) | (Tier::Card, _) => c.dim,
         _ => c.text,
     };
     let branch = branch_color(c, n.branch);
@@ -362,7 +371,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     // The palette and the names a wiki link resolves against colour the runs.
     (i, n.src, n.depth, folded, selected, editing, alpha.to_bits(), b.to_bits(), room.to_bits(), [p.x, p.y, p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, found).hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, lite, target.to_bits(), found).hash(&mut h);
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
     rune::memo(key.clone(), h.finish(), move || {
         let lw = line_width(p.depth);
@@ -385,7 +394,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
             .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
             .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx))
-            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, c)))
+            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, target, c)))
             .children((!editing).then(|| {
                 let shown = match &n.body {
                     Body::Card(_) if lite => Some(card::lite(c, p.w - 2.0 * pad_x - room, p.h - pad_b, &tail)),
@@ -405,12 +414,13 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     })
 }
 
-/// A task's box left of its label, in a 24-point target, centred on the first line (MAP-053).
-fn task_box(n: &crate::map::Node, i: usize, b: f32, pad_x: f32, c: &Roles) -> El {
+/// A task's box left of its label, centred on the first line, in a target `target` map points
+/// or the box's own size (MAP-053, MAP-073).
+fn task_box(n: &crate::map::Node, i: usize, b: f32, pad_x: f32, target: f32, c: &Roles) -> El {
     let done = matches!(n.kind, NodeKind::Item { task: crate::blocks::Task::Done, .. });
     let bx = crate::page::r(b * 0.9);
     let lh = crate::page::line(b, 1.45);
-    let hit = 24f32.max(bx);
+    let hit = target.max(bx);
     let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
     let mut bx_el = el().size(bx, bx).radius(rad);
     bx_el = if done { bx_el.center().fill(c.accent).child(rune::icon(&super::icons::CHECK, (bx * 0.78).round()).color(c.bg)) } else { bx_el.border(edge, c.faint) };
@@ -456,7 +466,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, hit: f32, c: &Roles, b: f32,
             text(pill)
                 .key(format!("map-pill:{tail}"))
                 .font(font)
-                .color(c.readable_dim())
+                .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)
                 .radius(h / 2.0)
@@ -495,7 +505,7 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, p: Place, at: [f32; 2], pad_x: f32) -> El 
         .children((below > 0).then(|| {
             text(format!("+{below}"))
                 .font(styles::note(mono, small, normal_lh(mono, small)))
-                .color(c.readable_dim())
+                .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)
                 .radius(pill_h / 2.0)
@@ -513,7 +523,7 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles) -> El {
     use crate::map::Add;
     let j = at.node();
     let Some(p) = l.at[j] else { return el() };
-    let accent = Roles::readable_on(c.accent, c.bg, 3.0);
+    let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
     let (zone, e) = match at {
         Add::Before(_) | Add::After(_) => {
             let y = if matches!(at, Add::Before(_)) { p.y - 4.0 } else { p.bottom() + 1.0 };

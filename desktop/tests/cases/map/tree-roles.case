@@ -1,0 +1,22 @@
+The map reads as a tree to a screen reader: each node a tree item whose label holds its text, level, fold and task state.
+note: T.md
+events: key:m+cmd@0.3 key:l@0.6 key:j@0.8 type:_@1.0
+expect: role:map-canvas: tree
+expect: label:map-canvas: 'Map'
+expect: role:map-node:5: treeitem
+expect: label:map-node:5: 'Rent, level 3, not checked'
+expect: label:map-node:6: 'Food, level 3, checked'
+expect: label:map-node:8: 'Dates, level 2, collapsed, 2 hidden'
+expect: role:map-task:5: checkbox
+--- before
+# Plan
+
+## Budget
+
+- [ ] Rent
+- [x] Food
+
+## Dates
+
+- May
+  - June

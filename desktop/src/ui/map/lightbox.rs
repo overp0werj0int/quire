@@ -44,7 +44,7 @@ pub(in crate::ui) fn lightbox(v: V, lb: &Lightbox) -> Card {
     };
     let w = pw.max(MIN_W).min(room[0].max(1.0));
     let b = look.b;
-    let caption = text(lb.img.alt.clone()).key("lightbox-caption").font(look.prose(r(b * 0.84), 1.5).italic()).color(c.dim).truncate().grow(1.0).min_w(0.0);
+    let caption = text(lb.img.alt.clone()).key("lightbox-caption").font(look.prose(r(b * 0.84), 1.5).italic()).color(look.c.dim).truncate().grow(1.0).min_w(0.0);
     let bar = row()
         .key("lightbox-bar")
         .w(w)

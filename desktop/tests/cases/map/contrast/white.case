@@ -1,0 +1,57 @@
+On the white theme, map text reads at 4.5:1 or more and lines and marks at 3:1 or more.
+note: Look.md
+state: {"mode": "map", "settings": {"theme": "light", "light_theme": "white"}}
+file: attachments/wide.png ../fixtures/wide.png
+file: attachments/small.png ../fixtures/small.png
+file: attachments/tall.png ../fixtures/tall.png
+size: 1600x1000
+events: key:0@0.5
+expect: contrast:map-canvas: 34 texts at 4.5:1 or more, 20 marks at 3:1 or more
+--- before
+---
+tags: test
+---
+# Look
+
+A paragraph with a [link](https://example.com), `code` and **bold**.
+
+## Tasks
+
+- [ ] Open task
+- [x] Done task
+
+1. First
+2. Second
+
+## Cards
+
+```rust
+fn main() {}
+```
+
+```diff
+@@ -1 +1 @@
+-old
++new
+ same
+```
+
+> A quote
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+![A caption](attachments/wide.png)
+
+![one](attachments/wide.png) ![two](attachments/small.png) ![three](attachments/tall.png) ![four](attachments/small.png)
+
+## Folded <!-- markmap: fold -->
+
+### Hidden
+
+## Five
+
+## Six
+
+## Seven
