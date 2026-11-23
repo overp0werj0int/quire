@@ -184,9 +184,10 @@ fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn 
     Drawn { laid: Rc::new(Laid { at, clear: laid.clear.clone(), shown, bounds: laid.bounds, metrics: laid.metrics }), fade }
 }
 
-/// Place `p` moved so its underline starts where node `a`'s branches leave it.
+/// Place `p` moved so its underline starts where node `a`'s branches leave it: its fold ring.
 fn anchored(a: &Place, p: Place) -> Place {
-    Place { x: a.right(), y: a.line_y() - (p.line_y() - p.y), ..p }
+    let [x, y] = crate::map_app::branch_start(a);
+    Place { x, y: y - (p.line_y() - p.y), ..p }
 }
 
 fn mix(a: Place, b: Place, e: f32) -> Place {

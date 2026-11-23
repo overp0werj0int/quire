@@ -82,7 +82,8 @@ Map mode is the third value of `App::mode`, beside Source and Preview. Its canva
 (`ui::map::canvas`) holds one world element that draws the camera from two live values per
 tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`), plus a quiet bottom-right zoom HUD
 (`map-zoom-hud`, painted in `doc-area` above `toast-band`). The view builds only the nodes,
-links and fold controls (hover-only when expanded, snug `+N` pill when folded) that meet the
+links and fold controls (a ring beside an expanded node's right side that its tapered branches
+leave from, `map_app::fold_dot`, with its `−` on hover; a snug `+N` pill when folded) that meet the
 tab's mount (`App::map_mounted`, `App::map_region`): a world rectangle kept while it still holds
 the canvas and 160 points around it, and made again 640 points past the canvas when a pan leaves
 it (only the 160 points after a zoom, so a zoom out never mounts hundreds of nodes). A pan or
@@ -161,7 +162,7 @@ with it (`Parked::map`) and `App::open_note` puts it back. Opening a folder drop
 (`App::map_new_notes`). Both first settle the inline field (`App::map_settle`), writing what
 it holds if its note is unchanged.
 
-A fold circle's and a task box's press target aims for 24 screen points at any zoom (`24 / 2^b` world
+A fold ring's and a task box's press target aims for 24 screen points at any zoom (`24 / 2^b` world
 points, where `b` is the zoom's power of two, `map_app::hit_bucket`), clamped to the node's own
 vertical clearance (`Laid::clear`) and clear of its label text so zoomed-out rows and short headings
 never steal each other's clicks. The map draws with the page's colours with three changes: `map_look`

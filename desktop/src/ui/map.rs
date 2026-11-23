@@ -16,7 +16,7 @@ use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Run;
 use crate::map::{Body, Node, NodeKind, ROOT, Tree};
-use crate::map_app::{self, FOLD_R, Tier};
+use crate::map_app::{self, FOLD_DOT_R, FOLD_R, Tier};
 use crate::map_layout::{Laid, Place, line_width};
 use crate::page;
 use crate::roles::Roles;
@@ -363,8 +363,8 @@ fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
     for &i in links {
         let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { continue };
         let lw = line_width(p.depth);
-        let (x0, x1) = (q.right(), p.x);
-        let (ya, yb) = (q.line_y(), p.line_y());
+        let [x0, ya] = map_app::branch_start(&q);
+        let (x1, yb) = (p.x, p.line_y());
         let color = branch_color(c, t.nodes[i].branch);
         bx0 = bx0.min(x0.min(x1) - lw);
         by0 = by0.min(ya.min(yb) - lw);
@@ -403,23 +403,12 @@ fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
 fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { return el() };
     let lw = line_width(p.depth);
-    let (x0, x1) = (q.right(), p.x);
-    let (ya, yb) = (q.line_y(), p.line_y());
+    let [x0, ya] = map_app::branch_start(&q);
+    let (x1, yb) = (p.x, p.line_y());
     let tail = key_tail(&node_key(t, i)).to_string();
     let key = format!("map-link:{tail}");
     let color = branch_color(c, t.nodes[i].branch);
     let w = (x1 - x0).max(1.0);
-    // Draw truly horizontal links as a crisp bar; keep any noticeable rise as a smooth Bézier
-    // so near-horizontal curves never show a 1 px staircase notch.
-    if (ya - yb).abs() < 0.5 {
-        return el()
-            .key(key)
-            .pin(Some(x0 + W), Some((ya + yb) / 2.0 - lw / 2.0 + W), None, None)
-            .size(w, lw)
-            .fill(color)
-            .opacity(alpha)
-            .inert();
-    }
     let top = ya.min(yb) - lw;
     let h = (ya.max(yb) - top + lw).max(1.0);
     let (y0, y1) = (ya - top, yb - top);
@@ -428,10 +417,7 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
     let shape = rune::memo(format!("map-link-s:{tail}"), hash.finish(), move || {
-        let mid = w / 2.0;
-        let (a, z) = ([0.0, y0], [w, y1]);
-        let path = Path::new().move_to(a).cubic_to([mid, a[1]], [mid, z[1]], z);
-        rune::canvas(Shape::new().stroke_path(&path, lw, LineCap::Round, color)).size(w, h).inert()
+        rune::canvas(Shape::new().fill(tapered([0.0, y0], [w, y1], lw), color)).size(w, h).inert()
     });
     el().key(key)
         .pin(Some(x0 + W), Some(top + W), None, None)
@@ -439,6 +425,32 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
         .opacity(alpha)
         .inert()
         .child(shape)
+}
+
+/// The outline of a branch from `a` (its parent's fold dot) to `z` (its node's underline): the
+/// link's Bézier, 1 point wide at the dot and widening to `lw` by halfway, so the branches
+/// fanning out of one dot don't merge into a blot.
+fn tapered(a: [f32; 2], z: [f32; 2], lw: f32) -> Vec<[f32; 2]> {
+    const STEPS: usize = 32;
+    let mid = (a[0] + z[0]) / 2.0;
+    let (c1, c2) = ([mid, a[1]], [mid, z[1]]);
+    let mut left = Vec::with_capacity(2 * STEPS + 2);
+    let mut right = Vec::with_capacity(STEPS + 1);
+    for k in 0..=STEPS {
+        let t = k as f32 / STEPS as f32;
+        let u = 1.0 - t;
+        let at = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
+        let slope = |i: usize| 3.0 * u * u * (c1[i] - a[i]) + 6.0 * u * t * (c2[i] - c1[i]) + 3.0 * t * t * (z[i] - c2[i]);
+        let (dx, dy) = (slope(0), slope(1));
+        let len = (dx * dx + dy * dy).sqrt().max(1e-3);
+        let e = (t / 0.5).min(1.0);
+        let half = (1.0 + (lw - 1.0).max(0.0) * e * e * (3.0 - 2.0 * e)) / 2.0;
+        let (nx, ny) = (-dy / len * half, dx / len * half);
+        left.push([at(0) + nx, at(1) + ny]);
+        right.push([at(0) - nx, at(1) - ny]);
+    }
+    left.extend(right.into_iter().rev());
+    left
 }
 
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
@@ -685,24 +697,38 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
     let branch = branch_color(c, n.branch);
-    let (cx, cy) = (p.right(), p.line_y());
+    // An expanded node's ring sits beside the middle of its right side; a folded node keeps its
+    // target at the junction, where its `+N` pill is.
+    let (cx, cy) = if folded { (p.right(), p.line_y()) } else { let [x, y] = map_app::fold_dot(&p); (x, y) };
     let clear = l.clear[i];
-    // Never let the fold hit box invade left of the fold dot over the node's own label text,
-    // nor cross into adjacent rows, the next column's task boxes, or a folded node's `+N` pill.
+    // Never let the fold hit box reach far over the node's own label text, nor cross into
+    // adjacent rows, the next column's task boxes, or a folded node's `+N` pill.
     let x0 = (cx - hit / 2.0).max(p.right() - FOLD_R);
     let x1 = if folded {
         (x0 + hit).min(p.right() + 5.0).max(cx)
     } else {
-        (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_R)
+        (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_DOT_R)
     };
-    let y0 = (cy - hit / 2.0).max(clear[0]).min(cy - FOLD_R);
-    let y1 = (cy + hit / 2.0).min(clear[1]).max(cy + FOLD_R);
+    let y0 = (cy - hit / 2.0).max(clear[0]).min(cy - FOLD_DOT_R);
+    let y1 = (cy + hit / 2.0).min(clear[1]).max(cy + FOLD_DOT_R);
     let toggle = move |s: &mut App, tx: &mut Tx| {
         let all = tx.mods().cmd;
         s.map_toggle(i, all, tx);
         s.keys_to_note(tx);
     };
     let mut out = Vec::new();
+    // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
+    if !folded {
+        out.push(
+            el().key(format!("map-dot:{tail}"))
+                .pin(Some(cx - FOLD_DOT_R + W), Some(cy - FOLD_DOT_R + W), None, None)
+                .size(2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R)
+                .radius(FOLD_DOT_R)
+                .border(1.5, branch)
+                .fill(c.bg)
+                .inert(),
+        );
+    }
     if !editing {
         let mut hit_el = el()
             .key(format!("map-fold:{tail}"))
@@ -715,12 +741,12 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
         if !folded && !lite {
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
-            let bg = c.bg;
             let mut hash = std::collections::hash_map::DefaultHasher::new();
-            (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch), color_bits(bg)).hash(&mut hash);
+            (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch)).hash(&mut hash);
             let vis_key = format!("map-fold-v:{tail}");
             let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
-                let halo_r = FOLD_R + 3.0;
+                let r = FOLD_DOT_R;
+                let halo_r = r + 3.0;
                 let halo_wrap = el()
                     .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                     .hover_group()
@@ -733,20 +759,17 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
                             .pin(Some(rcx - halo_r), Some(rcy - halo_r), None, None)
                             .inert(),
                     );
-                let dot = el()
-                    .size(2.0 * FOLD_R, 2.0 * FOLD_R)
-                    .radius(FOLD_R)
+                let minus = el()
+                    .size(2.0 * r, 2.0 * r)
                     .center()
-                    .border(1.5, branch)
-                    .fill(bg)
                     .group_opacity(0.0, 1.0)
-                    .pin(Some(rcx - FOLD_R), Some(rcy - FOLD_R), None, None)
+                    .pin(Some(rcx - r), Some(rcy - r), None, None)
                     .inert()
                     .child(el().size(6.0, 1.5).radius(0.75).fill(branch).inert());
                 el().key(vis_key)
                     .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                     .child(halo_wrap)
-                    .child(dot)
+                    .child(minus)
             });
             hit_el = hit_el
                 .hover_group_shared(format!("map-row:{tail}"))

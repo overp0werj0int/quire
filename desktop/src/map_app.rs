@@ -56,6 +56,22 @@ const GLIDE: f64 = 0.2;
 pub const FOLD_ROOM: f32 = 64.0;
 /// A fold circle's radius, at a branching node's right anchor (MAP-041).
 pub const FOLD_R: f32 = 6.0;
+/// An expanded node's fold dot: a ring beside the middle of the node's right side, just outside
+/// its outline, that its branches leave from (MAP-041). Its radius, and the gap between the
+/// node's right edge and the ring, wide enough to clear the selection outline.
+pub const FOLD_DOT_R: f32 = 7.0;
+const FOLD_DOT_GAP: f32 = 6.0;
+
+/// The centre of node `p`'s fold dot.
+pub fn fold_dot(p: &crate::map_layout::Place) -> [f32; 2] {
+    [p.right() + FOLD_DOT_GAP + FOLD_DOT_R, p.y + p.h / 2.0]
+}
+
+/// Where node `q`'s branches start: the right edge of its fold dot.
+pub fn branch_start(q: &crate::map_layout::Place) -> [f32; 2] {
+    let [x, y] = fold_dot(q);
+    [x + FOLD_DOT_R, y]
+}
 
 /// One tab's map: kept for the session, dropped with the tab (MAP-044).
 pub struct MapView {
@@ -527,7 +543,8 @@ impl App {
                 nodes.push(i);
             }
             if let Some(q) = t.nodes[i].parent.and_then(|q| l.at[q])
-                && meets(q.right(), p.line_y().min(q.line_y()), p.x, p.line_y().max(q.line_y()))
+                && let [qx, qy] = branch_start(&q)
+                && meets(qx, p.line_y().min(qy), p.x, p.line_y().max(qy))
             {
                 links.push(i);
             }
@@ -698,7 +715,8 @@ impl App {
         let mut boxes = Vec::new();
         for &i in l.shown.iter().filter(|&&i| !t.nodes[i].children.is_empty()) {
             let Some(p) = l.at[i] else { continue };
-            boxes.push([p.right() - FOLD_R, p.line_y() - FOLD_R, 2.0 * FOLD_R, 2.0 * FOLD_R]);
+            let [cx, cy] = fold_dot(&p);
+            boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
             if folded(i) {
                 boxes.push(pill(t.nodes[i].end - i - 1, p, font).1);
             }
