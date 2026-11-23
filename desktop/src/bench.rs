@@ -653,7 +653,7 @@ fn bench_map_45_pan_zoom() {
         let mut out = (0u64, None, ([0f32; 2], 1f32), 0);
         rt.update_if(|s, _| {
             let cam = s.map_camera();
-            let mounted = s.map_mounted(cam);
+            let mounted = s.map_mounted();
             let mut h = std::collections::hash_map::DefaultHasher::new();
             (&mounted, crate::map_app::hit_bucket(cam.1), cam.1 < crate::map_app::LITE_ZOOM).hash(&mut h);
             out = (h.finish(), Some(s.map_laid()), cam, mounted.0.len());

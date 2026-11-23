@@ -146,6 +146,7 @@ fn main() {
         .chrome(rune::Chrome { full_size_content: true, traffic_lights: Some((14.0, 13.0)), drag_regions: true })
         .titlebar(rune::Titlebar::new(ui::titlebar::BAR_H))
         .on_close(|s: &mut App, _tx| s.flush_all())
+        .on_touchpad_hold(App::touchpad_hold)
         .run();
 }
 

@@ -149,7 +149,7 @@ pub(super) fn canvas(v: V) -> El {
     let drawn = s.map_drawn();
     let l = drawn.laid.clone();
     let cam = s.map_camera();
-    let (nodes, links) = s.map_mounted(cam);
+    let (nodes, links) = s.map_mounted();
     let sel = s.map_selected();
     let view = s.map_view();
     let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));

@@ -208,3 +208,41 @@ fn a_sideways_swipe_throws_a_wide_code_block() {
     assert!((travel - THROW_2400).abs() < 1.0, "it coasts v²/2a sideways: {travel}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// MAP-033: fingers landing stop the map's coast where it is, as they stop the page.
+#[test]
+fn fingers_landing_stop_the_map() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("quire-throw-map-hold-{}", std::process::id()));
+    let text = (1..=200).map(|i| format!("- item {i}\n")).collect::<String>();
+    let (mut rt, _) = open(&dir, &format!("# Map\n\n{text}"), Mode::Preview);
+    rt.on_touchpad_hold = Some(App::touchpad_hold);
+    rt.update(|s, tx| s.enter_map(tx));
+    for _ in 0..30 {
+        rt.frame(DT);
+    }
+    let at = rt.find("map-canvas").expect("the canvas is drawn");
+    rt.pointer_move(at.0, at.1);
+    rt.frame(DT);
+    let pan = |rt: &mut Runtime<App>| {
+        let mut y = 0.0;
+        rt.update_if(|s, _| {
+            y = s.map_camera().0[1];
+            false
+        });
+        y
+    };
+    let start = pan(&mut rt);
+    let lift = swipe(&mut rt, at, (0.0, -20.0), 8, 10.0, 0.008, true);
+    for _ in 0..10 {
+        rt.frame(DT);
+    }
+    rt.touchpad_hold(Some(lift + 10.0 * DT));
+    let held = pan(&mut rt);
+    assert!(start - held > 160.0 + 100.0, "it was coasting: {start} to {held}");
+    for _ in 0..60 {
+        rt.frame(DT);
+    }
+    assert_eq!(pan(&mut rt), held, "it stops where the fingers landed");
+    let _ = std::fs::remove_dir_all(&dir);
+}

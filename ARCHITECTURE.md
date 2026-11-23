@@ -83,8 +83,10 @@ Map mode is the third value of `App::mode`, beside Source and Preview. Its canva
 tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`), plus a quiet bottom-right zoom HUD
 (`map-zoom-hud`, painted in `doc-area` above `toast-band`). The view builds only the nodes,
 links and fold controls (hover-only when expanded, snug `+N` pill when folded) that meet the
-canvas and 160 points around it (`App::map_mounted`). A pan or zoom sets the live values, and
-runs the view only when that set of nodes, a detail threshold (`LITE_ZOOM` `0.35`,
+tab's mount (`App::map_mounted`, `App::map_region`): a world rectangle kept while it still holds
+the canvas and 160 points around it, and made again 640 points past the canvas when a pan leaves
+it (only the 160 points after a zoom, so a zoom out never mounts hundreds of nodes). A pan or
+zoom sets the live values, and runs the view only when that mount, a detail threshold (`LITE_ZOOM` `0.35`,
 `NO_HOVER_ZOOM` `0.25`, `PLAIN_LABEL_ZOOM` `0.20`), or the zoom's power of two changes
 (`App::map_move`, `Tx::live_only`). Each node's inner body is a translation-invariant
 `rune::memo`, so a view that does run builds again only the nodes whose label, fold or
@@ -579,8 +581,8 @@ Desktop:
   timestamped touchpad frames to check Rune's fling against Chrome's numbers (RD-27).
 - `src/bench.rs` holds the budgets as ignored tests: the reader scroll (VER-32), typing
   latency (WR-224), and the map's pan, zoom and inline edit on the 2,000-node `map_2000`
-  (MAP-045), which also checks that a pan or zoom frame runs the view only when the mounted
-  set changes and never lays the map out again. Run them on a release build with
+  (MAP-045), which also checks that a pan or zoom frame runs the view only when the mount
+  changes and never lays the map out again. Run them on a release build with
   `cargo test --release bench -- --ignored --nocapture --test-threads 1`; add
   `--features profile` for Rune's view, commit, layout, text and paint split.
 - `cargo run -- --snap shot.png` renders one frame without a window. `--scene` picks a scene

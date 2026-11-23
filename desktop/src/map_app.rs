@@ -21,8 +21,14 @@ use crate::page;
 
 pub const ZOOM_MIN: f32 = 0.1;
 pub const ZOOM_MAX: f32 = 4.0;
-/// How far past the canvas's edges nodes stay mounted (MAP-045).
+/// How far past the canvas's edges nodes are always mounted (MAP-045).
 pub const OVERSCAN: f32 = 160.0;
+/// How far past the canvas's edges a fresh mount reaches, in screen points. A pan keeps the
+/// mount until the canvas and its overscan leave it, so it runs the view once per
+/// `REACH - OVERSCAN` points instead of each time a node crosses the edge.
+const REACH: f32 = 640.0;
+/// A mount outlives a zoom in by at most this factor, past which it holds too many nodes.
+const MOUNT_ZOOM: f32 = 1.5;
 /// Below this zoom a card draws as its bare box (MAP-045).
 pub const LITE_ZOOM: f32 = 0.35;
 /// Below this zoom node hover animations are skipped (rows are < 6 px tall).
@@ -63,6 +69,9 @@ pub struct MapView {
     pub selected: NodeId,
     /// The camera has been placed once (MAP-065).
     pub placed: bool,
+    /// The world rectangle `[x0, y0, x1, y1]` the view mounts nodes in, and the zoom it was
+    /// made at (`App::map_region`).
+    mount: std::cell::Cell<Option<([f32; 4], f32)>>,
 }
 
 impl MapView {
@@ -338,7 +347,7 @@ impl App {
         let a = self.active.clone()?;
         if !self.map.views.contains_key(&a) {
             let t = self.map_tree();
-            let v = MapView { pan: [0.0, 0.0], zoom: 1.0, live_pan: Live::new([0.0, 0.0]), live_zoom: Live::new(1.0), folded: t.initial_folds().into_iter().collect(), fold_ver: 0, selected: t.root().id, placed: false };
+            let v = MapView { pan: [0.0, 0.0], zoom: 1.0, live_pan: Live::new([0.0, 0.0]), live_zoom: Live::new(1.0), folded: t.initial_folds().into_iter().collect(), fold_ver: 0, selected: t.root().id, placed: false, mount: Default::default() };
             self.map.views.insert(a.clone(), v);
         }
         self.map.views.get_mut(&a)
@@ -478,14 +487,37 @@ impl App {
         self.map.glide.as_ref().map_or_else(|| self.map_camera().1, |g| g.to.1)
     }
 
-    /// The nodes and links the view mounts at camera `cam`: whatever meets the canvas and its
-    /// overscan. Links are by child.
-    pub fn map_mounted(&self, cam: ([f32; 2], f32)) -> (Vec<usize>, Vec<usize>) {
+    /// The world rectangle the view mounts nodes in: the last one while it still holds the
+    /// canvas and its overscan and the camera has not zoomed far into it, else a fresh one that
+    /// reaches `REACH` past the canvas when a pan left it. After a zoom it mounts only the
+    /// overscan: a zoom outgrows any mount within a few steps, and a wide mount at low zoom
+    /// holds hundreds of nodes.
+    pub fn map_region(&self) -> [f32; 4] {
+        let ([px, py], z) = self.map_camera();
+        let [w, h] = self.map_size();
+        let past = |m: f32| [(-px - m) / z, (-py - m) / z, (w - px + m) / z, (h - py + m) / z];
+        let need = past(OVERSCAN);
+        let Some(v) = self.map_view() else { return need };
+        if let Some((r, at)) = v.mount.get()
+            && r[0] <= need[0]
+            && r[1] <= need[1]
+            && r[2] >= need[2]
+            && r[3] >= need[3]
+            && z <= at * MOUNT_ZOOM
+        {
+            return r;
+        }
+        let zoomed = v.mount.get().is_some_and(|(_, at)| z != at);
+        let r = if zoomed { need } else { past(REACH) };
+        v.mount.set(Some((r, z)));
+        r
+    }
+
+    /// The nodes and links the view mounts: whatever meets `map_region`. Links are by child.
+    pub fn map_mounted(&self) -> (Vec<usize>, Vec<usize>) {
         let t = self.map_tree();
         let l = self.map_drawn().laid.clone();
-        let ([px, py], z) = cam;
-        let [w, h] = self.map_size();
-        let (x0, y0, x1, y1) = ((-px - OVERSCAN) / z, (-py - OVERSCAN) / z, (w - px + OVERSCAN) / z, (h - py + OVERSCAN) / z);
+        let [x0, y0, x1, y1] = self.map_region();
         let meets = |a0: f32, b0: f32, a1: f32, b1: f32| a1 >= x0 && a0 <= x1 && b1 >= y0 && b0 <= y1;
         let mut nodes = Vec::new();
         let mut links = Vec::new();
@@ -525,9 +557,8 @@ impl App {
 
     fn map_signature(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        let cam = self.map_camera();
         let dz = self.map_detail_zoom();
-        self.map_mounted(cam).hash(&mut h);
+        self.map_region().map(f32::to_bits).hash(&mut h);
         hit_bucket(dz).hash(&mut h);
         (dz < LITE_ZOOM).hash(&mut h);
         (dz < NO_HOVER_ZOOM).hash(&mut h);
@@ -627,6 +658,11 @@ impl App {
         } else {
             self.map.throw.stepped();
         }
+    }
+
+    /// A trackpad's fingers landed: the map's coast stops where it is, as Rune's flings do.
+    pub fn touchpad_hold(&mut self) {
+        self.map.throw.stop();
     }
 
     /// Scales the camera by `f` about canvas point `(x, y)`: the world point under it stays.
