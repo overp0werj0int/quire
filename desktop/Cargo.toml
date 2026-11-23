@@ -19,14 +19,16 @@ path = "src/main.rs"
 # bar), a right-click outside a modal closing it, a long field's layout kept while another screen
 # shows (the editor back from the preview), the isolated layers' pipelines made on a thread
 # before the first fade needs them, Phosphor-style pan cursors for middle-click autoscroll,
-# caret following after `on_input_key` edits, and the app told when trackpad fingers land (the
-# map stops its own coast there).
+# caret following after `on_input_key` edits, the app told when trackpad fingers land (the map
+# stops its own coast there), and a GPU used even when its Mesa driver reports no Vulkan
+# conformance (Asahi's git builds do; wgpu hid them and windows drew on lavapipe, the CPU),
+# with a warning when a window still draws on a software adapter though the machine has a GPU.
 # Four earlier fork commits went at that merge because upstream now does their work: highlights
 # on their own paragraph, a keyed highlight found in a by-paragraph field, letters coloured
 # under a mark on an indented line, and the by-paragraph span lookup and blank-line fix.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -41,7 +43,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -55,17 +57,17 @@ embed-resource = "3"
 # (`accesskit_consumer 0.39.2` panics at `text.rs:1533` on the first keystroke in an empty
 # `text_input`). Keep `accessibility` off on Linux until Rune guards or patches Linux AT-SPI.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e", default-features = false, features = ["accessibility"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9", default-features = false, features = ["accessibility"] }
 
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9" }
 # Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "9bb10a375fd599fe788a8e65608b207bea77cf8e" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "1b082da8aeb6c4b8a59bf59047ec23d9890079c9" }
 
 [profile.dev]
 opt-level = 1
