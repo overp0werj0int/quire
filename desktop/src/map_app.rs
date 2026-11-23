@@ -1054,7 +1054,7 @@ impl App {
     /// A tab shown on the map for the first time gets its first camera once the canvas has a
     /// size. The canvas reports its size only when it changes, so a note opened while the map
     /// shows is placed from `poll_map`.
-    fn place_due(&mut self) -> bool {
+    pub(crate) fn place_due(&mut self) -> bool {
         let due = self.mode == Mode::Map && self.map.size.get()[0] > 0.0 && !self.active_locked() && self.map_view_mut().is_some_and(|v| !v.placed);
         if due {
             self.place_camera();

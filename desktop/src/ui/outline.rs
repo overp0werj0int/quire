@@ -90,7 +90,7 @@ pub fn outline(v: V) -> El {
             on_map.flatten()
         };
         let min_lv = shown.iter().map(|&i| heads[i].level).min().unwrap_or(1);
-        let mut contents = lists::list(col().w_full(), "list");
+        let mut contents = lists::list(col().w_full().child_exit(rune::Transition::none()), "list");
         for (n, &i) in shown.iter().enumerate() {
             let h = &heads[i];
             let on = cur == Some(n);
@@ -117,7 +117,7 @@ pub fn outline(v: V) -> El {
         }
         contents
     });
-    let mut list = col().key("outline-list").w_full().pb(12.0).child(section_caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP)).child(contents);
+    let mut list = col().key("outline-list").w_full().pb(12.0).child_exit(rune::Transition::none()).child(section_caption("Contents", &c).pl(panel::TEXT_X).pt(panel::CAPTION_Y).pb(panel::CAPTION_GAP)).child(contents);
     if shown.is_empty() {
         list = list.child(text("No headings in this note.").font(styles::nav(panel::BODY_SMALL, false)).color(c.faint).pl(panel::TEXT_X));
     }

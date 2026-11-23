@@ -247,6 +247,16 @@ pub struct App {
     /// Folder mode's sidebar setting, kept while Note mode collapses the sidebar, so Note mode
     /// never changes what Folder mode opens with.
     folder_left: Option<bool>,
+    /// Monotonic revision bumped whenever the active tab changes to a different note, keying the
+    /// document stage (`tab-page:{tab_gen}`) so tab switches slide cleanly from the side without
+    /// triggering on mode switches, renames, or edits.
+    pub(crate) tab_gen: u64,
+    /// Horizontal slide direction for the latest tab switch: `+1` enters from the trailing
+    /// (right) side, `-1` enters from the leading (left) side, `0` disables the slide.
+    pub(crate) tab_slide: i8,
+    /// True after an in-tab mode switch (`Source`/`Preview`/`Map`) so mode content plays `WR-109`
+    /// `swap()` fade, and false on a tab switch so the sliding page mounts at full 100% opacity.
+    pub(crate) mode_swapped: bool,
 }
 
 /// Inputs that determine whether Source and Command Palette text layouts are already pre-warmed.
@@ -411,6 +421,9 @@ pub fn init() -> App {
         reader: Default::default(),
         wstate: Default::default(),
         map: Default::default(),
+        tab_gen: 0,
+        tab_slide: 0,
+        mode_swapped: false,
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -980,6 +993,7 @@ impl App {
         if self.note_path().as_ref() == Some(&file) {
             return true;
         }
+        let old_idx = self.note_path().and_then(|cur| self.notes.iter().position(|n| n == &cur));
         self.park();
         let mut parked = self.parked.remove(&file);
         if parked.is_some() {
@@ -990,14 +1004,21 @@ impl App {
             Ok(v) => {
                 let new = !self.notes.contains(&file);
                 if new {
-                    self.notes.push(file);
+                    self.notes.push(file.clone());
                 }
+                let new_idx = self.notes.iter().position(|n| n == &file);
                 // After `enter`, which keeps Folder mode's mode when Note mode starts.
                 self.enter(v);
                 if new {
                     self.mode = Mode::Preview;
                     self.want_editor_focus = false;
                 }
+                let dir = match (old_idx, new_idx) {
+                    (Some(a), Some(b)) if b < a => -1,
+                    (Some(_), _) => 1,
+                    (None, _) => 0,
+                };
+                self.bump_tab(dir);
                 let rel = self.active.clone().unwrap_or_default();
                 // The map's camera and folds hold even when the text changed meanwhile.
                 if let Some(m) = parked.as_mut().and_then(|p| p.map.take()) {
@@ -1011,6 +1032,9 @@ impl App {
                         e.focused = self.mode == Mode::Source;
                         self.edits.insert(rel, e);
                     }
+                }
+                if self.mode == Mode::Map {
+                    self.place_due();
                 }
                 true
             }
@@ -1051,10 +1075,12 @@ impl App {
         if !shown {
             return;
         }
-        while let Some(next) = crate::sidebar::next_active(i, self.notes.len()).map(|n| self.notes[n].clone()) {
+        while let Some(next_i) = crate::sidebar::next_active(i, self.notes.len()) {
+            let next = self.notes[next_i].clone();
             if self.open_note(&next) {
                 // Showing the neighbour parked the closed note.
                 self.parked.remove(file);
+                self.tab_slide = if next_i < i { -1 } else { 1 };
                 return;
             }
             self.notes.retain(|n| *n != next);
@@ -1064,6 +1090,7 @@ impl App {
         self.edits.clear();
         self.unlocked.clear();
         self.active = None;
+        self.bump_tab(0);
         self.focus = false;
     }
 
@@ -1142,6 +1169,7 @@ impl App {
         };
         self.tabs = ses.tabs.into_iter().filter(|p| v.files().contains_key(p)).collect();
         self.active = ses.active.filter(|a| v.files().contains_key(a)).or_else(|| self.tabs.first().cloned());
+        self.tab_slide = 0;
         self.recent = ses.recent.into_iter().filter(|p| v.files().contains_key(p)).collect();
         if self.recent.is_empty() {
             self.recent = self.tabs.clone();
@@ -1441,16 +1469,32 @@ impl App {
         }
     }
 
+    fn bump_tab(&mut self, dir: i8) {
+        self.tab_gen = self.tab_gen.wrapping_add(1);
+        self.tab_slide = dir;
+        self.mode_swapped = false;
+    }
+
     pub fn open_file(&mut self, path: &str, sel: Option<Sel>, tx: &mut Tx) {
         if self.files().get(path).is_none() {
             return;
         }
+        let old_idx = self.active.as_ref().and_then(|a| self.tabs.iter().position(|t| t == a));
         if !self.tabs.iter().any(|t| t == path) {
             self.tabs.push(path.to_string());
             self.reorder = None;
         }
+        let new_idx = self.tabs.iter().position(|t| t == path);
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
+        if changed {
+            let dir = match (old_idx, new_idx) {
+                (Some(a), Some(b)) if b < a => -1,
+                (Some(_), _) => 1,
+                (None, _) => 0,
+            };
+            self.bump_tab(dir);
+        }
         self.expand_ancestors(path);
         self.tree_reveal = Some(path.to_string());
         self.recent.retain(|x| x != path);
@@ -1461,6 +1505,9 @@ impl App {
             self.mode = Mode::Source;
         }
         self.ensure_edit();
+        if changed && self.mode == Mode::Map {
+            self.place_due();
+        }
         if let Some(s) = sel {
             if let Some(e) = self.cur_edit_opt() {
                 let n = e.text.len();
@@ -1489,12 +1536,21 @@ impl App {
         // A closed note locks again.
         self.unlocked.remove(p);
         if self.active.as_deref() == Some(p) {
-            self.active = crate::sidebar::next_active(i, self.tabs.len()).map(|n| self.tabs[n].clone());
+            let next = crate::sidebar::next_active(i, self.tabs.len());
+            self.active = next.map(|n| self.tabs[n].clone());
+            self.bump_tab(match next {
+                Some(n) if n < i => -1,
+                Some(_) => 1,
+                None => 0,
+            });
             if self.active.is_none() {
                 self.focus = false;
             }
             // The note that shows now has its editor, so its text shows at once.
             self.ensure_edit();
+            if self.mode == Mode::Map {
+                self.place_due();
+            }
         }
         self.renaming = None;
         self.persist_later();
@@ -1556,6 +1612,7 @@ impl App {
         let cur = self.shelved().and_then(|on| shelf.iter().position(|t| t == &on)).unwrap_or(0);
         let next = if forward { (cur + 1) % shelf.len() } else { (cur + shelf.len() - 1) % shelf.len() };
         self.activate_shelved(&shelf[next], tx);
+        self.tab_slide = if forward { 1 } else { -1 };
     }
 
     /// Moves the shelf's tab at `from` to `to`, both places among the tabs it shows (SB-21,
@@ -1798,6 +1855,7 @@ impl App {
         if self.active.is_none() || self.mode == to {
             return;
         }
+        self.mode_swapped = true;
         if self.mode == Mode::Map {
             self.leave_map(to, tx);
         } else if to == Mode::Map {

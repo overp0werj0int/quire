@@ -1543,6 +1543,83 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Tab switching slides the incoming page cleanly from the side on a fast critically damped
+    /// curve at full opacity, edge-to-edge with the outgoing tab (zero blank-screen gap, zero
+    /// double-exposure), reversing direction on backward switches and landing instantly under
+    /// reduced motion.
+    #[test]
+    fn tab_switch_slides_directionally_without_blank_flash() {
+        use crate::bench::DT;
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-tab-slide-{}", std::process::id()));
+        let mut rt = vault(
+            &dir,
+            &[("a.md", "# Alpha\n\nFirst tab content.\n"), ("b.md", "# Beta\n\nSecond tab content.\n")],
+            crate::watch::EVERY,
+        );
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, tx| {
+            s.mode = crate::app::Mode::Preview;
+            s.open_file("a.md", None, tx);
+            s.open_file("b.md", None, tx);
+            s.open_file("a.md", None, tx);
+        });
+        for _ in 0..40 {
+            rt.frame(DT);
+        }
+        let stage_x = rt.presented("tab-stage").expect("tab-stage").0[0];
+        let stage_w = rt.presented("tab-stage").expect("tab-stage").0[2];
+
+        // Forward switch (a.md -> b.md via Ctrl+Tab): incoming slides in from right, outgoing leaves left.
+        let ctrl_tab = rune::KeyEvent { key: rune::Key::Tab, mods: rune::Mods { ctrl: true, cmd: !cfg!(target_os = "macos"), ..rune::Mods::default() } };
+        let ctrl_shift_tab = rune::KeyEvent { key: rune::Key::Tab, mods: rune::Mods { ctrl: true, cmd: !cfg!(target_os = "macos"), shift: true, ..rune::Mods::default() } };
+        let _ = rt.key(ctrl_tab.clone());
+        let mut saw_fwd_slide = false;
+        let mut prev_in_x = f32::INFINITY;
+        for i in 1..=20 {
+            rt.frame(DT);
+            let els = rt.elements();
+            let incoming = els.iter().find(|e| e.key.as_deref().is_some_and(|k| k.starts_with("tab-page:")) && !e.exiting).expect("incoming tab-page");
+            assert!(incoming.opacity >= 0.99, "frame {i}: incoming tab-page must stay full opacity, got {}", incoming.opacity);
+            assert!(incoming.rect[0] <= prev_in_x + 0.1, "frame {i}: incoming x must move monotonically left toward target");
+            prev_in_x = incoming.rect[0];
+            if let Some(exiting) = els.iter().find(|e| e.key.as_deref().is_some_and(|k| k.starts_with("tab-page:")) && e.exiting) {
+                if incoming.rect[0] > stage_x + 20.0 {
+                    saw_fwd_slide = true;
+                    assert!(exiting.rect[0] < stage_x - 20.0, "frame {i}: outgoing tab should exit left ({})", exiting.rect[0]);
+                    let seam = (exiting.rect[0] + stage_w - incoming.rect[0]).abs();
+                    assert!(seam < 2.0, "frame {i}: outgoing/incoming seam must stay gapless, got {seam}");
+                }
+            }
+        }
+        assert!(saw_fwd_slide, "forward tab switch should slide in from the right");
+        assert!((prev_in_x - stage_x).abs() < 2.0, "forward tab slide should settle cleanly by ~330 ms");
+
+        // Backward switch (b.md -> a.md via Ctrl+Shift+Tab): incoming slides in from left, outgoing leaves right.
+        let _ = rt.key(ctrl_shift_tab);
+        let mut saw_bwd_slide = false;
+        for i in 1..=15 {
+            rt.frame(DT);
+            let els = rt.elements();
+            let incoming = els.iter().find(|e| e.key.as_deref().is_some_and(|k| k.starts_with("tab-page:")) && !e.exiting).expect("incoming tab-page");
+            assert!(incoming.opacity >= 0.99, "bwd frame {i}: incoming tab-page full opacity");
+            if incoming.rect[0] < stage_x - 20.0 {
+                saw_bwd_slide = true;
+            }
+        }
+        assert!(saw_bwd_slide, "backward tab switch should slide in from the left");
+
+        // Reduced motion lands at once with zero side travel.
+        rt.set_system_reduced_motion(true);
+        let _ = rt.key(ctrl_tab);
+        rt.frame(DT);
+        let els = rt.elements();
+        let incoming = els.iter().find(|e| e.key.as_deref().is_some_and(|k| k.starts_with("tab-page:")) && !e.exiting).expect("incoming tab-page");
+        assert!((incoming.rect[0] - stage_x).abs() < 0.5, "reduced motion lands immediately");
+        assert!(!els.iter().any(|e| e.key.as_deref().is_some_and(|k| k.starts_with("tab-page:")) && e.exiting), "reduced motion has no exiting tab-page");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// PAGE-84: under reduced motion the mode switch and the sidebar show and hide at once, with
     /// no frame mid-fade.
     #[test]

@@ -113,6 +113,24 @@ pub(crate) fn swap() -> rune::Transition {
 /// The opacity a swapped-in element starts at.
 pub(crate) const SWAP_FROM: f32 = 0.4;
 
+/// Fast, directional side-slide transition for switching note tabs (`dir > 0` enters from the
+/// trailing/right edge while the previous tab exits through the leading/left edge; `dir < 0`
+/// reverses it). Both edges share one critically damped 180 ms ease-out spring so the two pages
+/// glide edge-to-edge with full incoming opacity, zero gap, and no blank-screen flash.
+pub(crate) fn tab_transition(dir: i8) -> (rune::Transition, rune::Transition) {
+    if dir == 0 {
+        return (rune::Transition::none(), rune::Transition::none());
+    }
+    let enter_edge = if dir > 0 { rune::Edge::Trailing } else { rune::Edge::Leading };
+    let exit_edge = enter_edge.opposite();
+    let spring = rune::Spring::new(0.18, 0.0);
+    let springs = rune::SpringPair::new(spring, spring);
+    let mut enter = rune::Transition::move_edge(enter_edge).springs(springs);
+    enter.removal = rune::Effect { offset_fraction: exit_edge.direction(), ..rune::Effect::IDENTITY };
+    let exit = rune::Transition::move_edge(exit_edge).springs(springs);
+    (enter, exit)
+}
+
 /// Where a text's baseline sits below its box top, for CSS `align-items: baseline` rows.
 pub fn baseline(style: TextStyle) -> f32 {
     let (asc, desc) = theme::metrics(style.family);

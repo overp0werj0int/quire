@@ -77,6 +77,26 @@ pub fn body(v: V) -> El {
     // `[0, 0]` origin whether or not Find is open (`THUMBFIX`).
     let mapping = v.has_doc() && super::mapping(v.s);
     let page = if mapping { super::map::canvas(v) } else { doc_scroll(v) };
+    let (tab_enter, tab_exit) = super::tab_transition(v.s.tab_slide);
+    let tab_page = col()
+        .key(format!("tab-page:{}", v.s.tab_gen))
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .w_full()
+        .fill(p.bg)
+        .transition(tab_enter)
+        .child_exit(rune::Transition::none())
+        .child(page);
+    let stage = col()
+        .key("tab-stage")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .w_full()
+        .clip_soft(0.0)
+        .child_exit(tab_exit)
+        .child(tab_page);
     let mut view = col()
         .key("doc-view")
         .grow(1.0)
@@ -84,7 +104,7 @@ pub fn body(v: V) -> El {
         .min_h(0.0)
         .w_full()
         .child_exit(rune::Transition::none())
-        .child(page);
+        .child(stage);
     if reading {
         // The reader has the writer's fades in zen mode, where no bar sits over the page.
         if focus {
@@ -214,8 +234,9 @@ fn doc_scroll(v: V) -> El {
         if reader || writer {
             column = column.pl(page.gutter);
         }
+        let mode_t = if s.mode_swapped { super::swap() } else { rune::Transition::none() };
         if bar {
-            column = column.child(toolbar(v).transition(super::swap()));
+            column = column.child(toolbar(v).transition(mode_t));
             // A find bar too wide to sit beside the toolbar takes its own row under it, and the
             // text starts below that row.
             if find_row(v) {
@@ -225,7 +246,8 @@ fn doc_scroll(v: V) -> El {
         }
         // On a mode switch the old text and toolbar go at once and the new ones fade in from 40%
         // (WR-109), so the two texts, at their different line pitches, never show together, and
-        // the page never looks empty.
+        // the page never looks empty. On a tab switch `tab-page` carries the side slide at full
+        // opacity so incoming content never dims mid-slide.
         column = column.child(
             if locked {
                 super::lock::panel(v)
@@ -234,7 +256,7 @@ fn doc_scroll(v: V) -> El {
             } else {
                 preview::preview(v).w(page.width)
             }
-            .transition(super::swap()),
+            .transition(mode_t),
         );
         content = content.child(column);
     } else if s.files().is_empty() {

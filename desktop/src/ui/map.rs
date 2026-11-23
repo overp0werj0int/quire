@@ -171,7 +171,7 @@ pub(super) fn canvas(v: V) -> El {
         .key("map-world")
         .pin(Some(-W), Some(-W), None, None)
         .size(2.0 * W, 2.0 * W)
-        .transition(super::swap())
+        .transition(if s.mode_swapped { super::swap() } else { rune::Transition::none() })
         .child_exit(rune::Transition::none());
     if let Some(v) = view {
         world = world.live_offset(&v.live_pan).live_scale(&v.live_zoom);

@@ -70,6 +70,14 @@ flowchart LR
   Tree -->|"closure on &mut App"| App
 ```
 
+The document viewport (`doc-view`) wraps the active note's page inside a clipped `tab-stage`
+whose single keyed child (`tab-page:{tab_gen}`) slides horizontally from the trailing or leading
+edge on a critically damped 180 ms ease-out spring (`ui::tab_transition`) whenever the active
+tab changes (`App::tab_gen`, `App::tab_slide`), keeping incoming content at full opacity and
+placing new Map tabs synchronously (`App::place_due`) so tab switches never flash a blank screen
+or double-expose text. In-tab mode switches (`Source`, `Preview`, `Map`) keep the same
+`tab-page` key and play the `WR-109` 160 ms fade (`ui::swap`).
+
 Map mode is the third value of `App::mode`, beside Source and Preview. Its canvas
 (`ui::map::canvas`) holds one world element that draws the camera from two live values per
 tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`), plus a quiet bottom-right zoom HUD
