@@ -19,6 +19,7 @@ pub fn mod_click() -> String {
 /// does not take them. Each context on top of the window gets the key in turn (KEY-02), and
 /// the first action with a handler runs.
 pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    s.key_moved = true;
     s.touch_activity();
     if esc_again(ev, tx) {
         return true;

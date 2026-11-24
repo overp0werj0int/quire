@@ -759,17 +759,29 @@ impl App {
     // ---------- Find & Replace in Source (`Ctrl+H`) ----------
 
     /// `Ctrl+H` in Source mode: opens the Find bar with the Replace row expanded, focusing
-    /// `find-input` (so typing immediately searches) and seeding any single-line selection.
+    /// `replace-input` directly when `find-input` already has a non-empty query (or was seeded from
+    /// a single-line selection), and `find-input` otherwise.
     pub fn writer_replace(&mut self, tx: &mut Tx) {
         if self.mode != Mode::Source || self.active.is_none() || self.active_locked() {
             return;
         }
         let was_open = self.reader.find.open;
         let had_replace = self.reader.find.replace_open;
+        let seeded = self.cur_edit_opt().is_some_and(|e| {
+            let (a, b) = (e.anchor.min(e.focus), e.anchor.max(e.focus));
+            a < b && !e.text[a..b].contains('\n')
+        });
         self.reader.find.replace_open = true;
         self.writer_find(tx);
         if was_open && !had_replace {
             self.adjust_find_slot(crate::ui::reader::FIND_REPLACE_H, tx);
+        }
+        if (was_open || seeded) && !self.reader.find.q.text.is_empty() {
+            let n = self.reader.find.replace.text.len();
+            self.reader.find.replace.set_selection(0, n);
+            self.reader.find.replace.focused = true;
+            self.reader.find.q.focused = false;
+            tx.focus("replace-input", false);
         }
     }
 
@@ -862,6 +874,9 @@ impl App {
         }
         self.after_edit();
         self.reader.find.cur = 0;
+        self.reader.find.replace.focused = false;
+        self.reader.find.q.focused = false;
+        self.focus_editor(tx);
         self.toast(&format!("Replaced {} {}", count, if count == 1 { "match" } else { "matches" }), tx);
     }
 
@@ -1269,6 +1284,43 @@ mod tests {
                 false
             });
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn source_heading_wikilink_jumps_to_target_line() {
+        let dir = std::env::temp_dir().join(format!("quire-src-hlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Alpha.md"), "# Alpha\n\nSee [[Beta#Details]] and [[#Section Two]].\n\n## Section Two\n\nBody.\n").unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta\n\nIntro line.\n\n## Details\n\nTarget body.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Alpha.md", None, tx);
+            s.mode = crate::app::Mode::Source;
+            s.open_link("#Section Two", tx);
+        });
+        let same_line = {
+            let s = &rt.state;
+            let e = s.edits.get("Alpha.md").unwrap();
+            crate::md::line_col(&e.text, e.focus).0
+        };
+        assert_eq!(same_line, 4, "[[#Section Two]] in Source must jump to line 4");
+
+        rt.update(|s, tx| {
+            s.open_link("Beta#Details", tx);
+        });
+        let (active, cross_line) = {
+            let s = &rt.state;
+            let a = s.active.clone().unwrap();
+            let e = s.edits.get(&a).unwrap();
+            (a, crate::md::line_col(&e.text, e.focus).0)
+        };
+        assert_eq!(active, "Beta.md");
+        assert_eq!(cross_line, 4, "[[Beta#Details]] in Source must open Beta.md and jump to ## Details");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

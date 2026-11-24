@@ -96,23 +96,26 @@ fn wiki(text: &str, s: usize, e: usize) -> Edit {
     Edit { start: s, end: e, insert: format!("[[{}]]", &text[s..e]), sel: (s + 2, e + 2) }
 }
 
-/// The start of a line's text after a list marker, a task box or a quote mark.
-fn prefix(line: &str) -> (&str, usize) {
-    let t = line;
+/// Leading indentation (spaces/tabs) and the start of a line's text after a list marker, a task
+/// box, a quote mark or a heading's `#` run: `(indent, marker, end_of_marker)`.
+fn prefix(line: &str) -> (&str, &str, usize) {
+    let lead = line.bytes().take_while(|&c| c == b' ' || c == b'\t').count();
+    let indent = &line[..lead];
+    let t = &line[lead..];
     for p in ["- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> "] {
         if t.starts_with(p) {
-            return (p, p.len());
+            return (indent, p, lead + p.len());
         }
     }
     let digits = t.bytes().take_while(u8::is_ascii_digit).count();
     if digits > 0 && t[digits..].starts_with(". ") {
-        return (&t[..digits + 2], digits + 2);
+        return (indent, &t[..digits + 2], lead + digits + 2);
     }
     let hashes = t.bytes().take_while(|&c| c == b'#').count();
     if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
-        return (&t[..hashes + 1], hashes + 1);
+        return (indent, &t[..hashes + 1], lead + hashes + 1);
     }
-    ("", 0)
+    (indent, "", lead)
 }
 
 fn kind(p: &str) -> Option<Fmt> {
@@ -135,7 +138,7 @@ fn lines(text: &str, s: usize, e: usize, f: Fmt) -> Edit {
     let block: Vec<&str> = text[ls..le].split('\n').collect();
     let many = block.len() > 1;
     let used: Vec<&&str> = block.iter().filter(|l| !many || !l.trim().is_empty()).collect();
-    let all = !used.is_empty() && used.iter().all(|l| kind(prefix(l).0) == Some(f));
+    let all = !used.is_empty() && used.iter().all(|l| kind(prefix(l).1) == Some(f));
     let level = |l: &str| l.bytes().take_while(|&c| c == b'#').count();
     let mut n = 0;
     let out: Vec<String> = block
@@ -144,20 +147,20 @@ fn lines(text: &str, s: usize, e: usize, f: Fmt) -> Edit {
             if many && l.trim().is_empty() {
                 return l.to_string();
             }
-            let (p, len) = prefix(l);
+            let (indent, p, len) = prefix(l);
             let rest = &l[len..];
             match f {
                 Fmt::Heading => {
                     let next = if kind(p) == Some(Fmt::Heading) { (level(p) + 1) % 4 } else { 1 };
                     if next == 0 { rest.to_string() } else { format!("{} {rest}", "#".repeat(next)) }
                 }
-                _ if all => rest.to_string(),
-                Fmt::Bullet => format!("- {rest}"),
-                Fmt::Task => format!("- [ ] {rest}"),
+                _ if all => format!("{indent}{rest}"),
+                Fmt::Bullet => format!("{indent}- {rest}"),
+                Fmt::Task => format!("{indent}- [ ] {rest}"),
                 Fmt::Quote => format!("> {l}"),
                 Fmt::Number => {
                     n += 1;
-                    format!("{n}. {rest}")
+                    format!("{indent}{n}. {rest}")
                 }
                 _ => l.to_string(),
             }
@@ -234,5 +237,16 @@ mod tests {
         assert_eq!(run("- bu|y", Fmt::Task), "- [ ] bu|y");
         assert_eq!(run("|said\nthis|", Fmt::Quote), "|> said\n> this|");
         assert_eq!(run("one\n|two\n|three", Fmt::Bullet), "one\n- |two|\nthree", "a selection that ends at a line start leaves that line");
+    }
+
+    #[test]
+    fn nested_list_toggle_preserves_indentation() {
+        assert_eq!(run("  - nested |bullet", Fmt::Bullet), "  nested |bullet");
+        assert_eq!(run("  nested |bullet", Fmt::Bullet), "  - nested |bullet");
+        assert_eq!(run("    1. deep |item", Fmt::Number), "    deep |item");
+        assert_eq!(run("  - [ ] nested |task", Fmt::Task), "  nested |task");
+        assert_eq!(run("  - nested |item", Fmt::Task), "  - [ ] nested |item");
+        assert_eq!(run("  - nested |item", Fmt::Number), "  1. nested |item");
+        assert_eq!(run("\t- tabbed |item", Fmt::Bullet), "\ttabbed |item");
     }
 }

@@ -1510,15 +1510,15 @@ impl App {
         let a = crate::md::percent_decode(anchor);
         let a = if doc.anchors.contains_key(a.as_str()) { a } else { blocks::slugify(&a) };
         let Some(&i) = doc.anchors.get(a.as_str()) else { return };
-        if self.mode != Mode::Map {
-            return self.land(i, true, tx);
-        }
-        // Every footnote's anchor names the footnotes block; on the map each has its own node.
         let line = match &doc.blocks[i].kind {
             blocks::Kind::Footnotes { items } => items.iter().find(|f| f.anchor == a).map(|f| f.lines.start),
             _ => None,
         };
-        self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx);
+        match self.mode {
+            Mode::Source => self.source_jump(line.unwrap_or(doc.blocks[i].lines.start), tx),
+            Mode::Preview => self.land(i, true, tx),
+            Mode::Map => self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx),
+        }
     }
 }
 

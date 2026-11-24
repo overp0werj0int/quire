@@ -189,8 +189,11 @@ pub struct App {
     mcp_http_failed_port: Option<u16>,
     /// The editor's caret as the last frame saw it: note, anchor, focus, text length.
     last_caret: Option<(String, usize, usize, usize)>,
-    /// A key reached the editor since the last frame.
+    /// A key reached the editor or window since the last frame.
     pub key_moved: bool,
+    /// Rune accessed the editor's `TextEdit` since the last frame (e.g. a pointer click on the
+    /// field, even when the caret stayed at the same offset).
+    pub editor_accessed: bool,
     pub(crate) waker: Option<rune::Waker>,
     pub(crate) watcher: Option<crate::watch::Watcher>,
     /// How often the watcher looks at the folder: 1.5 s, shorter in tests (VER-34).
@@ -421,6 +424,7 @@ pub fn init() -> App {
         mcp_http_failed_port: None,
         last_caret: None,
         key_moved: false,
+        editor_accessed: false,
         waker: None,
         watcher: None,
         watch_every: crate::watch::EVERY,
@@ -918,23 +922,26 @@ impl App {
         any
     }
 
-    /// A text field gives no click event, so a click shows as a caret that moved with no key
-    /// and no text change. With Ctrl (⌘ on macOS) held, that click follows the link under it.
+    /// A text field gives no click event, so a click shows as a caret move or fresh `on_edit`
+    /// access with no key and no text change. With Ctrl (⌘ on macOS) held, that click follows the
+    /// link under the caret, even when the caret was already resting on the link.
     fn check_link_click(&mut self, tx: &mut Tx) -> bool {
+        let accessed = std::mem::take(&mut self.editor_accessed);
+        let key_moved = std::mem::take(&mut self.key_moved);
+        if self.mode != Mode::Source {
+            self.last_caret = None;
+            return false;
+        }
         let Some(a) = self.active.clone() else {
             self.last_caret = None;
             return false;
         };
         let Some(e) = self.edits.get(&a) else { return false };
         let cur = (a.clone(), e.anchor, e.focus, e.text.len());
-        let clicked = self.last_caret.as_ref().is_some_and(|l| l.0 == cur.0 && l.3 == cur.3 && (l.1, l.2) != (cur.1, cur.2))
-            && !self.key_moved
-            && cur.1 == cur.2
-            && e.focused
-            && self.mode == Mode::Source
-            && tx.mods().cmd;
+        let same_doc = self.last_caret.as_ref().is_some_and(|l| l.0 == cur.0 && l.3 == cur.3);
+        let moved = same_doc && self.last_caret.as_ref().is_some_and(|l| (l.1, l.2) != (cur.1, cur.2));
+        let clicked = (moved || (same_doc && accessed)) && !key_moved && cur.1 == cur.2 && e.focused && tx.mods().cmd;
         self.last_caret = Some(cur);
-        self.key_moved = false;
         if clicked {
             crate::ui::follow_link_at_caret(self, tx);
             return true;
@@ -2063,7 +2070,7 @@ impl App {
             Some(p) => {
                 let fresh = self.mode == Mode::Map && self.map.views.get(&p).is_none_or(|v| !v.placed);
                 self.open_file(&p, None, tx);
-                if let Some(f) = frag.filter(|_| self.mode != Mode::Source) {
+                if let Some(f) = frag {
                     // `open_file` gives a map shown for the first time its fitted camera; the
                     // heading's node takes that first placement instead, at 100% (MAP-054).
                     if fresh && let Some(v) = self.map_view_mut() {

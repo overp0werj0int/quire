@@ -244,8 +244,7 @@ pub fn find_bar(v: V) -> El {
                     row()
                         .gap(4.0)
                         .center_y()
-                        .preserve_focus_on_press(true)
-                        .child(rep_btn("replace-one", "Replace", |s, tx| s.replace_one(tx)))
+                        .child(rep_btn("replace-one", "Replace", |s, tx| s.replace_one(tx)).preserve_focus_on_press(true))
                         .child(rep_btn("replace-all", "Replace all", |s, tx| s.replace_all(tx))),
                 ),
         );

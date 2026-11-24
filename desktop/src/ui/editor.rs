@@ -1072,7 +1072,10 @@ fn build_source(v: V, width: f32, room: f32, preparing: bool) -> El {
         .spans(spans)
         .strikes(strikes)
         .text_highlights(marks)
-        .on_edit(|s: &mut App| s.cur_edit())
+        .on_edit(|s: &mut App| {
+            s.editor_accessed = true;
+            s.cur_edit()
+        })
         .on_input_change(|s: &mut App, _: &mut Tx| {
             s.after_edit();
             s.ac_after_edit();

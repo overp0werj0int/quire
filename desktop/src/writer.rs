@@ -487,8 +487,9 @@ fn inline(ln: &str, from: usize, to: usize, e: f32, ink: &Ink, resolves: &dyn Fn
         if embed {
             out.spans.push(Span { color: Some(ink.dim), italic: true, ..sp(i + 2, k) });
         } else {
-            let target = md::link_target(inner);
-            out.spans.push(colored(i + 2, k, if resolves(&target) { ink.link } else { ink.dim }));
+            let (name, frag) = md::wiki_parts(inner);
+            let ok = (name.is_empty() && frag.is_some()) || (!name.is_empty() && resolves(&name));
+            out.spans.push(colored(i + 2, k, if ok { ink.link } else { ink.dim }));
         }
         out.spans.push(faint(a, i + 2));
         out.spans.push(faint(k, k + 2));
@@ -1556,12 +1557,16 @@ pub fn tab(text: &str, a: usize, b: usize) -> Option<Edit> {
     per_line(text, a, b, indent)
 }
 
-/// Shift+Tab (WR-50): a list item with an indent loses up to its step of it. None when no line
-/// changes; the key is consumed either way.
+/// Shift+Tab (WR-50): a list item with an indent loses up to its step of it; indented prose or
+/// code loses one leading tab or up to four leading spaces. None when no line changes; the key is
+/// consumed either way.
 pub fn shift_tab(text: &str, a: usize, b: usize) -> Option<Edit> {
     per_line(text, a, b, |ln| {
-        let l = md::list_line(ln)?;
-        let n = step(&l).min(l.indent);
+        if let Some(l) = md::list_line(ln) {
+            let n = if ln.starts_with('\t') { 1 } else { step(&l).min(l.indent) };
+            return (n > 0).then(|| (ln[n..].to_string(), -(n as isize)));
+        }
+        let n = if ln.starts_with('\t') { 1 } else { ln.bytes().take_while(|&c| c == b' ').count().min(4) };
         (n > 0).then(|| (ln[n..].to_string(), -(n as isize)))
     })
 }
@@ -1933,6 +1938,10 @@ mod tests {
         assert_eq!(run(" - x", 1, shift_tab), Some(("- x".into(), 0)));
         assert_eq!(run("- x", 3, shift_tab), None);
         assert_eq!(run("text", 2, shift_tab), None);
+        assert_eq!(run("    code()", 6, shift_tab), Some(("code()".into(), 2)));
+        assert_eq!(run("  prose", 4, shift_tab), Some(("prose".into(), 2)));
+        assert_eq!(run("\tindented", 3, shift_tab), Some(("indented".into(), 2)));
+        assert_eq!(run("      six", 8, shift_tab), Some(("  six".into(), 4)));
         // A selection indents the list lines it touches (open question, WR-49).
         let e = tab("- a\nb\n- c", 0, 9).unwrap();
         assert_eq!(e.insert, "  - a\nb\n  - c");
@@ -2045,5 +2054,15 @@ mod tests {
         assert_eq!(ac_trigger("## Sub", 3), None);
         assert_eq!(ac_trigger("`[[Be`", 5), None);
         assert_eq!(ac_trigger("```\n[[Be\n```", 8), None);
+    }
+
+    #[test]
+    fn heading_wikilinks_resolve_by_note_or_fragment() {
+        let ink = ink();
+        let ln = "See [[Beta#Details]] and [[#Local]] and [[Missing#Sec]].";
+        let (styled, _) = super::line(ln, false, State::default(), 14.0, &ink, &|name| name == "Beta");
+        assert_eq!(color_at(&styled, ln.find("Beta#Details").unwrap()), Some(ink.link));
+        assert_eq!(color_at(&styled, ln.find("#Local").unwrap()), Some(ink.link));
+        assert_eq!(color_at(&styled, ln.find("Missing#Sec").unwrap()), Some(ink.dim));
     }
 }

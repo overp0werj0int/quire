@@ -121,7 +121,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-153** [quire] [verify: -] writer.bulleted-list (writer, sheet): `Ctrl+Shift+8`. Toggles bulleted list prefixes on the selected lines (WR-222).
 - **KEY-154** [quire] [verify: -] writer.task-list (writer, sheet): `Ctrl+Shift+9`. Toggles task list prefixes on the selected lines (WR-222).
 - **KEY-57** [in] [verify: unit, script] writer.indent (writer, sheet): `Tab`. Indents a list item by its marker's step, else inserts 4 spaces (WR-47, WR-48, WR-49).
-- **KEY-58** [in] [verify: unit, script] writer.outdent (writer, sheet): `Shift+Tab`. Outdents a list item, else does nothing and is consumed (WR-50).
+- **KEY-58** [adapted: 0001] [verify: unit, script] writer.outdent (writer, sheet): `Shift+Tab`. Outdents a list item or indented prose/code line, else does nothing and is consumed (WR-50).
 - **KEY-59** [in] [verify: unit, script] writer.continue-block (writer, sheet): `Enter`. Continues or ends a list item or quote, else inserts a newline (WR-39 to WR-45).
 - **KEY-60** [quire] [verify: -] writer.follow-link (writer): `Ctrl+Enter`. Follows the note link at the caret (WR-46, WR-220).
 - **KEY-61** [quire] [verify: -] writer.follow-link-click (writer): `Ctrl+click`. Mouse-only. Follows the clicked note link (WR-220).

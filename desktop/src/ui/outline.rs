@@ -278,8 +278,15 @@ fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
         .child(label(at, style, c.faint).key("caret-pos"));
     match link_at_caret(doc, pos) {
         Some(CaretLink::Wiki(t)) => {
-            let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
-            r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
+            let (name, frag) = crate::md::wiki_parts(&t);
+            let label = if name.is_empty() {
+                format!("{} to jump to “#{}”", mod_click(), frag.unwrap_or_default())
+            } else if s.names.resolve(&name).is_some() {
+                format!("{} to open “{t}”", mod_click())
+            } else {
+                format!("{} to create “{name}”", mod_click())
+            };
+            r = r.child(text(label).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
         }
         Some(CaretLink::Url(u)) => {
             r = r.child(text(format!("{} to open {u}", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
