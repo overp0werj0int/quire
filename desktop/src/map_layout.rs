@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 use crate::map::{Add, Layout, NodeId, Options, Tree, ROOT};
 pub use crate::map_geom::{Place, line_width};
-use crate::map_geom::{Arrow, Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_R, Rel};
+use crate::map_geom::{Arrow, Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_HIT_BACK, Rel};
 use crate::page::r;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,7 +34,7 @@ impl Metrics {
         let max_w = match o.max_width {
             Some(w) if w <= 0.0 => 1200.0,
             Some(w) => w,
-            None => r(b * if rows { ROW_WRAP } else { 22.0 }),
+            None => r(b * if rows { ROW_WRAP } else { SIDE_WRAP }),
         };
         let level = r(b * 80.0 / 14.0);
         Metrics {
@@ -62,6 +62,8 @@ const ROW_GAP_APART: f32 = 2.6;
 /// siblings is as wide as its labels together, so both are tighter.
 const ROW_LEVEL: f32 = 0.75;
 const ROW_WRAP: f32 = 15.0;
+/// How many body sizes wide a node's text runs before it wraps where branches grow sideways.
+const SIDE_WRAP: f32 = 22.0;
 
 pub struct Laid {
     /// Each node's box by index, None while a fold hides it.
@@ -81,17 +83,17 @@ pub struct Laid {
     pub root_dirs: [Option<Dir>; 2],
 }
 
-/// One stretch of a profile: over `x0..x1` along the branches, the subtree's leading edge
-/// across them and the node it belongs to, and its trailing edge and that node. Named as in a
-/// map that grows right.
+/// One stretch of a profile: over `from..to` along the branches, the subtree's leading edge
+/// across them (towards earlier siblings) and the node it belongs to, and its trailing edge
+/// and that node.
 #[derive(Clone, Copy, Debug)]
 struct Seg {
-    x0: f32,
-    x1: f32,
-    top: f32,
-    top_n: usize,
-    bot: f32,
-    bot_n: usize,
+    from: f32,
+    to: f32,
+    lead: f32,
+    lead_n: usize,
+    trail: f32,
+    trail_n: usize,
 }
 
 /// Lays out the nodes `folded` leaves shown, the way `tree.opts.layout` says. `size` gives a
@@ -187,14 +189,14 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
             let split = (w - 6.0).max(0.0);
             if split > 0.0 {
                 vec![
-                    Seg { x0: 0.0, x1: split, top: 0.0, top_n: v, bot: h, bot_n: v },
-                    Seg { x0: split, x1: col + ext_w, top: pill_top, top_n: v, bot: pill_bot, bot_n: v },
+                    Seg { from: 0.0, to: split, lead: 0.0, lead_n: v, trail: h, trail_n: v },
+                    Seg { from: split, to: col + ext_w, lead: pill_top, lead_n: v, trail: pill_bot, trail_n: v },
                 ]
             } else {
-                vec![Seg { x0: 0.0, x1: col + ext_w, top: pill_top, top_n: v, bot: pill_bot, bot_n: v }]
+                vec![Seg { from: 0.0, to: col + ext_w, lead: pill_top, lead_n: v, trail: pill_bot, trail_n: v }]
             }
         } else {
-            vec![Seg { x0: 0.0, x1: col, top: 0.0, top_n: v, bot: h, bot_n: v }]
+            vec![Seg { from: 0.0, to: col, lead: 0.0, lead_n: v, trail: h, trail_n: v }]
         };
         let kids: &[usize] = if open(v) { &tree.nodes[v].children } else { &[] };
         match split.filter(|_| v == ROOT) {
@@ -399,10 +401,10 @@ impl Laid {
         let [x0, y0, x1, y1] = self.cell[i];
         let (lo, hi, r) = ([x0, y0], [x1, y1], FOLD_DOT_R);
         let (k, fwd) = d.axis();
-        // Along the branches the box starts `FOLD_R` back over the node and grows away from
+        // Along the branches the box starts `FOLD_HIT_BACK` back over the node and grows away from
         // it. Measured outwards, so one rule serves a ring on either end of the axis.
         let s = if fwd { 1.0 } else { -1.0 };
-        let near = (s * c[k] - hit / 2.0).max(s * edge[k] - FOLD_R);
+        let near = (s * c[k] - hit / 2.0).max(s * edge[k] - FOLD_HIT_BACK);
         let far = (near + hit).min(s * if fwd { hi[k] } else { lo[k] }).max(s * c[k] + r);
         let main = if fwd { [near, far] } else { [-far, -near] };
         let j = 1 - k;
@@ -496,7 +498,7 @@ impl Laid {
     /// where the ring is under it.
     pub fn badge_box(&self, [w, h]: [f32; 2], pad_x: f32) -> Option<[f32; 4]> {
         let p = self.at[ROOT]?;
-        let inset = pad_x.max(FOLD_R + 2.0);
+        let inset = pad_x.max(FOLD_HIT_BACK + 2.0);
         let x = match self.layout {
             Layout::Right | Layout::Up | Layout::Down => p.right() - inset - w,
             Layout::Left => p.x + inset,
@@ -523,20 +525,20 @@ impl Laid {
     }
 }
 
-fn shift(p: &[Seg], dx: f32, dy: f32) -> Vec<Seg> {
-    p.iter().map(|s| Seg { x0: s.x0 + dx, x1: s.x1 + dx, top: s.top + dy, bot: s.bot + dy, ..*s }).collect()
+fn shift(p: &[Seg], along: f32, across: f32) -> Vec<Seg> {
+    p.iter().map(|s| Seg { from: s.from + along, to: s.to + along, lead: s.lead + across, trail: s.trail + across, ..*s }).collect()
 }
 
-/// How far down `b` must move to clear `a` wherever their columns overlap.
+/// How far across `b` must move to clear `a` wherever they share a stretch along.
 fn clearance(a: &[Seg], b: &[Seg], gap: &impl Fn(usize, usize) -> f32) -> f32 {
     let mut need = f32::MIN;
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         let (sa, sb) = (a[i], b[j]);
-        if sa.x0.max(sb.x0) < sa.x1.min(sb.x1) {
-            need = need.max(sa.bot + gap(sa.bot_n, sb.top_n) - sb.top);
+        if sa.from.max(sb.from) < sa.to.min(sb.to) {
+            need = need.max(sa.trail + gap(sa.trail_n, sb.lead_n) - sb.lead);
         }
-        if sa.x1 <= sb.x1 {
+        if sa.to <= sb.to {
             i += 1;
         } else {
             j += 1;
@@ -547,32 +549,32 @@ fn clearance(a: &[Seg], b: &[Seg], gap: &impl Fn(usize, usize) -> f32) -> f32 {
 
 /// The profile of `a` and `b` together.
 fn merge(a: &[Seg], b: &[Seg]) -> Vec<Seg> {
-    let mut xs: Vec<f32> = a.iter().chain(b).flat_map(|s| [s.x0, s.x1]).collect();
-    xs.sort_by(f32::total_cmp);
-    xs.dedup();
-    let mut out: Vec<Seg> = Vec::with_capacity(xs.len());
+    let mut cuts: Vec<f32> = a.iter().chain(b).flat_map(|s| [s.from, s.to]).collect();
+    cuts.sort_by(f32::total_cmp);
+    cuts.dedup();
+    let mut out: Vec<Seg> = Vec::with_capacity(cuts.len());
     let (mut i, mut j) = (0, 0);
-    for w in xs.windows(2) {
-        let (x0, x1) = (w[0], w[1]);
-        while i < a.len() && a[i].x1 <= x0 {
+    for w in cuts.windows(2) {
+        let (from, to) = (w[0], w[1]);
+        while i < a.len() && a[i].to <= from {
             i += 1;
         }
-        while j < b.len() && b[j].x1 <= x0 {
+        while j < b.len() && b[j].to <= from {
             j += 1;
         }
-        let sa = a.get(i).filter(|s| s.x0 <= x0);
-        let sb = b.get(j).filter(|s| s.x0 <= x0);
+        let sa = a.get(i).filter(|s| s.from <= from);
+        let sb = b.get(j).filter(|s| s.from <= from);
         let s = match (sa, sb) {
             (Some(sa), Some(sb)) => {
-                let (top, top_n) = if sb.top < sa.top { (sb.top, sb.top_n) } else { (sa.top, sa.top_n) };
-                let (bot, bot_n) = if sb.bot > sa.bot { (sb.bot, sb.bot_n) } else { (sa.bot, sa.bot_n) };
-                Seg { x0, x1, top, top_n, bot, bot_n }
+                let (lead, lead_n) = if sb.lead < sa.lead { (sb.lead, sb.lead_n) } else { (sa.lead, sa.lead_n) };
+                let (trail, trail_n) = if sb.trail > sa.trail { (sb.trail, sb.trail_n) } else { (sa.trail, sa.trail_n) };
+                Seg { from, to, lead, lead_n, trail, trail_n }
             }
-            (Some(s), None) | (None, Some(s)) => Seg { x0, x1, ..*s },
+            (Some(s), None) | (None, Some(s)) => Seg { from, to, ..*s },
             (None, None) => continue,
         };
         match out.last_mut() {
-            Some(l) if l.x1 == x0 && l.top == s.top && l.top_n == s.top_n && l.bot == s.bot && l.bot_n == s.bot_n => l.x1 = x1,
+            Some(l) if l.to == from && l.lead == s.lead && l.lead_n == s.lead_n && l.trail == s.trail && l.trail_n == s.trail_n => l.to = to,
             _ => out.push(s),
         }
     }

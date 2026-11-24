@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 /// Room past a node's growing side for its fold ring and count pill, in world points.
 pub const FOLD_ROOM: f32 = 64.0;
 /// How far a fold ring's hit box may reach back over its node (MAP-041).
-pub const FOLD_R: f32 = 6.0;
+pub const FOLD_HIT_BACK: f32 = 6.0;
 /// An expanded node's fold ring: beside the middle of the node's growing side, just outside
 /// its outline, where its branches leave (MAP-041). Its radius, and the gap between the node
 /// and the ring, wide enough to clear the selection outline.
@@ -220,7 +220,7 @@ impl Place {
     /// Where a menu opened on the node from the keyboard hangs: under it, and under its fold
     /// ring where that is below it.
     pub fn menu_at(&self) -> [f32; 2] {
-        let clear = if self.dir == Dir::Down { FOLD_DOT_GAP + 2.0 * FOLD_DOT_R } else { FOLD_R };
+        let clear = if self.dir == Dir::Down { FOLD_DOT_GAP + 2.0 * FOLD_DOT_R } else { FOLD_HIT_BACK };
         [self.x, self.bottom() + clear + 4.0]
     }
 

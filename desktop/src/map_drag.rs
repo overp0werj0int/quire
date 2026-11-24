@@ -16,7 +16,8 @@ const THRESHOLD: f32 = 6.0;
 const EDGE: f32 = 36.0;
 /// The fastest that band pans, in points a second.
 const EDGE_SPEED: f32 = 480.0;
-/// The least width of a Before or After band, in screen points.
+/// The least a Before or After drop band takes across the target's branches, in screen
+/// points: its height where they grow sideways, its width where they grow down or up.
 const BAND: f32 = 8.0;
 
 /// A press on a node, which turns into a move once the pointer travels.

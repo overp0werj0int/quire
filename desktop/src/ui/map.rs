@@ -19,7 +19,7 @@ use crate::app::App;
 use crate::blocks::Run;
 use crate::map::{Body, Node, NodeKind, ROOT, Tree};
 use crate::map_app::{self, Tier};
-use crate::map_geom::{Branch, FOLD_DOT_R, FOLD_R, Place, line_width};
+use crate::map_geom::{Branch, FOLD_DOT_R, FOLD_HIT_BACK, Place, line_width};
 use crate::map_layout::{DropMark, Laid};
 use crate::page;
 use crate::roles::Roles;
@@ -163,7 +163,7 @@ pub(super) fn canvas(v: V) -> El {
     let dz = s.map_detail_zoom();
     let bucket_zoom = 2f32.powi(map_app::hit_bucket(dz));
     let target = 24.0 / bucket_zoom;
-    let hit = target.max(2.0 * FOLD_R);
+    let hit = target.max(2.0 * FOLD_HIT_BACK);
     // Below 0.65× zoom, card hover chips switch to compact square icon-only buttons sized for
     // ~20 pt on screen so they stay usable at Fit zoom without bloating at 0.8×.
     let chip_compact = map_app::chip_compact_side(dz);
