@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use crate::map::{Add, NodeId, Options, Tree, ROOT};
 pub use crate::map_geom::{Place, line_width};
-use crate::map_geom::{Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_R};
+use crate::map_geom::{Arrow, Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_R, Rel};
 use crate::page::r;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -234,6 +234,11 @@ impl Laid {
     /// The sides node `i` has a fold ring on, or a `+N` pill when folded.
     pub fn rings(&self, i: usize) -> impl Iterator<Item = Dir> {
         self.at[i].map(|p| p.dir).into_iter()
+    }
+
+    /// What arrow `a` means on node `i`.
+    pub fn toward(&self, i: usize, a: Arrow) -> Option<Rel> {
+        Some(self.at[i]?.dir.rel(a))
     }
 
     /// The hit box of node `i`'s fold ring on side `d`, `[x0, y0, x1, y1]`: `hit` wide where

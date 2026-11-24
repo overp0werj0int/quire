@@ -214,10 +214,10 @@ pub const TABLE: &[Action] = &[
     same(92, "rewrite.later", "Later rewrite", &[Rewrite], Deferred, &["Alt+Down"]),
     same(93, "rewrite.recall", "Earlier instructions", &[Rewrite], Deferred, &["Up", "Down"]),
     // Map, and its inline text input.
-    same(103, "map.parent", "Parent node", M, Adapted, &["Left", "h"]),
-    same(104, "map.child", "First child", M, Adapted, &["Right", "l"]),
-    same(105, "map.prev-sibling", "Previous sibling", M, Adapted, &["Up", "k"]),
-    same(106, "map.next-sibling", "Next sibling", M, Adapted, &["Down", "j"]),
+    same(103, "map.left", "Select left", M, Adapted, &["Left", "h"]),
+    same(104, "map.right", "Select right", M, Adapted, &["Right", "l"]),
+    same(105, "map.up", "Select up", M, Adapted, &["Up", "k"]),
+    same(106, "map.down", "Select down", M, Adapted, &["Down", "j"]),
     same(107, "map.root", "Root node", M, Adapted, &["Home", "g g"]),
     same(108, "map.edit", "Edit the node", M, Adapted, &["F2", "e"]),
     same(109, "map.edit-subtree", "Edit the branch", M, Adapted, &["E"]),
@@ -237,8 +237,9 @@ pub const TABLE: &[Action] = &[
     same(123, "map.zoom-out", "Zoom out", M, Adapted, &["-"]),
     same(124, "map.move-up", "Move up", M, Adapted, &["Alt+Up"]),
     same(125, "map.move-down", "Move down", M, Adapted, &["Alt+Down"]),
-    same(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab", "Alt+Left"]),
-    same(127, "map.indent", "Indent", M, Adapted, &["Alt+Right"]),
+    same(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab"]),
+    same(127, "map.move-right", "Move right", M, Adapted, &["Alt+Right"]),
+    same(158, "map.move-left", "Move left", M, Adapted, &["Alt+Left"]),
     same(128, "map.heading-1", "Heading 1", M, Adapted, &["Ctrl+Alt+1"]),
     same(128, "map.heading-2", "Heading 2", M, Adapted, &["Ctrl+Alt+2"]),
     same(128, "map.heading-3", "Heading 3", M, Adapted, &["Ctrl+Alt+3"]),
@@ -648,7 +649,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 148, "every KEY item with chords was read");
+        assert_eq!(seen, 149, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }

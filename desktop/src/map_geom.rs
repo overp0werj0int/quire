@@ -33,9 +33,39 @@ pub enum Dir {
     Up,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Arrow {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// What an arrow means on a node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rel {
+    Parent,
+    /// The first child growing this way.
+    Child(Dir),
+    Prev,
+    Next,
+}
+
 impl Dir {
     pub fn vertical(self) -> bool {
         matches!(self, Dir::Down | Dir::Up)
+    }
+
+    /// The arrow along the branches goes to a child and the one against them to the parent.
+    /// Across them, the arrow towards earlier siblings (up, or left in a vertical layout) is
+    /// Prev and the other Next.
+    pub fn rel(self, a: Arrow) -> Rel {
+        match (self, a) {
+            (Dir::Right, Arrow::Right) | (Dir::Left, Arrow::Left) | (Dir::Down, Arrow::Down) | (Dir::Up, Arrow::Up) => Rel::Child(self),
+            (Dir::Right, Arrow::Left) | (Dir::Left, Arrow::Right) | (Dir::Down, Arrow::Up) | (Dir::Up, Arrow::Down) => Rel::Parent,
+            (Dir::Right | Dir::Left, Arrow::Up) | (Dir::Down | Dir::Up, Arrow::Left) => Rel::Prev,
+            (Dir::Right | Dir::Left, Arrow::Down) | (Dir::Down | Dir::Up, Arrow::Right) => Rel::Next,
+        }
     }
 
     /// One step this way.

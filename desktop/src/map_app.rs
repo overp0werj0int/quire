@@ -16,7 +16,7 @@ use rune::{Family, Live, TextEdit, TextStyle, Tx};
 use crate::app::{App, Mode};
 use crate::blocks::Link;
 use crate::map::{self, Body, NodeId, NodeKind, ROOT, Tree};
-use crate::map_geom::{Dir, FOLD_DOT_R, FOLD_R};
+use crate::map_geom::{Arrow, Dir, FOLD_DOT_R, FOLD_R, Rel};
 use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
@@ -872,36 +872,67 @@ impl App {
         self.ensure_visible(i, tx);
     }
 
-    /// Arrow and vi keys (MAP-056).
-    pub fn map_parent(&mut self, tx: &mut Tx) {
+    /// Arrow and vi keys (MAP-056): the arrow along the selected node's branches goes to its
+    /// first child, the one against them to its parent, and the two across to its siblings.
+    pub fn map_arrow(&mut self, a: Arrow, tx: &mut Tx) {
+        match self.map_laid().toward(self.map_selected(), a) {
+            Some(Rel::Parent) => self.map_parent(tx),
+            Some(Rel::Child(d)) => self.map_child(d, tx),
+            Some(Rel::Prev) => self.map_sibling(false, tx),
+            Some(Rel::Next) => self.map_sibling(true, tx),
+            None => {}
+        }
+    }
+
+    /// `Alt` with an arrow (MAP-031): the move that takes the selected node where that arrow
+    /// would take the selection.
+    pub fn map_move_arrow(&mut self, a: Arrow, tx: &mut Tx) {
+        let step = match self.map_laid().toward(self.map_selected(), a) {
+            Some(Rel::Parent) => map::Step::Out,
+            Some(Rel::Child(_)) => map::Step::In,
+            Some(Rel::Prev) => map::Step::Up,
+            Some(Rel::Next) => map::Step::Down,
+            None => return,
+        };
+        self.map_step(step, tx);
+    }
+
+    fn map_parent(&mut self, tx: &mut Tx) {
         let i = self.map_selected();
         if let Some(p) = self.map_tree().nodes[i].parent {
             self.map_select(p, tx);
         }
     }
 
-    pub fn map_child(&mut self, tx: &mut Tx) {
+    /// The selected node's first child growing `d`, unfolding the node first.
+    fn map_child(&mut self, d: Dir, tx: &mut Tx) {
         let t = self.map_tree();
         let i = self.map_selected();
-        let Some(&c) = t.nodes[i].children.first() else { return };
+        if t.nodes[i].children.is_empty() {
+            return;
+        }
         let id = t.nodes[i].id;
         if let Some(v) = self.map_view_mut()
             && v.folded.remove(&id)
         {
             v.fold_ver += 1;
         }
+        let l = self.map_laid();
+        let Some(&c) = t.nodes[i].children.iter().find(|&&c| l.at[c].is_some_and(|p| p.dir == d)) else { return };
         self.map_select(c, tx);
         self.map_relayout(None, tx);
     }
 
-    /// The previous or next sibling, else the nearest shown node at the same depth that way.
-    pub fn map_sibling(&mut self, down: bool, tx: &mut Tx) {
+    /// The previous or next sibling, else the nearest shown node at the same depth that way
+    /// whose branches grow the same way.
+    fn map_sibling(&mut self, down: bool, tx: &mut Tx) {
         let t = self.map_tree();
         let l = self.map_laid();
         let i = self.map_selected();
-        let d = t.nodes[i].depth;
+        let side = |n: usize| l.at[n].map(|p| p.dir);
+        let like = |&&n: &&usize| t.nodes[n].depth == t.nodes[i].depth && side(n) == side(i);
         let Some(at) = l.shown.iter().position(|&n| n == i) else { return };
-        let found = if down { l.shown[at + 1..].iter().find(|&&n| t.nodes[n].depth == d) } else { l.shown[..at].iter().rev().find(|&&n| t.nodes[n].depth == d) };
+        let found = if down { l.shown[at + 1..].iter().find(like) } else { l.shown[..at].iter().rev().find(like) };
         if let Some(&n) = found {
             self.map_select(n, tx);
         }

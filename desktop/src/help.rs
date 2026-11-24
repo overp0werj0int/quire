@@ -146,8 +146,8 @@ const MAP: &[Group] = &[
     (
         "Navigate",
         &[
-            h("Parent / first child", &["map.parent", "map.child"]),
-            h("Previous / next sibling", &["map.prev-sibling", "map.next-sibling"]),
+            h("Select left / right", &["map.left", "map.right"]),
+            h("Select up / down", &["map.up", "map.down"]),
             h("Root", &["map.root"]),
             h("Fold or unfold", &["map.toggle-fold"]),
             h("Fold or unfold the branch", &["map.toggle-fold-recursive"]),
@@ -163,8 +163,8 @@ const MAP: &[Group] = &[
             h("Add a child / sibling / sibling before", &["map.add-child", "map.add-sibling", "map.add-sibling-before"]),
             h("Delete the branch", &["map.delete"]),
             h("Tick the task", &["map.toggle-task"]),
-            h("Move up / down", &["map.move-up", "map.move-down"]),
-            h("Indent / outdent", &["map.indent", "map.outdent"]),
+            h("Move the node", &["map.move-up", "map.move-down", "map.move-left", "map.move-right"]),
+            h("Outdent", &["map.outdent"]),
             k("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
             h("Undo / redo", &["map.undo", "map.redo"]),
             h("Copy the node / its branch", &["map.copy-node", "map.copy-subtree"]),

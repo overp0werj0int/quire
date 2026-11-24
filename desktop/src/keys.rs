@@ -6,6 +6,7 @@ use crate::app::{App, Screen};
 use crate::focus::Pane;
 use crate::keymap::{self, Ctx};
 use crate::layer::{Kind, Layer};
+use crate::map_geom::Arrow;
 
 pub fn is_mac() -> bool {
     cfg!(target_os = "macos")
@@ -340,10 +341,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.escape" => |s, tx| {
             s.writer_escape(tx);
         },
-        "map.parent" => |s, tx| s.map_parent(tx),
-        "map.child" => |s, tx| s.map_child(tx),
-        "map.prev-sibling" => |s, tx| s.map_sibling(false, tx),
-        "map.next-sibling" => |s, tx| s.map_sibling(true, tx),
+        "map.left" => |s, tx| s.map_arrow(Arrow::Left, tx),
+        "map.right" => |s, tx| s.map_arrow(Arrow::Right, tx),
+        "map.up" => |s, tx| s.map_arrow(Arrow::Up, tx),
+        "map.down" => |s, tx| s.map_arrow(Arrow::Down, tx),
         "map.root" => |s, tx| s.map_root(tx),
         "map.toggle-fold" => |s, tx| s.map_toggle_selected(false, tx),
         "map.toggle-fold-recursive" => |s, tx| s.map_toggle_selected(true, tx),
@@ -362,10 +363,11 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.add-sibling" => |s, tx| s.map_add(crate::map_app::Place::After, tx),
         "map.add-sibling-before" => |s, tx| s.map_add(crate::map_app::Place::Before, tx),
         "map.toggle-task" => |s, tx| s.map_toggle_task(s.map_selected(), tx),
-        "map.move-up" => |s, tx| s.map_step(crate::map::Step::Up, tx),
-        "map.move-down" => |s, tx| s.map_step(crate::map::Step::Down, tx),
+        "map.move-left" => |s, tx| s.map_move_arrow(Arrow::Left, tx),
+        "map.move-right" => |s, tx| s.map_move_arrow(Arrow::Right, tx),
+        "map.move-up" => |s, tx| s.map_move_arrow(Arrow::Up, tx),
+        "map.move-down" => |s, tx| s.map_move_arrow(Arrow::Down, tx),
         "map.outdent" => |s, tx| s.map_step(crate::map::Step::Out, tx),
-        "map.indent" => |s, tx| s.map_step(crate::map::Step::In, tx),
         "map.heading-1" => |s, tx| s.map_level(1, tx),
         "map.heading-2" => |s, tx| s.map_level(2, tx),
         "map.heading-3" => |s, tx| s.map_level(3, tx),
