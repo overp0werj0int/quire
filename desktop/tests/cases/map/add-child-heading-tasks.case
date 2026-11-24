@@ -1,6 +1,6 @@
-A new item in a task list gets an empty box, and a counted list the next number.
+Task on the add toolbar adds an item with an empty box to a task list, and Numbered list the next number to a counted list.
 note: Plan.md
-events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:Car@1.0 key:Enter@1.4 key:Left@1.6 key:Down@1.8 key:Tab@2.0 type:Go@2.2 key:Enter@2.6 key:s+cmd@3.0
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:Car@1.0 tap:map-kind-task@1.4 key:Enter@1.8 key:Left@2.0 key:Down@2.2 key:Tab@2.4 type:Go@2.6 tap:map-kind-numbers@3.0 key:Enter@3.4 key:s+cmd@3.8
 --- before
 # Plan
 

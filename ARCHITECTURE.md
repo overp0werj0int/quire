@@ -98,9 +98,12 @@ under the links and nodes, its rim `map-selection` over them); only the node's c
 under it (`GLASS_K`, a scale on the node's memoized body), so its underline, links and fold ring
 never move with the selection. The layout keeps every gap between nodes wider than the glass's
 reach (`map_layout::GLASS_PAD`), so a node's glass never covers its neighbour. A branch is drawn
-as one short round-capped stroke a step, each as wide as the taper is there (`ui::map::tapered`):
-Rune cuts strokes that continue one another on their joint's bisector, so the edges stay smooth
-at any zoom, where a filled outline cut into thin triangles drew them stepped.
+as short strokes, shorter where it bends, each widening from the taper's width where it starts
+to its width where it ends (`ui::map::tapered`, Rune's `Shape::taper`), and the node's underline
+is the branch's last stroke (the root draws its own). Rune cuts strokes that continue one another
+on their joint's bisector, so the edges stay smooth at any zoom and the curve runs into the
+underline with no seam, where a filled outline cut into thin triangles drew them stepped and a
+snapped underline sat a pixel off the curve.
 
 A node draws what the reader would. `map::Node::body` says what that is: plain text, a
 paragraph's or heading's inline runs, which the reader's `Rich` draws, or a block shown as a
@@ -122,8 +125,12 @@ applies the splice as one undo step on the note's `TextEdit` (`App::splice_note`
 Ctrl+Z in any mode takes it back, and the folds and the selection follow their nodes into the
 new tree (`map::follow`). A new node is named in the inline field before anything is written:
 the map shows a preview text holding it (`Inline::preview`), and the note gets it on the first
-commit. The inline field is a text field over the node (`map_app::FIELD`), with its own keys
-in `Ctx::MapEdit`. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
+commit. Its kind (`map::NewKind`) starts as its place's default (`map::default_kind`), and a
+toolbar over the field picks another of the kinds the place takes (`map::kinds`): the pick
+rewrites the preview (`App::map_pick_kind`), so the node changes kind before anything is written. The inline field is a text field over the node (`map_app::FIELD`), with its own keys
+in `Ctx::MapEdit`. While it is open its node takes the field's size in the layout
+(`App::map_laid`), and an existing node never less than its own, so the neighbours move
+clear as the text grows. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
 its place.
 
 A move, by a drop or by Alt and the arrows, is `map::move_to`, one more of these functions.
@@ -232,8 +239,11 @@ showed when it opened.
   closes the menu first. A
   window shortcut closes it and then acts as if it had not been open, so over a menu inside
   a drawer it closes both and acts. A key with no modifier stays in the layer. Over the palette, Settings or the lock dialog, the layer's own keys act
-  first. A window shortcut closes the layer and acts. Help and the edit sheet swallow every
-  key they do not bind (RD-80, SHEET-014). The toast's Undo key (KEY-94) acts whatever is open.
+  first. A window shortcut closes the layer and acts. Help's keys go to `App::help_key`
+  (`help.rs`), from the window's key handler and from its search field, which takes its
+  editing keys before the window's: Up and Down pick a row, Enter runs it, Esc clears the
+  query and then closes, and every other key types into the search (RD-105). The edit sheet
+  swallows every key it does not bind (SHEET-014). The toast's Undo key (KEY-94) acts whatever is open.
 - `ui::layer` draws each open layer on its plane. It makes the card modal, so the keyboard, Tab,
   presses and the wheel stay in it, and it dims the page behind. The toast and the notice are
   not layers. They paint over everything (`El::raise`), stay live to the pointer and never
@@ -271,7 +281,13 @@ or the outline. A test checks that every focusable element in the panes is in it
   moves freely to controls such as `first-note`. The window's shortcuts act. Compound input
   bars (`find-bar`, `search-box`) scope their focus ring strictly to `TextEdit::focused`
   (`ui::widgets::input_focus_ring_when`), so sibling buttons draw their own single ring
-  without colliding with the bar.
+  without colliding with the bar. Every ring draws as a glass card, the map's selection glass in
+  the ring's colour (`Cx::focus_glass`, set once in `ui::view`): Rune paints a soft shadow
+  under the control, then over its fill a sheen, an inner glow and a top-lit rim out to the
+  ring's outer edge. When the keyboard moves focus to another control under the same clip
+  (the next row of a list, the next toolbar button), the card slides there over 180 ms, easing
+  out, as the map's glass slides between nodes; across clips, and under reduced motion, it
+  jumps.
 - When the element that holds focus goes away, for any reason, the keyboard goes to the
   note. Every stop and pane carries `focus_return(focus::NOTE)`. NOTE keys the editor's box
   in the writer, and elsewhere `ui::focus::note_anchor`, a point Tab skips that hands every
@@ -482,6 +498,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `layer.rs` | The layers over the page: what is open, where focus goes back, and when a layer closes (see Layers). |
 | `focus.rs` | The focus stops, their panes, the rule a focused stop keeps, and F6 (see Focus). |
 | `commands.rs` | The command palette and the quick switcher. |
+| `help.rs` | The keyboard help's rows for each mode (`help::groups`), its search (`help::filter`, `Layer::Help(Search)`), and what Enter or a click on a row runs (`App::help_run`). Unit tests check that every key bound in a mode shows on that mode's sheet and that it shows no key that does not act there. |
 | `vault.rs` | `Vault`, `Op`, `Writer`: reading the folder and writing to it. A vault's notes are private: every write goes through `Vault::put` or `Vault::take`, which count it (`writes`, and `ver` per note), so search's index knows which notes to read again, and `paths`, which moves only when a note is added or taken out, for the tree. |
 | `store.rs` | `Persist`, `Settings`, `state.json`. |
 | `watch.rs` | The watcher thread, plus the Omarchy theme watcher. |
@@ -500,9 +517,9 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). `Folder` is the vault's tree in the tree's order (SB-54) with each folder's note count, its subfolders' included (SB-52); `Tree` keeps it on `App::tree` and builds it again only when the vault's `paths` count (a note added or taken out) or its folders change, never for an edit to a note's text. |
 | `images.rs` | Adding images to `attachments/` and linking them, at the caret or, on the map, as a new node; and downloading web images. |
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
-| `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling (with lists renumbered and blank lines matched), delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. `add_block` adds a block such as an image's link, a paragraph where `add` would make a heading or a bullet. |
+| `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling of a given `NewKind` (with lists renumbered and blank lines matched), with `default_kind` for the kind a place starts with and `kinds` for the kinds it takes, each kept only when the node written there parses as that kind at that depth and no other node changes, delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. `add_block` adds a block such as an image's link, as a paragraph where the place's default would be a heading or a bullet. |
 | `map_layout.rs` | Where each shown node sits: a left-to-right tidy tree in world points, built bottom-up from each subtree's top and bottom profile, so a short branch tucks under a long one. Pure: it takes the tree, the folds and a size per node. |
-| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, image inserts, the lightbox, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` fold badges' geometry, which the view draws and fit takes in (`App::map_extent`). |
+| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit, with that node's place, kind and the kinds it takes (`NewNode`). `App::map_show_new` rebuilds that preview when the kind changes, and the add toolbar and its `Ctrl+Alt+0` to `Ctrl+Alt+6` keys call `App::map_pick_kind`. Paste, image inserts, the lightbox, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` fold badges' geometry, which the view draws and fit takes in (`App::map_extent`). |
 | `map_find.rs` | Find on the map (MAP-066): every match of the find bar's query in the nodes' labels and cards' pieces, in the note's order, folded branches included, where a search starts from the selection, and showing the current match. |
 | `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
 | `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's right edge. Nothing glides under reduced motion. |

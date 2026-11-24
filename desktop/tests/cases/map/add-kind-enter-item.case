@@ -1,0 +1,18 @@
+Enter on a list item still names a sibling item, with the add toolbar over its glass.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Enter@1.0 type:Car@1.2 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+- Rent
+- Food
+
+Text.
+--- after
+# Plan
+
+- Rent
+- Food
+- Car
+
+Text.

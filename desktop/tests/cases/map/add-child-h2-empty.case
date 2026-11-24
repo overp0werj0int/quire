@@ -1,4 +1,4 @@
-Tab on an H2 with only a paragraph under it adds a list item after the paragraph.
+Tab on an H2 with only a paragraph under it adds a paragraph after it.
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:Enter@1.4 key:s+cmd@1.8
 --- before
@@ -13,6 +13,6 @@ text
 ## A
 text
 
-- x
+x
 
 ## B

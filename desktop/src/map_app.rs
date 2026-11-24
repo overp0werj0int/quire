@@ -193,7 +193,7 @@ impl Inline {
     fn splice(&self) -> Option<map::Splice> {
         match self.what {
             Editing::Node(i) => map::rename(&self.base, &self.tree, i, &self.edit.text),
-            Editing::New(at) => map::add(&self.base, &self.tree, at, &self.edit.text).ok(),
+            Editing::New(new) => map::add(&self.base, &self.tree, new.at, new.kind, &self.edit.text).ok(),
         }
     }
 }
@@ -201,7 +201,16 @@ impl Inline {
 #[derive(Clone, Copy)]
 enum Editing {
     Node(usize),
-    New(map::Add),
+    New(NewNode),
+}
+
+/// A node not written yet, named in the field (MAP-021 to MAP-023, MAP-087): where it goes, the
+/// kind it is written as, and the kinds its place takes.
+#[derive(Clone, Copy, Debug)]
+pub struct NewNode {
+    pub at: map::Add,
+    pub kind: map::NewKind,
+    pub kinds: map::Kinds,
 }
 
 impl Default for MapState {
@@ -298,15 +307,13 @@ fn pill_size(hidden: usize, font: TextStyle) -> (String, [f32; 2]) {
 /// A pill's padding either side of its text.
 pub const PILL_PAD: f32 = 5.0;
 
-/// The inline field's size for its text: as wide as the text, at least the label's width and
-/// at most a node's widest, and as tall as the text wraps to at that width (breaking inside
-/// unbreakable tokens wider than `max_w`).
-pub fn field_size(e: &Inline, p: map_layout::Place, room: f32, st: TextStyle, m: Metrics) -> [f32; 2] {
-    let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
+/// The inline field's size for `text`: as wide as the text, at least `least` and at most
+/// `max_w`, and as tall as the text wraps to at that width (breaking inside unbreakable tokens
+/// wider than `max_w`).
+pub fn field_size(text: &str, least: f32, st: TextStyle, max_w: f32) -> [f32; 2] {
+    let shown = if text.is_empty() { "M" } else { text };
     let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
-    let w = (rune::text::measure_with(shown, &[], st, Some(m.max_w), anywhere).0.ceil() + 2.0)
-        .max(p.w - 2.0 * m.pad_x - room)
-        .min(m.max_w);
+    let w = (rune::text::measure_with(shown, &[], st, Some(max_w), anywhere).0.ceil() + 2.0).max(least).min(max_w);
     [w, rune::text::measure_with(shown, &[], st, Some(w), anywhere).1.ceil()]
 }
 
@@ -390,8 +397,8 @@ impl App {
         let (t, mut i) = match self.map.inline.as_ref().filter(|e| e.rel == name && e.preview.is_some()) {
             Some(e) => {
                 let start = match e.what {
-                    Editing::New(map::Add::Child(j)) => Some(j),
-                    Editing::New(map::Add::Before(j) | map::Add::After(j)) => e.tree.nodes[j].parent.or(Some(j)),
+                    Editing::New(NewNode { at: map::Add::Child(j), .. }) => Some(j),
+                    Editing::New(NewNode { at: map::Add::Before(j) | map::Add::After(j), .. }) => e.tree.nodes[j].parent.or(Some(j)),
                     Editing::Node(j) => Some(j),
                 };
                 (e.tree.clone(), start)
@@ -419,31 +426,6 @@ impl App {
         let pics = self.images.epoch.get();
         let m = Metrics::new(b, &t.opts);
         let active = self.active.as_deref().unwrap_or("");
-        let prov_size = self
-            .map
-            .inline
-            .as_ref()
-            .filter(|e| e.rel == active && matches!(e.what, Editing::New(_)))
-            .and_then(|e| {
-                let idx = self.map_selected();
-                if idx >= t.nodes.len() {
-                    return None;
-                }
-                let st = style(tier(&t, idx), b, prose, mono);
-                let shown = if e.edit.text.is_empty() { "M" } else { e.edit.text.as_str() };
-                let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
-                let tw = rune::text::measure_with(shown, &[], st, Some(m.max_w), anywhere).0.ceil() + 2.0;
-                let fw = tw.max(220.0f32.min(m.max_w)).min(m.max_w);
-                let fh = rune::text::measure_with(shown, &[], st, Some(fw), anywhere).1.ceil();
-                Some((idx, fw, fh))
-            });
-        let prov_key = prov_size.map(|(idx, w, h)| (idx, w.to_bits(), h.to_bits()));
-        let key: LaidKey = (active.to_string(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics, prov_key);
-        if let Some((k, l)) = &*self.map.laid.borrow()
-            && *k == key
-        {
-            return l.clone();
-        }
         let mut sizes = self.map.sizes.borrow_mut();
         if (sizes.0, sizes.1, sizes.2) != (epoch, prose_id, mono_id) {
             *sizes = (epoch, prose_id, mono_id, HashMap::new());
@@ -456,28 +438,47 @@ impl App {
         }
         let fast_sizes = &mut ts_ref.as_mut().unwrap().1;
         let mut sizer: Option<crate::ui::MapSizer<'_>> = None;
+        let mut size = |i: usize| {
+            let n = &t.nodes[i];
+            if let Some(sz) = fast_sizes[i] {
+                return sz;
+            }
+            let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
+            let [w, h] = *cache.entry(key).or_insert_with(|| sizer.get_or_insert_with(|| crate::ui::MapSizer::new(self)).size(&t, i, m.max_w));
+            let full = [w + task_room(n, b), h];
+            fast_sizes[i] = Some(full);
+            full
+        };
+        // The node being edited takes its field's live size, so its neighbours make room as
+        // the text grows (MAP-016). A node already named keeps at least its own size.
+        let field = self.map.inline.as_ref().filter(|e| e.rel == active).and_then(|e| {
+            let i = self.map_editing().filter(|&i| i < t.nodes.len())?;
+            let room = task_room(&t.nodes[i], b);
+            let (least, floor) = match e.what {
+                Editing::New(_) => (220.0f32.min(m.max_w), 0.0),
+                Editing::Node(_) => {
+                    let [w, h] = size(i);
+                    (w - room, h)
+                }
+            };
+            let [fw, fh] = field_size(&e.edit.text, least, style(tier(&t, i), b, prose, mono), m.max_w);
+            Some((i, fw + room, fh.max(floor)))
+        });
+        let field_key = field.map(|(i, w, h)| (i, w.to_bits(), h.to_bits()));
+        let key: LaidKey = (active.to_string(), self.map_ver(), fold_ver, b.to_bits(), epoch, prose_id, mono_id, pics, field_key);
+        if let Some((k, l)) = &*self.map.laid.borrow()
+            && *k == key
+        {
+            return l.clone();
+        }
         let chip = chip_font(b, mono);
         let laid = Rc::new(crate::map_layout::layout(
             &t,
             folded,
             m,
-            |i| {
-                let n = &t.nodes[i];
-                if let Some((pi, fw, fh)) = prov_size
-                    && i == pi
-                {
-                    return [fw + task_room(n, b), fh];
-                }
-                if let Some(sz) = fast_sizes[i] {
-                    return sz;
-                }
-                let key = (n.src, tier(&t, i), b.to_bits(), m.max_w.to_bits(), if n.pictures() { pics } else { 0 });
-                let [w, h] = *cache.entry(key).or_insert_with(|| {
-                    sizer.get_or_insert_with(|| crate::ui::MapSizer::new(self)).size(&t, i, m.max_w)
-                });
-                let full = [w + task_room(n, b), h];
-                fast_sizes[i] = Some(full);
-                full
+            |i| match field {
+                Some((fi, w, h)) if fi == i => [w, h],
+                _ => size(i),
             },
             |i| {
                 let [w, h] = pill_size(t.nodes[i].end - i - 1, chip).1;
@@ -548,7 +549,7 @@ impl App {
             }
             if let Some(q) = t.nodes[i].parent.and_then(|q| l.at[q])
                 && let [qx, qy] = branch_start(&q)
-                && meets(qx, p.line_y().min(qy), p.x, p.line_y().max(qy))
+                && meets(qx, p.line_y().min(qy), p.right(), p.line_y().max(qy))
             {
                 links.push(i);
             }
@@ -694,19 +695,28 @@ impl App {
         self.map_move([x - wx * nz, y - wy * nz], nz, tx);
     }
 
-    /// `+`, `=` and `-`, and the canvas zoom HUD buttons: about the canvas's centre (MAP-034).
-    /// Glides smoothly (snapping under reduced motion) and chains from any in-flight glide target.
+    /// `+`, `=` and `-`, and the canvas zoom HUD buttons (MAP-034): about the selected node's
+    /// centre, so it holds still on screen, and then by the least pan that keeps it inside the
+    /// free canvas. A selected node off screen is centred instead. Glides smoothly (snapping
+    /// under reduced motion) and chains from any in-flight glide target.
     pub fn map_zoom_step(&mut self, f: f32, tx: &mut Tx) {
-        let [w, h] = self.map_size();
         let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
         let nz = (z * f).clamp(ZOOM_MIN, ZOOM_MAX);
-        let (cx, cy) = (w / 2.0, h / 2.0);
-        let (wx, wy) = ((cx - px) / z, (cy - py) / z);
+        let sel = self.map_selected();
+        let Some(p) = self.map_laid().at[sel] else { return };
+        let (wx, wy) = (p.x + p.w / 2.0, p.y + p.h / 2.0);
+        let (sx, sy) = (px + wx * z, py + wy * z);
+        let [x0, y0, x1, y1] = self.map_free();
+        let cam = if (x0..x1).contains(&sx) && (y0..y1).contains(&sy) {
+            self.kept_in(sel, ([sx - wx * nz, sy - wy * nz], nz))
+        } else {
+            self.centred_on(sel, nz)
+        };
         self.map.drawer_return_pan = None;
         if let Some(e) = &mut self.map.inline {
             e.edit_return_cam = None;
         }
-        self.map_glide(([cx - wx * nz, cy - wy * nz], nz), tx);
+        self.map_glide(cam, tx);
     }
 
     /// What the map draws, `[x0, y0, x1, y1]`: every shown node with its fold circle, its
@@ -857,9 +867,17 @@ impl App {
 
     /// Pans by the least that keeps node `i` 40 points inside the canvas's free part (MAP-036).
     fn ensure_visible(&mut self, i: usize, tx: &mut Tx) {
-        let l = self.map_laid();
-        let Some(p) = l.at[i] else { return };
-        let ([px, py], z) = self.map_camera();
+        let cam = self.map_camera();
+        let kept = self.kept_in(i, cam);
+        if kept.0 != cam.0 {
+            self.map_glide(kept, tx);
+        }
+    }
+
+    /// Camera `cam` panned by the least that keeps node `i` 40 points inside the canvas's free
+    /// part, or its top left corner there when it is too big to fit.
+    fn kept_in(&self, i: usize, ([px, py], z): ([f32; 2], f32)) -> ([f32; 2], f32) {
+        let Some(p) = self.map_laid().at[i] else { return ([px, py], z) };
         let [x0, y0, x1, y1] = self.map_free();
         let least = |lo: f32, hi: f32, a: f32, b: f32| {
             if hi - lo > b - a - 2.0 * MARGIN || lo < a + MARGIN {
@@ -872,9 +890,7 @@ impl App {
         };
         let dx = least(px + p.x * z, px + p.right() * z, x0, x1);
         let dy = least(py + p.y * z, py + p.bottom() * z, y0, y1);
-        if dx != 0.0 || dy != 0.0 {
-            self.map_glide(([px + dx, py + dy], z), tx);
-        }
+        ([px + dx, py + dy], z)
     }
 
     fn map_select(&mut self, i: usize, tx: &mut Tx) {
@@ -1143,10 +1159,14 @@ impl App {
         }
     }
 
-    /// The selected node becomes the one holding source line `line`, its folds open, and
-    /// the camera finds it (MAP-065).
-    fn map_land(&mut self, line: usize, tx: &mut Tx) {
-        let i = self.map_tree().at_line(line);
+    /// The camera finds the selected node and centres it (MAP-065). The node is the one holding
+    /// the place the linear mode was at, `span`'s lines, unless the last selected node starts
+    /// inside them: then the map comes back to it, as after a round trip.
+    fn map_land(&mut self, span: std::ops::Range<usize>, tx: &mut Tx) {
+        let t = self.map_tree();
+        let last = self.map_selected();
+        let own = &t.nodes[last].own;
+        let i = if !own.is_empty() && span.contains(&own.start) { last } else { t.at_line(span.start) };
         let Some(placed) = self.map_open_to(i) else { return };
         self.map.glide = None;
         if !placed {
@@ -1154,7 +1174,21 @@ impl App {
                 self.place_camera();
             }
         } else {
-            self.ensure_visible(i, tx);
+            self.map_relayout(None, tx);
+            let (pan, zoom) = self.centred_on(i, self.map_camera().1);
+            self.set_camera(pan, zoom);
+        }
+    }
+
+    /// The source lines the linear mode being left is at: the caret's line, or the preview's
+    /// top block.
+    fn place_span_now(&self) -> std::ops::Range<usize> {
+        match self.mode {
+            Mode::Preview => self.doc().blocks.get(self.top()).map_or(0..1, |b| b.lines.clone()),
+            _ => {
+                let line = self.place_line_now();
+                line..line + 1
+            }
         }
     }
 
@@ -1186,7 +1220,7 @@ impl App {
             return;
         }
         tx.clear_text_selection();
-        let line = self.place_line_now();
+        let span = self.place_span_now();
         self.map.back = self.mode;
         self.mode = Mode::Map;
         self.close_find(tx);
@@ -1194,7 +1228,7 @@ impl App {
         if self.active_locked() {
             return;
         }
-        self.map_land(line, tx);
+        self.map_land(span, tx);
     }
 
     /// Leaves the map for `to`, keeping the place (MAP-065).
@@ -1538,6 +1572,9 @@ const MULTI_LINE: &str = "Paste multi-line Markdown in Source or the Edit Sheet"
 
 /// The inline field's key: a text field, so the note's caret keys stay out of it.
 pub const FIELD: &str = "map-inline-edit";
+/// The add toolbar over a new node's glass (MAP-087): its height, and the gap under it.
+pub const KIND_BAR_H: f32 = 36.0;
+pub const KIND_BAR_GAP: f32 = 6.0;
 
 /// What a new node is placed by: Tab, Enter, Shift+Enter (MAP-021, MAP-023).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1675,7 +1712,7 @@ impl App {
     }
 
     /// Tab, Enter and Shift+Enter (MAP-021 to MAP-023): a new node, named in the inline field
-    /// before anything is written.
+    /// before anything is written, of its place's default kind until another is picked (MAP-087).
     pub fn map_add(&mut self, place: Place, tx: &mut Tx) {
         if !self.map_editable() || self.map.inline.is_some() {
             return;
@@ -1687,24 +1724,88 @@ impl App {
             Place::After => map::Add::After(i),
             Place::Before => map::Add::Before(i),
         };
-        // A zero-width space names the new node until the first commit, so it parses as one.
-        match map::add(self.active_text(), &t, at, "\u{200b}") {
-            Ok(s) => {
-                let text = s.apply(self.active_text());
-                let mut h = std::collections::hash_map::DefaultHasher::new();
-                ("preview", &text).hash(&mut h);
-                self.map_open_field(Editing::New(at), TextEdit::new(""), true, Some((h.finish(), text)), tx);
-                let shown = self.map_tree();
-                let n = s.focus.map_or(ROOT, |l| shown.at_line(l));
-                if let Some(e) = &mut self.map.inline {
-                    e.multi = !matches!(shown.nodes[n].kind, NodeKind::Heading { .. } | NodeKind::Root);
+        match map::default_kind(&t, at) {
+            Ok(kind) => {
+                let new = NewNode { at, kind, kinds: map::kinds(self.active_text(), &t, at) };
+                self.map_open_field(Editing::New(new), TextEdit::new(""), true, None, tx);
+                if !self.map_show_new(tx) {
+                    self.map.inline = None;
                 }
-                self.map_open_to(n);
-                self.map_relayout(Some((&*t, &s)), tx);
-                self.frame_inline_edit(n, tx);
             }
             Err(Some(why)) => self.toast(why, tx),
             Err(None) => {}
+        }
+    }
+
+    /// The zoom the add toolbar is sized for (MAP-087): where a camera glide ends, else the zoom.
+    pub fn map_bar_zoom(&self) -> f32 {
+        self.map.glide.as_ref().map_or_else(|| self.map_camera().1, |g| g.to.1)
+    }
+
+    /// The new node the field names, while it names one in the note shown.
+    pub fn map_new_node(&self) -> Option<NewNode> {
+        let e = self.map.inline.as_ref().filter(|e| Some(e.rel.as_str()) == self.active.as_deref())?;
+        match e.what {
+            Editing::New(new) => Some(new),
+            Editing::Node(_) => None,
+        }
+    }
+
+    /// The map shows the new node the field names, as its kind, in a preview of the note the
+    /// file never holds, and selects it. A zero-width space names it until the first commit, so
+    /// it parses as one. False when the node can't go in.
+    fn map_show_new(&mut self, tx: &mut Tx) -> bool {
+        let shown = self.map_tree();
+        let Some(e) = &mut self.map.inline else { return false };
+        let Editing::New(new) = e.what else { return false };
+        let Ok(s) = map::add(&e.base, &e.tree, new.at, new.kind, "\u{200b}") else { return false };
+        let text = s.apply(&e.base);
+        let change = map::diff(e.preview.as_ref().map_or(&e.base, |p| &p.1), &text);
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        ("preview", &text).hash(&mut h);
+        e.preview = Some((h.finish(), text));
+        e.multi = !matches!(new.kind, map::NewKind::Heading(_));
+        let t = self.map_tree();
+        let n = s.focus.map_or(ROOT, |l| t.at_line(l));
+        self.map_open_to(n);
+        self.map_relayout(Some((&*shown, &change)), tx);
+        self.frame_inline_edit(n, tx);
+        true
+    }
+
+    /// A type picked on the add toolbar or by its key (MAP-087): the new node is rewritten as
+    /// `kind`, and the field keeps its text and the keyboard.
+    pub fn map_pick_kind(&mut self, kind: map::NewKind, tx: &mut Tx) {
+        let Some(mut new) = self.map_new_node() else { return };
+        if !new.kinds.has(kind) {
+            let what = match kind {
+                map::NewKind::Heading(l) => format!("A level {l} heading"),
+                map::NewKind::Paragraph => "A paragraph".into(),
+                map::NewKind::Bullet | map::NewKind::Number | map::NewKind::Task => "A list item".into(),
+            };
+            self.toast(&format!("{what} can't go here"), tx);
+            return;
+        }
+        if new.kind == kind {
+            return;
+        }
+        new.kind = kind;
+        if let Some(e) = &mut self.map.inline {
+            e.what = Editing::New(new);
+        }
+        self.map_show_new(tx);
+    }
+
+    /// The add toolbar's Heading button (MAP-087): the place's heading level, then on each press
+    /// the next level the place takes.
+    pub fn map_pick_heading(&mut self, tx: &mut Tx) {
+        let Some(new) = self.map_new_node() else { return };
+        let level = match new.kind {
+            map::NewKind::Heading(l) => (l + 1..=6).chain(1..l).find(|&m| new.kinds.has(map::NewKind::Heading(m))),
+            _ => new.kinds.heading,
+        };
+        if let Some(l) = level {
+            self.map_pick_kind(map::NewKind::Heading(l), tx);
         }
     }
 
@@ -1726,7 +1827,7 @@ impl App {
         let i = self.map_selected();
         let at = if map::takes_children(&t, i) { map::Add::Child(i) } else { map::Add::After(i) };
         let footnote = matches!(t.nodes[i].kind, NodeKind::Footnotes | NodeKind::Footnote { .. });
-        match map::add(self.active_text(), &t, at, line.trim()) {
+        match map::default_kind(&t, at).and_then(|kind| map::add(self.active_text(), &t, at, kind, line.trim())) {
             Ok(s) => self.map_apply(&t, &s, tx),
             Err(why) => {
                 if let Some(why) = why.or(footnote.then_some(map::FOOTNOTES)) {
@@ -1812,7 +1913,7 @@ impl App {
         let (prose, mono, _, _) = self.fonts();
         let room = task_room(&t.nodes[i], b);
         let st = style(tier(&t, i), b, prose, mono);
-        let [fw, fh] = field_size(e, p, room, st, l.metrics);
+        let [fw, fh] = field_size(&e.edit.text, p.w - 2.0 * l.metrics.pad_x - room, st, l.metrics.max_w);
         let w = p.w.max(fw + room + 2.0 * l.metrics.pad_x);
         let h = p.h.max(fh + l.metrics.pad_b) + map_layout::line_width(p.depth);
         let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
@@ -1831,7 +1932,9 @@ impl App {
             }
         };
         let dx = least(px + p.x * z, px + (p.x + w) * z, x0, x1);
-        let (lo_y, hi_y) = (py + p.y * z, py + (p.y + h) * z);
+        // A new node's add toolbar sits over its glass, and shows with it (MAP-087).
+        let bar = if matches!(e.what, Editing::New(_)) { map_layout::GLASS_PAD[1] + (KIND_BAR_GAP + KIND_BAR_H) / z } else { 0.0 };
+        let (lo_y, hi_y) = (py + (p.y - bar) * z, py + (p.y + h) * z);
         let dy = if hi_y - lo_y > (y1 - y0) - 2.0 * MARGIN {
             let anywhere = rune::text::RichLayoutOptions::new().wrap_anywhere();
             let mut end = e.edit.focus.min(e.edit.text.len());
@@ -1994,6 +2097,25 @@ impl App {
                     if !self.esc_takes_notice() {
                         self.map_cancel(tx);
                     }
+                }
+                "mapedit.paragraph" | "mapedit.heading-1" | "mapedit.heading-2" | "mapedit.heading-3" | "mapedit.heading-4" | "mapedit.heading-5" | "mapedit.heading-6" => {
+                    // While a node is renamed the chord goes to the field, as Ctrl+Alt (AltGr) types.
+                    if self.map_new_node().is_none() {
+                        return false;
+                    }
+                    let level = a.id.strip_prefix("mapedit.heading-").and_then(|l| l.parse().ok());
+                    self.map_pick_kind(level.map_or(map::NewKind::Paragraph, map::NewKind::Heading), tx);
+                }
+                "mapedit.numbered" | "mapedit.bulleted" | "mapedit.task" => {
+                    if self.map_new_node().is_none() {
+                        return false;
+                    }
+                    let kind = match a.id {
+                        "mapedit.numbered" => map::NewKind::Number,
+                        "mapedit.bulleted" => map::NewKind::Bullet,
+                        _ => map::NewKind::Task,
+                    };
+                    self.map_pick_kind(kind, tx);
                 }
                 "mapedit.commit-add-child" => {
                     let chain_cam = self.map.inline.as_ref().and_then(|e| e.edit_return_cam);

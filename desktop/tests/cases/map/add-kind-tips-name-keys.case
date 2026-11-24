@@ -1,0 +1,12 @@
+Every button on the new node's toolbar names its key in its tooltip (MAP-087).
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.6 key:Tab@0.8 type:T@1.0
+expect: label:map-kind-paragraph: 'Paragraph (Ctrl+Alt+0)'
+expect: label:map-kind-heading: 'Heading 2 (Ctrl+Alt+2)'
+expect: label:map-kind-bullets: 'Bulleted list (Ctrl+Alt+8)'
+expect: label:map-kind-numbers: 'Numbered list (Ctrl+Alt+7)'
+expect: label:map-kind-task: 'Task (Ctrl+Alt+9)'
+--- before
+# Plan
+
+Intro

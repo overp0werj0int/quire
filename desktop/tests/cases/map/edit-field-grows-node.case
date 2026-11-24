@@ -1,0 +1,21 @@
+Text typed into an existing node's field grows the node, and its siblings move clear of it.
+note: Trip.md
+events: key:m+cmd@0.3 key:l@0.8 key:l@1.0 key:e@1.4 key:End@1.6
+events: type:and_a_much_longer_paragraph_of_text_that_should_wrap_onto_several_lines_inside_the_card_we_are_editing_right_now@1.8
+events: key:Enter+shift@6.0 type:second_line@6.2 key:Enter+shift@6.8 type:third@7.0
+at: 7.6
+expect: rect:map-inline-edit: [608.0, 123.25, 606.0, 200.0]
+expect: rect:map-node:5: [592.0, 123.25, 638.0, 211.5]
+expect: rect:map-node:6: [592.0, 362.75, 100.0, 51.5]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+- Travel
+
+## Dates
+
+Late May.

@@ -1,0 +1,57 @@
+Up from the end of the note marks the caret's heading in Contents, though the page scrolls to follow the caret.
+note: Board.md
+size: 1216x870
+state: {"right_open": true}
+events: tap:500,200@0.5 key:End+cmd@0.8 key:Up@1.2 key:Up@1.25 key:Up@1.3 key:Up@1.35 key:Up@1.4 key:Up@1.45 key:Up@1.5 key:Up@1.55 key:Up@1.6 key:Up@1.65 key:Up@1.7 key:Up@1.75 key:Up@1.8 key:Up@1.85 key:Up@1.9 key:Up@1.95 key:Up@2.0 key:Up@2.05 key:Up@2.1 key:Up@2.15 key:Up@2.2 key:Up@2.25 key:Up@2.3 key:Up@2.35 key:Up@2.4 key:Up@2.45 key:Up@2.5 key:Up@2.55 key:Up@2.6 key:Up@2.65 key:Up@2.7 key:Up@2.75 key:Up@2.8 key:Up@2.85 key:Up@2.9 key:Up@2.95 key:Up@3.0
+at: 3.6
+expect: text:caret-pos: 'Ln 11, Col 3'
+expect: color:ol-1: #e9e3d8ff
+expect: color:ol-3: #aea9a1ff
+--- before
+# Board
+
+## Ideas
+
+- [ ] Idea number 1
+- [ ] Idea number 2
+- [ ] Idea number 3
+- [ ] Idea number 4
+- [ ] Idea number 5
+- [ ] Idea number 6
+- [ ] Idea number 7
+- [ ] Idea number 8
+
+## Tried
+
+## Done
+
+- [x] Done item 1
+- [x] Done item 2
+- [x] Done item 3
+- [x] Done item 4
+- [x] Done item 5
+- [x] Done item 6
+- [x] Done item 7
+- [x] Done item 8
+- [x] Done item 9
+- [x] Done item 10
+- [x] Done item 11
+- [x] Done item 12
+- [x] Done item 13
+- [x] Done item 14
+- [x] Done item 15
+- [x] Done item 16
+- [x] Done item 17
+- [x] Done item 18
+- [x] Done item 19
+- [x] Done item 20
+- [x] Done item 21
+- [x] Done item 22
+- [x] Done item 23
+- [x] Done item 24
+- [x] Done item 25
+- [x] Done item 26
+- [x] Done item 27
+- [x] Done item 28
+- [x] Done item 29
+- [x] Done item 30

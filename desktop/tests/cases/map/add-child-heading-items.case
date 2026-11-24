@@ -1,6 +1,6 @@
-Tab on a heading whose last child is a list item adds an item to that list, tight.
+Tab on a heading whose last child is a list item, then the add toolbar's Bulleted list, adds an item to that list, tight.
 note: Plan.md
-events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:Car@1.0 key:Enter@1.4 key:s+cmd@1.8
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:Car@1.0 tap:map-kind-bullets@1.4 key:Enter@1.8 key:s+cmd@2.2
 --- before
 # Plan
 

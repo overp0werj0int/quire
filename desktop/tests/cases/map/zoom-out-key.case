@@ -1,7 +1,7 @@
-- zooms out by a fifth about the canvas's middle.
+- zooms out by a fifth about the selected node, which holds still.
 note: Trip.md
 events: key:m+cmd@0.3 key:-@0.9
-expect: rect:map-node:6: [518.7, 404.27, 54.95, 34.0]
+expect: rect:map-node:6: [464.25, 403.95, 54.95, 34.0]
 expect: scale:map-node:6: 0.9991999864578247
 --- before
 ---

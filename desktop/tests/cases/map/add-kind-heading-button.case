@@ -1,0 +1,17 @@
+The add toolbar's Heading button writes the level the place takes nearest its neighbours: under an H2, an H3.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 tap:map-kind-heading@1.4 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+## A
+
+text
+--- after
+# Plan
+
+## A
+
+text
+
+### x

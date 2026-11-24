@@ -431,6 +431,7 @@ pub fn init() -> App {
         c.remove("prefix");
     }
     app.mode = Mode::from_id(&app.persist.mode);
+    app.map.back = Mode::from_id(&app.persist.back);
     let known: Vec<PathBuf> = app.persist.vaults.iter().map(|v| v.path.clone()).collect();
     let (start, note) = match crate::cli::start_target(&known) {
         Some(crate::cli::Start::Note(file)) => {
@@ -629,6 +630,7 @@ impl App {
         }
         if !self.note_mode() {
             self.persist.mode = self.mode.id().into();
+            self.persist.back = self.map.back.id().into();
         }
     }
 
@@ -1874,9 +1876,18 @@ impl App {
 
 
     /// The zoom keys: a step up or down omarky's ladder, or `None` back to 14 px.
-    pub fn zoom(&mut self, up: Option<bool>) {
+    pub fn zoom(&mut self, up: Option<bool>, tx: &mut Tx) {
         let size = self.settings().size;
-        self.settings_mut().size = up.map_or(crate::store::SIZE_DEFAULT, |up| crate::store::zoom_step(size, up));
+        self.set_text_size(up.map_or(crate::store::SIZE_DEFAULT, |up| crate::store::zoom_step(size, up)), tx);
+    }
+
+    /// A new text size. A map shown lands it at once (MAP-034): Rune's layout motion would move
+    /// each fold ring on its own while each branch's curve jumped, so they'd part mid-flight.
+    pub fn set_text_size(&mut self, size: u32, tx: &mut Tx) {
+        self.settings_mut().size = size;
+        if self.mode == Mode::Map {
+            tx.instant();
+        }
     }
 
     pub fn toggle_focus(&mut self, tx: &mut Tx) {

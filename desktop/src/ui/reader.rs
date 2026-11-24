@@ -187,180 +187,33 @@ fn on_find_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// One row of the help sheet: what it does and the actions whose keys it shows.
-struct HelpRow {
-    what: &'static str,
-    ids: &'static [&'static str],
-}
-
-const fn h(what: &'static str, ids: &'static [&'static str]) -> HelpRow {
-    HelpRow { what, ids }
-}
-
-/// The help sheet's groups, in omarky's order and wording (RD-90). The keys come from the
-/// active keymap.
-const HELP: &[(&str, &[HelpRow])] = &[
-    (
-        "Read",
-        &[
-            h("Scroll", &["reader.scroll-down", "reader.scroll-up"]),
-            h("Page down / up", &["reader.page-down", "reader.page-up"]),
-            h("Top / bottom", &["reader.top", "reader.bottom"]),
-            h("Outline", &["reader.toggle-outline"]),
-            h("Readable / full width", &["reader.toggle-wide"]),
-            h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
-        ],
-    ),
-    (
-        "Find & copy",
-        &[
-            h("Find", &["reader.find"]),
-            h("Next / previous match", &["reader.find-next", "reader.find-previous"]),
-            h("Copy or edit a block", &["reader.block-menu"]),
-            h("Copy the block under the mouse", &["reader.copy-block-under-pointer"]),
-            h("Copy the whole note", &["reader.copy-all"]),
-        ],
-    ),
-    (
-        "Edit",
-        &[
-            h("Edit the whole note", &["app.toggle-mode"]),
-            h("Edit the block under the mouse", &["reader.edit-block"]),
-            h("Edit its section", &["reader.edit-section"]),
-            h("Save to the file / cancel", &["sheet.save", "sheet.cancel"]),
-        ],
-    ),
-    (
-        "File",
-        &[
-            h("Open a note", &["app.quick-switcher"]),
-            h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
-            h("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
-            h("Read from disk", &["reader.read-from-disk"]),
-            h("Close the tab", &["reader.close-tab"]),
-            h("This sheet", &["reader.help"]),
-        ],
-    ),
-];
-
-/// The writer's help groups (WR-166), in omarky's order and wording.
-const WRITER_HELP: &[(&str, &[HelpRow])] = &[
-    (
-        "Write",
-        &[
-            h("Bold / italic", &["writer.bold", "writer.italic"]),
-            h("Inline code", &["writer.inline-code"]),
-            h("Strikethrough", &["writer.strikethrough"]),
-            h("Link", &["writer.link"]),
-            h("Heading 1 to 6 / paragraph", &["writer.heading-1", "writer.heading-6", "writer.plain-paragraph"]),
-            h("Indent / outdent", &["writer.indent", "writer.outdent"]),
-            h("Follow the link", &["writer.follow-link"]),
-        ],
-    ),
-    (
-        "View",
-        &[
-            h("Preview", &["app.toggle-mode"]),
-            h("Find", &["writer.find"]),
-            h("Next / previous match", &["writer.find-next", "writer.find-previous"]),
-            h("Paragraph focus", &["writer.paragraph-focus"]),
-            h("Typewriter scrolling", &["writer.typewriter"]),
-            h("Next font", &["writer.next-font"]),
-            h("Outline", &["app.toggle-outline"]),
-            h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
-        ],
-    ),
-    (
-        "File",
-        &[
-            h("Save", &["app.save"]),
-            h("New note", &["app.new-note"]),
-            h("Open a note", &["app.quick-switcher"]),
-            h("Recent notes", &["writer.recent-notes"]),
-            h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
-            h("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
-            h("Close the tab", &["app.close-tab"]),
-            h("This sheet", &["writer.help"]),
-        ],
-    ),
-];
-
-/// The map's help groups (MAP-063), balanced across the two columns (15 rows left, 16 right).
-const MAP_HELP: &[(&str, &[HelpRow])] = &[
-    (
-        "Navigate",
-        &[
-            h("Parent / first child", &["map.parent", "map.child"]),
-            h("Previous / next sibling", &["map.prev-sibling", "map.next-sibling"]),
-            h("Root", &["map.root"]),
-            h("Fold or unfold", &["map.toggle-fold"]),
-            h("Fold or unfold the branch", &["map.toggle-fold-recursive"]),
-            h("Unfold everything / fold to a level", &["map.expand-all", "map.collapse-to-level"]),
-            h("Follow the node's link", &["map.follow-link"]),
-        ],
-    ),
-    (
-        "Find & views",
-        &[
-            h("Find", &["map.find"]),
-            h("Next / previous match", &["map.find-next", "map.find-previous"]),
-            h("Outline", &["map.toggle-outline"]),
-            h("Source or preview", &["app.toggle-mode"]),
-            h("Leave the map", &["app.toggle-map"]),
-            h("Read from disk", &["map.read-from-disk"]),
-            h("Close the tab", &["map.close-tab"]),
-            h("This sheet", &["map.help"]),
-        ],
-    ),
-    (
-        "Edit",
-        &[
-            h("Edit the node / its branch", &["map.edit", "map.edit-subtree"]),
-            h("Node menu", &["map.node-menu"]),
-            h("Add a child / sibling / sibling before", &["map.add-child", "map.add-sibling", "map.add-sibling-before"]),
-            h("Delete the branch", &["map.delete"]),
-            h("Tick the task", &["map.toggle-task"]),
-            h("Move up / down", &["map.move-up", "map.move-down"]),
-            h("Indent / outdent", &["map.indent", "map.outdent"]),
-            h("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
-            h("Undo / redo", &["map.undo", "map.redo"]),
-            h("Copy the node / its branch", &["map.copy-node", "map.copy-subtree"]),
-            h("Copy the whole note", &["map.copy-all"]),
-            h("Paste as child / sibling", &["map.paste"]),
-        ],
-    ),
-    (
-        "Canvas",
-        &[
-            h("Fit the map", &["map.fit"]),
-            h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
-            h("Zoom 100%", &["map.zoom-reset"]),
-            h("Centre the node", &["map.center"]),
-        ],
-    ),
-];
-
 /// A key cap (RD-91): delegates to the shared `<kbd>` helper (`widgets::kbd`, `SCROLLFADE`).
 pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
     super::widgets::kbd(p, t, false)
 }
 
-/// The help sheet (RD-86 to RD-91; in the writer WR-158 to WR-166).
+/// The help sheet (RD-86 to RD-91, RD-105; in the writer WR-158 to WR-166).
 /// The keyboard help, a card in the middle of the window (`super::layer`).
 pub(super) fn help_sheet(v: V) -> Card {
     let c = Roles::new(v.p);
     let preset = v.s.preset();
-    let (groups, row_h, row_gap, keys_w, col_w, left) = match v.s.mode {
-        crate::app::Mode::Source => (WRITER_HELP, 26.0, 7.0, 170.0, 470.0, 1),
-        crate::app::Mode::Map => (MAP_HELP, 24.0, 6.0, 190.0, 490.0, 2),
-        crate::app::Mode::Preview => (HELP, 24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0, 4),
+    let (row_h, row_gap, keys_w, col_w) = match v.s.mode {
+        crate::app::Mode::Source => (26.0, 7.0, 170.0, 470.0),
+        crate::app::Mode::Map => (24.0, 6.0, 190.0, 490.0),
+        crate::app::Mode::Preview => (24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0),
     };
+    let (all, left) = crate::help::groups(v.s.mode);
+    let (found, pick) = v.s.help_found();
+    let empty = crate::help::Search::default();
+    let search = v.s.help_search().unwrap_or(&empty);
     // The writer's and the map's sheets set their groups in two columns on a wide window
-    // (WR-163): the first `left` groups on the left.
-    let cols = if left < groups.len() && v.vw > 1040.0 { 2 } else { 1 };
+    // (WR-163): the first `left` groups on the left. A query keeps the columns of the groups
+    // it keeps.
+    let cols = if left < all.len() && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
     let header_h = 44.0;
+    let search_h = 40.0;
     let header = row()
         .key("help-header")
         .w(w)
@@ -394,41 +247,101 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .control(|s: &mut App, tx| s.close_layer(tx))
                 .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink)),
         );
+    let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
+    // The search (RD-105): it filters the rows as it is typed, Up and Down pick one, and Enter
+    // runs what the row's keys run.
+    let hint = |k: &str, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(v.p, k.to_string(), true)).child(text(what.to_string()).font(sans(11.5, 400.0)).color(help_muted));
+    let search_row = row()
+        .key("help-search-row")
+        .w(w)
+        .h(search_h)
+        .px(24.0)
+        .gap(10.0)
+        .center_y()
+        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
+        .border_layout()
+        .child(icon(&SEARCH, 14.0).color(help_muted))
+        .child(
+            text_input(&search.q, sans(13.0, 400.0))
+                .key(crate::reader::HELP_SEARCH)
+                .single_line()
+                .grow(1.0)
+                .min_w(0.0)
+                .color(c.text)
+                .label("Search shortcuts")
+                .placeholder("Search shortcuts", super::styles::placeholder_ink(v.p))
+                .caret(c.text, c.selection)
+                .on_edit(help_field)
+                .on_input_change(|s: &mut App, _| {
+                    if let Some(h) = s.help_search_mut() {
+                        h.idx = 0;
+                    }
+                })
+                // The field takes its editing keys before the window's: the sheet's go first.
+                .on_input_key(|s: &mut App, ev: &KeyEvent, tx| s.help_key(ev, tx)),
+        )
+        .child(hint("\u{2191}\u{2193}", "select"))
+        .children(pick.and_then(crate::help::action).map(|a| hint("\u{21b5}", a.name)));
     let card = col().key("help-body").w(w).px(24.0).py(18.0).gap(18.0);
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
-    for (gi, (title, rows)) in groups.iter().enumerate() {
-        let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(
-            caption(title, false, v.p).mb(6.0),
-        );
+    let mut n = 0;
+    for (title, rows) in &found {
+        let gi = all.iter().position(|(t, _)| t == title).unwrap_or(0);
+        let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(caption(title, false, v.p).mb(6.0));
         for (i, r) in rows.iter().enumerate() {
             let mut keys = row().gap(4.0).w(keys_w).center_y();
-            let is_range = matches!(r.ids, ["map.heading-1", "map.heading-6"] | ["writer.heading-1", "writer.heading-6", ..]);
-            let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
+            let mut shown: Vec<String> = Vec::new();
             for (idx, id) in r.ids.iter().enumerate() {
-                if is_range && idx == 1 {
+                if idx == 1 && crate::help::is_range(r.ids[0], id) {
                     keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(help_muted));
                 }
                 if *id == "map.node-menu" {
                     keys = keys
                         .child(cap(keymap::label_of("Shift+F10"), v.p))
                         .child(text("or right-click").font(sans(11.5, 400.0)).color(help_muted));
-                } else if let Some(a) = keymap::action(id) {
-                    let chords = a.chords(preset);
-                    let show = if matches!(*id, "reader.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };
-                    for k in show {
-                        keys = keys.child(cap(keymap::label_of(k), v.p));
+                    continue;
+                }
+                // Two actions on one key (Esc) show it once.
+                for k in crate::help::chords(preset, id) {
+                    if !shown.contains(&k) {
+                        keys = keys.child(cap(k.clone(), v.p));
+                        shown.push(k);
                     }
                 }
             }
-            g = g.child(row().key(format!("r-{i}")).h(row_h).w_full().center_y().child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text)));
+            let mut line = row().key(format!("r-{i}")).h(row_h).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
+            if crate::help::action(r).is_some() {
+                let at = n;
+                n += 1;
+                let on = pick.is_some_and(|p| std::ptr::eq(p, *r));
+                let row_ref: &'static crate::help::Row = r;
+                line = line
+                    .key(crate::help::row_key(at))
+                    .fill(if on { v.p.act } else { Color::TRANSPARENT })
+                    .role("option")
+                    .cursor(rune::Cursor::Pointer)
+                    .on_hover(move |s: &mut App| {
+                        if let Some(h) = s.help_search_mut()
+                            && h.idx != at
+                        {
+                            h.idx = at;
+                        }
+                    })
+                    .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
+            }
+            g = g.child(line);
         }
         let k = if cols == 2 && gi >= left { 1 } else { 0 };
         let slot = std::mem::replace(&mut columns[k], el());
         columns[k] = slot.child(g);
     }
     let mut body = row().key("help-cols").gap(40.0).items_start();
-    for column in columns {
-        body = body.child(column);
+    if found.is_empty() {
+        body = body.child(text("No shortcut matches.").key("help-none").font(sans(12.5, 400.0)).color(help_muted));
+    } else {
+        for column in columns {
+            body = body.child(column);
+        }
     }
     let live = v.s.reader.help_scroll.clone();
     // The card fits the window, 24 px clear of each edge, and its rows scroll inside it, fading
@@ -436,7 +349,7 @@ pub(super) fn help_sheet(v: V) -> Card {
     let scroll = col()
         .key(crate::reader::HELP_SCROLL)
         .w(w)
-        .max_h((v.vh - 48.0 - header_h).max(80.0))
+        .max_h((v.vh - 48.0 - header_h - search_h).max(80.0))
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)
         .on_scroll_offset(move |at| {
@@ -453,11 +366,20 @@ pub(super) fn help_sheet(v: V) -> Card {
         .key("help-card")
         .role("dialog")
         .label("Keyboard help")
-        .child(col().w(w).radius(6.0).clip_rounded(6.0).child(header).child(scroll));
+        .child(col().w(w).radius(6.0).clip_rounded(6.0).child(header).child(search_row).child(scroll));
     if v.p.dark {
         card = card.border(1.0, crate::roles::mix(c.bg, c.text, 0.20));
     }
     Card { el: card, plane: Some(col().center()) }
+}
+
+/// The help's search field, for its edit hook, which can still run in the frame the help
+/// closes; that last edit lands in a scratch field.
+fn help_field(s: &mut App) -> &mut rune::TextEdit {
+    if s.help_search().is_some() {
+        return &mut s.help_search_mut().expect("checked above").q;
+    }
+    s.field("help-closed", String::new)
 }
 
 /// A toast's place: this far above the note area's bottom edge (RD-98).
@@ -756,3 +678,4 @@ pub fn reloaded(v: V) -> El {
         .child(el().size(6.0, 6.0).radius(3.0).fill(accent))
         .child(text("reloaded").font(sans(11.0, 400.0)).color(accent))
 }
+

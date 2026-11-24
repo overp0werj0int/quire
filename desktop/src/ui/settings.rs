@@ -402,9 +402,9 @@ fn editor(v: V) -> El {
             .hover(p.bg)
             .role("button")
             .label(if d < 0 { "Smaller" } else { "Larger" })
-            .control(move |s: &mut App, _: &mut Tx| {
+            .control(move |s: &mut App, tx: &mut Tx| {
                 let n = (s.settings().size as i32 + d).clamp(crate::store::SIZE_MIN as i32, crate::store::SIZE_MAX as i32) as u32;
-                s.settings_mut().size = n;
+                s.set_text_size(n, tx);
             })
             .child(label(t, sans(15.0, 400.0), p.ink2))
     };

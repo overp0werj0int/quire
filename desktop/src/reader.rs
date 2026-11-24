@@ -16,6 +16,7 @@ use crate::page::r;
 pub const SCROLL: &str = "doc-scroll";
 /// The help sheet's scroll viewport.
 pub const HELP_SCROLL: &str = "help-scroll";
+pub const HELP_SEARCH: &str = "help-search";
 /// The current find match's highlight, which scrolling centres.
 pub const FIND_CUR: &str = "find-cur";
 /// The key of the current match's second highlight while it waits to be placed above a band.
@@ -1388,7 +1389,8 @@ impl App {
             self.close_layer(tx);
         } else {
             self.reader.help_scroll.set(HelpScroll::default());
-            self.open_layer(crate::layer::Layer::Help, tx);
+            self.open_layer(crate::layer::Layer::Help(crate::help::Search::default()), tx);
+            tx.focus(HELP_SEARCH, false);
         }
     }
 

@@ -1,0 +1,11 @@
+Ctrl+Alt+0 clears the caret line's heading, beside Ctrl+Alt+1 to 6; Ctrl+0 resets the text size and leaves the heading.
+note: H.md
+events: tap:editor@0.2 key:Home+cmd@0.4 key:0+cmd@0.6 key:Down@0.8 key:Down@1.0 key:0+cmd+alt@1.2 key:s+cmd@1.6
+--- before
+# Title
+
+## Sub
+--- after
+# Title
+
+Sub

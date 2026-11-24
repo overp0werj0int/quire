@@ -150,6 +150,9 @@ fn menu_key(ev: &KeyEvent) -> bool {
 /// the edit sheet, which swallow it.
 fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let preset = s.preset();
+    if kind == Kind::Help {
+        return s.help_key(ev, tx);
+    }
     if kind.light() {
         if matches!(ev.key, rune::Key::Escape) {
             if !s.esc_takes_notice() {
@@ -196,18 +199,14 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         run(s, tx);
         return true;
     }
-    if kind == Kind::Help && !crate::focus::chord(ev) && !ev.mods.shift && s.scroll_help(ev.key.clone(), tx) {
-        return true;
-    }
-    // Help and the edit sheet swallow every other key (RD-80, SHEET-014).
-    matches!(kind, Kind::Help | Kind::Sheet)
+    // The edit sheet swallows every other key (SHEET-014).
+    kind == Kind::Sheet
 }
 
 /// A heavy layer's own contexts, and the window's it takes: help and the edit sheet take
 /// only their own keys (RD-80, SHEET-036).
 fn layer_stack(kind: Kind) -> (&'static [Ctx], &'static [Ctx]) {
     match kind {
-        Kind::Help => (&[Ctx::Help], &[]),
         Kind::Sheet => (&[Ctx::Sheet], &[]),
         _ => (&[], &[Ctx::Global]),
     }
@@ -259,9 +258,10 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.insert-image" => |s, tx| s.pick_image(tx),
         "app.save" => |s, tx| s.save_now(tx),
         "app.close-tab" | "reader.close-tab" | "map.close-tab" => close_tab,
-        "app.zoom-in" => |s, _| s.zoom(Some(true)),
-        "app.zoom-out" => |s, _| s.zoom(Some(false)),
-        "reader.zoom-reset" => |s, _| s.zoom(None),
+        // The map zooms by `+` and `-` alone (MAP-034); its text size stays.
+        "app.zoom-in" => |s, tx| if s.mode != crate::app::Mode::Map { s.zoom(Some(true), tx) },
+        "app.zoom-out" => |s, tx| if s.mode != crate::app::Mode::Map { s.zoom(Some(false), tx) },
+        "reader.zoom-reset" => |s, tx| s.zoom(None, tx),
         "app.undo-delete" => |s, tx| s.undo_delete(tx),
         "app.next-pane" => |s, tx| s.step_pane(false, tx),
         "app.previous-pane" => |s, tx| s.step_pane(true, tx),
@@ -324,6 +324,9 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.heading-5" => |s, tx| s.writer_heading(5, tx),
         "writer.heading-6" => |s, tx| s.writer_heading(6, tx),
         "writer.plain-paragraph" => |s, tx| s.writer_heading(0, tx),
+        "writer.numbered-list" => |s, tx| s.format(Fmt::Number, tx),
+        "writer.bulleted-list" => |s, tx| s.format(Fmt::Bullet, tx),
+        "writer.task-list" => |s, tx| s.format(Fmt::Task, tx),
         "writer.indent" => |s, tx| s.writer_tab(false, tx),
         "writer.outdent" => |s, tx| s.writer_tab(true, tx),
         "writer.continue-block" => |s, tx| s.writer_enter(tx),

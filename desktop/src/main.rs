@@ -12,6 +12,7 @@ mod commands;
 mod focus;
 mod folders;
 mod format;
+mod help;
 mod images;
 mod keymap;
 mod keys;
@@ -2935,9 +2936,9 @@ mod writer_chrome_tests {
         let copy0 = info(&rt, "copy").expect("copy chip").rect;
         let badge0 = info(&rt, "badge").expect("language badge").rect;
         assert!(copy0[3] >= 24.0, "default Copy chip height >= 24 pt: {copy0:?}");
-        rt.update(|s, _| {
+        rt.update(|s, tx| {
             for _ in 0..3 {
-                s.zoom(Some(true));
+                s.zoom(Some(true), tx);
             }
         });
         for _ in 0..8 {
@@ -2959,9 +2960,9 @@ mod writer_chrome_tests {
         let md = "# Tasks\n\n- [ ] First task\n- [ ] Second task\n";
         let (mut rt, _) = open(&dir, md, crate::app::Mode::Preview);
         rt.set_viewport((1280.0, 800.0), 1.0);
-        rt.update(|s, _| {
+        rt.update(|s, tx| {
             for _ in 0..3 {
-                s.zoom(Some(false));
+                s.zoom(Some(false), tx);
             }
         });
         for _ in 0..8 {
@@ -3014,9 +3015,9 @@ mod writer_chrome_tests {
         });
         let cr = crate::theme::contrast(fg, panel);
         assert!(cr >= 4.5, "badge contrast on Paper panel: {cr:.2}:1 (< 4.5)");
-        rt.update(|s, _| {
+        rt.update(|s, tx| {
             for _ in 0..3 {
-                s.zoom(Some(true));
+                s.zoom(Some(true), tx);
             }
         });
         for _ in 0..8 {
@@ -9501,7 +9502,7 @@ mod layer_matrix_tests {
         }
 
         // A text field keeps the writer's edits at the caret from the note (FLD): Ctrl+B, Ctrl+K,
-        // Ctrl+E, Ctrl+I and Ctrl+1 in it leave the note as it was and the field focused, docked
+        // Ctrl+E, Ctrl+I and Ctrl+Alt+0 in it leave the note as it was and the field focused, docked
         // and in the drawer. A window shortcut still acts from it. Every text field on the page
         // but the editor is one of `focus::FIELDS`.
         let search = |rt: &mut Runtime<App>| {
@@ -9532,11 +9533,12 @@ mod layer_matrix_tests {
                 }
             }
             let before = seen(&mut rt);
-            for c in ['b', 'k', 'e', 'i', '0'] {
-                key(&mut rt, Key::Command(c), ctrl(false));
+            for (c, alt) in [('b', false), ('k', false), ('e', false), ('i', false), ('0', true)] {
+                key(&mut rt, Key::Command(c), Mods { alt, ..ctrl(false) });
                 let after = seen(&mut rt);
                 if after.text != before.text || focused(&rt).as_deref() != Some(field) {
-                    fails.push(format!("Ctrl+{} in {name}: the note changed {}, focus on {:?}", c.to_ascii_uppercase(), after.text != before.text, focused(&rt)));
+                    let alt = if alt { "Alt+" } else { "" };
+                    fails.push(format!("Ctrl+{alt}{} in {name}: the note changed {}, focus on {:?}", c.to_ascii_uppercase(), after.text != before.text, focused(&rt)));
                 }
             }
             key(&mut rt, Key::Command(','), ctrl(false));

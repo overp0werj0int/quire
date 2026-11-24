@@ -1,0 +1,7 @@
+Typing in the help sheet's search keeps only the rows that match ("tab" keeps Indent / outdent, on Tab, first), and Down picks the next one that runs (RD-105).
+note: L.md
+events: tap:editor@0.2 key:F1@0.5 type:tab@0.8 key:Down@1.4
+expect: focus: help-search (ring shown)
+expect: text:help-search-row: 'tab ↑↓ select ↵ Next tab'
+--- before
+one

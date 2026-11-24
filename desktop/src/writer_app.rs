@@ -603,7 +603,7 @@ impl App {
         }
     }
 
-    /// Ctrl+1 to Ctrl+6, Ctrl+0 (WR-59, WR-60).
+    /// Ctrl+Alt+1 to Ctrl+Alt+6, Ctrl+Alt+0 (WR-59, WR-60).
     pub fn writer_heading(&mut self, level: usize, tx: &mut Tx) {
         if !self.writing() {
             return;

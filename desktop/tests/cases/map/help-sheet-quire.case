@@ -2,8 +2,9 @@ F1 on the map opens its help sheet with keys from the quire preset: Ctrl+E goes 
 note: Trip.md
 state: {"mode": "map", "settings": {"keymap": "quire"}}
 events: key:F1@0.8
-expect: text:help-Find & views: 'FIND & VIEWS Ctrl+F Find n N Next / previous match o Outline Ctrl+E Source or preview Ctrl+M Leave the map Ctrl+R Read from disk q Close the tab ? F1 This sheet'
-expect: rect:help-Navigate: [130.0, 154.0, 490.0, 229.0]
-expect: rect:help-Edit: [660.0, 154.0, 490.0, 379.0]
+expect: text:help-Find & views: 'FIND & VIEWS Ctrl+F Find n N Next / previous match Esc Close find, else leave the map o Ctrl+Shift+O Outline Ctrl+E Source or preview Ctrl+M Leave the map ? F1 This sheet'
+expect: rect:help-Navigate: [130.0, 126.0, 490.0, 229.0]
+expect: rect:help-Edit: [130.0, 373.0, 490.0, 379.0]
+expect: rect:help-Canvas: [660.0, 126.0, 490.0, 139.0]
 --- before
 # Trip

@@ -1,0 +1,7 @@
+The help sheet's search keeps the rows that match, and Enter closes it and runs the picked row: "numbered" then Enter makes the caret line a numbered item (RD-105).
+note: L.md
+events: tap:editor@0.2 key:Home+cmd@0.3 key:F1@0.5 type:numbered@0.8 key:Enter@1.4 key:s+cmd@1.8
+--- before
+one
+--- after
+1. one

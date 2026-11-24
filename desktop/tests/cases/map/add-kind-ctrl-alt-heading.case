@@ -1,0 +1,13 @@
+Ctrl+Alt+2 in the field of a new node under an H1 writes it as an H2.
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.6 key:Tab@0.8 type:T@1.0 key:2+cmd+alt@1.4 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+Intro
+--- after
+# Plan
+
+Intro
+
+## T

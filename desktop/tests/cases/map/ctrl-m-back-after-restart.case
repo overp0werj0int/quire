@@ -1,0 +1,17 @@
+A session that quit in the map from Preview leaves it for Preview on Ctrl+M, not for Source.
+note: Trip.md
+state: {"mode": "map", "back": "preview"}
+events: key:m+cmd@0.6
+expect: rect:map-canvas: None
+expect: rect:editor: None
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

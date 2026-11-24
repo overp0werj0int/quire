@@ -1,4 +1,4 @@
-Tab on an H1 whose only child is a paragraph adds an H2 after its branch.
+Tab on an H1 whose only child is a paragraph adds a paragraph after it.
 note: Plan.md
 events: key:m+cmd@0.3 key:Home@0.6 key:Tab@0.8 type:T@1.0 key:Enter@1.4 key:s+cmd@1.8
 expect: selected: map-node:5
@@ -11,4 +11,4 @@ Intro
 
 Intro
 
-## T
+T

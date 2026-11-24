@@ -837,6 +837,94 @@ impl Add {
             Add::Child(j) | Add::After(j) | Add::Before(j) => j,
         }
     }
+
+    /// The node whose child the new node is: `Enter` on the root adds a child (MAP-023).
+    fn child_of(self) -> Option<usize> {
+        match self {
+            Add::Child(i) | Add::After(i @ ROOT) => Some(i),
+            _ => None,
+        }
+    }
+}
+
+/// What a new node is written as: the types the add toolbar offers (MAP-087).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NewKind {
+    Paragraph,
+    Heading(usize),
+    Bullet,
+    Number,
+    Task,
+}
+
+impl NewKind {
+    const ALL: [NewKind; 10] = [
+        NewKind::Paragraph,
+        NewKind::Heading(1),
+        NewKind::Heading(2),
+        NewKind::Heading(3),
+        NewKind::Heading(4),
+        NewKind::Heading(5),
+        NewKind::Heading(6),
+        NewKind::Bullet,
+        NewKind::Number,
+        NewKind::Task,
+    ];
+
+    fn bit(self) -> u16 {
+        match self {
+            NewKind::Paragraph => 1,
+            NewKind::Heading(l) => 1 << l.min(6),
+            NewKind::Bullet => 1 << 7,
+            NewKind::Number => 1 << 8,
+            NewKind::Task => 1 << 9,
+        }
+    }
+
+    /// The kind of an existing node, for a sibling like it.
+    fn of(k: &NodeKind) -> NewKind {
+        match k {
+            NodeKind::Heading { level, .. } => NewKind::Heading(*level),
+            NodeKind::Item { ordered: true, .. } => NewKind::Number,
+            NodeKind::Item { task: Task::None, .. } => NewKind::Bullet,
+            NodeKind::Item { .. } => NewKind::Task,
+            _ => NewKind::Paragraph,
+        }
+    }
+
+    /// Whether node kind `k` is one of these.
+    fn is(self, k: &NodeKind) -> bool {
+        match (self, k) {
+            (NewKind::Paragraph, NodeKind::Block(BlockKind::Paragraph)) => true,
+            (NewKind::Heading(l), NodeKind::Heading { level, .. }) => l == *level,
+            (NewKind::Number, NodeKind::Item { ordered, .. }) => *ordered,
+            (NewKind::Bullet, NodeKind::Item { ordered, task, .. }) => !*ordered && *task == Task::None,
+            (NewKind::Task, NodeKind::Item { ordered, task, .. }) => !*ordered && *task != Task::None,
+            _ => false,
+        }
+    }
+
+    /// Item `k`'s list takes an item of this kind: bullets and tasks share one, numbers don't.
+    fn joins(self, k: &NodeKind) -> bool {
+        match (self, k) {
+            (NewKind::Bullet | NewKind::Task, NodeKind::Item { ordered, .. }) => !*ordered,
+            (NewKind::Number, NodeKind::Item { ordered, .. }) => *ordered,
+            _ => false,
+        }
+    }
+}
+
+/// The kinds a new node can take at one place, and the level its Heading button picks (MAP-087).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Kinds {
+    set: u16,
+    pub heading: Option<usize>,
+}
+
+impl Kinds {
+    pub fn has(self, k: NewKind) -> bool {
+        self.set & k.bit() != 0
+    }
 }
 
 /// A new node: its first line's `head`, the indent of its other lines (None: one line only),
@@ -850,10 +938,60 @@ struct Plan {
     bump: Vec<usize>,
 }
 
-/// A new node with text `text` (MAP-021 to MAP-024).
-pub fn add(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> {
+/// The kind a new node at `at` is until another is picked (MAP-021, MAP-023): a sibling's own
+/// kind; under a list item, an item like its other children or a bullet; under a heading or the
+/// root, a heading when the section goes on in subheadings, else a paragraph.
+pub fn default_kind(t: &Tree, at: Add) -> Result<NewKind, Refused> {
+    let i = at.node();
+    let n = &t.nodes[i];
+    let Some(i) = at.child_of() else {
+        return match n.kind {
+            _ if i == ROOT => Err(None),
+            NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(None),
+            _ => Ok(NewKind::of(&n.kind)),
+        };
+    };
+    let kids = kids_but(t, i, usize::MAX);
+    match &n.kind {
+        NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(None),
+        NodeKind::Block(_) => Err(Some(LEAF_CHILD)),
+        NodeKind::Heading { .. } if !takes_children(t, i) => Err(Some(LEAF_CHILD)),
+        NodeKind::Item { .. } => Ok(kids.iter().rev().find(|&&c| is_item(t, c)).map_or(NewKind::Bullet, |&c| NewKind::of(&t.nodes[c].kind))),
+        NodeKind::Root => Ok(kids.iter().map(|&c| level(t, c)).filter(|&l| l > 0).min().map_or(NewKind::Paragraph, NewKind::Heading)),
+        NodeKind::Heading { .. } => Ok(match kids.iter().rev().find(|&&c| level(t, c) > 0 || is_item(t, c)) {
+            Some(&c) if level(t, c) > 0 => NewKind::Heading(level(t, c)),
+            _ => NewKind::Paragraph,
+        }),
+    }
+}
+
+/// The kinds a new node at `at` can take (MAP-087): each that goes in as a node at that place
+/// without changing what any other node is.
+pub fn kinds(src: &str, t: &Tree, at: Add) -> Kinds {
     let old: Vec<&str> = src.split('\n').collect();
-    let p = plan(&old, t, at)?;
+    let set = NewKind::ALL.iter().filter(|&&k| matches!(place(src, &old, t, at, k, "\u{200b}"), Ok((_, _, true)))).fold(0, |s, k| s | k.bit());
+    let i = at.node();
+    let above = std::iter::successors(Some(i), |&k| t.nodes[k].parent).map(|k| level(t, k)).find(|&l| l > 0).unwrap_or(0);
+    let near = match at.child_of() {
+        Some(i) => kids_but(t, i, usize::MAX).iter().rev().map(|&c| level(t, c)).find(|&l| l > 0).unwrap_or(above + 1),
+        None if level(t, i) > 0 => above,
+        None => above + 1,
+    };
+    let heading = (1..=6).filter(|&l| set & NewKind::Heading(l).bit() != 0).min_by_key(|&l| (l.abs_diff(near), std::cmp::Reverse(l)));
+    Kinds { set, heading }
+}
+
+/// A new node of kind `kind` with text `text` (MAP-021 to MAP-024).
+pub fn add(src: &str, t: &Tree, at: Add, kind: NewKind, text: &str) -> Result<Splice, Refused> {
+    let old: Vec<&str> = src.split('\n').collect();
+    let (new, focus, _) = place(src, &old, t, at, kind, text)?;
+    Ok(splice_of(&old, &new, Some(focus)))
+}
+
+/// The note's lines with a new node in them, the line it starts on, and whether it went in as
+/// meant: a node of its kind at its place in the tree, every other node as it was.
+fn place(src: &str, old: &[&str], t: &Tree, at: Add, kind: NewKind, text: &str) -> Result<(Vec<String>, usize, bool), Refused> {
+    let p = plan(old, t, at, kind)?;
     let lines = typed(text, p.col.is_some()).ok_or(None)?;
     let mut base: Vec<String> = old.iter().map(|l| l.to_string()).collect();
     for &j in &p.bump {
@@ -872,51 +1010,38 @@ pub fn add(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> 
         new.splice(p.at..p.at, ins);
         (new, p.at + usize::from(before))
     };
-    let first = build(p.blank);
+    let depth = at.child_of().map_or(t.nodes[at.node()].depth, |i| t.nodes[i].depth + 1);
     let fits = |(new, focus): &(Vec<String>, usize)| {
         let t2 = reparse(new);
         let Some(k) = t2.nodes.iter().position(|m| m.own.start == *focus && !m.own.is_empty()) else { return false };
+        if t2.nodes[k].depth != depth || !kind.is(&t2.nodes[k].kind) {
+            return false;
+        }
         let mut s = shape(&t2);
         s.remove(k - 1);
         s == shape(t)
     };
-    let (new, focus) = if !fits(&first) && !p.blank && fits(&build(true)) { build(true) } else { first };
-    Ok(splice_of(&old, &new, Some(focus)))
+    let first = build(p.blank);
+    if fits(&first) {
+        return Ok((first.0, first.1, true));
+    }
+    match (!p.blank).then(|| build(true)).filter(|b| fits(b)) {
+        Some((new, focus)) => Ok((new, focus, true)),
+        None => Ok((first.0, first.1, false)),
+    }
 }
 
 /// A new block of `text`, such as an image's link (MAP-048). Under a heading or the root it is
 /// a paragraph after the section's own blocks and before its first subheading, and after a
 /// heading inside a list item it is a paragraph under that heading, where a typed node would
-/// be a heading or a list item. Anywhere else it goes in as `add` puts a typed node.
+/// be a heading or a list item. Anywhere else it goes in as `add` puts a node of the default kind.
 pub fn add_block(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> {
-    let old: Vec<&str> = src.split('\n').collect();
-    let n = &t.nodes[at.node()];
-    let (line, indent) = match (at, &n.kind) {
-        (Add::Child(i), NodeKind::Root | NodeKind::Heading { .. }) if takes_children(t, i) => {
-            let mut kids = n.children.iter().copied().filter(|&c| t.nodes[c].kind != NodeKind::Footnotes).peekable();
-            let own = kids.peek().map_or(if n.own.is_empty() { front_end(&old) } else { n.own.end }, |&c| t.nodes[c].own.start);
-            let mut line = own;
-            for c in kids {
-                if matches!(t.nodes[c].kind, NodeKind::Heading { .. }) {
-                    break;
-                }
-                line = t.nodes[c].span.end;
-            }
-            (line, "")
-        }
-        (Add::After(_), NodeKind::Heading { .. }) => (n.span.end, &old[n.own.start][..lead(old[n.own.start]).1]),
-        _ => return add(src, t, at, text),
+    let kind = match (at, &t.nodes[at.node()].kind) {
+        (Add::Child(i), NodeKind::Root | NodeKind::Heading { .. }) if takes_children(t, i) => NewKind::Paragraph,
+        (Add::After(_), NodeKind::Heading { .. }) => NewKind::Paragraph,
+        _ => default_kind(t, at)?,
     };
-    let lines = typed(text, true).ok_or(None)?;
-    let real = old.len() - usize::from(src.ends_with('\n'));
-    let before = line > 0 && !blank(old[line - 1]);
-    let after = line < real && !blank(old[line]);
-    let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
-    let mut ins: Vec<String> = before.then(String::new).into_iter().collect();
-    ins.extend(lines.iter().map(|l| format!("{indent}{l}")));
-    ins.extend(after.then(String::new));
-    new.splice(line..line, ins);
-    Ok(splice_of(&old, &new, Some(line + usize::from(before))))
+    add(src, t, at, kind, text)
 }
 
 fn reparse(lines: &[String]) -> Tree {
@@ -930,12 +1055,12 @@ fn shape(t: &Tree) -> Vec<(std::mem::Discriminant<NodeKind>, usize, &str)> {
     t.nodes[1..].iter().map(|n| (sort(&n.kind), n.depth, n.label.as_str())).collect()
 }
 
-fn plan(old: &[&str], t: &Tree, at: Add) -> Result<Plan, Refused> {
-    match at {
-        Add::Child(i) => child_plan(old, t, i),
-        Add::After(ROOT) => child_plan(old, t, ROOT),
-        Add::Before(ROOT) => Err(None),
-        Add::After(i) | Add::Before(i) => sibling_plan(old, t, i, matches!(at, Add::Before(_))),
+fn plan(old: &[&str], t: &Tree, at: Add, kind: NewKind) -> Result<Plan, Refused> {
+    match (at, at.child_of()) {
+        (_, Some(i)) => child_plan(old, t, i, kind),
+        (Add::Before(ROOT), _) => Err(None),
+        (Add::After(i) | Add::Before(i), _) => sibling_plan(old, t, i, matches!(at, Add::Before(_)), kind),
+        (Add::Child(_), None) => unreachable!("a child has a parent"),
     }
 }
 
@@ -976,8 +1101,9 @@ fn renumber(lines: &mut [String], t: &Tree, j: usize, by: i64) {
     }
 }
 
-/// A new item after or before item `j` of the same list, in at line `at` (MAP-023, MAP-024).
-fn item_plan(old: &[&str], t: &Tree, j: usize, at: usize, before: bool) -> Plan {
+/// A new item of `kind` after or before item `j` of the same list, in at line `at` (MAP-023,
+/// MAP-024).
+fn item_plan(old: &[&str], t: &Tree, j: usize, at: usize, before: bool, kind: NewKind) -> Plan {
     let n = &t.nodes[j];
     let NodeKind::Item { marker, ordered, task, indent, content_col, .. } = &n.kind else { unreachable!("an item") };
     let line = old[n.own.start];
@@ -990,11 +1116,20 @@ fn item_plan(old: &[&str], t: &Tree, j: usize, at: usize, before: bool) -> Plan 
         _ => marker.clone(),
     };
     let gap = content_col.saturating_sub(indent + marker_len(&n.kind)).max(1);
-    let boxed = if *task == Task::None { "" } else { "[ ] " };
+    // A numbered task list keeps its boxes.
+    let boxed = if kind == NewKind::Task || (*ordered && *task != Task::None) { "[ ] " } else { "" };
     let head = format!("{}{marker}{}{boxed}", &line[..b], " ".repeat(gap));
     let bump = if counting { items[if before { k } else { k + 1 }..].to_vec() } else { Vec::new() };
     let tight_spot = if before { at == n.own.start } else { at == n.span.end };
     Plan { at, head, col: Some(indent + marker.len() + gap), blank: !tight_spot || loose(old, t, &items), bump }
+}
+
+/// A list of one new item of `kind` at `indent` (`col` columns), with bullet `bullet` unless
+/// numbered.
+fn new_list(indent: &str, col: usize, kind: NewKind, bullet: &str, at: usize, blank: bool) -> Plan {
+    let marker = if kind == NewKind::Number { "1." } else { bullet };
+    let boxed = if kind == NewKind::Task { "[ ] " } else { "" };
+    Plan { at, head: format!("{indent}{marker} {boxed}"), col: Some(col + marker.len() + 1), blank, bump: Vec::new() }
 }
 
 fn marker_len(k: &NodeKind) -> usize {
@@ -1014,59 +1149,65 @@ pub fn takes_children(t: &Tree, i: usize) -> bool {
     }
 }
 
-fn child_plan(old: &[&str], t: &Tree, i: usize) -> Result<Plan, Refused> {
+/// A new child of node `i`. A paragraph or list goes after the section's own blocks and before
+/// its first subheading; a heading after the whole branch (MAP-021).
+fn child_plan(old: &[&str], t: &Tree, i: usize, kind: NewKind) -> Result<Plan, Refused> {
     let n = &t.nodes[i];
-    let kids: Vec<usize> = n.children.iter().copied().filter(|&c| t.nodes[c].kind != NodeKind::Footnotes).collect();
-    let level_of = |c: usize| match t.nodes[c].kind {
-        NodeKind::Heading { level, .. } => Some(level),
-        _ => None,
-    };
     match &n.kind {
         NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(None),
         NodeKind::Block(_) => Err(Some(LEAF_CHILD)),
         NodeKind::Heading { .. } if !takes_children(t, i) => Err(Some(LEAF_CHILD)),
-        NodeKind::Item { marker, ordered, content_col, .. } => Ok(match kids.iter().rev().find(|&&c| is_item(t, c)) {
-            Some(&last) => item_plan(old, t, last, n.span.end, false),
-            None => {
-                let bullet = if *ordered { "-" } else { marker.as_str() };
-                Plan { at: n.span.end, head: format!("{}{bullet} ", " ".repeat(*content_col)), col: Some(content_col + 2), blank: false, bump: Vec::new() }
+        NodeKind::Item { marker, ordered, content_col, .. } => {
+            let pad = " ".repeat(*content_col);
+            match kind {
+                NewKind::Heading(_) => Err(None),
+                NewKind::Paragraph => Ok(Plan { at: n.span.end, head: pad, col: Some(*content_col), blank: true, bump: Vec::new() }),
+                _ => Ok(match n.children.iter().rev().copied().find(|&c| is_item(t, c)) {
+                    Some(last) if kind.joins(&t.nodes[last].kind) => item_plan(old, t, last, n.span.end, false, kind),
+                    _ => new_list(&pad, *content_col, kind, if *ordered { "-" } else { marker }, n.span.end, false),
+                }),
             }
-        }),
+        }
         NodeKind::Heading { .. } | NodeKind::Root => {
-            let own_level = level_of(i).unwrap_or(0);
-            let end = kids.last().map_or(if n.own.is_empty() { front_end(old) } else { n.own.end }, |&c| t.nodes[c].span.end);
-            let decider = kids.iter().rev().copied().find(|&c| level_of(c).is_some() || is_item(t, c));
-            let level = if own_level == 0 { kids.iter().filter_map(|&c| level_of(c)).min() } else { decider.and_then(level_of) };
-            let last_item = kids.iter().rev().copied().find(|&c| is_item(t, c));
-            Ok(match (level, last_item) {
-                (Some(l), _) => Plan { at: end, head: format!("{} ", "#".repeat(l)), col: None, blank: true, bump: Vec::new() },
-                (None, Some(j)) => item_plan(old, t, j, end, false),
-                (None, None) if own_level == 1 => Plan { at: end, head: "## ".into(), col: None, blank: true, bump: Vec::new() },
-                (None, None) => Plan { at: end, head: "- ".into(), col: Some(2), blank: true, bump: Vec::new() },
+            let kids = kids_but(t, i, usize::MAX);
+            let own = if n.own.is_empty() { front_end(old) } else { n.own.end };
+            let end = kids.last().map_or(own, |&c| t.nodes[c].span.end);
+            let text = kids.iter().take_while(|&&c| level(t, c) == 0).last().copied();
+            let text_end = text.map_or_else(|| kids.first().map_or(own, |&c| t.nodes[c].own.start), |c| t.nodes[c].span.end);
+            Ok(match kind {
+                NewKind::Paragraph => Plan { at: text_end, head: String::new(), col: Some(0), blank: true, bump: Vec::new() },
+                NewKind::Heading(l) => Plan { at: end, head: format!("{} ", "#".repeat(l)), col: None, blank: true, bump: Vec::new() },
+                _ => match text {
+                    Some(j) if kind.joins(&t.nodes[j].kind) => item_plan(old, t, j, text_end, false, kind),
+                    _ => new_list("", 0, kind, "-", text_end, true),
+                },
             })
         }
     }
 }
 
-fn sibling_plan(old: &[&str], t: &Tree, i: usize, before: bool) -> Result<Plan, Refused> {
+/// A new sibling of node `i`, after its branch or before it (MAP-023).
+fn sibling_plan(old: &[&str], t: &Tree, i: usize, before: bool, kind: NewKind) -> Result<Plan, Refused> {
     let n = &t.nodes[i];
     let at = if before { n.own.start } else { n.span.end };
-    match &n.kind {
-        NodeKind::Root | NodeKind::Footnotes | NodeKind::Footnote { .. } => Err(None),
-        NodeKind::Heading { level, .. } => {
+    let (indent, col) = match &n.kind {
+        NodeKind::Root | NodeKind::Footnotes | NodeKind::Footnote { .. } => return Err(None),
+        NodeKind::Heading { .. } | NodeKind::Item { .. } => {
             let line = old[n.own.start];
-            let head = format!("{}{} ", &line[..lead(line).1], "#".repeat(*level));
-            Ok(Plan { at, head, col: None, blank: true, bump: Vec::new() })
+            let (col, b) = lead(line);
+            (line[..b].to_string(), col)
         }
-        NodeKind::Item { .. } => Ok(item_plan(old, t, i, at, before)),
-        NodeKind::Block(_) => {
-            let col = match n.parent.map(|p| &t.nodes[p].kind) {
-                Some(NodeKind::Item { content_col, .. }) => *content_col,
-                _ => 0,
-            };
-            Ok(Plan { at, head: " ".repeat(col), col: Some(col), blank: true, bump: Vec::new() })
-        }
-    }
+        NodeKind::Block(_) => match n.parent.map(|p| &t.nodes[p].kind) {
+            Some(NodeKind::Item { content_col, .. }) => (" ".repeat(*content_col), *content_col),
+            _ => (String::new(), 0),
+        },
+    };
+    Ok(match kind {
+        NewKind::Heading(l) => Plan { at, head: format!("{indent}{} ", "#".repeat(l)), col: None, blank: true, bump: Vec::new() },
+        NewKind::Paragraph => Plan { at, head: indent, col: Some(col), blank: true, bump: Vec::new() },
+        _ if kind.joins(&n.kind) => item_plan(old, t, i, at, before, kind),
+        _ => new_list(&indent, col, kind, "-", at, true),
+    })
 }
 
 /// Node `i` and everything under it go (MAP-025), with one blank line beside it when blank

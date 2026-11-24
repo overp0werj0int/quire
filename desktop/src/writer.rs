@@ -1062,7 +1062,7 @@ fn heading_prefix(ln: &str) -> Option<(usize, usize)> {
     Some((n, i + n + b[i + n..].iter().take_while(|&&c| c == b' ' || c == b'\t').count()))
 }
 
-/// Ctrl+1 to Ctrl+6 and Ctrl+0 (WR-59, WR-60): sets the caret line's heading level, clears it
+/// Ctrl+Alt+1 to Ctrl+Alt+6 and Ctrl+Alt+0 (WR-59, WR-60): sets the caret line's heading level, clears it
 /// when the level is the line's own or 0. The caret keeps its place in the heading text.
 pub fn heading(text: &str, focus: usize, level: usize) -> Edit {
     let (ls, le) = line_at(text, focus);

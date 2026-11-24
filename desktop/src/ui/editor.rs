@@ -287,10 +287,11 @@ fn doc_scroll(v: V) -> El {
             // document reveal controller (`crate::reveal`).
             let (by_hand, _, t) = rune::scroll_watch_state();
             let mut sig = signal.get();
-            sig.on_scroll_offset(moved, by_hand, t);
+            let hand = sig.on_scroll_offset(moved, by_hand, t);
             signal.set(sig);
-            // The progress line (RD-38, WR-178) and live outline mark.
-            map.borrow_mut().follow(now, by_hand, &bar);
+            // The progress line (RD-38, WR-178) and live outline mark. A scroll that follows the
+            // caret leaves the mark on the caret's heading.
+            map.borrow_mut().follow(now, hand, &bar);
             thumb.set(thumb_rect(now));
             if moved {
                 // Each scroll shows the thumb for 700 ms past the last move (WR-93).
@@ -537,14 +538,14 @@ fn toolbar(v: V) -> El {
         .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
         .child(btn("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic))
         .child(btn("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike))
-        .child(btn("fmt-heading", &HEADING, "Heading".into(), Fmt::Heading))
+        .child(btn("fmt-heading", &HEADING, format!("Heading ({} to {})", crate::keymap::label(v.s.preset(), "writer.heading-1"), crate::keymap::label(v.s.preset(), "writer.heading-6")), Fmt::Heading))
         .child(sep("sep-1"))
         .child(btn("fmt-link", &LINK, tip("Insert link", "writer.link"), Fmt::Link))
         .child(btn("fmt-wiki", &WIKI, "Insert note link".into(), Fmt::Wiki))
         .child(sep("sep-2"))
-        .child(btn("fmt-bullets", &BULLETS, "Bulleted list".into(), Fmt::Bullet))
-        .child(btn("fmt-numbers", &NUMBERS, "Numbered list".into(), Fmt::Number))
-        .child(btn("fmt-task", &TASK, "Task".into(), Fmt::Task))
+        .child(btn("fmt-bullets", &BULLETS, tip("Bulleted list", "writer.bulleted-list"), Fmt::Bullet))
+        .child(btn("fmt-numbers", &NUMBERS, tip("Numbered list", "writer.numbered-list"), Fmt::Number))
+        .child(btn("fmt-task", &TASK, tip("Task", "writer.task-list"), Fmt::Task))
         .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
         .child(btn("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code))
         .child(sep("sep-3"))

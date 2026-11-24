@@ -1,0 +1,16 @@
+Tab on a list item names a nested item; Ctrl+Alt+0 makes it a paragraph under the item, which loosens the list.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:0+cmd+alt@1.4 key:Enter@1.8 key:s+cmd@2.2
+--- before
+# Plan
+
+- a
+- b
+--- after
+# Plan
+
+- a
+
+  x
+
+- b

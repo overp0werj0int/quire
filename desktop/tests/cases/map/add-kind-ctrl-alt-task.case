@@ -1,0 +1,15 @@
+Ctrl+Alt+9 in the field of a new node under an H1 writes it as a task, and Ctrl+Alt+7 on the next one a numbered item.
+note: Plan.md
+events: key:m+cmd@0.3 key:Home@0.6 key:Tab@0.8 type:T@1.0 key:9+cmd+alt@1.4 key:Enter@1.8 key:Enter@2.2 type:N@2.4 key:7+cmd+alt@2.8 key:Enter@3.2 key:s+cmd@3.6
+--- before
+# Plan
+
+Intro
+--- after
+# Plan
+
+Intro
+
+- [ ] T
+
+1. N

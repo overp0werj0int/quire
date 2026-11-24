@@ -1,0 +1,22 @@
+= Ctrl+= and Ctrl+- do nothing on the map: + and - are its keyboard zoom (MAP-034).
+note: Trip.md
+events: key:m+cmd@0.3 key:=+cmd@0.9 key:-+cmd@1.1 key:-+cmd@1.2
+expect: rect:map-dot:3: [712.95, 280.88, 26.97, 26.95]
+expect: rect:map-link:5: [739.92, 229.95, 248.47, 67.77]
+--- before
+# Trip
+
+## Packing
+
+- Clothes
+  - Socks
+- Passport
+- Charger
+
+## Days
+
+Monday we walk.
+
+### Monday
+
+### Tuesday

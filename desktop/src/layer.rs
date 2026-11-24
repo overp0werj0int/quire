@@ -23,8 +23,8 @@ pub enum Layer {
     Settings,
     /// The dialog that locks the note, with why the last try was refused.
     Lock(Option<String>),
-    /// The keyboard help.
-    Help,
+    /// The keyboard help, with its search.
+    Help(crate::help::Search),
     /// The edit sheet over the reader.
     Sheet(Box<Sheet>),
     /// The sidebar or the outline over the page, in a window too narrow to dock it.
@@ -83,7 +83,7 @@ impl Layer {
             Layer::Palette(_) => Kind::Palette,
             Layer::Settings => Kind::Settings,
             Layer::Lock(_) => Kind::Lock,
-            Layer::Help => Kind::Help,
+            Layer::Help(_) => Kind::Help,
             Layer::Sheet(_) => Kind::Sheet,
             Layer::Drawer(d) => Kind::Drawer(*d),
             Layer::Menu(_) => Kind::Menu,

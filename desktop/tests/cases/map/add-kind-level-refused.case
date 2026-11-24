@@ -1,0 +1,11 @@
+A heading level the new node's place can't take is refused with a toast, and the node stays a paragraph.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:2+cmd+alt@1.4
+expect: text:toast: "A level 2 heading can't go here"
+expect: focus: map-inline-edit (no ring)
+--- before
+# Plan
+
+## A
+
+text

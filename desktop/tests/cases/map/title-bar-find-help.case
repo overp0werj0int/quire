@@ -6,6 +6,6 @@ expect: rect:map-fit: [1075.0, 8.0, 24.0, 24.0]
 expect: rect:help: [1103.0, 8.0, 24.0, 24.0]
 expect: rect:bar-sep: [1131.0, 12.0, 1.0, 16.0]
 expect: rect:find-bar: None
-expect: focus: help-close (no ring)
+expect: focus: help-search (no ring)
 --- before
 # Trip

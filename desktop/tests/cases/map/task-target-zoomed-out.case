@@ -1,8 +1,8 @@
 Zoomed out, a task box keeps a target 24 points across on screen: a click near its corner still ticks it.
 note: T.md
-events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 tap:795,389@2.4 key:s+cmd@2.8
-expect: rect:map-task:5: [792.83, 381.88, 19.81, 25.38]
-expect: rect:map-fold:3: [753.52, 393.83, 24.11, 25.17]
+events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 tap:498,401@2.4 key:s+cmd@2.8
+expect: rect:map-task:5: [494.73, 393.59, 19.81, 25.38]
+expect: rect:map-fold:3: [455.42, 405.55, 24.11, 25.16]
 --- before
 # Plan
 

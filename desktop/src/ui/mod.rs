@@ -93,10 +93,11 @@ impl V<'_> {
     }
 }
 
-/// The keyboard's focus ring on every control Tab reaches (FR): 2 points of the text colour,
-/// 3 points outside the control. A selected card or choice wears the accent at most 1 point
-/// outside its edge, so focus sits clear of it in another colour, and the two never look
-/// alike.
+/// The keyboard's focus ring on every control Tab reaches (FR): a glass card in the text
+/// colour, the map's selection glass (MAP-055), out to 5 points past the control
+/// (`Cx::focus_glass`; 2 points of ring 3 points out). A selected card or choice wears the
+/// accent at most 1 point outside its edge, so focus sits clear of it in another colour, and
+/// the two never look alike.
 pub(crate) fn focus_ring(p: &Pal) -> (f32, f32, rune::Color) {
     (2.0, 3.0, p.ink)
 }
@@ -183,6 +184,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     cx.caption_color(p.ink2);
     let (w, gap, c) = focus_ring(p);
     cx.focus_ring(w, gap, c);
+    cx.focus_glass();
     // Tooltips in the panel family, so a name and its key read as one line (KT). The system
     // look otherwise, which on macOS replaces AppKit's own tooltips with Rune's.
     // Wide enough that a long note name shows whole in two or three lines (C7).

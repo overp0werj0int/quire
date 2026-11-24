@@ -144,7 +144,7 @@ pub const TABLE: &[Action] = &[
     same(37, "reader.copy-all", "Copy the whole note", &[Reader], In, &["Ctrl+Shift+A"]),
     same(38, "reader.block-menu", "Copy or edit a block", &[Reader], In, &["Right-click"]),
     same(39, "reader.read-from-disk", "Read from disk", &[Reader], In, &["Ctrl+R"]),
-    same(40, "reader.zoom-reset", "Text size 14 px", &[Reader], In, &["Ctrl+0"]),
+    same(40, "reader.zoom-reset", "Text size 14 px", &[Reader, Writer], Adapted, &["Ctrl+0"]),
     same(41, "reader.edit-block", "Edit this block", &[Reader], In, &["e"]),
     same(42, "reader.edit-section", "Edit this section", &[Reader], In, &["E"]),
     same(43, "reader.help", "Keyboard help", &[Reader], Adapted, &["?", "F1"]),
@@ -166,7 +166,10 @@ pub const TABLE: &[Action] = &[
     same(55, "writer.heading-4", "Heading 4", W, Adapted, &["Ctrl+Alt+4"]),
     same(55, "writer.heading-5", "Heading 5", W, Adapted, &["Ctrl+Alt+5"]),
     same(55, "writer.heading-6", "Heading 6", W, Adapted, &["Ctrl+Alt+6"]),
-    same(56, "writer.plain-paragraph", "Plain paragraph", W, In, &["Ctrl+0"]),
+    same(56, "writer.plain-paragraph", "Plain paragraph", W, Adapted, &["Ctrl+Alt+0"]),
+    same(152, "writer.numbered-list", "Numbered list", W, Quire, &["Ctrl+Alt+7"]),
+    same(153, "writer.bulleted-list", "Bulleted list", W, Quire, &["Ctrl+Alt+8"]),
+    same(154, "writer.task-list", "Task list", W, Quire, &["Ctrl+Alt+9"]),
     same(57, "writer.indent", "Indent", W, In, &["Tab"]),
     same(58, "writer.outdent", "Outdent", W, In, &["Shift+Tab"]),
     same(59, "writer.continue-block", "Continue a list or quote", W, In, &["Enter"]),
@@ -263,6 +266,16 @@ pub const TABLE: &[Action] = &[
     same(147, "mapedit.cancel", "Cancel the edit", ME, Adapted, &["Esc"]),
     same(148, "mapedit.commit-add-child", "Commit and add a child", ME, Adapted, &["Tab"]),
     same(149, "mapedit.commit-outdent", "Commit and outdent", ME, Adapted, &["Shift+Tab"]),
+    same(150, "mapedit.paragraph", "New node as a paragraph", ME, Adapted, &["Ctrl+Alt+0"]),
+    same(151, "mapedit.heading-1", "New node as heading 1", ME, Adapted, &["Ctrl+Alt+1"]),
+    same(151, "mapedit.heading-2", "New node as heading 2", ME, Adapted, &["Ctrl+Alt+2"]),
+    same(151, "mapedit.heading-3", "New node as heading 3", ME, Adapted, &["Ctrl+Alt+3"]),
+    same(151, "mapedit.heading-4", "New node as heading 4", ME, Adapted, &["Ctrl+Alt+4"]),
+    same(151, "mapedit.heading-5", "New node as heading 5", ME, Adapted, &["Ctrl+Alt+5"]),
+    same(151, "mapedit.heading-6", "New node as heading 6", ME, Adapted, &["Ctrl+Alt+6"]),
+    same(155, "mapedit.numbered", "New node as a numbered item", ME, Quire, &["Ctrl+Alt+7"]),
+    same(156, "mapedit.bulleted", "New node as a bulleted item", ME, Quire, &["Ctrl+Alt+8"]),
+    same(157, "mapedit.task", "New node as a task", ME, Quire, &["Ctrl+Alt+9"]),
 ];
 
 pub fn action(id: &str) -> Option<&'static Action> {
@@ -603,7 +616,7 @@ mod tests {
             let status = line.split_once("** [").unwrap().1.split(&[']', ':'][..]).next().unwrap();
             let acts: Vec<&Action> = TABLE.iter().filter(|a| a.item == item).collect();
             assert!(!acts.is_empty(), "KEY-{item} is not in the table");
-            if item == 55 || item == 128 {
+            if item == 55 || item == 128 || item == 151 {
                 // Six actions, Ctrl+Alt+1 to Ctrl+Alt+6.
                 assert_eq!(acts.len(), 6);
                 for (i, a) in acts.iter().enumerate() {
@@ -635,7 +648,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 140, "every KEY item with chords was read");
+        assert_eq!(seen, 148, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }

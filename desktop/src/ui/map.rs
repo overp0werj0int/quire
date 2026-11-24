@@ -189,7 +189,7 @@ pub(super) fn canvas(v: V) -> El {
         let (e, p) = (s.map.inline.as_ref()?, l.at[i]?);
         let room = map_app::task_room(&t.nodes[i], b);
         let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
-        Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
+        Some((i, p, room, st, map_app::field_size(&e.edit.text, p.w - 2.0 * l.metrics.pad_x - room, st, l.metrics.max_w)))
     });
     // The selected node sits under a glass card (MAP-055). Only its content grows under the glass
     // (`node`); its underline, links and fold ring stay put, so no line moves or breaks there.
@@ -206,12 +206,18 @@ pub(super) fn canvas(v: V) -> El {
     if let Some((r, rad)) = glass {
         world = world.child(glass_base(c, r, rad));
     }
+    // The add toolbar over a new node's glass (MAP-087), at Source's size on screen.
+    let bar = s.map_new_node().zip(glass).map(|(new, ([x, y, _, _], _))| {
+        let k = 1.0 / s.map_bar_zoom();
+        let h = map_app::KIND_BAR_H * k;
+        (new, [x, y - map_app::KIND_BAR_GAP * k - h, KIND_BAR_W * k, h], k)
+    });
     if plain_label {
         let mut static_links = Vec::new();
         for &i in &links {
             let a = dim(i);
             if a < 0.999 {
-                world = world.child(link(&t, &l, i, c, a));
+                world = world.child(link(&t, &l, i, c, a, true));
             } else {
                 static_links.push(i);
             }
@@ -221,14 +227,16 @@ pub(super) fn canvas(v: V) -> El {
         }
     } else {
         for &i in &links {
-            world = world.child(link(&t, &l, i, c, dim(i)));
+            world = world.child(link(&t, &l, i, c, dim(i), false));
         }
     }
     let query = s.find_query();
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover, plain_label, target, chip_compact, found };
+        // Hover lights every element under the pointer, so a node under the add toolbar shows none.
+        let covered = bar.and_then(|(_, r, _)| Some((r, l.at[i]?))).is_some_and(|([x, y, w, h], p)| p.x < x + w && x < p.right() && p.y < y + h && y < p.bottom());
+        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover: no_hover || covered, plain_label, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The glass's top-lit rim, over the node. Paint it BEFORE fold targets so hover-revealed fold
@@ -254,6 +262,9 @@ pub(super) fn canvas(v: V) -> El {
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
         world = world.child(field(v, p, room, st, w, l.metrics.pad_x));
+    }
+    if let Some((new, [x, y, _, _], k)) = bar {
+        world = world.child(kind_bar(v, new, [x, y], k));
     }
     if let Some(g) = drag
         && let Some(at) = g.drop
@@ -390,7 +401,9 @@ fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
     Some(shape_el.pin(Some(bx0 + W), Some(by0 + W), None, None))
 }
 
-fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
+/// The branch into node `i` and, unless `plain` (where the node draws its own), the node's
+/// underline as its last stroke, so the curve runs on into the line with nothing to meet.
+fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32, plain: bool) -> El {
     let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { return el() };
     let lw = line_width(p.depth);
     let [x0, ya] = map_app::branch_start(&q);
@@ -398,16 +411,22 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let tail = key_tail(&node_key(t, i)).to_string();
     let key = format!("map-link:{tail}");
     let color = branch_color(c, t.nodes[i].branch);
-    let w = (x1 - x0).max(1.0);
+    let under = if plain { 0.0 } else { p.w };
+    let w = (x1 - x0).max(1.0) + under;
     let top = ya.min(yb) - lw;
     let h = (ya.max(yb) - top + lw).max(1.0);
     let (y0, y1) = (ya - top, yb - top);
     // Memoize the stroked Bézier shape by relative geometry `(w, y0, y1, lw, color)` so rigid
     // subtree translations during fold/unfold relayout glides never re-tessellate unchanged links.
     let mut hash = std::collections::hash_map::DefaultHasher::new();
-    (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
+    (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), under.to_bits(), color_bits(color)).hash(&mut hash);
     let shape = rune::memo(format!("map-link-s:{tail}"), hash.finish(), move || {
-        rune::canvas(tapered([0.0, y0], [w, y1], lw, color)).size(w, h).inert()
+        let z = [w - under, y1];
+        let mut shape = tapered([0.0, y0], z, lw, color);
+        if under > 0.0 {
+            shape = shape.line(z, [w, y1], lw, LineCap::Butt, color);
+        }
+        rune::canvas(shape).size(w, h).inert()
     });
     el().key(key)
         .pin(Some(x0 + W), Some(top + W), None, None)
@@ -419,8 +438,15 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
 
 /// The selection glass's corner radius (MAP-055); its padding is `map_layout::GLASS_PAD`.
 const GLASS_R: f32 = 10.0;
-/// How much the selected node's content grows under the glass.
+/// How much the selected node's content grows under the glass, and at most how far each side
+/// moves out, so a tall table or wide card still sits inside the glass's padding.
 const GLASS_K: f32 = 1.035;
+const GLASS_GROW: f32 = 4.0;
+
+/// The scale the selected node's content takes under the glass, for content `w` by `h`.
+fn glass_k(w: f32, h: f32) -> f32 {
+    GLASS_K.min(1.0 + 2.0 * GLASS_GROW / w.max(h).max(1.0))
+}
 
 /// The glass's body, under the links and nodes: a faint sheen and the card's shadow.
 fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
@@ -433,14 +459,17 @@ fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
         .inert()
 }
 
+/// How far one piece of a branch turns at most: 2 degrees, so a bend stays round at 400%, each
+/// chord straying from the curve by under a 400th of its length.
+const BRANCH_TURN: f32 = 2.0 * std::f32::consts::PI / 180.0;
+
 /// A branch from `a` (its parent's fold dot) to `z` (its node's underline): the link's Bézier,
 /// 1 point wide at the dot and widening to `lw` by halfway, so the branches fanning out of one
-/// dot don't merge into a blot. Drawn as round-capped strokes, one a step, each as wide as the
-/// curve at its middle: strokes are antialiased all round, where a filled outline cut into thin
-/// triangles is stepped along its edges. The last cap runs on under the underline, so the two
-/// never meet edge to edge.
+/// dot don't merge into a blot. Drawn as strokes, shorter where it bends (`BRANCH_TURN`), each
+/// widening from the curve's width where it starts to its width where it ends (`Shape::taper`)
+/// and starting where the last ended, so Rune joins them into one stroke with smooth edges: a
+/// filled outline cut into thin triangles is stepped along its edges.
 fn tapered(a: [f32; 2], z: [f32; 2], lw: f32, color: Color) -> Shape {
-    const STEPS: usize = 32;
     let mid = (a[0] + z[0]) / 2.0;
     let (c1, c2) = ([mid, a[1]], [mid, z[1]]);
     let at = |t: f32| {
@@ -448,14 +477,29 @@ fn tapered(a: [f32; 2], z: [f32; 2], lw: f32, color: Color) -> Shape {
         let f = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
         [f(0), f(1)]
     };
+    let heading = |t: f32| {
+        let u = 1.0 - t;
+        let f = |i: usize| 3.0 * u * u * (c1[i] - a[i]) + 6.0 * u * t * (c2[i] - c1[i]) + 3.0 * t * t * (z[i] - c2[i]);
+        f(1).atan2(f(0))
+    };
     let width = |t: f32| {
         let e = (t / 0.5).min(1.0);
         1.0 + (lw - 1.0).max(0.0) * e * e * (3.0 - 2.0 * e)
     };
-    (0..STEPS).fold(Shape::new(), |shape, k| {
-        let (t0, t1) = (k as f32 / STEPS as f32, (k + 1) as f32 / STEPS as f32);
-        shape.line(at(t0), at(t1), width((t0 + t1) / 2.0), LineCap::Round, color)
-    })
+    fn split(t0: f32, t1: f32, depth: u32, heading: &dyn Fn(f32) -> f32, out: &mut Vec<f32>) {
+        if depth < 6 && (heading(t1) - heading(t0)).abs() > BRANCH_TURN {
+            let m = (t0 + t1) / 2.0;
+            split(t0, m, depth + 1, heading, out);
+            split(m, t1, depth + 1, heading, out);
+        } else {
+            out.push(t1);
+        }
+    }
+    let mut ts = vec![0.0];
+    for k in 0..16 {
+        split(k as f32 / 16.0, (k + 1) as f32 / 16.0, 0, &heading, &mut ts);
+    }
+    ts.windows(2).fold(Shape::new(), |shape, t| shape.taper([at(t[0]), at(t[1])], width(t[0]), width(t[1]), LineCap::Round, color))
 }
 
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
@@ -478,6 +522,60 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
         .radius(3.0)
         .fill(surface)
         .wrap_anywhere()
+}
+
+/// The add toolbar over a new node's glass, its top-left corner at `at` (MAP-087): the types the
+/// node can be written as, as Source's formatting toolbar draws them, its own marked and those
+/// its place can't take greyed. Its sizes are points on screen times `k`, one over the map's
+/// zoom, so it keeps Source's size at every zoom. A press keeps the keyboard in the field, which
+/// neither commits nor closes.
+/// The add toolbar's width: 5 buttons of 28, a separator of 11, 5 gaps of 2 and 4 of padding
+/// at each end.
+const KIND_BAR_W: f32 = 169.0;
+
+fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
+    use super::icons::{BULLETS, HEADING, NUMBERS, PARAGRAPH, TASK};
+    use crate::map::NewKind;
+    let p = v.p;
+    let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
+    let btn = |key: &str, glyph: &'static rune::Icon, help: String, kind: NewKind, on: bool, run: fn(&mut App, &mut Tx)| {
+        let b = rune::row().key(key).size(28.0 * k, 28.0 * k).center().radius(6.0 * k).role("radio").checked(on).label(help.clone()).help(help);
+        let glyph = rune::icon(glyph, 16.0 * k);
+        if !new.kinds.has(kind) {
+            return b.disabled(true).child(glyph.color(p.mute.alpha(0.35)));
+        }
+        let b = if on { b.fill(p.hover).border(k, p.line).child(glyph.color(p.ink)) } else { b.hover(p.hover).hover_group().child(glyph.color(p.mute).group_color(p.ink)) };
+        b.cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx: &mut Tx| run(s, tx))
+    };
+    let level = match new.kind {
+        NewKind::Heading(l) => Some(l),
+        _ => new.kinds.heading,
+    };
+    let heading = level.map_or(NewKind::Heading(1), NewKind::Heading);
+    let heading_tip = level.map_or_else(|| "Heading".to_string(), |l| tip(&format!("Heading {l}"), &format!("mapedit.heading-{l}")));
+    let is = |kind: NewKind| new.kind == kind;
+    rune::row()
+        .key("map-kinds")
+        .pin(Some(x + W), Some(y + W), None, None)
+        .h(map_app::KIND_BAR_H * k)
+        .px(4.0 * k)
+        .gap(2.0 * k)
+        .center_y()
+        .fill(p.bg)
+        .radius(super::widgets::BAR_RADIUS * k)
+        .border(k, Roles::new(p).hairline)
+        .box_shadow(rune::Shadow { x: 0.0, y: 6.0 * k, blur: 22.0 * k, spread: -4.0 * k, color: Color::BLACK.alpha(if p.dark { 0.5 } else { 0.12 }), inset: false })
+        .role("toolbar")
+        .label("New node type")
+        // A press anywhere on it leaves the keyboard and the text in the field (MAP-017).
+        .keeps_text_selection()
+        .on_press(|_: &mut App| {})
+        .child(btn("map-kind-paragraph", &PARAGRAPH, tip("Paragraph", "mapedit.paragraph"), NewKind::Paragraph, is(NewKind::Paragraph), |s, tx| s.map_pick_kind(NewKind::Paragraph, tx)))
+        .child(btn("map-kind-heading", &HEADING, heading_tip, heading, matches!(new.kind, NewKind::Heading(_)), |s, tx| s.map_pick_heading(tx)))
+        .child(el().key("map-kinds-sep").w(k).h(16.0 * k).mx(5.0 * k).fill(p.line))
+        .child(btn("map-kind-bullets", &BULLETS, tip("Bulleted list", "mapedit.bulleted"), NewKind::Bullet, is(NewKind::Bullet), |s, tx| s.map_pick_kind(NewKind::Bullet, tx)))
+        .child(btn("map-kind-numbers", &NUMBERS, tip("Numbered list", "mapedit.numbered"), NewKind::Number, is(NewKind::Number), |s, tx| s.map_pick_kind(NewKind::Number, tx)))
+        .child(btn("map-kind-task", &TASK, tip("Task", "mapedit.task"), NewKind::Task, is(NewKind::Task), |s, tx| s.map_pick_kind(NewKind::Task, tx)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -575,9 +673,12 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     (i, n.src, n.depth, selected, editing, b.to_bits(), room.to_bits(), [p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
     (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
+    t.nodes[i].parent.and_then(|q| l.at[q]).is_none().hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
-    let grow = if selected && !lite { GLASS_K } else { 1.0 };
+    let grow = if selected && !lite { glass_k(p.w, p.h) } else { 1.0 };
+    // A node with a branch into it has its underline drawn by the branch (`link`).
+    let root = t.nodes[i].parent.and_then(|q| l.at[q]).is_none();
     let body = rune::memo(body_key.clone(), h.finish(), move || {
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));
@@ -611,7 +712,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h + lw)
             .child(content)
-            .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
+            .children(root.then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
     });
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)

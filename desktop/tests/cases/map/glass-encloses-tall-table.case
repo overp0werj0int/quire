@@ -1,0 +1,25 @@
+= A selected tall table grows no more than 4 points a side, so it stays inside its glass.
+note: Tall.md
+events: key:m+cmd@0.3 key:Right@1.0 key:Down@1.4
+expect: selected: map-node:5
+expect: rect:map-glass: [592.89, 70.88, 480.36, 699.59]
+expect: rect:map-card:5: [611.11, 77.14, 443.92, 680.19]
+--- before
+# Tall
+
+Above the table.
+
+| Area | Strength | Taste |
+| --- | --- | --- |
+| Row 1 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 2 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 3 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 4 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 5 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 6 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 7 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 8 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 9 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 10 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 11 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |
+| Row 12 | A cell that wraps over a few lines in its column | Another cell that wraps over lines too |

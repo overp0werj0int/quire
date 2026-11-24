@@ -192,6 +192,8 @@ pub struct Persist {
     pub last: Option<PathBuf>,
     pub sessions: BTreeMap<String, Session>,
     pub mode: String,
+    /// The linear mode `Ctrl+M` leaves the map for, when `mode` is the map (KEY-102).
+    pub back: String,
     #[serde(default = "yes")]
     pub left_open: bool,
     #[serde(default = "yes")]
@@ -210,6 +212,7 @@ impl Default for Persist {
             last: None,
             sessions: BTreeMap::new(),
             mode: "source".into(),
+            back: "source".into(),
             left_open: true,
             // omarky opens with its outline closed.
             right_open: false,

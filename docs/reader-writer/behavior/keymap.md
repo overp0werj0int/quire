@@ -49,8 +49,8 @@ Notes on reading this file:
 - **KEY-18** [quire] [verify: -] app.insert-image (global): omarky preset `Ctrl+Shift+I`; quire preset `Ctrl+Shift+I`. Picks an image and links it into the active note.
 - **KEY-19** [in] [verify: unit, script] app.save (global): omarky preset `Ctrl+S`; quire preset `Ctrl+S`. Writes the active note now and toasts "Saved", in either mode (WR-64, WR-111).
 - **KEY-20** [in] [verify: unit, script] app.close-tab (global): omarky preset `Ctrl+W`; quire preset `Ctrl+W`. Writes any unsaved text and closes the active tab. The window stays (RD-82, WR-68).
-- **KEY-21** [in] [verify: unit, script] app.zoom-in (global): omarky preset `Ctrl+=` or `Ctrl++`; quire preset `Ctrl+=` or `Ctrl++`. Steps the text size up and remembers it, in both modes (RD-82, WR-72, WR-126, PAGE-19).
-- **KEY-22** [in] [verify: unit, script] app.zoom-out (global): omarky preset `Ctrl+-`; quire preset `Ctrl+-`. Steps the text size down (RD-82, WR-72, WR-126, PAGE-19).
+- **KEY-21** [in] [verify: unit, script] app.zoom-in (global): omarky preset `Ctrl+=` or `Ctrl++`; quire preset `Ctrl+=` or `Ctrl++`. Steps the text size up and remembers it, in both modes. On the map it does nothing: `+` zooms the map (KEY-122) (RD-82, WR-72, WR-126, PAGE-19).
+- **KEY-22** [in] [verify: unit, script] app.zoom-out (global): omarky preset `Ctrl+-`; quire preset `Ctrl+-`. Steps the text size down. On the map it does nothing: `-` zooms the map out (KEY-123) (RD-82, WR-72, WR-126, PAGE-19).
 - **KEY-23** [quire] [verify: -] app.escape (global): omarky preset `Esc`; quire preset `Esc`. Runs Quire's `App::escape`. An open layer (the palette, Settings, the lock dialog, help, the edit sheet, a drawer or a menu) takes Esc first and closes, and focus goes back where it was. A drawer lets a showing notice go first: that Esc dismisses it and the keyboard stays where it was in the drawer, and the next Esc closes the drawer. With none open, Esc dismisses Quire's notice while it shows, then closes new folder, rename and the create prompt, then leaves focus mode. Each context's own Esc runs first and falls through to it (RD-85, WR-77).
 - **KEY-94** [quire] [verify: -] app.undo-delete (global): omarky preset `Ctrl+Shift+R`; quire preset `Ctrl+Shift+R`. While a delete's toast offers Undo, puts the note or folder back (`folders::Deleted`). The toast names the key. Text fields keep `Ctrl+Z`, so the delete takes a chord of its own. R is for restore.
 - **KEY-96** [quire] [verify: -] app.next-pane (global): omarky preset `F6`; quire preset `F6`. Moves the keyboard to the next pane that shows, left to right, and round: the sidebar's current list, the note, the outline's current heading (KEY-98). The note's links and the toolbar are not panes, so F6 skips them.
@@ -58,7 +58,7 @@ Notes on reading this file:
 - **KEY-99** [quire] [verify: -] app.tab-1 to app.tab-9 (global): omarky preset `Ctrl+1` to `Ctrl+9`; quire preset `Ctrl+1` to `Ctrl+9`. Switches to the first through ninth tab in the Open shelf.
 - **KEY-100** [quire] [verify: -] app.next-tab (global): omarky preset `Ctrl+Tab`; quire preset `Ctrl+Tab`. Switches to the next tab in the Open shelf, wrapping from last to first.
 - **KEY-101** [quire] [verify: -] app.previous-tab (global): omarky preset `Ctrl+Shift+Tab`; quire preset `Ctrl+Shift+Tab`. Switches to the previous tab in the Open shelf, wrapping from first to last.
-- **KEY-102** [adapted: 0014] [verify: unit, script] app.toggle-map (global): omarky preset `Ctrl+M`; quire preset `Ctrl+M`. Enters Map mode, or leaves Map mode and returns to the previous linear mode (source or preview; source when the session started in map, MAP-057).
+- **KEY-102** [adapted: 0014] [verify: unit, script] app.toggle-map (global): omarky preset `Ctrl+M`; quire preset `Ctrl+M`. Enters Map mode, or leaves Map mode and returns to the previous linear mode (source or preview), remembered in `state.json` when Quire quits in the map (MAP-057).
 
 ## Reader
 
@@ -78,7 +78,7 @@ Notes on reading this file:
 - **KEY-37** [in] [verify: unit, script] reader.copy-all (reader): omarky preset `Ctrl+Shift+A`; quire preset `Ctrl+Shift+A`. Copies the whole note and toasts "Copied the whole note" (RD-70).
 - **KEY-38** [in] [verify: unit, script] reader.block-menu (reader): omarky preset `Right-click`; quire preset `Right-click`. Opens the clicked block's menu: copy its Markdown or text, or edit it or its section (RD-68, RD-90). From the keyboard the Menu key or Shift+F10 opens it while no control has focus, outside the keymap. With a control focused they open that control's menu, such as a tree row's (KEY-95).
 - **KEY-39** [in] [verify: unit, script] reader.read-from-disk (reader): omarky preset `Ctrl+R`; quire preset `Ctrl+R`. Reads the note from disk now and keeps the place (RD-18).
-- **KEY-40** [in] [verify: unit, script] reader.zoom-reset (reader): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets the text size to 14 px (RD-82, PAGE-19). In the writer `Ctrl+0` clears a heading instead (KEY-56).
+- **KEY-40** [adapted: 0003] [verify: unit, script] reader.zoom-reset (reader, writer): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets the text size to 14 px, in the reader and the writer (RD-82, PAGE-19). The map's `Ctrl+0` resets its zoom (KEY-120).
 - **KEY-41** [in] [verify: unit, script] reader.edit-block (reader): omarky preset `e`; quire preset `e`. Opens the edit sheet on one block (RD-78, SHEET-001, SHEET-002).
 - **KEY-42** [in] [verify: unit, script] reader.edit-section (reader): omarky preset `E`; quire preset `E`. Opens the edit sheet on the block's section (RD-78, SHEET-001, SHEET-009).
 - **KEY-43** [adapted: 0013] [verify: unit, script] reader.help (reader): omarky preset `?` or `F1`; quire preset `?` or `F1`. Opens the help sheet (RD-86). `F1` is added so one key opens help in both modes (SB-102).
@@ -100,7 +100,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-53** [in] [verify: unit, script] writer.strikethrough (writer, sheet, mapedit): omarky preset `Ctrl+Shift+X`; quire preset `Ctrl+Shift+X`. Toggles `~~` (WR-51, MAP-016).
 - **KEY-54** [in] [verify: unit, script] writer.link (writer, sheet, mapedit): omarky preset `Ctrl+K`; quire preset `Ctrl+K`. Makes a link from the selection, ready for the URL or the text (WR-57, WR-58, MAP-016).
 - **KEY-55** [adapted: 0003] [verify: unit, script] writer.heading-1 to writer.heading-6 (writer, sheet): omarky preset `Ctrl+Alt+1` to `Ctrl+Alt+6`; quire preset `Ctrl+Alt+1` to `Ctrl+Alt+6`. Six actions that set the line's heading level, or clear it when it is already that level (WR-59, WR-60, WR-61). Moved from `Ctrl+1` to `Ctrl+6` so `Ctrl+1` to `Ctrl+9` switch open tabs globally (KEY-99).
-- **KEY-56** [in] [verify: unit, script] writer.plain-paragraph (writer, sheet): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Clears the line's heading (WR-60, WR-62).
+- **KEY-56** [adapted: 0003] [verify: unit, script] writer.plain-paragraph (writer, sheet): omarky preset `Ctrl+Alt+0`; quire preset `Ctrl+Alt+0`. Clears the line's heading (WR-60, WR-62). It sits beside the heading keys `Ctrl+Alt+1` to `Ctrl+Alt+6`, so `Ctrl+0` resets the text size in every view.
 - **KEY-57** [in] [verify: unit, script] writer.indent (writer, sheet): omarky preset `Tab`; quire preset `Tab`. Indents a list item by its marker's step, else inserts 4 spaces (WR-47, WR-48, WR-49).
 - **KEY-58** [in] [verify: unit, script] writer.outdent (writer, sheet): omarky preset `Shift+Tab`; quire preset `Shift+Tab`. Outdents a list item, else does nothing and is consumed (WR-50).
 - **KEY-59** [in] [verify: unit, script] writer.continue-block (writer, sheet): omarky preset `Enter`; quire preset `Enter`. Continues or ends a list item or quote, else inserts a newline. Shift+Enter, Alt+Enter and Enter over a selection stay the field's plain newline (WR-39 to WR-45).
@@ -147,7 +147,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 
 ## Help
 
-- **KEY-88** [adapted: 0013] [verify: unit, script] help.close (help): omarky preset `Esc`, `?`, `q` or `F1`; quire preset `Esc`, `?`, `q` or `F1`. Closes the help sheet in either mode. Every other key is swallowed (RD-80, WR-158, WR-159). `Ctrl+/` and `Ctrl+?` no longer close it (SB-102).
+- **KEY-88** [adapted: 0013] [verify: unit, script] help.close (help): omarky preset `Esc`, `?`, `q` or `F1`; quire preset `Esc`, `?`, `q` or `F1`. Closes the help sheet in any mode. With text in its search, `Esc` clears the search instead, `?` types, and `q` always types (RD-105). Every other key goes to the search field (RD-80, WR-158, WR-159). `Ctrl+/` and `Ctrl+?` no longer close it (SB-102).
 
 ## Rewrite
 
@@ -176,10 +176,10 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-117** [adapted: 0014] [verify: unit, script] map.expand-all (map): omarky preset `]`; quire preset `]`. Expands every folded node in the map (MAP-058).
 - **KEY-118** [adapted: 0014] [verify: unit, script] map.collapse-to-level (map): omarky preset `[`; quire preset `[`. Folds all nodes at 1-based depth >= 2, or depth >= 1 when depth >= 2 is already folded (MAP-058).
 - **KEY-119** [adapted: 0014] [verify: unit, script] map.fit (map): omarky preset `0`; quire preset `0`. Fits all unfolded nodes inside the free viewport (MAP-035).
-- **KEY-120** [adapted: 0014] [verify: unit, script] map.zoom-reset (map): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets canvas zoom to 1.0 centred on the selected node, or root (MAP-034).
+- **KEY-120** [adapted: 0014] [verify: unit, script] map.zoom-reset (map): omarky preset `Ctrl+0`; quire preset `Ctrl+0`. Resets canvas zoom to 1.0 centred on the selected node, or root (MAP-034, KEY-40).
 - **KEY-121** [adapted: 0014] [verify: unit, script] map.center (map): omarky preset `c`; quire preset `c`. Pans at the current zoom to centre the selected node in the free viewport (MAP-036).
-- **KEY-122** [adapted: 0014] [verify: unit, script] map.zoom-in (map): omarky preset `+` or `=`; quire preset `+` or `=`. Zooms the canvas in by × 1.25 around the viewport centre (MAP-034).
-- **KEY-123** [adapted: 0014] [verify: unit, script] map.zoom-out (map): omarky preset `-`; quire preset `-`. Zooms the canvas out by × 0.8 around the viewport centre (MAP-034).
+- **KEY-122** [adapted: 0014] [verify: unit, script] map.zoom-in (map): omarky preset `+` or `=`; quire preset `+` or `=`. Zooms the canvas in by × 1.25 around the selected node (MAP-034).
+- **KEY-123** [adapted: 0014] [verify: unit, script] map.zoom-out (map): omarky preset `-`; quire preset `-`. Zooms the canvas out by × 0.8 around the selected node (MAP-034).
 - **KEY-124** [adapted: 0014] [verify: unit, script] map.move-up (map): omarky preset `Alt+Up`; quire preset `Alt+Up`. Moves the selected node one sibling earlier within its kind, stopping with a toast at a boundary (MAP-031).
 - **KEY-125** [adapted: 0014] [verify: unit, script] map.move-down (map): omarky preset `Alt+Down`; quire preset `Alt+Down`. Moves the selected node one sibling later within its kind, stopping with a toast at a boundary (MAP-031).
 - **KEY-126** [adapted: 0014] [verify: unit, script] map.outdent (map): omarky preset `Shift+Tab` or `Alt+Left`; quire preset `Shift+Tab` or `Alt+Left`. Promotes or outdents the selected node to After its parent when valid without kind conversion (MAP-031).
@@ -211,6 +211,14 @@ Inline formatting actions (`KEY-50` to `KEY-54`) also act in `mapedit` (`MAP-016
 - **KEY-147** [adapted: 0014] [verify: unit, script] mapedit.cancel (mapedit): omarky preset `Esc`; quire preset `Esc`. Cancels the inline edit and restores the original text, or removes an uncommitted placeholder node (MAP-017).
 - **KEY-148** [adapted: 0014] [verify: unit, script] mapedit.commit-add-child (mapedit): omarky preset `Tab`; quire preset `Tab`. Commits the inline edit and immediately starts inline edit on a new child node (MAP-017).
 - **KEY-149** [adapted: 0014] [verify: unit, script] mapedit.commit-outdent (mapedit): omarky preset `Shift+Tab`; quire preset `Shift+Tab`. Commits the inline edit and promotes or outdents the node via `MAP-031` (MAP-017).
+- **KEY-150** [adapted: 0014] [verify: unit, script] mapedit.paragraph (mapedit): omarky preset `Ctrl+Alt+0`; quire preset `Ctrl+Alt+0`. Makes the new node being named a plain paragraph, as the add toolbar's Paragraph button does, or shows a short toast where a paragraph can't go; when renaming a node the chord goes to the field (MAP-087).
+- **KEY-151** [adapted: 0014] [verify: unit, script] mapedit.heading-1 to mapedit.heading-6 (mapedit): omarky preset `Ctrl+Alt+1` to `Ctrl+Alt+6`; quire preset `Ctrl+Alt+1` to `Ctrl+Alt+6`. Six actions that make the new node being named a heading of that level, or show a short toast where that level can't go; when renaming a node the chords go to the field (MAP-087).
+- **KEY-152** [quire] [verify: -] writer.numbered-list (writer, sheet): omarky preset `Ctrl+Alt+7`; quire preset `Ctrl+Alt+7`. Makes the selected lines a numbered list, or takes their numbers off, as the toolbar's Numbered list button does (WR-222). `Ctrl+Alt+7` to `Ctrl+Alt+9` follow the heading keys, in the order other editors give numbered, bulleted and task lists.
+- **KEY-153** [quire] [verify: -] writer.bulleted-list (writer, sheet): omarky preset `Ctrl+Alt+8`; quire preset `Ctrl+Alt+8`. Makes the selected lines a bulleted list, or takes their bullets off, as the toolbar's Bulleted list button does (WR-222).
+- **KEY-154** [quire] [verify: -] writer.task-list (writer, sheet): omarky preset `Ctrl+Alt+9`; quire preset `Ctrl+Alt+9`. Makes the selected lines tasks, or takes their boxes off, as the toolbar's Task button does (WR-222).
+- **KEY-155** [quire] [verify: -] mapedit.numbered (mapedit): omarky preset `Ctrl+Alt+7`; quire preset `Ctrl+Alt+7`. Makes the new node being named a numbered item, as the add toolbar's Numbered list button does, or shows a short toast where a list item can't go; when renaming a node the chord goes to the field (MAP-087).
+- **KEY-156** [quire] [verify: -] mapedit.bulleted (mapedit): omarky preset `Ctrl+Alt+8`; quire preset `Ctrl+Alt+8`. Makes the new node being named a bulleted item, as the add toolbar's Bulleted list button does, or shows a short toast where a list item can't go; when renaming a node the chord goes to the field (MAP-087).
+- **KEY-157** [quire] [verify: -] mapedit.task (mapedit): omarky preset `Ctrl+Alt+9`; quire preset `Ctrl+Alt+9`. Makes the new node being named a task, as the add toolbar's Task button does, or shows a short toast where a list item can't go; when renaming a node the chord goes to the field (MAP-087).
 
 ## Conflict table
 
@@ -232,7 +240,8 @@ Each row is a chord that omarky and Quire bind to different things today.
 
 `Ctrl+B`, `Ctrl+I` and `Ctrl+K` mean the same in both apps. Both presets run Quire's `format.rs`
 edge cases with omarky's link rule (WR-56, WR-57). Inside omarky `Ctrl+0` resets zoom in the
-reader and clears a heading in the writer. The keymap keeps both, in their own contexts.
+reader and clears a heading in the writer. Quire resets the text size with `Ctrl+0` in every view and
+clears a heading with `Ctrl+Alt+0`, beside the heading keys.
 
 The moved chords were chosen so that none is used by either app or by the other preset for
 something else. `Ctrl+Shift+K`, `Ctrl+Shift+G` and `Ctrl+Shift+B` are unbound in the quire preset.

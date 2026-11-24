@@ -283,9 +283,9 @@ def ratio(a, b):
 
 def contrast(els, key):
     """Each text and mark drawn inside the element `key`, against what is behind it: the fills
-    of the elements it sits in, laid over each other from `key` down. A mark is an icon, or a
-    filled element with nothing in it drawn straight on `key`'s own fill, as a map's underlines
-    and folded circles are. A map card draws its block as Preview does, so a quote's bar in it
+    of the elements it sits in, laid over each other from `key` down. A mark is an icon, a
+    shape's stroke, as a map's branch with its node's underline is, or a filled element with
+    nothing in it drawn straight on `key`'s own fill, as the root's underline is. A map card draws its block as Preview does, so a quote's bar in it
     is the block's decoration, not a mark, and the selection's glass is a surface under a node.
     Returns (shortfalls, texts, marks, lowest text, lowest mark)."""
     top = next((e for e in els if e.get("key") == key), None)
@@ -313,6 +313,9 @@ def contrast(els, key):
         elif e.get("role") == "icon" and e.get("color"):
             back = over(rgba(e.get("fill") or "#00000000"), back)
             kind, ink, need, into = "icon", rgba(e["color"]), 3.0, marks
+        elif e.get("stroke") and path not in parents:
+            back = over(rgba(e.get("fill") or "#00000000"), back)
+            kind, ink, need, into = "line", rgba(e["stroke"]), 3.0, marks
         elif path not in parents and e.get("key") != "map-glass" and e.get("fill") and rgba(e["fill"])[3] > 0 and over(rgba(e["fill"]), back) != back and not any(rgba(a.get("fill") or "#00000000")[3] > 0 or a.get("key", "").startswith("map-card:") for a in chain[1:-1]):
             kind, ink, need, into = "mark", rgba(e["fill"]), 3.0, marks
         else:
@@ -320,7 +323,7 @@ def contrast(els, key):
         r = ratio(over(ink, back), back)
         into.append(r)
         if r < need:
-            low.append("%s %s %s %.2f:1 on #%02x%02x%02x" % (kind, path[len(top["path"]) + 1:], repr(e["text"]) if kind == "text" else e.get("color") or e.get("fill"), r, *[round(v * 255) for v in back[:3]]))
+            low.append("%s %s %s %.2f:1 on #%02x%02x%02x" % (kind, path[len(top["path"]) + 1:], repr(e["text"]) if kind == "text" else e.get("color") or e.get("stroke") or e.get("fill"), r, *[round(v * 255) for v in back[:3]]))
     return low, len(texts), len(marks), min(texts, default=None), min(marks, default=None)
 
 
