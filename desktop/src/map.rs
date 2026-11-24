@@ -439,10 +439,10 @@ fn options(lines: &[&str]) -> Options {
         return o;
     }
     let body = &lines[1..end - 1];
-    let Some(at) = body.iter().position(|l| l.trim_end() == "markmap:") else { return o };
+    let Some(at) = body.iter().position(|l| markmap_key(l) == Some("")) else { return o };
     for l in body[at + 1..].iter().take_while(|l| l.starts_with([' ', '\t']) || l.trim().is_empty()) {
         let Some((k, v)) = l.trim().split_once(':') else { continue };
-        let v = v.trim().trim_matches(['"', '\'']);
+        let v = scalar(v);
         if k.trim() == "layout" {
             o.layout = Layout::from_word(v).unwrap_or_default();
             continue;
@@ -461,6 +461,25 @@ fn options(lines: &[&str]) -> Options {
         }
     }
     o
+}
+
+/// What front matter line `l` gives the `markmap` key, None when it is another line: empty
+/// when an indented block of options follows, else options written on the line itself.
+fn markmap_key(l: &str) -> Option<&str> {
+    let rest = l.strip_prefix("markmap:")?;
+    (rest.is_empty() || rest.starts_with(char::is_whitespace)).then(|| scalar(rest))
+}
+
+/// A front matter value without its quotes or the ` # comment` after it.
+fn scalar(v: &str) -> &str {
+    let v = v.trim();
+    if let Some(q) = v.chars().next().filter(|c| matches!(c, '"' | '\''))
+        && let Some(n) = v[1..].find(q)
+    {
+        return &v[1..1 + n];
+    }
+    let cut = v.char_indices().find(|&(k, c)| c == '#' && (k == 0 || v[..k].ends_with(char::is_whitespace)));
+    v[..cut.map_or(v.len(), |(k, _)| k)].trim_end()
 }
 
 /// The lines of a note's fenced front matter, empty when it has none.

@@ -1,0 +1,19 @@
+A comment after a number option is not part of it: the map opens folded to one level.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: nodes: 5
+--- before
+---
+markmap:
+  initialExpandLevel: 1 # one level
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
