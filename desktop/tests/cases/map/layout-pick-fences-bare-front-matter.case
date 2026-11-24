@@ -1,0 +1,36 @@
+Picking Down on a note with bare front matter fences it, so its fields stay front matter.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:s+cmd@2.2
+expect: text:map-props: 'Properties · 1'
+--- before
+title: Trip
+tags: travel
+
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+title: Trip
+tags: travel
+markmap:
+  layout: down
+---
+
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

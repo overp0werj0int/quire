@@ -1375,7 +1375,10 @@ impl App {
             return;
         }
         let old = self.map_tree();
-        let Some(s) = map::layout_splice(self.active_text(), layout) else { return };
+        let s = match map::layout_splice(self.active_text(), layout) {
+            Ok(s) => s,
+            Err(why) => return why.into_iter().for_each(|w| self.toast(w, tx)),
+        };
         self.map_apply_inner(&old, &s, Reveal::Keep, tx);
         let cam = self.centred_on(self.map_selected(), self.map_camera().1);
         self.map_glide(cam, tx);

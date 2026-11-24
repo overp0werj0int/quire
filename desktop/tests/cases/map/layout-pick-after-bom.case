@@ -1,0 +1,30 @@
+On a note that starts with a byte order mark the new front matter goes after the mark.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:s+cmd@2.2
+expect: text:map-node:5: 'Plan'
+--- before
+﻿# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+﻿---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

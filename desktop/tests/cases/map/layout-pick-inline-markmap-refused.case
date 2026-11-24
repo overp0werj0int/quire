@@ -1,0 +1,18 @@
+Markmap options written on one line are left alone: picking a layout says to change it in Source.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-left@1.4
+expect: text:toast: "Change this note's layout in Source: its markmap options are on one line"
+--- before
+---
+markmap: {maxWidth: 300}
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

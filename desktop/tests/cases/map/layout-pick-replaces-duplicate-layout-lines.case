@@ -1,0 +1,36 @@
+Picking Left on a note with two layout lines leaves one, in the first one's place.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-left@1.4 key:s+cmd@2.2
+--- before
+---
+markmap:
+  layout: down
+  maxWidth: 300
+  layout: up
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: left
+  maxWidth: 300
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

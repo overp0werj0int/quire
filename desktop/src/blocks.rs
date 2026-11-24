@@ -1432,7 +1432,7 @@ fn task_box(l: &str) -> Option<usize> {
 
 // ---------- Front matter ----------
 
-mod front_matter {
+pub(crate) mod front_matter {
     use super::{Block, Field, FieldKind, Kind};
 
     pub struct Split {
@@ -1473,7 +1473,9 @@ mod front_matter {
         b.get(n) == Some(&b':') && matches!(b.get(n + 1), None | Some(b' '))
     }
 
-    fn bare(lines: &[&str]) -> Option<Split> {
+    /// How many lines bare front matter takes at the top of `lines`, up to the blank line
+    /// that ends it.
+    pub fn bare_len(lines: &[&str]) -> Option<usize> {
         let mut keys = 0;
         let mut i = 0;
         while i < lines.len() && !lines[i].trim().is_empty() {
@@ -1484,9 +1486,11 @@ mod front_matter {
             }
             i += 1;
         }
-        if keys < 2 {
-            return None;
-        }
+        (keys >= 2).then_some(i)
+    }
+
+    fn bare(lines: &[&str]) -> Option<Split> {
+        let i = bare_len(lines)?;
         Some(cut(lines, 0, i, (i + 1).min(lines.len())))
     }
 

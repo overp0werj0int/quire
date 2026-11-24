@@ -628,57 +628,80 @@ fn splice_of(old: &[&str], new: &[String], focus: Option<usize>) -> Splice {
     Splice { lines: pre..old.len() - post, with: new[pre..new.len() - post].to_vec(), focus, moved: None }
 }
 
-/// The splice that makes the note say `layout` (MAP-089): a `layout:` line under `markmap:` in
-/// its front matter, which it adds, with `markmap:` or the whole fence if need be. Right is the
-/// default, so it takes the line away, then an emptied `markmap:`, then an emptied front
-/// matter: Down and then Right give back the bytes the note began with. None when the note
-/// already lays out that way.
-pub fn layout_splice(src: &str, layout: Layout) -> Option<Splice> {
+pub const INLINE_OPTIONS: &str = "Change this note's layout in Source: its markmap options are on one line";
+
+/// The splice that makes the note say `layout` (MAP-089): one `layout:` line under `markmap:`
+/// in its front matter, which it adds, with `markmap:` or the whole fence if need be. Bare
+/// front matter (BLK-85) gets the fence round it, so its fields stay front matter. Right is
+/// the default, so it takes the line away, then an emptied `markmap:`, then an emptied front
+/// matter: Down and then Right give back the bytes the note began with. Refused with no word
+/// when the note already lays out that way.
+pub fn layout_splice(src: &str, layout: Layout) -> Result<Splice, Refused> {
+    const BOM: char = '\u{feff}';
     let old: Vec<&str> = src.split('\n').collect();
     if options(&old).layout == layout {
-        return None;
+        return Err(None);
     }
+    let eol = if old[0].ends_with('\r') { "\r" } else { "" };
     let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
-    let eol = |i: usize| if old[i].ends_with('\r') { "\r" } else { "" };
-    let set = |indent: &str, i: usize| format!("{indent}layout: {}{}", layout.word(), eol(i));
-    let fe = front_end(&old);
-    if fe == 0 {
-        new.splice(0..0, [format!("---{}", eol(0)), format!("markmap:{}", eol(0)), set("  ", 0), format!("---{}", eol(0))]);
-        return Some(splice_of(&old, &new, None));
+    // A byte order mark stays the note's first character, before the fence.
+    let bom = new[0].starts_with(BOM);
+    if bom {
+        new[0].remove(0);
     }
-    let Some(at) = (1..fe - 1).find(|&i| old[i].trim_end() == "markmap:") else {
-        let add = [format!("markmap:{}", eol(0)), set("  ", 0)];
-        new.splice(fe - 1..fe - 1, add);
-        return Some(splice_of(&old, &new, None));
+    let (fenced, bare) = {
+        let lines: Vec<&str> = new.iter().map(|l| l.trim_end_matches('\r')).collect();
+        (front_end(&lines), crate::blocks::front_matter::bare_len(&lines).unwrap_or(0))
     };
-    let end = (at + 1..fe - 1).take_while(|&i| old[i].starts_with([' ', '\t']) || old[i].trim().is_empty()).last().map_or(at + 1, |i| i + 1);
-    let own = (at + 1..end).rev().find(|&i| old[i].trim().split_once(':').is_some_and(|(k, _)| k.trim() == "layout"));
-    let last = (at + 1..end).rev().find(|&i| !old[i].trim().is_empty());
-    match (layout, own) {
-        (Layout::Right, own) => {
-            let own = own?;
-            let mut gone = vec![own];
-            if (at + 1..end).all(|i| i == own || old[i].trim().is_empty()) {
-                gone.push(at);
-            }
-            if gone.len() == fe - 2 {
-                gone = (0..fe).collect();
-            }
-            let new: Vec<String> = new.into_iter().enumerate().filter(|(i, _)| !gone.contains(i)).map(|(_, l)| l).collect();
-            Some(splice_of(&old, &new, None))
-        }
-        (_, Some(i)) => {
-            let indent = &old[i][..old[i].len() - old[i].trim_start().len()];
-            new[i] = set(indent, i);
-            Some(splice_of(&old, &new, None))
-        }
-        (_, None) => {
-            let from = last.unwrap_or(at);
-            let indent = last.map_or("  ", |i| &old[i][..old[i].len() - old[i].trim_start().len()]);
-            new.insert(from + 1, set(indent, from));
-            Some(splice_of(&old, &new, None))
-        }
+    let fe = if fenced == 0 {
+        new.insert(bare, format!("---{eol}"));
+        new.insert(0, format!("---{eol}"));
+        bare + 2
+    } else {
+        fenced
+    };
+    let inner = 1..fe - 1;
+    let head = inner.clone().find_map(|i| markmap_key(&new[i]).map(|v| (i, v.is_empty())));
+    if matches!(head, Some((_, false))) {
+        return Err(Some(INLINE_OPTIONS));
     }
+    let block = head.map_or(inner.end..inner.end, |(at, _)| {
+        at + 1..(at + 1..inner.end).find(|&i| !(new[i].starts_with([' ', '\t']) || blank(&new[i]))).unwrap_or(inner.end)
+    });
+    let owns: Vec<usize> = block.clone().filter(|&i| new[i].trim().split_once(':').is_some_and(|(k, _)| k.trim() == "layout")).collect();
+    let indent = |l: &str| l[..l.len() - l.trim_start().len()].to_string();
+    let set = |indent: &str| format!("{indent}layout: {}{eol}", layout.word());
+    let mut gone = owns.clone();
+    if layout == Layout::Right {
+        if let Some((at, _)) = head
+            && block.clone().all(|i| owns.contains(&i) || blank(&new[i]))
+        {
+            gone.push(at);
+        }
+        // Nothing but the fence would be left.
+        if gone.len() == fe - 2 {
+            gone = (0..fe).collect();
+        }
+    } else if let Some(&first) = owns.first() {
+        new[first] = set(&indent(&new[first]));
+        gone.remove(0);
+    } else {
+        let last = block.clone().rev().find(|&i| !blank(&new[i]));
+        let (at, indent) = match (last, head) {
+            (Some(i), _) => (i + 1, indent(&new[i])),
+            (None, Some((at, _))) => (at + 1, "  ".to_string()),
+            (None, None) => {
+                new.insert(inner.end, format!("markmap:{eol}"));
+                (inner.end + 1, "  ".to_string())
+            }
+        };
+        new.insert(at, set(&indent));
+    }
+    let mut new: Vec<String> = new.into_iter().enumerate().filter(|(i, _)| !gone.contains(i)).map(|(_, l)| l).collect();
+    if bom && let Some(first) = new.first_mut() {
+        first.insert(0, BOM);
+    }
+    Ok(splice_of(&old, &new, None))
 }
 
 /// The splice between two texts, for undo and redo (MAP-014).
