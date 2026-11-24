@@ -410,7 +410,7 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32, plain: bool) -> El 
     // translations during fold/unfold relayout glides never re-tessellate unchanged links.
     let shape = rune::memo(format!("map-link-s:{tail}"), b.hash(end, color_bits(color)), move || {
         let rel = |[x, y]: [f32; 2]| [x - x0, y - y0];
-        let mut shape = tapered(b.curve().map(rel), b.lw, color);
+        let mut shape = tapered_on(Shape::new(), b.curve().map(rel), b.lw, color);
         if let Some(e) = end {
             shape = shape.line(rel(b.to), rel(e), b.lw, LineCap::Butt, color);
         }
@@ -451,17 +451,13 @@ fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
 /// chord straying from the curve by under a 400th of its length.
 const BRANCH_TURN: f32 = 2.0 * std::f32::consts::PI / 180.0;
 
-/// A branch along the cubic `[a, c1, c2, z]`, from its parent's fold ring to its node: 1 point
+/// After what `shape` already holds, a branch along the cubic `[a, c1, c2, z]`, from its
+/// parent's fold ring to its node: 1 point
 /// wide at the ring and widening to `lw` by halfway, so the branches fanning out of one ring
 /// don't merge into a blot. Drawn as strokes, shorter where it bends (`BRANCH_TURN`), each
 /// widening from the curve's width where it starts to its width where it ends (`Shape::taper`)
 /// and starting where the last ended, so Rune joins them into one stroke with smooth edges: a
 /// filled outline cut into thin triangles is stepped along its edges.
-fn tapered(curve: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
-    tapered_on(Shape::new(), curve, lw, color)
-}
-
-/// `tapered`, drawn after what `shape` already holds.
 fn tapered_on(shape: Shape, [a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
     let at = |t: f32| {
         let u = 1.0 - t;
@@ -807,71 +803,73 @@ fn task_box(n: &crate::map::Node, i: usize, b: f32, bx_x: f32, target: f32, cell
         .child(bx_el)
 }
 
+/// What the rings of one node share: the node, how it is shown and the size its targets aim for.
+struct Ring<'a> {
+    l: &'a Laid,
+    i: usize,
+    p: Place,
+    tail: &'a str,
+    branch: Color,
+    folded: bool,
+    editing: bool,
+    lite: bool,
+    hit: f32,
+    c: &'a Roles,
+}
+
+/// A press on node `i`'s ring or pill: fold or unfold, and everything under it with Ctrl.
+fn fold_press(i: usize) -> impl Fn(&mut App, &mut Tx) + 'static {
+    move |s, tx| {
+        let all = tx.mods().cmd;
+        s.map_toggle(i, all, tx);
+        s.keys_to_note(tx);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
     let Some(p) = l.at[i] else { return Vec::new() };
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
     let branch = branch_color(c, n.branch);
-    // The ring sits beside the middle of the node's growing side; a folded node's `+N` badge
-    // takes its place.
-    let toggle = move |s: &mut App, tx: &mut Tx| {
-        let all = tx.mods().cmd;
-        s.map_toggle(i, all, tx);
-        s.keys_to_note(tx);
-    };
-    let mut out = Vec::new();
-    for (nth, d) in l.rings(t, i).enumerate() {
-        fold_ring(&mut out, l, i, p, d, (&tail, nth), toggle, branch, folded, editing, lite, hit, c);
-        if folded {
-            let hidden = n.end - i - 1;
-            let font = map_app::chip_font(b, mono);
-            let (pill, [x, y, w, h]) = map_app::pill(hidden, p, d, font);
-            out.push(
-                el().key(format!("map-pill:{tail}"))
-                    .size(w, h)
-                    .center()
-                    .fill(c.bg)
-                    .hover(crate::roles::mix(c.bg, branch, 0.18))
-                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                    .border(1.5, branch)
-                    .radius(h / 2.0)
-                    .role("button")
-                    .label(format!("Unfold, {hidden} hidden"))
-                    .cursor(rune::Cursor::Pointer)
-                    .pin(Some(x + W), Some(y + W), None, None)
-                    .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
-                    .on_press_tx(toggle),
-            );
-        }
+    let ring = Ring { l, i, p, tail: &tail, branch, folded, editing, lite, hit, c };
+    let mut out: Vec<El> = l.rings(t, i).enumerate().flat_map(|(nth, d)| fold_ring(&ring, d, nth)).collect();
+    // A folded node's `+N` badge takes its one ring's place.
+    if folded {
+        let hidden = n.end - i - 1;
+        let font = map_app::chip_font(b, mono);
+        let (pill, size) = map_app::pill_size(hidden, font);
+        let [x, y, w, h] = p.pill_box(p.dir, size);
+        out.push(
+            el().key(format!("map-pill:{tail}"))
+                .size(w, h)
+                .center()
+                .fill(c.bg)
+                .hover(crate::roles::mix(c.bg, branch, 0.18))
+                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                .border(1.5, branch)
+                .radius(h / 2.0)
+                .role("button")
+                .label(format!("Unfold, {hidden} hidden"))
+                .cursor(rune::Cursor::Pointer)
+                .pin(Some(x + W), Some(y + W), None, None)
+                .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
+                .on_press_tx(fold_press(i)),
+        );
     }
     out
 }
 
-/// One fold ring of node `i`, on side `d` of its box `p`, and its hit target.
-#[allow(clippy::too_many_arguments)]
-fn fold_ring(
-    out: &mut Vec<El>,
-    l: &Laid,
-    i: usize,
-    p: Place,
-    d: crate::map_geom::Dir,
-    (tail, nth): (&str, usize),
-    toggle: impl Fn(&mut App, &mut Tx) + 'static,
-    branch: Color,
-    folded: bool,
-    editing: bool,
-    lite: bool,
-    hit: f32,
-    c: &Roles,
-) {
+/// A node's `nth` fold ring, on side `d`, and its hit target.
+fn fold_ring(&Ring { l, i, p, tail, branch, folded, editing, lite, hit, c }: &Ring, d: crate::map_geom::Dir, nth: usize) -> impl Iterator<Item = El> + use<> {
+    let (mut dot, mut target) = (None, None);
+    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return dot.into_iter().chain(target) };
     let [cx, cy] = p.ring(d);
-    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return };
     // A node with a ring on each side keys the second by its number.
     let key = |name: &str| if nth == 0 { format!("{name}:{tail}") } else { format!("{name}:{tail}:{}", nth + 1) };
     // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
     if !folded {
-        out.push(
+        dot = Some(
             el().key(key("map-dot"))
                 .pin(Some(cx - FOLD_DOT_R + W), Some(cy - FOLD_DOT_R + W), None, None)
                 .size(2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R)
@@ -889,7 +887,7 @@ fn fold_ring(
             .role("button")
             .label(if folded { "Unfold" } else { "Fold" })
             .cursor(rune::Cursor::Pointer)
-            .on_press_tx(toggle);
+            .on_press_tx(fold_press(i));
         if !folded && !lite {
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
@@ -928,8 +926,9 @@ fn fold_ring(
                 .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
                 .child(visuals);
         }
-        out.push(hit_el);
+        target = Some(hit_el);
     }
+    dot.into_iter().chain(target)
 }
 
 /// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it

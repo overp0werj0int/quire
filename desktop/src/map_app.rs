@@ -273,14 +273,9 @@ pub fn badge(props: usize, l: &Laid, font: TextStyle) -> Option<(String, [f32; 4
 /// Horizontal padding inside the Properties badge pill.
 pub const BADGE_PAD: f32 = 6.0;
 
-/// A folded node's `+N` badge in its fold ring's place on side `d`, for box `p` (MAP-041): its
-/// text and `[x, y, w, h]`, at least as tall and as wide as the ring.
-pub fn pill(hidden: usize, p: map_layout::Place, d: Dir, font: TextStyle) -> (String, [f32; 4]) {
-    let (text, size) = pill_size(hidden, font);
-    (text, p.pill_box(d, size))
-}
-
-fn pill_size(hidden: usize, font: TextStyle) -> (String, [f32; 2]) {
+/// A folded node's `+N` badge, which takes its fold ring's place (MAP-041): its text and its
+/// size, at least as tall and as wide as the ring.
+pub fn pill_size(hidden: usize, font: TextStyle) -> (String, [f32; 2]) {
     let text = format!("+{hidden}");
     let h = (font.size + 6.0).max(2.0 * FOLD_DOT_R);
     let w = (rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * PILL_PAD).max(h);
@@ -710,7 +705,7 @@ impl App {
                 let [cx, cy] = p.ring(d);
                 boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
                 if folded(i) {
-                    boxes.push(pill(t.nodes[i].end - i - 1, p, d, font).1);
+                    boxes.push(p.pill_box(d, pill_size(t.nodes[i].end - i - 1, font).1));
                 }
             }
         }
