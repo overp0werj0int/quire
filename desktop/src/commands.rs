@@ -81,6 +81,14 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         }
     }
     v.push(cmd("Search all notes", "app.search-notes", |s, tx| s.open_search(tx)));
+    if has && !s.active_locked() {
+        let (find_action, find_run): (&'static str, Run) = match s.mode {
+            Mode::Preview => ("reader.find", |s, tx| s.open_find(tx)),
+            Mode::Map => ("map.find", |s, tx| s.open_find(tx)),
+            Mode::Source => ("writer.find", |s, tx| s.writer_find(tx)),
+        };
+        v.push(cmd("Find in note", find_action, find_run));
+    }
     if has {
         v.push(cmd(zen_name(s), "app.focus-mode", |s, tx| s.toggle_focus(tx)));
     }
@@ -100,6 +108,9 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
             }
         }));
     }
+    if !s.closed_tabs.is_empty() || !s.note_mode() {
+        v.push(cmd("Reopen closed tab", "app.reopen-tab", |s, tx| s.reopen_tab(tx)));
+    }
     if s.sync_ready() {
         v.push(cmd("Sync now", "", |s, _| s.sync_now()));
     }
@@ -117,6 +128,12 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
             v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
         }
     }
+    let help_action = match s.mode {
+        Mode::Preview => "reader.help",
+        Mode::Map => "map.help",
+        Mode::Source => "app.help",
+    };
+    v.push(cmd("Keyboard shortcuts", help_action, |s, tx| s.toggle_help(tx)));
     v.push(cmd("Open settings", "app.settings", |s, tx| s.open_settings(tx)));
     if !cfg!(target_os = "macos") {
         v.push(cmd("Quit", "app.quit", |s, tx| s.quit(tx)));

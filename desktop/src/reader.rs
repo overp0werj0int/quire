@@ -1216,7 +1216,11 @@ impl App {
         if self.reader.find.open {
             self.close_find(tx);
         } else if self.active.is_some() && !self.active_locked() {
-            self.open_find(tx);
+            if self.mode == Mode::Source {
+                self.writer_find(tx);
+            } else {
+                self.open_find(tx);
+            }
         }
     }
 

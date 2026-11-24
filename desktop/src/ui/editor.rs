@@ -567,7 +567,7 @@ pub(super) fn crumb(v: V) -> El {
     // The name has its room first: the folder takes what the name leaves, up to its own width,
     // and keeps at least "…". Once the title has a width, the cuts are made here (`crumb_fit`).
     let name = md::base(&active).to_string();
-    let reloaded = s.reader.reloaded.is_some() && matches!(s.mode, Mode::Preview | Mode::Map);
+    let reloaded = s.reader.reloaded.is_some();
     let locked = s.is_locked(&active);
     let unlocked = s.note_unlocked(&active);
     let copy_w = 24.0 + 6.0;

@@ -397,8 +397,8 @@ pub fn backlinks(files: &BTreeMap<String, String>, active: &str) -> Vec<(String,
             continue;
         }
         let n = wiki_links(t).iter().filter(|x| {
-            let t = link_target(x).to_lowercase();
-            t == b || t == full
+            let t = wiki_parts(x).0.to_lowercase();
+            !t.is_empty() && (t == b || t == full)
         }).count();
         if n > 0 {
             out.push((p.clone(), n));
@@ -844,6 +844,15 @@ mod tests {
         let (b, _) = fuzzy("oss", "On slow software").unwrap();
         assert!(a > b);
         assert!(fuzzy("zz", "abc").is_none());
+    }
+
+    #[test]
+    fn backlinks_include_heading_fragment_links() {
+        let mut files = BTreeMap::new();
+        files.insert("Alpha.md".into(), "See [[Beta#Details]] and [[Beta#More|more]] and [[#Local]].".into());
+        files.insert("Beta.md".into(), "# Beta\n\n## Details\n".into());
+        assert_eq!(backlinks(&files, "Beta.md"), vec![("Alpha.md".into(), 2)]);
+        assert!(backlinks(&files, "Alpha.md").is_empty());
     }
 }
 

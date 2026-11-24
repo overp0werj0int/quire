@@ -70,6 +70,12 @@ const CORNER_W: f32 = CORNER_PL + super::widgets::DOTS_W + CORNER_GAP + BUTTON +
 /// sidebar comes and goes. Its icons centre on the bar's middle.
 pub fn corner(v: V) -> El {
     let p = v.p;
+    let sidebar_action = match v.s.mode {
+        Mode::Map => "map.toggle-sidebar",
+        Mode::Preview => "reader.toggle-sidebar",
+        Mode::Source => "app.toggle-sidebar",
+    };
+    let sidebar_tip = v.s.keymap.tip(crate::commands::sidebar_name(v.s), sidebar_action);
     row()
         .key("left-zone")
         .pin(Some(0.0), Some(0.0), None, None)
@@ -83,7 +89,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .children((super::widgets::DOTS_W > 0.0).then(|| dots(p)))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &v.s.keymap.tip(crate::commands::sidebar_name(v.s), if matches!(v.s.mode, Mode::Preview | Mode::Map) { "reader.toggle-sidebar" } else { "app.toggle-sidebar" }), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
+        .child(bar_toggle(p, "toggle-left", &SIDEBAR_LEFT, &sidebar_tip, v.left_visible() || v.left_over(), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.
@@ -172,7 +178,13 @@ fn actions(v: V, mut r: El) -> El {
         let help = tip("Show shortcuts", "map.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
-        // The writer's view toggles (WR-79, WR-85, WR-125), each on while its feature is.
+        // Find, the writer's view toggles (WR-79, WR-85, WR-125), and shortcuts help.
+        if s.active_locked() {
+            r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
+        } else {
+            let find = tip("Find in note", "writer.find");
+            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
+        }
         let set = s.settings();
         let name = if set.paragraph_focus { "Turn off paragraph focus" } else { "Turn on paragraph focus" };
         let help = tip(name, "writer.paragraph-focus");
@@ -182,6 +194,8 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_toggle(p, "typewriter", &TYPEWRITER, &help, set.typewriter_scroll, act(|s, tx| s.toggle_typewriter(tx))));
         let help = tip("Use next font", "writer.next-font");
         r = r.child(bar_button(p, "next-font", &FONT, &help, act(|s, tx| s.next_font(tx))));
+        let help = tip("Show shortcuts", "app.help");
+        r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     }
     if v.has_doc() {
         r = r.child(el().key("bar-sep").w(1.0).h(16.0).fill(p.line));
@@ -197,15 +211,20 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen, act(|s, tx| s.toggle_focus(tx))));
     }
     if !zen && v.has_doc() {
-        let outline = tip(crate::commands::outline_name(s), if matches!(s.mode, Mode::Preview | Mode::Map) { "reader.toggle-outline" } else { "app.toggle-outline" });
+        let outline_action = match s.mode {
+            Mode::Map => "map.toggle-outline",
+            Mode::Preview => "reader.toggle-outline",
+            Mode::Source => "app.toggle-outline",
+        };
+        let outline = tip(crate::commands::outline_name(s), outline_action);
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
     }
     r
 }
 
-/// The width of zen mode's pill in preview, the widest: eight buttons (`actions`), the rule
+/// The width of zen mode's pill in the widest mode (Source): nine buttons (`actions`), the rule
 /// between them, their gaps and its padding.
-const PILL_ROOM: f32 = 8.0 * (BUTTON + 4.0) + 1.0 + 8.0;
+const PILL_ROOM: f32 = 9.0 * (BUTTON + 4.0) + 1.0 + 8.0;
 
 /// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
 /// nothing covers it; the window dots and a button to leave show under the pointer.

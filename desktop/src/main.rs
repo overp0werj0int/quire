@@ -839,16 +839,18 @@ pub(crate) mod scroll_tests {
             rt.frame(DT);
         }
         assert!(rt.find("copy-all").is_none(), "source mode keeps its own bar");
-        check(tips(&rt), 8, "mode-source");
-        // The outline button shows as on while the outline is open, in source mode too.
+        check(tips(&rt), 10, "mode-source");
+        // The sidebar and outline buttons both show as active switches while their panels are open.
         rt.update(|s, _| s.persist.right_open = true);
         rt.pointer_move(700.0, 600.0);
         for _ in 0..30 {
             rt.frame(DT);
         }
         assert!(rt.find("outline").is_some(), "the outline is open");
+        let left_btn = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-left") && !e.exiting).expect("the sidebar button");
+        assert!(left_btn.role == "switch" && left_btn.fill.a > 0.0, "the sidebar button shows as on in source mode");
         let button = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("toggle-right") && !e.exiting).expect("the outline button");
-        assert!(button.fill.a > 0.0, "the outline button shows as on in source mode");
+        assert!(button.role == "switch" && button.fill.a > 0.0, "the outline button shows as on in source mode");
         // A collapsible section label's chevron starts on the text edge of the rows it labels,
         // with the label name 16 pt past it (10 pt chevron + 6 pt gap).
         let els = rt.elements();
