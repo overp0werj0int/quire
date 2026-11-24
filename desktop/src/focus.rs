@@ -59,6 +59,7 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("search", Pane::Sidebar),
     ("res-", Pane::Sidebar),
     ("foot-", Pane::Sidebar),
+    ("side-sync", Pane::Sidebar),
     ("fmt-", Pane::Note),
     ("hint-", Pane::Note),
     ("ol-", Pane::Outline),

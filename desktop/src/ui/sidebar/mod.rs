@@ -12,7 +12,7 @@ mod tree;
 
 pub use tree::drag_ghost;
 
-use rune::{El, ScrollSpec, col, el, icon, row, text_input};
+use rune::{El, ScrollSpec, col, el, icon, row, text, text_input};
 
 use super::V;
 use super::panel;
@@ -222,16 +222,54 @@ pub(super) fn kbd(v: V, k: String) -> El {
     super::widgets::kbd(v.p, k, true)
 }
 
-/// The footer: the tags button on the left, the settings button on the right (SB-78). Note
-/// mode has no tags.
+/// The footer: the tags button on the left, ambient sync status in the middle when configured,
+/// and the settings button on the right (SB-78). Note mode has no tags or sync.
 fn foot(v: V) -> El {
     let p = v.p;
     let s = v.s;
+    let c = Roles::panel(p);
+    let (rw, rg, rc) = super::focus_ring(p);
     // The tags show as the search for "#" (SB-74, SB-75).
     let tags = (!s.note_mode()).then(|| {
         let on = s.query.text.trim_start().starts_with('#');
         foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, tx| s.toggle_tags(tx)).role("switch").checked(on)
     });
+    let middle = match s.sync_label() {
+        Some((lbl, busy, failed)) => {
+            let dot = if failed { p.err } else if busy { p.acc } else { p.mute };
+            let tip = if failed {
+                s.sync
+                    .error
+                    .as_deref()
+                    .map_or_else(|| "Sync failed · Open sync settings".to_string(), |e| format!("Sync failed: {e} · Open sync settings"))
+            } else {
+                "Open sync settings".to_string()
+            };
+            let sync = super::focus::stop(row())
+                .key("side-sync")
+                .h(BUTTON)
+                .px(8.0)
+                .gap(6.0)
+                .center_y()
+                .shrink()
+                .min_w(0.0)
+                .radius(6.0)
+                .hover(c.hover)
+                .role("button")
+                .label(lbl.clone())
+                .help(tip)
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(|s: &mut App, tx| {
+                    s.open_settings(tx);
+                    s.set_sec = crate::app::Sec::Sync;
+                })
+                .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
+                .child(text(lbl).font(nav(panel::BODY_SMALL, false)).color(if failed { p.err } else { c.faint }).truncate().shrink().min_w(0.0));
+            row().grow(1.0).shrink().min_w(0.0).justify_center().center_y().child(sync)
+        }
+        None => el().grow(1.0),
+    };
     let settings = foot_button(v, "foot-settings", &GEAR, s.keymap.tip("Settings", "app.settings"), false, |s: &mut App, tx| s.open_settings(tx)).role("button");
     row()
         .key("side-foot")
@@ -243,7 +281,7 @@ fn foot(v: V) -> El {
         .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
         .border_layout()
         .children(tags)
-        .child(el().grow(1.0))
+        .child(middle)
         .child(settings)
 }
 

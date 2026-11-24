@@ -1,7 +1,7 @@
 //! The right panel: the outline and backlinks, the word count and reading time under them, and
 //! in the writer a footer with the caret's line and column.
 
-use rune::{El, Live, ScrollSpec, col, el, row, text};
+use rune::{El, Live, ScrollSpec, col, row, text};
 
 use super::{V, lists, panel, styles};
 use super::editor::{group, link_at_caret};
@@ -209,7 +209,7 @@ fn counts(v: V) -> El {
 }
 
 /// The writer's footer, one line of fixed height: the caret's line and column, or how many
-/// characters are selected, the link under the caret, and the sync state. None in preview.
+/// characters are selected, and the link under the caret. None in preview.
 fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
     let p = v.p;
     let s = v.s;
@@ -242,24 +242,6 @@ fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
     if let Some(t) = link_at_caret(doc, pos) {
         let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
         r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
-    }
-    if let Some((lbl, busy, failed)) = s.sync_label() {
-        let dot = if failed { p.err } else if busy { p.acc } else { p.mark };
-        let mut sync = row()
-            .key("sync-state")
-            .role("button")
-            .on_press_tx(|s: &mut App, tx| {
-                s.open_settings(tx);
-                s.set_sec = crate::app::Sec::Sync;
-            })
-            .gap(6.0)
-            .center_y()
-            .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
-            .child(label(lbl, style, if failed { p.err } else { c.faint }));
-        if let Some(e) = &s.sync.error {
-            sync = sync.help(e.clone());
-        }
-        r = r.child(el().grow(1.0)).child(sync);
     }
     Some(r)
 }
