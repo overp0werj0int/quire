@@ -715,9 +715,13 @@ pub(crate) mod scroll_tests {
         for _ in 0..5 {
             rt.frame(crate::bench::DT);
         }
-        // The tooltips under a row, but for its close button's.
+        // The tooltips under a row, excluding its action buttons (close, outline chevron).
         let tips = |rt: &Runtime<crate::app::App>, row: &str| -> Vec<String> {
-            rt.elements().into_iter().filter(|e| e.path.split('/').any(|seg| seg == row) && !e.path.ends_with("/x")).filter_map(|e| e.help).collect()
+            rt.elements()
+                .into_iter()
+                .filter(|e| e.path.split('/').any(|seg| seg == row) && !e.path.ends_with("/x") && !e.key.as_deref().is_some_and(|k| k.starts_with("tab-chev:")))
+                .filter_map(|e| e.help)
+                .collect()
         };
         for row in ["file:short.md", "tab:short.md"] {
             assert!(tips(&rt, row).is_empty(), "{row} shows its whole name, so no tooltip");
@@ -5300,7 +5304,7 @@ mod layer_matrix_tests {
             rt.update(move |s, tx| s.open_vault(root, tx));
             settle(&mut rt);
             press_key(&mut rt, "dir:Journal", true);
-            press_key(&mut rt, "tm-2", false);
+            press_key(&mut rt, "tm-3", false);
             assert_eq!(state(&mut rt), (1, 1), "{name}: the confirmation is open");
             if i == 0 {
                 assert_eq!(focused(&rt), Some(("tm-cancel".into(), true)), "focus starts on Cancel, with its ring");
@@ -5764,6 +5768,8 @@ mod layer_matrix_tests {
         rt.update(|s, _| s.query = rune::TextEdit::new("#kep"));
         settle(&mut rt);
         assert_eq!(tab_to(&mut rt, |k| k.starts_with("res-tag:")), "res-tag:kept");
+        key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
+        assert_eq!(state(&mut rt).4, 0, "Shift+F10 on a tag result row opens nothing");
         down(&mut rt, Key::Enter);
         let (.., query, _) = state(&mut rt);
         assert_eq!(query, "#kept", "Enter on a tag searches for it");
@@ -5775,8 +5781,8 @@ mod layer_matrix_tests {
         assert_eq!((active.as_str(), mode), ("c.md", Mode::Preview), "a result opens in the current mode");
         assert!(matches!(focused(&rt).as_deref(), None | Some(crate::focus::NOTE)), "with the keyboard in the reader: {:?}", focused(&rt));
 
-        // A list with no menu leaves Shift+F10 alone: no block menu opens under it. The shelf
-        // shows again once the search is cleared.
+        // Shift+F10 on an Open row opens its tab menu (not the preview's block menu), and Esc
+        // closes it. The shelf shows again once the search is cleared.
         rt.update(|s, _| {
             s.mode = Mode::Preview;
             s.query = rune::TextEdit::new("");
@@ -5784,7 +5790,9 @@ mod layer_matrix_tests {
         settle(&mut rt);
         tab_to(&mut rt, |k| k.starts_with("tab:"));
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
-        assert_eq!(state(&mut rt).4, 0, "Shift+F10 on an Open row opens nothing");
+        assert!(rt.presented("tab-menu").is_some(), "Shift+F10 on an Open row opens its tab menu");
+        down(&mut rt, Key::Escape);
+        assert_eq!(state(&mut rt).4, 0, "Esc closes the tab menu");
 
         // A click on a row leaves the keyboard where it was: with the editor in the writer,
         // with the reader in preview.
