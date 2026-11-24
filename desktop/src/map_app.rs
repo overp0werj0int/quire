@@ -1282,6 +1282,15 @@ impl App {
     }
 }
 
+/// What a change to the note does to the camera: bring the node at the change into view, do so
+/// only where it is clipped, or leave the camera to the caller.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reveal {
+    Always,
+    IfClipped,
+    Keep,
+}
+
 /// Zoom in powers of two, so the fold circles' 24-point screen target is sized per bucket
 /// (MAP-041) and a zoom inside one bucket mounts the same elements.
 pub fn hit_bucket(zoom: f32) -> i32 {
@@ -1313,17 +1322,17 @@ impl App {
     /// Splice `s` of the note shown, whose map was `old`, goes in as one undo step (MAP-013);
     /// the folds follow their nodes and the node at the splice's focus line is selected.
     fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
-        self.map_apply_inner(old, s, false, tx);
+        self.map_apply_inner(old, s, Reveal::Always, tx);
     }
 
-    fn map_apply_inner(&mut self, old: &Tree, s: &map::Splice, only_if_clipped: bool, tx: &mut Tx) {
+    fn map_apply_inner(&mut self, old: &Tree, s: &map::Splice, reveal: Reveal, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let base = self.active_text().to_string();
         self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
         let i = s.focus.map_or(ROOT, |l| t.at_line(l));
-        if self.map_open_to(i).is_some() {
-            if !only_if_clipped {
+        if self.map_open_to(i).is_some() && reveal != Reveal::Keep {
+            if reveal == Reveal::Always {
                 self.ensure_visible(i, tx);
             } else {
                 let l = self.map_laid();
@@ -1346,6 +1355,23 @@ impl App {
             }
         }
         self.map_relayout(Some((old, s)), tx);
+    }
+
+    /// The layout picker's pick (MAP-089): the note says `layout`, as one undo step. The
+    /// selection stays, the nodes glide to their new places and the camera, at the zoom it had,
+    /// glides to centre the selected node. Picking the layout the note has writes nothing.
+    pub fn map_set_layout(&mut self, layout: map::Layout, tx: &mut Tx) {
+        self.map_commit(tx);
+        self.close_layers(tx);
+        self.keys_to_note(tx);
+        if !self.map_editable() {
+            return;
+        }
+        let old = self.map_tree();
+        let Some(s) = map::layout_splice(self.active_text(), layout) else { return };
+        self.map_apply_inner(&old, &s, Reveal::Keep, tx);
+        let cam = self.centred_on(self.map_selected(), self.map_camera().1);
+        self.map_glide(cam, tx);
     }
 
     /// A right-click on node `i`, or the Menu key or Shift+F10 on the selected node with `at`
@@ -1496,7 +1522,7 @@ impl App {
         }
         let t = self.map_tree();
         if let Some(s) = map::toggle_task(self.active_text(), &t, i) {
-            self.map_apply_inner(&t, &s, from_pointer, tx);
+            self.map_apply_inner(&t, &s, if from_pointer { Reveal::IfClipped } else { Reveal::Always }, tx);
         }
     }
 

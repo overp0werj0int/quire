@@ -128,7 +128,6 @@ impl Layout {
         Layout::ALL.into_iter().find(|l| l.word().eq_ignore_ascii_case(w))
     }
 
-    #[expect(dead_code, reason = "the layout picker names them")]
     pub fn name(self) -> &'static str {
         match self {
             Layout::Right => "Right",
@@ -608,6 +607,59 @@ fn splice_of(old: &[&str], new: &[String], focus: Option<usize>) -> Splice {
     let room = old.len().min(new.len()) - pre;
     let post = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| **a == b.as_str()).count();
     Splice { lines: pre..old.len() - post, with: new[pre..new.len() - post].to_vec(), focus, moved: None }
+}
+
+/// The splice that makes the note say `layout` (MAP-089): a `layout:` line under `markmap:` in
+/// its front matter, which it adds, with `markmap:` or the whole fence if need be. Right is the
+/// default, so it takes the line away, then an emptied `markmap:`, then an emptied front
+/// matter: Down and then Right give back the bytes the note began with. None when the note
+/// already lays out that way.
+pub fn layout_splice(src: &str, layout: Layout) -> Option<Splice> {
+    let old: Vec<&str> = src.split('\n').collect();
+    if options(&old).layout == layout {
+        return None;
+    }
+    let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    let eol = |i: usize| if old[i].ends_with('\r') { "\r" } else { "" };
+    let set = |indent: &str, i: usize| format!("{indent}layout: {}{}", layout.word(), eol(i));
+    let fe = front_end(&old);
+    if fe == 0 {
+        new.splice(0..0, [format!("---{}", eol(0)), format!("markmap:{}", eol(0)), set("  ", 0), format!("---{}", eol(0))]);
+        return Some(splice_of(&old, &new, None));
+    }
+    let Some(at) = (1..fe - 1).find(|&i| old[i].trim_end() == "markmap:") else {
+        let add = [format!("markmap:{}", eol(0)), set("  ", 0)];
+        new.splice(fe - 1..fe - 1, add);
+        return Some(splice_of(&old, &new, None));
+    };
+    let end = (at + 1..fe - 1).take_while(|&i| old[i].starts_with([' ', '\t']) || old[i].trim().is_empty()).last().map_or(at + 1, |i| i + 1);
+    let own = (at + 1..end).rev().find(|&i| old[i].trim().split_once(':').is_some_and(|(k, _)| k.trim() == "layout"));
+    let last = (at + 1..end).rev().find(|&i| !old[i].trim().is_empty());
+    match (layout, own) {
+        (Layout::Right, own) => {
+            let own = own?;
+            let mut gone = vec![own];
+            if (at + 1..end).all(|i| i == own || old[i].trim().is_empty()) {
+                gone.push(at);
+            }
+            if gone.len() == fe - 2 {
+                gone = (0..fe).collect();
+            }
+            let new: Vec<String> = new.into_iter().enumerate().filter(|(i, _)| !gone.contains(i)).map(|(_, l)| l).collect();
+            Some(splice_of(&old, &new, None))
+        }
+        (_, Some(i)) => {
+            let indent = &old[i][..old[i].len() - old[i].trim_start().len()];
+            new[i] = set(indent, i);
+            Some(splice_of(&old, &new, None))
+        }
+        (_, None) => {
+            let from = last.unwrap_or(at);
+            let indent = last.map_or("  ", |i| &old[i][..old[i].len() - old[i].trim_start().len()]);
+            new.insert(from + 1, set(indent, from));
+            Some(splice_of(&old, &new, None))
+        }
+    }
 }
 
 /// The splice between two texts, for undo and redo (MAP-014).
