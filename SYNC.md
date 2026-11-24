@@ -30,6 +30,8 @@ that end in `.md`. Images sync too: the files that end in `.png`, `.jpg`, `.jpeg
 `.webp`, `.bmp`, `.svg` or `.avif`, in any letter case, up to 50 MB each. No other file syncs.
 Files and folders whose names start with `.` do not sync, and neither does `node_modules`. Line endings are `\n`. An app converts `\r\n` to `\n` when it reads a note.
 
+A note's text syncs as it is. The desktop app's mind map keeps its layout in the note's front matter, as `layout: right`, `left`, `both`, `down` or `up` under `markmap:`. Other readers ignore that line and show the note as before.
+
 ## Format file
 
 ```json

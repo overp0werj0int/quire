@@ -220,6 +220,7 @@ Inline formatting actions (`KEY-50` to `KEY-54`) also act in `mapedit` (`MAP-016
 - **KEY-156** [quire] [verify: -] mapedit.bulleted (mapedit): omarky preset `Ctrl+Alt+8`; quire preset `Ctrl+Alt+8`. Makes the new node being named a bulleted item, as the add toolbar's Bulleted list button does, or shows a short toast where a list item can't go; when renaming a node the chord goes to the field (MAP-087).
 - **KEY-157** [quire] [verify: -] mapedit.task (mapedit): omarky preset `Ctrl+Alt+9`; quire preset `Ctrl+Alt+9`. Makes the new node being named a task, as the add toolbar's Task button does, or shows a short toast where a list item can't go; when renaming a node the chord goes to the field (MAP-087).
 - **KEY-158** [adapted: 0014] [verify: unit, script] map.move-left (map): omarky preset `Alt+Left`; quire preset `Alt+Left`. Moves the selected node the way `Left` would take the selection: where its branches grow right, it promotes or outdents the node to After its parent, as `map.outdent` does (MAP-031).
+- **KEY-159** [quire] [verify: -] map.layout (map): omarky preset `L`; quire preset `L`. Opens the layout picker, with the keyboard on the tile of the note's layout (MAP-089). It does nothing on a locked note.
 
 ## Conflict table
 
