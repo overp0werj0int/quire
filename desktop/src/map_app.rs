@@ -875,7 +875,7 @@ impl App {
     /// Arrow and vi keys (MAP-056): the arrow along the selected node's branches goes to its
     /// first child, the one against them to its parent, and the two across to its siblings.
     pub fn map_arrow(&mut self, a: Arrow, tx: &mut Tx) {
-        match self.map_laid().toward(&self.map_tree(), self.map_selected(), a) {
+        match self.map_laid().toward(self.map_selected(), a) {
             Some(Rel::Parent) => self.map_parent(tx),
             Some(Rel::Child(d)) => self.map_child(d, tx),
             Some(Rel::Prev) => self.map_sibling(false, tx),
@@ -889,7 +889,7 @@ impl App {
     /// does (MAP-088).
     pub fn map_move_arrow(&mut self, a: Arrow, tx: &mut Tx) {
         let (t, l, s) = (self.map_tree(), self.map_laid(), self.map_selected());
-        let step = match l.toward(&t, s, a) {
+        let step = match l.toward(s, a) {
             Some(Rel::Parent) => map::Step::Out,
             Some(Rel::Child(_)) => map::Step::In,
             Some(Rel::Prev) => map::Step::Up,

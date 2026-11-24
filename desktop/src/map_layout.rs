@@ -76,6 +76,9 @@ pub struct Laid {
     pub bounds: [f32; 4],
     pub metrics: Metrics,
     pub layout: Layout,
+    /// The ways the root's children grow, folded or not: one, and left as well in Both when
+    /// it has branches for that side.
+    pub root_dirs: [Option<Dir>; 2],
 }
 
 /// One stretch of a profile: over `x0..x1` along the branches, the subtree's leading edge
@@ -226,7 +229,8 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(pl.right()), bounds[3].max(pl.bottom())];
         at[v] = Some(pl);
     }
-    Laid { cell: cells(&at, &shown, m.sh / 2.0), at, shown, bounds, metrics: m, layout: lay }
+    let root_dirs = [Some(lay.dir()), split.filter(|&k| k < tree.nodes[ROOT].children.len()).map(|_| Dir::Left)];
+    Laid { cell: cells(&at, &shown, m.sh / 2.0), at, shown, bounds, metrics: m, layout: lay, root_dirs }
 }
 
 /// A node's corner in the world, from its corner `[main, cross]` in the local frame: `own` is
@@ -343,8 +347,8 @@ impl Laid {
     /// grow, and for Both's open root each side it has children on.
     pub fn rings(&self, t: &Tree, i: usize) -> impl Iterator<Item = Dir> + use<> {
         let own = self.at[i].map(|p| p.dir);
-        let side = |d: Dir| t.nodes[i].children.iter().any(|&c| self.at[c].is_some_and(|p| p.dir == d));
-        let other = (i == ROOT && self.layout == Layout::Both && side(Dir::Left)).then_some(Dir::Left);
+        let open = t.nodes[i].children.iter().any(|&c| self.at[c].is_some());
+        let other = self.root_dirs[1].filter(|_| i == ROOT && open);
         [own, other].into_iter().flatten()
     }
 
@@ -355,15 +359,15 @@ impl Laid {
 
     /// What arrow `a` means on node `i`. Both's root has children either side, so its Left and
     /// Right each go to the first child that way.
-    pub fn toward(&self, t: &Tree, i: usize, a: Arrow) -> Option<Rel> {
+    pub fn toward(&self, i: usize, a: Arrow) -> Option<Rel> {
         let p = self.at[i]?;
         if i == ROOT && self.layout == Layout::Both {
-            let kids = t.nodes[ROOT].children.len();
-            return match a {
-                Arrow::Right => Some(Rel::Child(Dir::Right)),
-                Arrow::Left if both_split(t) < kids => Some(Rel::Child(Dir::Left)),
-                _ => None,
+            let d = match a {
+                Arrow::Right => Dir::Right,
+                Arrow::Left => Dir::Left,
+                Arrow::Up | Arrow::Down => return None,
             };
+            return self.root_dirs.contains(&Some(d)).then_some(Rel::Child(d));
         }
         Some(p.dir.rel(a))
     }

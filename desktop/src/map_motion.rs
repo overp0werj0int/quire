@@ -181,7 +181,7 @@ fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn 
         }
     }
     shown.sort_unstable();
-    Drawn { laid: Rc::new(Laid { at, cell: laid.cell.clone(), shown, bounds: laid.bounds, metrics: laid.metrics, layout: laid.layout }), fade }
+    Drawn { laid: Rc::new(Laid { at, cell: laid.cell.clone(), shown, bounds: laid.bounds, metrics: laid.metrics, layout: laid.layout, root_dirs: laid.root_dirs }), fade }
 }
 
 fn mix(a: Place, b: Place, e: f32) -> Place {
