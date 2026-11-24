@@ -159,7 +159,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 
 ## Map
 
-- **KEY-103** [adapted: 0014] [verify: unit, script] map.left (map): omarky preset `Left` or `h`; quire preset `Left` or `h`. Selects the node that way from the selected one and ensures it is visible: its parent where its branches grow right, as every map's do now (MAP-056).
+- **KEY-103** [adapted: 0014] [verify: unit, script] map.left (map): omarky preset `Left` or `h`; quire preset `Left` or `h`. Selects the node that way from the selected one and ensures it is visible: its parent where its branches grow right; the other layouts are in MAP-088 (MAP-056).
 - **KEY-104** [adapted: 0014] [verify: unit, script] map.right (map): omarky preset `Right` or `l`; quire preset `Right` or `l`. Selects the node that way from the selected one and ensures it is visible: its first child where its branches grow right, unfolding the selected node first if folded (MAP-056).
 - **KEY-105** [adapted: 0014] [verify: unit, script] map.up (map): omarky preset `Up` or `k`; quire preset `Up` or `k`. Selects the node that way from the selected one: where its branches grow right, the previous sibling, or the nearest visible cousin above at the same depth (MAP-056).
 - **KEY-106** [adapted: 0014] [verify: unit, script] map.down (map): omarky preset `Down` or `j`; quire preset `Down` or `j`. Selects the node that way from the selected one: where its branches grow right, the next sibling, or the nearest visible cousin below at the same depth (MAP-056).
