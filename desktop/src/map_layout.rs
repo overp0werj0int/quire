@@ -233,12 +233,9 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
 /// its width and its length along main, `root` the root's. The root's corner stays at the
 /// origin whichever way the map grows.
 fn to_world(dir: Dir, root: [f32; 2], [main, cross]: [f32; 2], own: [f32; 2]) -> [f32; 2] {
-    match dir {
-        Dir::Right => [main, cross],
-        Dir::Left => [root[0] - main - own[0], cross],
-        Dir::Down => [cross, main],
-        Dir::Up => [cross, root[1] - main - own[1]],
-    }
+    let (k, fwd) = dir.axis();
+    let main = if fwd { main } else { root[k] - main - own[k] };
+    if k == 0 { [main, cross] } else { [cross, main] }
 }
 
 /// How many of the root's children grow right in Both; the rest grow left. The split that
@@ -298,7 +295,7 @@ fn cells(at: &[Option<Place>], shown: &[usize], half: f32) -> Vec<[f32; 4]> {
     }
     let mut cell = vec![[f32::NEG_INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::INFINITY]; at.len()];
     for Span { v, main: [m0, m1], clamp: [c0, c1], .. } in by {
-        cell[v] = if at[v].is_some_and(|p| p.dir.vertical()) { [c0, m0, c1, m1] } else { [m0, c0, m1, c1] };
+        cell[v] = Dir::rect([m0, m1], [c0, c1], at[v].is_some_and(|p| p.dir.vertical()));
     }
     cell
 }
@@ -377,37 +374,19 @@ impl Laid {
     /// it always holds the ring.
     pub fn ring_hit(&self, i: usize, d: Dir, hit: f32) -> Option<[f32; 4]> {
         let p = self.at[i]?;
-        let [cx, cy] = p.ring(d);
+        let (c, edge) = (p.ring(d), p.side_mid(d));
         let [x0, y0, x1, y1] = self.cell[i];
-        let r = FOLD_DOT_R;
-        // A box that starts at `near`, `FOLD_R` back over the node, and grows away from it.
-        let out = |c: f32, near: f32, far: f32| {
-            let a = (c - hit / 2.0).max(near);
-            (a, (a + hit).min(far).max(c + r))
-        };
-        let back = |c: f32, near: f32, far: f32| {
-            let b = (c + hit / 2.0).min(near);
-            ((b - hit).max(far).min(c - r), b)
-        };
-        let beside = |c: f32, lo: f32, hi: f32| ((c - hit / 2.0).max(lo).min(c - r), (c + hit / 2.0).min(hi).max(c + r));
-        Some(match d {
-            Dir::Right => {
-                let ((a, b), (c, e)) = (out(cx, p.right() - FOLD_R, x1), beside(cy, y0, y1));
-                [a, c, b, e]
-            }
-            Dir::Left => {
-                let ((a, b), (c, e)) = (back(cx, p.x + FOLD_R, x0), beside(cy, y0, y1));
-                [a, c, b, e]
-            }
-            Dir::Down => {
-                let ((a, b), (c, e)) = (beside(cx, x0, x1), out(cy, p.bottom() - FOLD_R, y1));
-                [a, c, b, e]
-            }
-            Dir::Up => {
-                let ((a, b), (c, e)) = (beside(cx, x0, x1), back(cy, p.y + FOLD_R, y0));
-                [a, c, b, e]
-            }
-        })
+        let (lo, hi, r) = ([x0, y0], [x1, y1], FOLD_DOT_R);
+        let (k, fwd) = d.axis();
+        // Along the branches the box starts `FOLD_R` back over the node and grows away from
+        // it. Measured outwards, so one rule serves a ring on either end of the axis.
+        let s = if fwd { 1.0 } else { -1.0 };
+        let near = (s * c[k] - hit / 2.0).max(s * edge[k] - FOLD_R);
+        let far = (near + hit).min(s * if fwd { hi[k] } else { lo[k] }).max(s * c[k] + r);
+        let main = if fwd { [near, far] } else { [-far, -near] };
+        let j = 1 - k;
+        let cross = [(c[j] - hit / 2.0).max(lo[j]).min(c[j] - r), (c[j] + hit / 2.0).min(hi[j]).max(c[j] + r)];
+        Some(Dir::rect(main, cross, d.vertical()))
     }
 
     /// The part of node `j` a drop at world point `w` is on, None when it is not on `j`. The
@@ -510,12 +489,11 @@ impl Laid {
         if i == ROOT && self.layout == Layout::Both {
             return Some([mid_x, mid_y]);
         }
-        Some(match p.dir {
-            Dir::Right => [fx0 + inset(fx1 - fx0) - p.x * z, mid_y],
-            Dir::Left => [fx1 - inset(fx1 - fx0) - p.right() * z, mid_y],
-            Dir::Down => [mid_x, fy0 + inset(fy1 - fy0) - p.y * z],
-            Dir::Up => [mid_x, fy1 - inset(fy1 - fy0) - p.bottom() * z],
-        })
+        let (k, fwd) = p.dir.axis();
+        let ([lo, hi], [back, front]) = ([[fx0, fy0], [fx1, fy1]], p.main());
+        let mut pan = [mid_x, mid_y];
+        pan[k] = if fwd { lo[k] + inset(hi[k] - lo[k]) - back * z } else { hi[k] - inset(hi[k] - lo[k]) - front * z };
+        Some(pan)
     }
 }
 

@@ -76,6 +76,23 @@ impl Dir {
             Dir::Up => [0.0, -1.0],
         }
     }
+
+    /// The axis the branches run along, 0 for x and 1 for y, and whether they run towards
+    /// its greater end.
+    pub(crate) fn axis(self) -> (usize, bool) {
+        (self.vertical() as usize, matches!(self, Dir::Right | Dir::Down))
+    }
+
+    /// `[x0, y0, x1, y1]` from a span along the branches and one across them.
+    pub(crate) fn rect([m0, m1]: [f32; 2], [c0, c1]: [f32; 2], vertical: bool) -> [f32; 4] {
+        if vertical { [c0, m0, c1, m1] } else { [m0, c0, m1, c1] }
+    }
+
+    /// A bar from `from` running this way: `len` long and `thick` across, `[x, y, w, h]`.
+    fn bar_from(self, [x, y]: [f32; 2], len: f32, thick: f32) -> [f32; 4] {
+        let [ux, uy] = self.unit();
+        if self.vertical() { [x - thick / 2.0, y + len * uy.min(0.0), thick, len] } else { [x + len * ux.min(0.0), y - thick / 2.0, len, thick] }
+    }
 }
 
 /// A node's padded box in world points, and the way its branches grow. Its underline runs
@@ -109,15 +126,26 @@ impl Place {
         [self.x, self.y, self.right(), self.bottom()]
     }
 
+    /// The middle of side `d` of the box with its underline. What sits beside a node is
+    /// placed from here, out along `d`.
+    pub fn side_mid(&self, d: Dir) -> [f32; 2] {
+        match d {
+            Dir::Right => [self.right(), self.y + self.h / 2.0],
+            Dir::Left => [self.x, self.y + self.h / 2.0],
+            Dir::Down => [self.x + self.w / 2.0, self.bottom()],
+            Dir::Up => [self.x + self.w / 2.0, self.y],
+        }
+    }
+
+    /// The point `by` out from the middle of side `d`.
+    fn out(&self, d: Dir, by: f32) -> [f32; 2] {
+        let ([x, y], [ux, uy]) = (self.side_mid(d), d.unit());
+        [x + by * ux, y + by * uy]
+    }
+
     /// The fold ring's centre on side `d`: beyond the middle of that side.
     pub fn ring(&self, d: Dir) -> [f32; 2] {
-        let out = FOLD_DOT_GAP + FOLD_DOT_R;
-        match d {
-            Dir::Right => [self.right() + out, self.y + self.h / 2.0],
-            Dir::Left => [self.x - out, self.y + self.h / 2.0],
-            Dir::Down => [self.x + self.w / 2.0, self.bottom() + out],
-            Dir::Up => [self.x + self.w / 2.0, self.y - out],
-        }
+        self.out(d, FOLD_DOT_GAP + FOLD_DOT_R)
     }
 
     /// Where branches growing `d` leave the node: the ring's far edge.
@@ -149,25 +177,15 @@ impl Place {
     /// A `+N` pill of `size` in the ring's place on side `d`, `[x, y, w, h]`: it starts where
     /// the ring's near edge would be and is centred on the ring across.
     pub fn pill_box(&self, d: Dir, [w, h]: [f32; 2]) -> [f32; 4] {
-        let [cx, cy] = self.ring(d);
-        match d {
-            Dir::Right => [self.right() + FOLD_DOT_GAP, cy - h / 2.0, w, h],
-            Dir::Left => [self.x - FOLD_DOT_GAP - w, cy - h / 2.0, w, h],
-            Dir::Down => [cx - w / 2.0, self.bottom() + FOLD_DOT_GAP, w, h],
-            Dir::Up => [cx - w / 2.0, self.y - FOLD_DOT_GAP - h, w, h],
-        }
+        let (len, thick) = if d.vertical() { (h, w) } else { (w, h) };
+        d.bar_from(self.out(d, FOLD_DOT_GAP), len, thick)
     }
 
     /// What culling must keep to show the node, `[x0, y0, x1, y1]`: its box with `FOLD_ROOM`
     /// on its growing side for the ring and the pill.
     pub fn reach(&self) -> [f32; 4] {
-        let [x0, y0, x1, y1] = self.rect();
-        match self.dir {
-            Dir::Right => [x0, y0, x1 + FOLD_ROOM, y1],
-            Dir::Left => [x0 - FOLD_ROOM, y0, x1, y1],
-            Dir::Down => [x0, y0, x1, y1 + FOLD_ROOM],
-            Dir::Up => [x0, y0 - FOLD_ROOM, x1, y1],
-        }
+        let ([x0, y0, x1, y1], [ux, uy]) = (self.rect(), self.dir.unit());
+        [x0 + FOLD_ROOM * ux.min(0.0), y0 + FOLD_ROOM * uy.min(0.0), x1 + FOLD_ROOM * ux.max(0.0), y1 + FOLD_ROOM * uy.max(0.0)]
     }
 
     /// This place moved so its branch lands at `pt`.
@@ -232,16 +250,13 @@ impl Place {
     }
 
     /// The stub of a branch a Child drop shows, `len` long and `thick` wide, out of the growing
-    /// side: `[x, y, w, h]` from the corner of the node's box grown by `pad` all round.
+    /// side: `[x, y, w, h]` from the corner of the node's box grown by `pad` all round. It
+    /// leaves the frame at the underline where the branches run on from it, sideways.
     pub(crate) fn child_stub(&self, len: f32, thick: f32, pad: f32) -> [f32; 4] {
-        let line = self.line_y() - self.y + pad - thick / 2.0;
-        let mid = self.w / 2.0 + pad - thick / 2.0;
-        match self.dir {
-            Dir::Right => [self.w + 2.0 * pad, line, len, thick],
-            Dir::Left => [-len, line, len, thick],
-            Dir::Down => [mid, self.bottom() - self.y + 2.0 * pad, thick, len],
-            Dir::Up => [mid, -len, thick, len],
-        }
+        let framed = Place { x: 0.0, y: 0.0, w: self.w + 2.0 * pad, h: self.h + 2.0 * pad, ..*self };
+        let [x, y] = framed.side_mid(self.dir);
+        let from = if self.dir.vertical() { [x, y] } else { [x, self.line_y() - self.y + pad] };
+        self.dir.bar_from(from, len, thick)
     }
 }
 
