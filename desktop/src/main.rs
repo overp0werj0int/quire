@@ -3582,10 +3582,10 @@ mod writer_chrome_tests {
         assert!(r[0] > bar[0] + bar[2] / 2.0 && bar[0] + bar[2] - (r[0] + r[2]) < 24.0, "at the right: {r:?} in {bar:?}");
         assert!(pill.opacity < 0.05, "hidden without a hover: {}", pill.opacity);
         let inside = |key: &str| info(&rt, key).is_some_and(|e| e.rect[0] >= r[0] && e.rect[0] + e.rect[2] <= r[0] + r[2] + 0.5);
-        for key in ["mode-source", "mode-preview", "mode-map", "focus", "paragraph-focus", "typewriter", "next-font"] {
+        for key in ["mode-source", "mode-preview", "mode-map", "focus", "paragraph-focus", "typewriter", "next-font", "find", "help"] {
             assert!(inside(key), "{key} on the editor's pill");
         }
-        for key in ["toggle-right", "find", "help"] {
+        for key in ["toggle-right", "copy-all", "wide"] {
             assert!(info(&rt, key).is_none(), "{key} is not on the editor's pill");
         }
         let (cx, cy) = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
