@@ -170,6 +170,10 @@ pub struct Inline {
     edit_return_cam: Option<([f32; 2], f32)>,
     /// Hash of `edit.text` last checked for live field visibility.
     last_hash: u64,
+    /// Text when inline editing started, so `Esc` arms before discarding modified edits.
+    original: String,
+    /// Clock time of the first `Esc` press while modified, cleared after 2 s.
+    armed_esc: Option<f64>,
 }
 
 impl Inline {
@@ -1705,21 +1709,39 @@ impl App {
         self.open_lightbox(i, k, tx);
     }
 
+    /// Opens the lightbox layer on `images[index]` (from Preview or Map).
+    pub fn open_image_lightbox(&mut self, images: Vec<crate::md::Img>, index: usize, lines: std::ops::Range<usize>, tx: &mut Tx) {
+        if images.is_empty() {
+            return;
+        }
+        let lb = crate::layer::Lightbox { index: index.min(images.len() - 1), images, lines };
+        self.open_layer(crate::layer::Layer::Lightbox(lb), tx);
+    }
+
+    /// Steps the open lightbox gallery forward (`+1`) or backward (`-1`), wrapping around.
+    pub fn lightbox_step(&mut self, delta: isize) {
+        let Some(open) = self.layers.last_mut() else { return };
+        let crate::layer::Layer::Lightbox(lb) = &mut open.layer else { return };
+        if lb.images.len() <= 1 {
+            return;
+        }
+        let n = lb.images.len() as isize;
+        lb.index = (lb.index as isize + delta).rem_euclid(n) as usize;
+    }
+
     /// The lightbox on node `i`'s image, or on image `k` of its gallery; false when it has none.
     fn open_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) -> bool {
         let t = self.map_tree();
         let Some(n) = t.nodes.get(i) else { return false };
         let Body::Card(bl) = &n.body else { return false };
-        let img = match &bl.kind {
-            crate::blocks::Kind::Image { img, .. } => img,
-            crate::blocks::Kind::Gallery { items } => match items.get(k) {
-                Some(it) => &it.img,
-                None => return false,
-            },
+        let (images, idx) = match &bl.kind {
+            crate::blocks::Kind::Image { img, .. } => (vec![img.clone()], 0),
+            crate::blocks::Kind::Gallery { items } if k < items.len() => {
+                (items.iter().map(|it| it.img.clone()).collect(), k)
+            }
             _ => return false,
         };
-        let lb = crate::layer::Lightbox { img: img.clone(), lines: n.own.clone() };
-        self.open_layer(crate::layer::Layer::Lightbox(lb), tx);
+        self.open_image_lightbox(images, idx, n.own.clone(), tx);
         true
     }
 
@@ -1747,7 +1769,7 @@ impl App {
     /// The lightbox's Open externally: the image in the system's viewer or the browser.
     pub fn lightbox_open(&mut self, tx: &mut Tx) {
         let Some(crate::layer::Layer::Lightbox(lb)) = self.layer() else { return };
-        let url = match self.image_source(&lb.img) {
+        let url = match self.image_source(lb.current()) {
             crate::images::Source::File(p) => format!("file://{}", p.display()),
             crate::images::Source::Url(u) => u,
             crate::images::Source::Missing(src) => {
@@ -2054,7 +2076,8 @@ impl App {
         let cam = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
         let edit_return_cam = Some(cam).filter(|c| c.1 < EDIT_ZOOM_MIN);
         let last_hash = edit_hash(&edit);
-        self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false, edit_return_cam, last_hash });
+        let original = edit.text.clone();
+        self.map.inline = Some(Inline { rel, base, tree, what, edit, multi, preview, anchor, held: false, edit_return_cam, last_hash, original, armed_esc: None });
         tx.focus(FIELD, false);
         if let Editing::Node(i) = what {
             self.frame_inline_edit(i, tx);
@@ -2129,8 +2152,20 @@ impl App {
         self.map.drawer_return_pan = None;
     }
 
-    /// Esc in the field (MAP-017): nothing is written, and a new node goes.
+    /// Esc in the field (MAP-017): unmodified edits cancel at once; modified edits arm discard
+    /// with a toast and discard on a second Esc within 2 s (matching the Edit Sheet).
     pub fn map_cancel(&mut self, tx: &mut Tx) {
+        if let Some(e) = &mut self.map.inline
+            && e.edit.text != e.original
+        {
+            let now = self.now.get();
+            if !e.armed_esc.is_some_and(|at| now - at <= 2.0) {
+                e.armed_esc = Some(now);
+                self.toast("Press Esc again to discard", tx);
+                tx.wake_after(std::time::Duration::from_millis(2050));
+                return;
+            }
+        }
         if let Some(e) = self.map.inline.take() {
             self.map_back_to(&e, tx);
             if let Some(cam) = e.edit_return_cam {

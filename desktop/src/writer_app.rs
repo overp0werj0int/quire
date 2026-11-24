@@ -97,7 +97,7 @@ struct CachedBacklinks {
     active: String,
     other_writes: u64,
     ver: u64,
-    links: Rc<Vec<(String, usize)>>,
+    links: Rc<Vec<md::BacklinkInfo>>,
 }
 
 #[derive(Default)]
@@ -521,9 +521,9 @@ impl App {
         (heads, h1, ver)
     }
 
-    /// Sorted backlinks to the active note, cached while no *other* note in the vault changes
-    /// (`LIVEPACE`).
-    pub fn backlinks_cached(&self) -> (Rc<Vec<(String, usize)>>, u64) {
+    /// Sorted backlinks to the active note (with link counts and 1-line context snippets),
+    /// cached while no *other* note in the vault changes (`LIVEPACE`).
+    pub fn backlinks_cached(&self) -> (Rc<Vec<md::BacklinkInfo>>, u64) {
         let Some(active) = self.active.as_deref() else {
             return (Rc::new(Vec::new()), 0);
         };
@@ -536,9 +536,9 @@ impl App {
         {
             return (c.links.clone(), c.ver);
         }
-        let mut back = md::backlinks(self.files(), active);
+        let mut back = md::backlink_infos(self.files(), active);
         if let Some(vault) = &self.vault {
-            back.sort_by_key(|(p, _)| (vault.born.get(p).copied().unwrap_or(u128::MAX), p.clone()));
+            back.sort_by_key(|b| (vault.born.get(&b.path).copied().unwrap_or(u128::MAX), b.path.clone()));
         }
         let ver = slot.as_ref().map_or(1, |c| c.ver.wrapping_add(1).max(1));
         let links = Rc::new(back);

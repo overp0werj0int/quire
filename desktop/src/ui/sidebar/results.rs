@@ -81,9 +81,9 @@ fn list(v: V, r: &Results) -> El {
         let keys = all_keys.clone();
         out = out.child(rune::memo(key, version, || {
             let el = match row {
-                Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, on),
-                Row::Tagged(p) => note_row(v, &k, p, (md::base(p).to_string(), Vec::new()), None, on),
-                Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), on),
+                Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, None, on),
+                Row::Tagged(p) => note_row(v, &k, p, (md::base(p).to_string(), Vec::new()), None, None, on),
+                Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), Some(h.count), on),
                 Row::Tag(t, n) => tag_row(v, &k, t, n, tag_q.as_deref().unwrap_or(&ql), on),
             };
             let el = if on && !matches!(row, Row::Tag(..)) { el.child(kbd(v, "Enter".into())) } else { el };
@@ -137,11 +137,29 @@ fn choose(v: V, el: El, key: String, on: bool, idx: usize, keys: std::rc::Rc<Vec
 
 /// A note's two rows: its name over its folder, or under a text result over the line of its
 /// first match. A note with a tab says " · open" (SB-61, SB-63).
-fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), line: Option<(String, Vec<Span>)>, on: bool) -> El {
+fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), line: Option<(String, Vec<Span>)>, count: Option<usize>, on: bool) -> El {
     let s = v.s;
     let c = Roles::panel(v.p);
     let small = caption_style();
-    let title = rich(name, marks).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(path));
+    let title_text = rich(name, marks).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().help_when_truncated(name_tip(path));
+    let title = match count.filter(|&n| n > 0) {
+        Some(n) => row()
+            .w_full()
+            .gap(6.0)
+            .center_y()
+            .child(title_text.grow(1.0).shrink().min_w(0.0))
+            .child(
+                row()
+                    .key(format!("search-count:{}", path.replace('/', "|")))
+                    .h(16.0)
+                    .px(5.0)
+                    .center()
+                    .radius(8.0)
+                    .fill(c.hover)
+                    .child(text(n.to_string()).font(nav(COUNT_TEXT, false)).color(c.faint)),
+            ),
+        None => title_text.w_full(),
+    };
     let open = s.tabs.iter().any(|t| t == path);
     let caption = match line {
         Some((t, marks)) => rich(t.clone(), marks).font(small).color(c.faint).truncate().shrink().min_w(0.0).help_when_truncated(t),

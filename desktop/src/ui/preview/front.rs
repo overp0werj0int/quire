@@ -75,7 +75,21 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
     let one_line = |e: El| row().w_full().h(rh).center_y().child(e);
     let mut rows = col().key("rows").w_full().gap(gap);
     for (i, f) in fields.iter().enumerate() {
+        let is_tags = matches!(f.key.to_ascii_lowercase().as_str(), "tags" | "tag") && cx.doc.is_some();
         let value: El = match f.kind {
+            FieldKind::Pill if is_tags => {
+                let raw = f.value.trim().trim_start_matches('#').to_string();
+                let click_tag = raw.clone();
+                let tag_pill = pill(cx, &f.value, Some(c.accent), None)
+                    .key(format!("fm-tag:{raw}"))
+                    .hover(c.hover)
+                    .cursor(rune::Cursor::Pointer)
+                    .role("button")
+                    .label(format!("Search #{raw}"))
+                    .help(format!("Search #{raw}"))
+                    .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                one_line(tag_pill)
+            }
             FieldKind::Pill => {
                 let glyph = is_date(&f.value).then_some(&icons::CALENDAR);
                 one_line(pill(cx, &f.value, status_tone(cx, &f.key, &f.value), glyph))
@@ -83,7 +97,21 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
             FieldKind::List => {
                 let mut r_ = row().w_full().flex_wrap().gap(r(b * 0.35)).pt(((b * 1.55 - b * 0.76 * 2.0) / 2.0).round());
                 for (j, it) in f.items.iter().enumerate() {
-                    r_ = r_.child(pill(cx, it, None, None).key(format!("v-{j}")));
+                    if is_tags {
+                        let raw = it.trim().trim_start_matches('#').to_string();
+                        let click_tag = raw.clone();
+                        let p_el = pill(cx, it, Some(c.accent), None)
+                            .key(format!("fm-tag:{raw}"))
+                            .hover(c.hover)
+                            .cursor(rune::Cursor::Pointer)
+                            .role("button")
+                            .label(format!("Search #{raw}"))
+                            .help(format!("Search #{raw}"))
+                            .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                        r_ = r_.child(p_el);
+                    } else {
+                        r_ = r_.child(pill(cx, it, None, None).key(format!("v-{j}")));
+                    }
                 }
                 r_
             }

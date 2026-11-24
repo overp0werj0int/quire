@@ -532,8 +532,8 @@ impl Cx<'_> {
             Kind::Diff { lang, text: t, lines, added, removed } => code::diff(self, lang, t, lines, *added, *removed, bl.pid, bl.lines.start),
             Kind::Table(t) => table::table(self, t, tone),
             Kind::Rule => self.rule(),
-            Kind::Image { img, .. } => self.image(img),
-            Kind::Gallery { items } => self.gallery(items),
+            Kind::Image { img, .. } => self.image(img, bl.lines.clone()),
+            Kind::Gallery { items } => self.gallery(items, bl.lines.clone()),
             Kind::Html { text: t } => self.html(t),
             Kind::Footnotes { items } => self.footnotes(items),
         }
@@ -1037,10 +1037,24 @@ impl Cx<'_> {
     }
 
     /// An image block: the picture centred, its alt text as the caption (BLK-70, BLK-73).
-    fn image(&self, img: &Img) -> El {
+    /// In Preview (`self.doc.is_some()`), clicking expands the image in the lightbox.
+    fn image(&self, img: &Img, lines: std::ops::Range<usize>) -> El {
         let look = self.look;
         let b = look.b;
-        let mut c = col().w_full().items_center().child(self.picture(img, None).key("pic"));
+        let mut pic = self.picture(img, None).key("pic");
+        if self.doc.is_some() {
+            let img_c = img.clone();
+            let tip = if img.alt.is_empty() { "Click to expand".to_string() } else { format!("{} · Click to expand", img.alt) };
+            pic = el()
+                .key(format!("page-img:{}", lines.start))
+                .cursor(rune::Cursor::Pointer)
+                .role("button")
+                .label(tip.clone())
+                .help(tip)
+                .on_press_tx(move |s: &mut App, tx| s.open_image_lightbox(vec![img_c.clone()], 0, lines.clone(), tx))
+                .child(pic);
+        }
+        let mut c = col().w_full().items_center().child(pic);
         if !img.alt.is_empty() {
             let size = r(b * 0.84);
             c = c.child(self.selectable_text(text(img.alt.clone()).key("caption").font(look.prose(size, 1.5).italic()).color(look.c.dim).wrap()).w_full().align(rune::Align::Center).mt(r(b * 0.6)));
@@ -1048,11 +1062,13 @@ impl Cx<'_> {
         c
     }
 
-    /// Images in centred, bottom-aligned rows (BLK-77, BLK-78).
-    fn gallery(&self, items: &[GalleryItem]) -> El {
+    /// Images in centred, bottom-aligned rows (BLK-77, BLK-78). In Preview each tile opens the
+    /// lightbox with the full gallery so Prev/Next steps across the group.
+    fn gallery(&self, items: &[GalleryItem], lines: std::ops::Range<usize>) -> El {
         let b = self.look.b;
         let css = b / 16.0;
         let cap = r(b * 16.0);
+        let all_imgs: Vec<Img> = items.iter().map(|it| it.img.clone()).collect();
         let mut out = row().w_full().flex_wrap().justify_center().items_end().gap(r(b * 0.5));
         for (i, it) in items.iter().enumerate() {
             let nat = self.natural(&it.img);
@@ -1071,7 +1087,19 @@ impl Cx<'_> {
             }
             let mut pic = self.picture(&it.img, Some((r(w), r(h)))).key(format!("img-{i}"));
             let tip = if it.title.is_empty() { &it.img.alt } else { &it.title };
-            if !tip.is_empty() {
+            if self.doc.is_some() {
+                let imgs_c = all_imgs.clone();
+                let lines_c = lines.clone();
+                let full_tip = if tip.is_empty() { "Click to expand".to_string() } else { format!("{tip} · Click to expand") };
+                pic = el()
+                    .key(format!("page-img:{}-{i}", lines.start))
+                    .cursor(rune::Cursor::Pointer)
+                    .role("button")
+                    .label(full_tip.clone())
+                    .help(full_tip)
+                    .on_press_tx(move |s: &mut App, tx| s.open_image_lightbox(imgs_c.clone(), i, lines_c.clone(), tx))
+                    .child(pic);
+            } else if !tip.is_empty() {
                 pic = pic.help(tip.clone());
             }
             out = out.child(pic);

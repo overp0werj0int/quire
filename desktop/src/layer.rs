@@ -52,10 +52,17 @@ pub enum Layer {
     Layouts,
 }
 
-/// The lightbox's image, and the source lines its Edit Markdown button opens.
+/// The lightbox's image (or gallery of images), and the source lines its Edit Markdown button opens.
 pub struct Lightbox {
-    pub img: crate::md::Img,
+    pub images: Vec<crate::md::Img>,
+    pub index: usize,
     pub lines: std::ops::Range<usize>,
+}
+
+impl Lightbox {
+    pub fn current(&self) -> &crate::md::Img {
+        &self.images[self.index.min(self.images.len().saturating_sub(1))]
+    }
 }
 
 /// A menu, at the point it opened at, on what it opened on.

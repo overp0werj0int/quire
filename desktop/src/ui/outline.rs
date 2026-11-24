@@ -132,15 +132,52 @@ pub fn outline(v: V) -> El {
         let name_style = styles::nav(panel::BODY, false);
         let small = styles::nav(panel::CAPTION, false);
         let shift = super::baseline_shift(name_style, small);
-        let mut links = lists::list(col().w_full(), "list");
-        for (i, (bp, _)) in back.iter().enumerate() {
+        let mut links = lists::list(col().w_full().gap(2.0), "list");
+        for (i, bl) in back.iter().enumerate() {
+            let bp = &bl.path;
             let path = bp.clone();
-            let shade = panel::shade(format!("bl-{i}"), panel::BODY, 0, 0.0, &c, false).gap(8.0).hover_group().role("button").label(md::base(bp).to_string());
-            links = links.child(
-                lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx))
-                    .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
-                    .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp))),
-            );
+            let mut head = row()
+                .w_full()
+                .gap(6.0)
+                .center_y()
+                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
+                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp)));
+            if bl.count > 1 {
+                head = head.child(
+                    row()
+                        .key(format!("bl-count-{i}"))
+                        .h(16.0)
+                        .px(5.0)
+                        .center()
+                        .radius(8.0)
+                        .fill(c.hover)
+                        .child(text(bl.count.to_string()).font(small).color(c.faint)),
+                );
+            }
+            let mut item_col = col().w_full().gap(2.0).child(head);
+            if !bl.snippet.is_empty() {
+                item_col = item_col.child(
+                    text(bl.snippet.clone())
+                        .key(format!("backlink-snip:{}", bp.replace('/', "|")))
+                        .font(small)
+                        .color(c.faint)
+                        .truncate()
+                        .w_full()
+                        .help_when_truncated(bl.snippet.clone()),
+                );
+            }
+            let shade = col()
+                .key(format!("bl-{i}"))
+                .mx(panel::INSET)
+                .px(panel::TEXT_X - panel::INSET)
+                .py(5.0)
+                .radius(6.0)
+                .hover(c.hover)
+                .hover_group()
+                .role("button")
+                .label(md::base(bp).to_string())
+                .child(item_col);
+            links = links.child(lists::opener(shade, v.p, false, move |s: &mut App, tx| s.open_file(&path, None, tx)));
         }
         links
     });

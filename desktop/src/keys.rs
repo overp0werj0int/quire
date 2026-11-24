@@ -167,6 +167,19 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if kind == Kind::Help {
         return s.help_key(ev, tx);
     }
+    if kind == Kind::Lightbox && ev.mods == rune::Mods::default() {
+        match ev.key {
+            rune::Key::Left => {
+                s.lightbox_step(-1);
+                return true;
+            }
+            rune::Key::Right => {
+                s.lightbox_step(1);
+                return true;
+            }
+            _ => {}
+        }
+    }
     if kind.light() {
         if matches!(ev.key, rune::Key::Escape) {
             if !s.esc_takes_notice() {

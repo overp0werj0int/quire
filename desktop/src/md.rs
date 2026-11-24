@@ -403,6 +403,44 @@ pub fn wiki_links(text: &str) -> Vec<&str> {
     out
 }
 
+/// One note linking to the active note, with its link count and a stripped 1-line context snippet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BacklinkInfo {
+    pub path: String,
+    pub count: usize,
+    pub snippet: String,
+}
+
+/// Notes that link to `active`, with link count and a plain-text snippet from the first matching line.
+pub fn backlink_infos(files: &BTreeMap<String, String>, active: &str) -> Vec<BacklinkInfo> {
+    let b = base(active).to_lowercase();
+    let full = strip_md(active).to_lowercase();
+    let matches_target = |x: &str| {
+        let t = wiki_parts(x).0.to_lowercase();
+        !t.is_empty() && (t == b || t == full)
+    };
+    let mut out = Vec::new();
+    for (p, t) in files {
+        if p == active {
+            continue;
+        }
+        let n = wiki_links(t).iter().filter(|x| matches_target(x)).count();
+        if n == 0 {
+            continue;
+        }
+        let snippet = t
+            .split('\n')
+            .find(|ln| wiki_links(ln).iter().any(|x| matches_target(x)))
+            .map(|ln| {
+                let (plain, _) = strip_line(ln);
+                plain.split_whitespace().collect::<Vec<_>>().join(" ")
+            })
+            .unwrap_or_default();
+        out.push(BacklinkInfo { path: p.clone(), count: n, snippet });
+    }
+    out
+}
+
 /// Notes that link to `active`, with the number of links in each.
 pub fn backlinks(files: &BTreeMap<String, String>, active: &str) -> Vec<(String, usize)> {
     let b = base(active).to_lowercase();
