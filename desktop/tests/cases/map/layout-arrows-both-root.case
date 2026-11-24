@@ -1,0 +1,18 @@
+On the root in Both sides, Left selects the first branch on the left: the third of four headings.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8
+expect: selected: map-node:11
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

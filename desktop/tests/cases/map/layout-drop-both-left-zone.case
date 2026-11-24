@@ -1,0 +1,21 @@
+Mid-drag on the left side in Both, the After zone shows as a bar under the target.
+note: Plan.md
+at: 1.55
+events: key:m+cmd@0.3 drag:map-node:7>-563,109,0.6@1.0
+expect: label:map-drop: 'After map-node:13'
+expect: rect:map-drop: [425.0, 497.5, 124.0, 6.0]
+expect: rect:map-node:13: [425.0, 434.5, 124.0, 59.0]
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

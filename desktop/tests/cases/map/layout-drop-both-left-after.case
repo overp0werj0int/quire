@@ -1,0 +1,32 @@
+On the left side in Both, nodes still split top to bottom: a drop on a heading's bottom quarter puts the dragged heading after it.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:7>-563,109,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:13
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West
+--- after
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## East
+
+## South
+
+## West
+
+## North

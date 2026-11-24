@@ -1,0 +1,24 @@
+`layout: both` splits the root's branches between its sides: of four equal headings the first two go right and the last two left, each side top to bottom in note order, and the root has a fold ring on each side.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: rect:map-node:5: [709.0, 388.0, 116.0, 68.0]
+expect: rect:map-node:7: [985.0, 347.5, 130.0, 59.0]
+expect: rect:map-node:9: [985.0, 434.5, 114.0, 59.0]
+expect: rect:map-node:11: [413.0, 347.5, 136.0, 59.0]
+expect: rect:map-node:13: [425.0, 434.5, 124.0, 59.0]
+expect: rect:map-dot:5: [837.0, 404.0, 28.0, 28.0]
+expect: rect:map-dot:5:2: [669.0, 404.0, 28.0, 28.0]
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

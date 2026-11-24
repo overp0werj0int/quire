@@ -1,0 +1,29 @@
+Folding a branch moves none across the root in Both sides: with the heavy heading folded to its +5 pill, the three on the left stay where they were (layout-both-heavy-alone).
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:7@1.0
+expect: rect:map-node:5: [571.36, 390.22, 110.64, 64.84]
+expect: rect:map-node:7: [834.59, 393.08, 150.67, 56.27]
+expect: rect:map-node:15: [289.08, 310.11, 129.7, 56.27]
+expect: rect:map-node:17: [273.81, 393.08, 144.97, 56.27]
+expect: rect:map-node:19: [289.08, 476.05, 129.7, 56.27]
+expect: rect:map-pill:7: [996.72, 403.58, 41.95, 30.52]
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+- Power
+- Phone
+- Fares
+
+## Dates
+
+## People
+
+## Notes

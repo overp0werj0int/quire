@@ -1,0 +1,18 @@
+On the left side in Both, Right goes back to the root, and Right again to the first branch on the right.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Down@1.0 key:Right@1.2 key:Right@1.4
+expect: selected: map-node:7
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

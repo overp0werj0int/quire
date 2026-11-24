@@ -1,0 +1,18 @@
+In Both sides, Down stops at the last branch on the right: it does not jump to the left side.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Down@1.2
+expect: selected: map-node:9
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

@@ -1,0 +1,20 @@
+In Both sides a click on the root's left ring folds the whole map into one +4 pill on its right.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:5:2@1.0
+expect: rect:map-node:5: [709.0, 388.0, 116.0, 68.0]
+expect: rect:map-pill:5: [837.0, 402.0, 44.0, 32.0]
+expect: nodes: 5
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West
