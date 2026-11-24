@@ -1,11 +1,15 @@
 Zooming back to 0.35 or more draws the cards again.
 note: Lite.md
 events: key:m+cmd@0.3 key:0+cmd@0.5 key:-@0.8 key:-@0.9 key:-@1.0 key:-@1.1 key:-@1.2 key:=@1.6
-expect: scale:map-node:1: 0.40959998965263367
-expect: rect:map-lite:3: None
-expect: rect:map-card:3: [811.31, 370.94, 68.81, 32.77]
-expect: rect:map-card:8: [811.31, 412.11, 29.48, 27.44]
+expect: scale:map-node:5: 0.40959998965263367
+expect: rect:map-lite:7: None
+expect: rect:map-card:7: [811.31, 370.94, 68.81, 32.77]
+expect: rect:map-card:12: [811.31, 412.11, 29.48, 27.44]
 --- before
+---
+markmap:
+  layout: right
+---
 # Lite
 
 ```sh

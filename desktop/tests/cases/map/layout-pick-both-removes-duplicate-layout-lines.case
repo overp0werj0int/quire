@@ -1,11 +1,12 @@
-Picking Right takes the layout line away and keeps the markmap block's other options.
+Picking Both sides on a note with two layout lines takes both away.
 note: Plan.md
-events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-right@1.4 key:s+cmd@2.2
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-both@1.4 key:s+cmd@2.2
 --- before
 ---
 markmap:
   layout: down
   maxWidth: 300
+  layout: up
 ---
 # Plan
 

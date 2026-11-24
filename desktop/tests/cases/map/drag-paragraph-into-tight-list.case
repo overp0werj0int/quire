@@ -1,13 +1,21 @@
 A paragraph dropped on the first item of a tight list goes into that item, set apart by blank lines, which makes the list loose.
 note: Plan.md
-events: key:m+cmd@0.3 drag:map-node:4>-23,-162,0.6@1.0 key:s+cmd@2.0
-expect: selected: map-node:3
+events: key:m+cmd@0.3 drag:map-node:8>-23,-162,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:7
 --- before
+---
+markmap:
+  layout: right
+---
 - a
 - b
 
 para
 --- after
+---
+markmap:
+  layout: right
+---
 - a
 
   para

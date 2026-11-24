@@ -1,0 +1,20 @@
+In Both sides, folding the side that holds the selected node selects the root.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Left@1.2 tap:map-fold:1:2@1.8
+expect: selected: map-node:1
+expect: nodes: 1 3 5 7
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

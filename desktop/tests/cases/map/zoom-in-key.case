@@ -1,12 +1,14 @@
 = zooms in by a quarter about the selected node, which holds still.
 note: Trip.md
 events: key:m+cmd@0.3 key:=@0.9
-expect: rect:map-node:6: [448.8, 395.53, 85.88, 53.08]
-expect: scale:map-node:6: 1.5612000226974487
+expect: rect:map-node:8: [448.8, 395.53, 85.88, 46.84]
+expect: scale:map-node:8: 1.5612000226974487
 --- before
 ---
 title: Trip
 tags: [a, b]
+markmap:
+  layout: right
 ---
 
 # Trip

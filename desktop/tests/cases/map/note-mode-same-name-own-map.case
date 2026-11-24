@@ -3,10 +3,14 @@ note: Plan.md
 scene: note
 events: key:m+cmd@0.3 key:=@0.8 key:l@1.0 key:j@1.2 key:l@1.4 key:Enter+cmd@1.7 key:m+cmd@2.3
 expect: text:crumb: 'Plan .md'
-expect: selected: map-node:1
-expect: scale:map-node:1: 2.0
-expect: text:map-node:1: 'Trip plan'
+expect: selected: map-node:5
+expect: scale:map-node:5: 2.0
+expect: text:map-node:5: 'Trip plan'
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -15,6 +19,10 @@ expect: text:map-node:1: 'Trip plan'
 
 - [Next](trip/Plan.md)
 --- file trip/Plan.md
+---
+markmap:
+  layout: right
+---
 # Trip plan
 
 ## Gear

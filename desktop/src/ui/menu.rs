@@ -222,8 +222,8 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
         enabled,
         ..item(label, Box::new(move |s, tx| if let Some(i) = s.map_pick(id, tx) { run(s, i, tx) }))
     };
-    let folded = v.s.map_view().is_some_and(|m| m.folded.contains(&id));
-    let fold = (!n.children.is_empty()).then(|| on("menu-fold", if folded { "Unfold" } else { "Fold" }, "map.toggle-fold", true, |s, i, tx| s.map_toggle(i, false, tx)));
+    let folded = v.s.map_view().is_some_and(|m| m.folds.whole(id));
+    let fold = (!n.children.is_empty()).then(|| on("menu-fold", if folded { "Unfold" } else { "Fold" }, "map.toggle-fold", true, |s, i, tx| s.map_toggle(i, None, false, tx)));
     let copy = on("menu-copy", "Copy Markdown", "map.copy-node", true, |s, _, tx| s.map_copy(false, tx));
     let edit = on("menu-edit", "Edit", "map.edit", true, |s, _, tx| s.map_edit(tx));
     match n.kind {

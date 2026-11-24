@@ -2,11 +2,15 @@ Another app's change to the note keeps the map's folds, selection and zoom on th
 note: Plan.md
 events: key:m+cmd@0.3 key:l@0.8 type:_@1.1 key:j@1.3 key:=@1.5 write:Plan.md@1.9
 at: 4.6
-expect: selected: map-node:11
-expect: nodes: 1 3 5 11 13
-expect: label:map-node:5: 'Budget, level 2, collapsed, 3 hidden'
-expect: scale:map-node:11: 2.5
+expect: selected: map-node:15
+expect: nodes: 5 7 9 15 17
+expect: label:map-node:9: 'Budget, level 2, collapsed, 3 hidden'
+expect: scale:map-node:15: 2.5
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -18,6 +22,10 @@ expect: scale:map-node:11: 2.5
 
 Late May.
 --- outside Plan.md
+---
+markmap:
+  layout: right
+---
 # Plan
 
 Intro line.
@@ -32,6 +40,10 @@ Intro line.
 
 Late May.
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 Intro line.

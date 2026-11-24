@@ -1,0 +1,20 @@
+In Both sides, find goes to a match in a folded side and opens it.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:1:2@1.0 key:f+cmd@1.6 type:Food@2.0
+expect: selected: map-node:11
+expect: nodes: 1 3 5 7 9 11 12 14
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

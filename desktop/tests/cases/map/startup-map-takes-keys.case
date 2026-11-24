@@ -2,14 +2,22 @@ A note that opens in Map from the saved state takes map keys before any click: R
 note: Plan.md
 state: {"mode": "map"}
 events: key:Right@0.8 key:Down@1.0 key:Tab@1.2 type:Budget@1.5 key:Enter@2.0
-expect: selected: map-node:7
+expect: selected: map-node:11
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## A
 
 ## B
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## A

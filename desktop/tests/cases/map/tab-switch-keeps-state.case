@@ -1,10 +1,14 @@
 Each tab keeps its own map: back on a tab, its folds, selection and zoom are as it left them.
 note: Plan.md
 events: key:m+cmd@0.3 key:l@0.8 type:_@1.1 key:j@1.3 key:=@1.5 key:l@1.7 key:Enter+cmd@1.9 tap:tab:Plan.md@2.6
-expect: selected: map-node:10
-expect: label:map-node:3: 'Budget, level 2, collapsed, 2 hidden'
-expect: scale:map-node:10: 2.5
+expect: selected: map-node:14
+expect: label:map-node:7: 'Budget, level 2, collapsed, 2 hidden'
+expect: scale:map-node:14: 2.5
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -16,6 +20,10 @@ expect: scale:map-node:10: 2.5
 
 - [[Other]]
 --- file Other.md
+---
+markmap:
+  layout: right
+---
 # Other
 
 ## Branch

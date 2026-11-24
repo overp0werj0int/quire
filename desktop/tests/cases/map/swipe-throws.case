@@ -2,8 +2,12 @@ A touchpad swipe over the map coasts on after the fingers lift: 80 points of swi
 note: Plan.md
 state: {"mode": "map"}
 events: swipe:-10,0,640,420@1.0
-expect: rect:map-node:1: [332.98, 388.0, 116.0, 68.0]
+expect: rect:map-node:5: [332.98, 388.0, 116.0, 60.0]
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## A

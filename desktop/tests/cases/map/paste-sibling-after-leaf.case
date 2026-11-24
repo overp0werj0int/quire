@@ -1,8 +1,12 @@
 Ctrl+V of one line on a paragraph adds a paragraph after it.
 note: Menu.md
 events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Down@1.0 paste:Done.@1.4 key:s+cmd@1.8
-expect: selected: map-node:9
+expect: selected: map-node:13
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 - milk
@@ -11,6 +15,10 @@ expect: selected: map-node:9
 
 Para.
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 - milk

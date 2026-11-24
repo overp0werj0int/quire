@@ -1,7 +1,7 @@
 A big map in Both sides opens at 100% with the root in the middle of the canvas.
 note: Plan.md
 events: key:m+cmd@0.3
-expect: rect:map-node:5: [735.0, 405.5, 58.0, 34.0]
+expect: rect:map-node:5: [735.0, 405.5, 58.0, 30.0]
 expect: scale:map-node:5: 1.0
 expect: rect:map-canvas: [248.0, 41.0, 1032.0, 759.0]
 --- before

@@ -1,0 +1,16 @@
+In Up the inline field sits on the label, over the node's bracket.
+note: Plan.md
+events: key:m+cmd@0.3 key:Up@0.8 key:F2@1.2
+expect: focus: map-inline-edit (no ring)
+expect: rect:map-node:7: [590.0, 291.5, 162.0, 78.0]
+expect: rect:map-inline-edit: [606.0, 291.5, 130.0, 46.0]
+--- before
+---
+markmap:
+  layout: up
+---
+# Plan
+
+## Budget
+
+## Dates

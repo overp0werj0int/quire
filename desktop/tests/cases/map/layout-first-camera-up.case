@@ -1,7 +1,7 @@
 A big map in Up opens at 100% with the root near the canvas's bottom, half way across, and builds the nodes above it.
 note: Plan.md
 events: key:m+cmd@0.3
-expect: rect:map-node:5: [735.0, 712.88, 58.0, 34.0]
+expect: rect:map-node:5: [735.0, 716.88, 58.0, 30.0]
 expect: scale:map-node:5: 1.0
 expect: nodes: 5 43 48 49 50 51 52 53 54 55 56 57 58 59 61 63 64 65 66 67 68 69 70 71 72 73 74
 expect: rect:map-canvas: [248.0, 41.0, 1032.0, 759.0]

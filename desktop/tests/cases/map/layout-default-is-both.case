@@ -1,0 +1,19 @@
+A note that names no layout grows on both sides: one heading right of the root, the other left of it, and a fold ring on each side.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: rect:map-node:1: [744.16, 397.17, 85.25, 44.09]
+expect: rect:map-node:3: [947.0, 399.38, 116.11, 43.36]
+expect: rect:map-node:8: [526.61, 399.38, 99.95, 43.36]
+expect: rect:map-dot:1: [838.23, 408.94, 20.58, 20.58]
+expect: rect:map-dot:1:2: [714.77, 408.94, 20.58, 20.58]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

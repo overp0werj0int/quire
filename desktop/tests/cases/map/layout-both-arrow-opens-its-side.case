@@ -1,0 +1,21 @@
+In Both sides with both sides folded, Left on the root opens the left side and goes to its first branch.
+note: Plan.md
+events: key:m+cmd@0.3 key:f@1.0 key:Left@1.6
+expect: nodes: 1 9 11 12 14
+expect: selected: map-node:9
+expect: text:map-pill:1: '+3'
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

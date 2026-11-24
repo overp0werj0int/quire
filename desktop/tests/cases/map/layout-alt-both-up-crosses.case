@@ -1,0 +1,34 @@
+In Both sides, Alt+Up on the first left branch swaps it with the last right one: it is now at the bottom of the right side.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Up+alt@1.2 key:s+cmd@2.0
+expect: selected: map-node:9
+expect: rect:map-node:9: [985.0, 434.5, 136.0, 59.0]
+expect: rect:map-node:11: [435.0, 347.5, 114.0, 59.0]
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West
+--- after
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## South
+
+## East
+
+## West

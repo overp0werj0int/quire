@@ -2,8 +2,8 @@ While a node's text is edited, the selection outline holds the field as it grows
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.6 key:F2@0.8 key:End@0.9 type:_and_then_a_much_longer_sentence_that_goes_on_past_the_widest_node_the_map_allows_so_it_wraps@1.0
 at: 5.0
-expect: rect:map-inline-edit: [608.0, 352.5, 576.0, 120.0]
-expect: rect:map-selection: [568.0, 332.5, 656.0, 173.0]
+expect: rect:map-inline-edit: [608.0, 356.5, 576.0, 120.0]
+expect: rect:map-selection: [568.0, 336.5, 656.0, 173.0]
 --- before
 # Plan
 

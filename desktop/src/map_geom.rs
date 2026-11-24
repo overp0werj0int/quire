@@ -15,12 +15,24 @@ pub const FOLD_HIT_BACK: f32 = 6.0;
 /// and the ring, wide enough to clear the selection outline.
 pub const FOLD_DOT_R: f32 = 7.0;
 pub const FOLD_DOT_GAP: f32 = 6.0;
-/// How far above a node's top a branch growing down stops.
-const ENTRY_GAP: f32 = 3.0;
 
-/// A branch's stroke and underline width at `depth`: 4 at the root, then towards 1.
+/// The stroke width of the branch into a node at `depth` and of the node's line: 2.5 under
+/// the root, then towards 1.
 pub fn line_width(depth: usize) -> f32 {
     1.0 + 3.0 / 2f32.powi(depth.min(30) as i32)
+}
+
+/// How tall the curly bracket along a label is, where branches grow down or up.
+const BRACE_H: f32 = 12.0;
+
+/// The room a node's line takes beside its label: the bracket's height where branches grow
+/// `dir` down or up, else the underline's width. The root has no line.
+pub fn line_room(depth: usize, dir: Dir) -> f32 {
+    match depth {
+        0 => 0.0,
+        _ if dir.vertical() => BRACE_H,
+        d => line_width(d),
+    }
 }
 
 /// The way a node's branches grow: away from its parent, towards its children.
@@ -95,8 +107,10 @@ impl Dir {
     }
 }
 
-/// A node's padded box in world points, and the way its branches grow. Its underline runs
-/// below the box.
+/// A node's box in world points, and the way its branches grow. `h` is its content with the
+/// padding to its line; the line takes `line_room` more. The line is an underline where
+/// branches grow sideways. Where they grow down or up it is a curly bracket along the edge the
+/// branch into the node comes to, over the label or under it, its point towards the branch.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Place {
     pub x: f32,
@@ -112,21 +126,53 @@ impl Place {
         self.x + self.w
     }
 
+    /// The node's line is a curly bracket.
+    pub fn braced(&self) -> bool {
+        self.depth > 0 && self.dir.vertical()
+    }
+
+    /// The line is over the label, not under it.
+    pub fn overlined(&self) -> bool {
+        self.depth > 0 && self.dir == Dir::Down
+    }
+
+    pub fn line_room(&self) -> f32 {
+        line_room(self.depth, self.dir)
+    }
+
+    /// The top of the line, from the node's top.
+    pub fn line_top(&self) -> f32 {
+        if self.overlined() { 0.0 } else { self.h }
+    }
+
     /// The middle of the underline's thickness.
     pub fn line_y(&self) -> f32 {
-        self.y + self.h + line_width(self.depth) / 2.0
+        self.y + self.line_top() + self.line_room() / 2.0
+    }
+
+    /// The content's top from the node's, and its height, with `pad` between it and the line.
+    /// Content over its line keeps the padding in its height, and the root, with no line, has
+    /// half of it above and half below.
+    pub fn content(&self, pad: f32) -> (f32, f32) {
+        if self.depth == 0 {
+            (pad / 2.0, self.h - pad)
+        } else if self.overlined() {
+            (self.line_room() + pad, self.h - pad)
+        } else {
+            (0.0, self.h)
+        }
     }
 
     pub fn bottom(&self) -> f32 {
-        self.y + self.h + line_width(self.depth)
+        self.y + self.h + self.line_room()
     }
 
-    /// The box with its underline, `[x0, y0, x1, y1]`.
+    /// The box with its line, `[x0, y0, x1, y1]`.
     pub fn rect(&self) -> [f32; 4] {
         [self.x, self.y, self.right(), self.bottom()]
     }
 
-    /// The middle of side `d` of the box with its underline. What sits beside a node is
+    /// The middle of side `d` of the box with its line. What sits beside a node is
     /// placed from here, out along `d`.
     pub fn side_mid(&self, d: Dir) -> [f32; 2] {
         match d {
@@ -159,13 +205,13 @@ impl Place {
         match self.dir {
             Dir::Right => [self.x, self.line_y()],
             Dir::Left => [self.right(), self.line_y()],
-            Dir::Down => [self.x + self.w / 2.0, self.y - ENTRY_GAP],
-            Dir::Up => [self.x + self.w / 2.0, self.line_y()],
+            Dir::Down => [self.x + self.w / 2.0, self.y],
+            Dir::Up => [self.x + self.w / 2.0, self.bottom()],
         }
     }
 
     /// The far end of the underline, when the branch into this node runs on as it. None where
-    /// the branch lands on the node's middle, and the node draws its own underline.
+    /// the branch lands on the point of the node's bracket, which the node draws.
     pub fn underline_end(&self) -> Option<[f32; 2]> {
         match self.dir {
             Dir::Right => Some([self.right(), self.line_y()]),
@@ -224,7 +270,7 @@ impl Place {
         [self.x, self.bottom() + clear + 4.0]
     }
 
-    /// The node's span along the axis its siblings stack on, underline included: top to bottom
+    /// The node's span along the axis its siblings stack on, line included: top to bottom
     /// where branches grow sideways, left to right where they grow down or up. It increases in
     /// document order.
     pub(crate) fn cross(&self) -> [f32; 2] {
@@ -248,11 +294,11 @@ impl Place {
 
     /// The stub of a branch a Child drop shows, `len` long and `thick` wide, out of the growing
     /// side: `[x, y, w, h]` from the corner of the node's box grown by `pad` all round. It
-    /// leaves the frame at the underline where the branches run on from it, sideways.
+    /// leaves the frame at the underline of a node that has one.
     pub(crate) fn child_stub(&self, len: f32, thick: f32, pad: f32) -> [f32; 4] {
         let framed = Place { x: 0.0, y: 0.0, w: self.w + 2.0 * pad, h: self.h + 2.0 * pad, ..*self };
         let [x, y] = framed.side_mid(self.dir);
-        let from = if self.dir.vertical() { [x, y] } else { [x, self.line_y() - self.y + pad] };
+        let from = if self.dir.vertical() || self.depth == 0 { [x, y] } else { [x, self.line_y() - self.y + pad] };
         self.dir.bar_from(from, len, thick)
     }
 }

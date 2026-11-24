@@ -2,11 +2,19 @@ Editing a task item keeps its marker and box.
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:e@1.2 type:oat_milk@1.4 key:Enter@2.2 key:s+cmd@2.6
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 - [ ] eggs
 -  [x] milk
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 - [ ] eggs

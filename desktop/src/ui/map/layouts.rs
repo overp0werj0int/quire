@@ -3,15 +3,15 @@
 //! small sample tree, so it cannot drift from what picking it does. The title bar's 16 pt
 //! glyphs (`icons::LAYOUT_*`) are drawn by hand and can.
 
-use std::collections::HashSet;
-
 use rune::{Color, El, LineCap, Shape, col, el, icon, row, text};
 
-use super::{branch_color, tapered_on};
+use super::{brace, branch_color, tapered_on};
 use crate::app::App;
 use crate::keymap;
 use crate::layer::tile_key;
-use crate::map::{Layout, NodeKind, ROOT, Tree};
+use crate::map::{Layout, ROOT, Tree};
+use crate::map_geom::line_width;
+use crate::map_fold::Folds;
 use crate::map_layout::{Metrics, layout};
 use crate::roles::Roles;
 use crate::ui::V;
@@ -138,13 +138,15 @@ fn schematic(p: &'static crate::theme::Pal, l: Layout) -> El {
         let sample = if l == Layout::Both { SAMPLE_BOTH } else { SAMPLE };
         let src = format!("---\nmarkmap:\n  layout: {}\n---\n{sample}", l.word());
         let tree: Tree = crate::map::build(&crate::blocks::build(&src), &src, "");
-        let m = Metrics { sh: 26.0, sv: 7.0, pad_x: 0.0, pad_b: 0.0, min_h: 0.0, max_w: 1000.0 };
+        // A bar sits on its underline, and clear of its bracket.
+        let pad_b = if matches!(l, Layout::Down | Layout::Up) { 3.0 } else { 0.0 };
+        let m = Metrics { sh: 26.0, sv: 7.0, pad_x: 0.0, pad_b, min_h: 0.0, max_w: 1000.0 };
         let size = |i: usize| match tree.nodes[i].depth {
             0 => [44.0, 13.0],
             1 => [30.0, 9.0],
             _ => [22.0, 6.0],
         };
-        let laid = layout(&tree, &HashSet::new(), m, size, |_| [0.0, 0.0]);
+        let laid = layout(&tree, &Folds::default(), m, size, |_| [0.0, 0.0]);
         let [x0, y0, x1, y1] = laid.bounds;
         let [pw, ph] = THUMB;
         let k = ((pw - 2.0 * INSET) / (x1 - x0)).min((ph - 2.0 * INSET) / (y1 - y0));
@@ -159,15 +161,18 @@ fn schematic(p: &'static crate::theme::Pal, l: Layout) -> El {
         for &i in &laid.shown {
             let Some(p) = laid.at[i] else { continue };
             let bar = if i == ROOT { c.strong } else { c.dim };
-            let t = (p.h * k).max(2.0);
-            let [bx0, by] = at([p.x, p.y + p.h / 2.0]);
+            let h = p.h - pad_b;
+            let t = (h * k).max(2.0);
+            let [bx0, by] = at([p.x, p.y + p.content(pad_b).0 + h / 2.0]);
             let [bx1, _] = at([p.right(), p.y]);
             shape = shape.line([bx0 + t / 2.0, by], [bx1 - t / 2.0, by], t, LineCap::Round, bar);
-            if tree.nodes[i].kind != NodeKind::Root {
-                let color = branch_color(&c, tree.nodes[i].branch);
-                let [ux0, uy] = at([p.x, p.line_y()]);
-                let [ux1, _] = at([p.right(), p.line_y()]);
-                shape = shape.line([ux0, uy], [ux1, uy], (p.bottom() - p.y - p.h).max(1.0) * k * 1.6, LineCap::Round, color);
+            let color = branch_color(&c, tree.nodes[i].branch);
+            let lw = (line_width(p.depth) * k * 1.6).max(1.0);
+            if p.braced() {
+                let lw = (lw * 0.75).max(1.0);
+                shape = brace(shape, at([p.x, p.y + p.line_top()]), [p.w * k, p.line_room() * k], p.overlined(), lw, color);
+            } else if i != ROOT {
+                shape = shape.line(at([p.x, p.line_y()]), at([p.right(), p.line_y()]), lw, LineCap::Round, color);
             }
         }
         rune::canvas(shape).size(pw, ph).inert()

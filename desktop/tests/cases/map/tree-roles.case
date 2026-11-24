@@ -3,12 +3,16 @@ note: T.md
 events: key:m+cmd@0.3 key:l@0.6 key:j@0.8 type:_@1.0
 expect: role:map-canvas: tree
 expect: label:map-canvas: 'Map'
-expect: role:map-node:5: treeitem
-expect: label:map-node:5: 'Rent, level 3, not checked'
-expect: label:map-node:6: 'Food, level 3, checked'
-expect: label:map-node:8: 'Dates, level 2, collapsed, 2 hidden'
-expect: role:map-task:5: checkbox
+expect: role:map-node:9: treeitem
+expect: label:map-node:9: 'Rent, level 3, not checked'
+expect: label:map-node:10: 'Food, level 3, checked'
+expect: label:map-node:12: 'Dates, level 2, collapsed, 2 hidden'
+expect: role:map-task:9: checkbox
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget

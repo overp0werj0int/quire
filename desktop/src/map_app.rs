@@ -6,7 +6,7 @@
 //! world element draws with, so a pan or zoom that mounts nothing new runs no view.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use crate::app::{App, Mode};
 use crate::blocks::Link;
 use crate::map::{self, Body, NodeId, NodeKind, ROOT, Tree};
 use crate::map_geom::{Arrow, Dir, FOLD_DOT_R, Rel};
+use crate::map_fold::Folds;
 use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
@@ -59,7 +60,7 @@ pub struct MapView {
     pub zoom: f32,
     pub live_pan: Live<[f32; 2]>,
     pub live_zoom: Live<f32>,
-    pub folded: HashSet<NodeId>,
+    pub folds: Folds,
     /// Bumped on every fold change, so the layout runs again.
     pub fold_ver: u64,
     pub selected: NodeId,
@@ -75,9 +76,10 @@ impl MapView {
     /// nodes, the selection else to the node at the change (MAP-010, MAP-068).
     fn follow(&mut self, old: &Tree, t: &Tree, s: &map::Splice) {
         let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
-        self.folded = std::mem::take(&mut self.folded).into_iter().filter_map(|id| map::follow(old, t, s, id)).filter(shut).collect();
-        self.fold_ver += 1;
         self.selected = map::follow(old, t, s, self.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
+        let sel = t.find(self.selected).unwrap_or(ROOT);
+        self.folds.follow(&map_layout::sides(t), sel, |id| map::follow(old, t, s, id).filter(shut));
+        self.fold_ver += 1;
     }
 }
 
@@ -355,7 +357,7 @@ impl App {
         let a = self.active.clone()?;
         if !self.map.views.contains_key(&a) {
             let t = self.map_tree();
-            let v = MapView { pan: [0.0, 0.0], zoom: 1.0, live_pan: Live::new([0.0, 0.0]), live_zoom: Live::new(1.0), folded: t.initial_folds().into_iter().collect(), fold_ver: 0, selected: t.root().id, placed: false, mount: Default::default() };
+            let v = MapView { pan: [0.0, 0.0], zoom: 1.0, live_pan: Live::new([0.0, 0.0]), live_zoom: Live::new(1.0), folds: t.initial_folds().into_iter().collect(), fold_ver: 0, selected: t.root().id, placed: false, mount: Default::default() };
             self.map.views.insert(a.clone(), v);
         }
         self.map.views.get_mut(&a)
@@ -399,8 +401,8 @@ impl App {
         let b = self.settings().size as f32;
         let (prose, mono, prose_id, mono_id) = self.fonts();
         let epoch = rune::text::font_epoch();
-        let empty = HashSet::new();
-        let (folded, fold_ver) = self.map_view().map_or((&empty, None), |v| (&v.folded, Some(v.fold_ver)));
+        let empty = Folds::default();
+        let (folds, fold_ver) = self.map_view().map_or((&empty, None), |v| (&v.folds, Some(v.fold_ver)));
         let pics = self.images.epoch.get();
         let m = Metrics::new(b, &t.opts);
         let active = self.active.as_deref().unwrap_or("");
@@ -452,7 +454,7 @@ impl App {
         let chip = chip_font(b, mono);
         let laid = Rc::new(crate::map_layout::layout(
             &t,
-            folded,
+            folds,
             m,
             |i| match field {
                 Some((fi, w, h)) if fi == i => [w, h],
@@ -697,15 +699,16 @@ impl App {
         let t = self.map_tree();
         let l = self.map_laid();
         let font = chip_font(self.settings().size as f32, self.fonts().1);
-        let folded = |i: usize| self.map_view().is_some_and(|v| v.folded.contains(&t.nodes[i].id));
+        let none = Folds::default();
+        let folds = self.map_view().map_or(&none, |v| &v.folds);
         let mut boxes = Vec::new();
         for &i in l.shown.iter().filter(|&&i| !t.nodes[i].children.is_empty()) {
             let Some(p) = l.at[i] else { continue };
-            for d in l.rings(&t, i) {
-                let [cx, cy] = p.ring(d);
+            for r in l.rings(&t, i, folds) {
+                let [cx, cy] = p.ring(r.side.dir);
                 boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
-                if folded(i) {
-                    boxes.push(p.pill_box(d, pill_size(t.nodes[i].end - i - 1, font).1));
+                if r.folded {
+                    boxes.push(p.pill_box(r.side.dir, pill_size(r.side.nodes.len(), font).1));
                 }
             }
         }
@@ -879,9 +882,9 @@ impl App {
         }
     }
 
-    /// `Alt` with an arrow (MAP-031): the move that takes the selected node where that arrow
-    /// would take the selection. It stops at a sibling across Both's root, as the selection
-    /// does (MAP-088).
+    /// `Alt` with an arrow (MAP-031): the move that takes the selected node the way that arrow
+    /// points. Up and down cross Both's root at the end of a side, and a node never goes under
+    /// one across the root (MAP-088).
     pub fn map_move_arrow(&mut self, a: Arrow, tx: &mut Tx) {
         let (t, l, s) = (self.map_tree(), self.map_laid(), self.map_selected());
         let step = match l.toward(s, a) {
@@ -891,7 +894,7 @@ impl App {
             Some(Rel::Next) => map::Step::Down,
             None => return,
         };
-        if self.map_editable() && map::step(&t, s, step).is_ok_and(|at| !l.same_side(s, at.node())) {
+        if step == map::Step::In && self.map_editable() && map::step(&t, s, step).is_ok_and(|at| !l.same_side(s, at.node())) {
             return self.toast(OTHER_SIDE, tx);
         }
         self.map_step(step, tx);
@@ -911,9 +914,9 @@ impl App {
         if t.nodes[i].children.is_empty() {
             return;
         }
-        let id = t.nodes[i].id;
+        let l = self.map_laid();
         if let Some(v) = self.map_view_mut()
-            && v.folded.remove(&id)
+            && v.folds.set(&t, &l.sides, i, Some(d), false)
         {
             v.fold_ver += 1;
         }
@@ -977,24 +980,22 @@ impl App {
         }
     }
 
-    /// Folds or unfolds node `i`, or its whole branch with `all` (MAP-041, MAP-058).
-    pub fn map_toggle(&mut self, i: usize, all: bool, tx: &mut Tx) {
+    /// Folds or unfolds node `i`, or its whole branch with `all` (MAP-041, MAP-058): all of it,
+    /// or what its ring on side `d` hides.
+    pub fn map_toggle(&mut self, i: usize, d: Option<Dir>, all: bool, tx: &mut Tx) {
         let Some(i) = self.map_press_node(i, tx) else { return };
         let t = self.map_tree();
-        let n = &t.nodes[i];
-        if n.children.is_empty() {
+        if t.nodes[i].children.is_empty() {
             return;
         }
         let old_p = self.map_drawn().laid.at[i];
+        let l = self.map_laid();
         let Some(v) = self.map_view_mut() else { return };
-        let fold = !v.folded.contains(&n.id);
-        let ids: Vec<NodeId> = if all { t.nodes[i..n.end].iter().filter(|d| !d.children.is_empty()).map(|d| d.id).collect() } else { vec![n.id] };
-        for id in ids {
-            if fold {
-                v.folded.insert(id);
-            } else {
-                v.folded.remove(&id);
-            }
+        let ring = l.rings(&t, i, &v.folds).into_iter().find(|r| Some(r.side.dir) == d);
+        let (fold, below) = ring.map_or((!v.folds.whole(t.nodes[i].id), i + 1..t.nodes[i].end), |r| (!r.folded, r.side.nodes));
+        v.folds.set(&t, &l.sides, i, d, fold);
+        for j in below.filter(|&j| all && !t.nodes[j].children.is_empty()) {
+            v.folds.set(&t, &l.sides, j, None, fold);
         }
         v.fold_ver += 1;
         self.keep_selection_shown();
@@ -1003,7 +1004,7 @@ impl App {
 
     pub fn map_toggle_selected(&mut self, all: bool, tx: &mut Tx) {
         let i = self.map_selected();
-        self.map_toggle(i, all, tx);
+        self.map_toggle(i, None, all, tx);
     }
 
     /// `]`: every fold opens (MAP-058).
@@ -1011,9 +1012,9 @@ impl App {
         let anchor = self.map_selected();
         let old_p = self.map_drawn().laid.at[anchor];
         if let Some(v) = self.map_view_mut()
-            && !v.folded.is_empty()
+            && !v.folds.is_empty()
         {
-            v.folded.clear();
+            v.folds.clear();
             v.fold_ver += 1;
         }
         self.finish_anchored_fold(anchor, old_p, true, tx);
@@ -1024,10 +1025,14 @@ impl App {
     pub fn map_collapse_to_level(&mut self, tx: &mut Tx) {
         let t = self.map_tree();
         let old_drawn = self.map_drawn();
-        let branches = |from: usize| t.nodes.iter().filter(move |n| n.depth + 1 >= from && !n.children.is_empty()).map(|n| n.id);
+        let l = self.map_laid();
+        let nodes = &t.nodes;
+        let branches = |from: usize| (0..nodes.len()).filter(move |&i| nodes[i].depth + 1 >= from && !nodes[i].children.is_empty());
         let Some(v) = self.map_view_mut() else { return };
-        let from = if branches(2).all(|id| v.folded.contains(&id)) { 1 } else { 2 };
-        v.folded.extend(branches(from));
+        let from = if branches(2).all(|i| v.folds.whole(t.nodes[i].id)) { 1 } else { 2 };
+        for i in branches(from) {
+            v.folds.set(&t, &l.sides, i, None, true);
+        }
         v.fold_ver += 1;
         self.keep_selection_shown();
         let anchor = self.map_selected();
@@ -1039,11 +1044,12 @@ impl App {
     fn keep_selection_shown(&mut self) {
         let t = self.map_tree();
         let i = self.map_selected();
+        let l = self.map_laid();
         let Some(v) = self.map_view_mut() else { return };
         let mut a = i;
         let mut shown = i;
         while let Some(p) = t.nodes[a].parent {
-            if v.folded.contains(&t.nodes[p].id) {
+            if v.folds.hides(&t, &l.sides, a) {
                 shown = p;
             }
             a = p;
@@ -1314,7 +1320,7 @@ fn shared(old: &str, new: &str) -> (usize, usize) {
     (pre, post)
 }
 
-const OTHER_SIDE: &str = "Drag to move a branch to the other side";
+const OTHER_SIDE: &str = "Nothing above on this side to go under";
 
 impl App {
     /// The map's gestures change only an open, unlocked note (MAP-015).
@@ -1477,14 +1483,11 @@ impl App {
     /// placed, or None with no note shown.
     pub(crate) fn map_open_to(&mut self, i: usize) -> Option<bool> {
         let t = self.map_tree();
+        let sides = map_layout::sides(&t);
         let v = self.map_view_mut()?;
         v.selected = t.nodes[i].id;
-        let mut a = i;
-        while let Some(p) = t.nodes[a].parent {
-            if v.folded.remove(&t.nodes[p].id) {
-                v.fold_ver += 1;
-            }
-            a = p;
+        if v.folds.open_to(&t, &sides, i) {
+            v.fold_ver += 1;
         }
         Some(v.placed)
     }
@@ -1971,7 +1974,7 @@ impl App {
         let st = style(tier(&t, i), b, prose, mono);
         let [fw, fh] = field_size(&e.edit.text, p.w - 2.0 * l.metrics.pad_x - room, st, l.metrics.max_w);
         let w = p.w.max(fw + room + 2.0 * l.metrics.pad_x);
-        let h = p.h.max(fh + l.metrics.pad_b) + map_layout::line_width(p.depth);
+        let h = p.h.max(fh + l.metrics.pad_b) + p.line_room();
         let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
         let [x0, y0, x1, mut y1] = self.map_free();
         let [cw, ch] = self.map_size();
@@ -2006,9 +2009,11 @@ impl App {
                 rune::text::measure_with(body, &[], st, Some(fw), anywhere).1.ceil()
             };
             let caret_h = (base + extra).max(st.line_height).min(fh);
-            let tail = if end == e.edit.text.len() { l.metrics.pad_b + map_layout::line_width(p.depth) } else { 0.0 };
-            let caret_bot = py + (p.y + caret_h + tail) * z;
-            let caret_top = py + (p.y + (caret_h - st.line_height).max(0.0)) * z;
+            let top = p.content(l.metrics.pad_b).0;
+            let under = if p.overlined() { 0.0 } else { l.metrics.pad_b + p.line_room() };
+            let tail = if end == e.edit.text.len() { under } else { 0.0 };
+            let caret_bot = py + (p.y + top + caret_h + tail) * z;
+            let caret_top = py + (p.y + top + (caret_h - st.line_height).max(0.0)) * z;
             let pad = 16.0f32.min(((y1 - y0) - st.line_height * z).max(0.0) / 2.0);
             if caret_bot > y1 - pad {
                 (y1 - pad) - caret_bot

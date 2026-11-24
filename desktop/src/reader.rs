@@ -1528,8 +1528,8 @@ impl App {
         let doc = self.doc();
         let t = self.map_tree();
         let opening;
-        let folded = match self.map_view() {
-            Some(v) => &v.folded,
+        let folds = match self.map_view() {
+            Some(v) => &v.folds,
             None => {
                 opening = t.initial_folds().into_iter().collect();
                 &opening
@@ -1546,7 +1546,7 @@ impl App {
                 let n = t.at_line(bl.lines.start);
                 let node = &t.nodes[n];
                 if under.is_none() && matches!(node.kind, crate::map::NodeKind::Heading { .. }) && !node.children.is_empty() {
-                    let f = folded.contains(&node.id);
+                    let f = folds.whole(node.id);
                     out.heads.insert(i, (n, f, node.end - n - 1));
                     (i, f).hash(&mut h);
                     if f {
@@ -1563,11 +1563,10 @@ impl App {
 
     /// Folds or unfolds the heading whose map node is `n`, on the page and on the map.
     pub fn toggle_page_fold(&mut self, n: usize) {
-        let id = self.map_tree().nodes[n].id;
+        let (t, l) = (self.map_tree(), self.map_laid());
         if let Some(v) = self.map_view_mut() {
-            if !v.folded.remove(&id) {
-                v.folded.insert(id);
-            }
+            let fold = !v.folds.whole(t.nodes[n].id);
+            v.folds.set(&t, &l.sides, n, None, fold);
             v.fold_ver += 1;
         }
     }

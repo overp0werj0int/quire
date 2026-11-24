@@ -1,0 +1,23 @@
+In Down a task's box sits under the bracket with its label, and a press on it ticks the task.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-task:7@0.8 key:s+cmd@1.4
+expect: rect:map-node:7: [604.0, 474.5, 134.0, 72.0]
+expect: rect:map-task:7: [618.22, 513.05, 26.91, 26.91]
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- [ ] Rent
+- [ ] Food
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- [x] Rent
+- [ ] Food

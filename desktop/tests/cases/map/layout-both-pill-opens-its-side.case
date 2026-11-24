@@ -1,0 +1,20 @@
+In Both sides with both sides folded, a click on the right pill opens the right side and leaves the left folded.
+note: Plan.md
+events: key:m+cmd@0.3 key:f@1.0 tap:map-pill:1@1.6
+expect: nodes: 1 3 5 7
+expect: text:map-pill:1:2: '+4'
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

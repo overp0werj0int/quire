@@ -1,6 +1,6 @@
-Picking Both changes the layout line that is there and leaves the options round it.
+Picking Right changes the layout line that is there and leaves the options round it.
 note: Plan.md
-events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-both@1.4 key:s+cmd@2.2
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-right@1.4 key:s+cmd@2.2
 --- before
 ---
 markmap:
@@ -20,7 +20,7 @@ Late May.
 --- after
 ---
 markmap:
-  layout: both
+  layout: right
   maxWidth: 300
 ---
 # Plan

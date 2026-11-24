@@ -1,0 +1,22 @@
+In Both sides a click on the root's right ring folds the right side only, into a +3 pill in the ring's place.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:1@1.0
+expect: nodes: 1 9 11 12 14
+expect: text:map-pill:1: '+3'
+expect: text:map-pill:1:2: None
+expect: rect:map-pill:1: [828.58, 420.41, 35.06, 25.52]
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

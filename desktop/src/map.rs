@@ -100,17 +100,17 @@ impl Node {
 /// The way a map's branches grow from its root (MAP-079): the `layout` option's value.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Layout {
+    /// The root's children split between the right and the left.
     #[default]
+    Both,
     Right,
     Left,
-    /// The root's children split between the right and the left.
-    Both,
     Down,
     Up,
 }
 
 impl Layout {
-    pub const ALL: [Layout; 5] = [Layout::Right, Layout::Left, Layout::Both, Layout::Down, Layout::Up];
+    pub const ALL: [Layout; 5] = [Layout::Both, Layout::Right, Layout::Left, Layout::Down, Layout::Up];
 
     /// The front matter value.
     pub fn word(self) -> &'static str {
@@ -147,7 +147,7 @@ pub struct Options {
     pub color_freeze_level: Option<usize>,
     pub spacing_horizontal: Option<f32>,
     pub spacing_vertical: Option<f32>,
-    /// Right when the note names none, or one Quire does not know.
+    /// Both sides when the note names none, or one Quire does not know.
     pub layout: Layout,
 }
 
@@ -621,9 +621,9 @@ pub const INLINE_OPTIONS: &str = "Change this note's layout in Source: its markm
 
 /// The splice that makes the note say `layout` (MAP-089): one `layout:` line under `markmap:`
 /// in its front matter, which it adds, with `markmap:` or the whole fence if need be. Bare
-/// front matter (BLK-85) gets the fence round it, so its fields stay front matter. Right is
+/// front matter (BLK-85) gets the fence round it, so its fields stay front matter. Both sides is
 /// the default, so it takes the line away, then an emptied `markmap:`, then an emptied front
-/// matter: Down and then Right give back the bytes the note began with. Refused with no word
+/// matter: Down and then Both sides give back the bytes the note began with. Refused with no word
 /// when the note already lays out that way.
 pub fn layout_splice(src: &str, layout: Layout) -> Result<Splice, Refused> {
     const BOM: char = '\u{feff}';
@@ -661,7 +661,7 @@ pub fn layout_splice(src: &str, layout: Layout) -> Result<Splice, Refused> {
     let indent = |l: &str| l[..l.len() - l.trim_start().len()].to_string();
     let set = |indent: &str| format!("{indent}layout: {}{eol}", layout.word());
     let mut gone = owns.clone();
-    if layout == Layout::Right {
+    if layout == Layout::default() {
         if let Some((at, _)) = head
             && block.clone().all(|i| owns.contains(&i) || blank(&new[i]))
         {

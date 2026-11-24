@@ -3,9 +3,9 @@ note: Plan.md
 at: 1.55
 events: key:m+cmd@0.3 drag:map-node:9>-265,0,0.6@1.0
 expect: label:map-drop: 'After map-node:7'
-expect: rect:map-drop: [659.0, 488.0, 6.0, 53.0]
-expect: rect:map-node:7: [557.0, 488.0, 96.0, 53.0]
-expect: rect:map-node:8: [701.0, 488.0, 100.0, 53.0]
+expect: rect:map-drop: [659.0, 474.5, 6.0, 72.0]
+expect: rect:map-node:7: [557.0, 474.5, 96.0, 72.0]
+expect: rect:map-node:8: [701.0, 474.5, 100.0, 72.0]
 --- before
 ---
 markmap:

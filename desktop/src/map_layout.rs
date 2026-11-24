@@ -7,11 +7,12 @@
 //! length along them, so a short branch tucks under a long one where they do not share
 //! columns (d3-flextree's tidy tree).
 
-use std::collections::HashSet;
+use std::ops::Range;
 
-use crate::map::{Add, Layout, NodeId, Options, Tree, ROOT};
-pub use crate::map_geom::{Place, line_width};
-use crate::map_geom::{Arrow, Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_HIT_BACK, Rel};
+use crate::map::{Add, Layout, Options, Tree, ROOT};
+use crate::map_fold::Folds;
+pub use crate::map_geom::Place;
+use crate::map_geom::{line_room, line_width, Arrow, Branch, Dir, FOLD_DOT_GAP, FOLD_DOT_R, FOLD_HIT_BACK, Rel};
 use crate::page::r;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,9 +79,57 @@ pub struct Laid {
     pub bounds: [f32; 4],
     pub metrics: Metrics,
     pub layout: Layout,
-    /// The ways the root's children grow, folded or not: one, and left as well in Both when
-    /// it has branches for that side.
-    pub root_dirs: [Option<Dir>; 2],
+    pub sides: Sides,
+}
+
+/// What node leaves one side of a node: the way its branches grow and the nodes they hold, all
+/// the way down.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Side {
+    pub dir: Dir,
+    pub nodes: Range<usize>,
+}
+
+/// The root's sides, folded or not. Only Both's root has a second, and only when it has branches
+/// for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sides {
+    pub first: Side,
+    pub second: Option<Side>,
+}
+
+impl Sides {
+    fn each(&self) -> impl Iterator<Item = &Side> {
+        std::iter::once(&self.first).chain(&self.second)
+    }
+
+    /// The way node `i`'s side of the root grows, None for the root.
+    pub fn way(&self, i: usize) -> Option<Dir> {
+        self.each().find(|s| s.nodes.contains(&i)).map(|s| s.dir)
+    }
+
+    /// The side across the root from `d`.
+    pub fn other(&self, d: Dir) -> Option<Dir> {
+        self.second.as_ref()?;
+        self.each().map(|s| s.dir).find(|&s| s != d)
+    }
+}
+
+/// The sides of `t`'s root in the layout its note names. Both's root grows its first children
+/// right and the rest left.
+pub fn sides(t: &Tree) -> Sides {
+    let all = Side { dir: root_dir(t.opts.layout), nodes: 1..t.nodes.len() };
+    let left = (t.opts.layout == Layout::Both).then(|| both_split(t)).and_then(|k| t.nodes[ROOT].children.get(k));
+    match left {
+        Some(&k) => Sides { first: Side { nodes: 1..k, ..all.clone() }, second: Some(Side { dir: Dir::Left, nodes: k..all.nodes.end }) },
+        None => Sides { first: all, second: None },
+    }
+}
+
+/// A node's fold ring, or its `+N` pill when folded.
+pub struct Ring {
+    pub side: Side,
+    pub folded: bool,
 }
 
 /// One stretch of a profile: over `from..to` along the branches, the subtree's leading edge
@@ -96,24 +145,31 @@ struct Seg {
     trail_n: usize,
 }
 
-/// Lays out the nodes `folded` leaves shown, the way `tree.opts.layout` says. `size` gives a
+/// Lays out the nodes `folds` leave shown, the way `tree.opts.layout` says. `size` gives a
 /// node's content size, before padding; it is asked only for shown nodes. `pill` gives the size
 /// of a folded node's `+N` count pill, which takes room in its fold ring's place.
 ///
 /// The tidy tree runs in a frame of its own: main is the axis the branches grow along and
 /// cross the one siblings stack on, in document order. `to_world` turns that into the layout's
 /// world, with the root's box at the origin in every layout.
-pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl FnMut(usize) -> [f32; 2], mut pill: impl FnMut(usize) -> [f32; 2]) -> Laid {
+pub fn layout(tree: &Tree, folds: &Folds, m: Metrics, mut size: impl FnMut(usize) -> [f32; 2], mut pill: impl FnMut(usize) -> [f32; 2]) -> Laid {
     let n = tree.nodes.len();
     let lay = tree.opts.layout;
     let vertical = root_dir(lay).vertical();
+    let sides = sides(tree);
+    let open = |i: usize| !folds.whole(tree.nodes[i].id);
     let mut shown = Vec::new();
+    let mut seen = vec![false; n];
     let mut i = ROOT;
     while i < n {
+        if folds.hides(tree, &sides, i) {
+            i = tree.nodes[i].end;
+            continue;
+        }
         shown.push(i);
-        i = if folded.contains(&tree.nodes[i].id) { tree.nodes[i].end } else { i + 1 };
+        seen[i] = true;
+        i += 1;
     }
-    let open = |i: usize| !folded.contains(&tree.nodes[i].id);
     let mut wh = vec![[0.0f32; 2]; n];
     for &i in &shown {
         let [cw, ch] = size(i);
@@ -121,9 +177,9 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     }
     let parent = |i: usize| tree.nodes[i].parent;
     let depth = |i: usize| tree.nodes[i].depth;
-    // A node's length along main, its underline included where that runs across the branches,
+    // A node's length along main, its bracket included where that runs across the branches,
     // and its breadth across.
-    let len = |v: usize| if vertical { wh[v][1] + line_width(depth(v)) } else { wh[v][0] };
+    let len = |v: usize| if vertical { wh[v][1] + line_room(depth(v), sides.first.dir) } else { wh[v][0] };
     let breadth = |v: usize| if vertical { wh[v][0] } else { wh[v][1] };
     // The gap below node `a` when node `b` sits under it: text leaves keep generous vertical
     // separation so each underline clearly belongs to its own row (R12) and parent groups read
@@ -131,7 +187,7 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     // without pushing card-heavy maps below LITE_ZOOM at Fit. No gap is less than the selection
     // glass's reach plus a margin, so the glass round one node never covers its neighbour.
     // Where branches grow down or up the gap is between labels side by side, which need more
-    // room to read apart than lines one above the other, and no underline lies in it.
+    // room to read apart than lines one above the other, and no line lies in it.
     let card_sv = r(m.sv * 0.58);
     let gap = |a: usize, b: usize| {
         let same = parent(a) == parent(b);
@@ -149,8 +205,6 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         };
         base.max(GLASS_PAD[1] + GLASS_CLEAR) + line_width(depth(a))
     };
-    // Both: the root's first `split` children grow right and the rest left.
-    let split = (lay == Layout::Both).then(|| both_split(tree));
     let mut profile: Vec<Option<Vec<Seg>>> = vec![None; n];
     let mut dy = vec![0.0f32; n];
     // Stacks `kids` in document order as close as their profiles allow, centred on the middle
@@ -198,15 +252,14 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         } else {
             vec![Seg { from: 0.0, to: col, lead: 0.0, lead_n: v, trail: h, trail_n: v }]
         };
-        let kids: &[usize] = if open(v) { &tree.nodes[v].children } else { &[] };
-        match split.filter(|_| v == ROOT) {
-            // Each side stacks on its own, and nothing reads the root's profile.
-            Some(k) => {
-                let (right, left) = kids.split_at(k.min(kids.len()));
-                stack(right, &mut profile, &mut dy, h, col);
-                stack(left, &mut profile, &mut dy, h, col);
+        // Each of the root's sides stacks on its own, and nothing reads the root's profile.
+        let kids = |of: &Range<usize>| -> Vec<usize> { tree.nodes[v].children.iter().copied().filter(|&c| seen[c] && of.contains(&c)).collect() };
+        if v == ROOT {
+            for s in sides.each() {
+                stack(&kids(&s.nodes), &mut profile, &mut dy, h, col);
             }
-            None => prof.extend(stack(kids, &mut profile, &mut dy, h, col)),
+        } else {
+            prof.extend(stack(&kids(&(v..tree.nodes[v].end)), &mut profile, &mut dy, h, col));
         }
         profile[v] = Some(prof);
     }
@@ -217,11 +270,7 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     let mut bounds = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
     for &v in &shown {
         let from = parent(v).and_then(|p| at[p].map(|q| (p, q)));
-        let dir = match (from, split) {
-            (Some((ROOT, _)), Some(k)) if tree.nodes[ROOT].children.iter().position(|&c| c == v).is_some_and(|nth| nth >= k) => Dir::Left,
-            (Some((_, q)), _) => q.dir,
-            (None, _) => root_dir(lay),
-        };
+        let dir = sides.way(v).unwrap_or(sides.first.dir);
         local[v] = match from {
             Some((p, _)) => [local[p][0] + len(p) + m.sh, local[p][1] + dy[v]],
             None => [0.0, 0.0],
@@ -231,8 +280,7 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(pl.right()), bounds[3].max(pl.bottom())];
         at[v] = Some(pl);
     }
-    let root_dirs = [Some(root_dir(lay)), split.filter(|&k| k < tree.nodes[ROOT].children.len()).map(|_| Dir::Left)];
-    Laid { cell: cells(&at, &shown, m.sh / 2.0), at, shown, bounds, metrics: m, layout: lay, root_dirs }
+    Laid { cell: cells(&at, &shown, m.sh / 2.0), at, shown, bounds, metrics: m, layout: lay, sides }
 }
 
 /// The way the root's first branches grow in layout `l`.
@@ -362,13 +410,14 @@ impl Laid {
         Some(Branch { from: q.side_mid(b.dir), ..b })
     }
 
-    /// The sides node `i` has a fold ring on, or a `+N` pill when folded: the way its branches
-    /// grow, and for Both's open root each side it has children on.
-    pub fn rings(&self, t: &Tree, i: usize) -> impl Iterator<Item = Dir> + use<> {
-        let own = self.at[i].map(|p| p.dir);
-        let open = t.nodes[i].children.iter().any(|&c| self.at[c].is_some());
-        let other = self.root_dirs[1].filter(|_| i == ROOT && open);
-        [own, other].into_iter().flatten()
+    /// Node `i`'s fold rings: one on its growing side, and for the root one on each of its sides.
+    pub fn rings(&self, t: &Tree, i: usize, folds: &Folds) -> Vec<Ring> {
+        let whole = folds.whole(t.nodes[i].id);
+        let half = folds.side(&self.sides);
+        if i == ROOT {
+            return self.sides.each().map(|s| Ring { folded: whole || half == Some(s.dir), side: s.clone() }).collect();
+        }
+        self.at[i].map(|p| Ring { side: Side { dir: p.dir, nodes: i + 1..t.nodes[i].end }, folded: whole }).into_iter().collect()
     }
 
     /// Nodes `a` and `b` grow the same way: neither is across Both's root from the other.
@@ -386,7 +435,7 @@ impl Laid {
                 Arrow::Left => Dir::Left,
                 Arrow::Up | Arrow::Down => return None,
             };
-            return self.root_dirs.contains(&Some(d)).then_some(Rel::Child(d));
+            return self.sides.each().any(|s| s.dir == d).then_some(Rel::Child(d));
         }
         Some(p.dir.rel(a))
     }

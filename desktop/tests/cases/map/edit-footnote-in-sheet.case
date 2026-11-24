@@ -2,14 +2,22 @@ e on a footnote opens the Edit Sheet on its definition.
 note: Foot.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:l@1.2 key:Right@1.4 key:e@1.7 key:End@2.0 type:_More.@2.1 key:s+cmd@2.5
 expect: focus: note-keys (no ring)
-expect: selected: map-node:5
+expect: selected: map-node:9
 --- before
+---
+markmap:
+  layout: right
+---
 # Doc
 
 See.[^1]
 
 [^1]: The note.
 --- after
+---
+markmap:
+  layout: right
+---
 # Doc
 
 See.[^1]

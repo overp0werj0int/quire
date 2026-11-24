@@ -1,11 +1,11 @@
 `layout: down` is an org chart: the two headings sit in one row under the root (y 399.25), an item sits under its heading, and the root's fold ring hangs under its middle.
 note: Plan.md
 events: key:m+cmd@0.3
-expect: rect:map-node:5: [720.5, 211.25, 116.0, 68.0]
-expect: rect:map-node:7: [556.0, 399.25, 158.0, 59.0]
-expect: rect:map-node:12: [854.0, 399.25, 136.0, 59.0]
-expect: rect:map-dot:5: [764.5, 291.25, 28.0, 28.0]
-expect: rect:map-node:9: [514.0, 578.25, 96.0, 51.5]
+expect: rect:map-node:5: [720.5, 195.5, 116.0, 60.0]
+expect: rect:map-node:7: [556.0, 375.5, 158.0, 78.0]
+expect: rect:map-node:12: [854.0, 375.5, 136.0, 78.0]
+expect: rect:map-dot:5: [764.5, 267.5, 28.0, 28.0]
+expect: rect:map-node:9: [514.0, 573.5, 96.0, 72.0]
 --- before
 ---
 markmap:

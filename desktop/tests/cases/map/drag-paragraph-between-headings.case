@@ -1,8 +1,12 @@
 A paragraph dropped on another heading goes to the end of that heading's text, its lines as they were.
 note: Plan.md
-events: key:m+cmd@0.3 drag:map-node:5>-371,76.25,0.6@1.0 key:s+cmd@2.0
-expect: selected: map-node:9
+events: key:m+cmd@0.3 drag:map-node:9>-371,76.25,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:13
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -13,6 +17,10 @@ Rent is due.
 
 Train at nine.
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget

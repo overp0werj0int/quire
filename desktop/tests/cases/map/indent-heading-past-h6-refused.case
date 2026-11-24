@@ -2,8 +2,12 @@ Alt+Right on a heading whose subheading is H6 stops: no heading goes past H6.
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Right+alt@1.4
 expect: text:toast: 'Headings stop at H6'
-expect: selected: map-node:5
+expect: selected: map-node:9
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## B

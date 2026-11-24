@@ -2,8 +2,12 @@ A second swipe the other way stops the coast where it is and moves the map by it
 note: Plan.md
 state: {"mode": "map"}
 events: swipe:-30,0,640,420@1.0 wheel:5,0,640,420+began@1.2
-expect: rect:map-node:1: [109.56, 388.0, 116.0, 68.0]
+expect: rect:map-node:5: [109.56, 388.0, 116.0, 60.0]
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## A

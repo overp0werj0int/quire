@@ -1,12 +1,14 @@
 The wheel pans the map.
 note: Trip.md
 events: key:m+cmd@0.3 wheel:-30,-100,700,400@0.9
-expect: rect:map-node:6: [427.38, 300.2, 68.69, 42.47]
-expect: scale:map-node:6: 1.2489999532699585
+expect: rect:map-node:8: [427.38, 300.2, 68.69, 37.47]
+expect: scale:map-node:8: 1.2489999532699585
 --- before
 ---
 title: Trip
 tags: [a, b]
+markmap:
+  layout: right
 ---
 
 # Trip

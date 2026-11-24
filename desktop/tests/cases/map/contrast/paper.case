@@ -6,7 +6,7 @@ file: attachments/small.png ../fixtures/small.png
 file: attachments/tall.png ../fixtures/tall.png
 size: 1600x1000
 events: key:0@0.5
-expect: contrast:map-canvas: 34 texts at 4.5:1 or more, 19 marks at 3:1 or more
+expect: contrast:map-canvas: 34 texts at 4.5:1 or more, 18 marks at 3:1 or more
 expect: contrast:map-zoom-hud: 1 texts at 4.5:1 or more, 4 marks at 3:1 or more
 --- before
 ---

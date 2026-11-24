@@ -1,12 +1,16 @@
 A label draws its inline runs as the reader does: no Markdown marks, inline code on a chip sized into the node, a done task's text dim.
 note: Runs.md
 events: key:m+cmd@0.3
-expect: text:map-node:3: 'Some bold and italic words'
-expect: text:map-node:5: 'A \xa0code span\xa0 and struck text'
-expect: rect:map-node:5: [942.38, 321.78, 303.66, 35.06]
-expect: color:map-node:7: #a4a097ff
-expect: color:map-node:8: #e9e3d8ff
+expect: text:map-node:7: 'Some bold and italic words'
+expect: text:map-node:9: 'A \xa0code span\xa0 and struck text'
+expect: rect:map-node:9: [942.38, 321.78, 303.66, 35.06]
+expect: color:map-node:11: #a4a097ff
+expect: color:map-node:12: #e9e3d8ff
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Some **bold** and *italic* words

@@ -1,14 +1,22 @@
 Alt+Right on a code block under a list item puts it in the item, its lines at the item's content column.
 note: Plan.md
-events: key:m+cmd@0.3 key:Down@0.8 key:Right+alt@1.2
-expect: selected: map-node:3
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Right+alt@1.2
+expect: selected: map-node:7
 --- before
+---
+markmap:
+  layout: right
+---
 - a
 
 ```sh
 echo hi
 ```
 --- after
+---
+markmap:
+  layout: right
+---
 - a
 
   ```sh

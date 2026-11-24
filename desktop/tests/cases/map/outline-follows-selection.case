@@ -2,13 +2,17 @@ The outline marks the H1 to H4 heading that holds the selected node, Day one for
 note: Plan.md
 state: {"mode": "map", "right_open": true}
 events: key:j@0.8 key:l@1.1 key:l@1.4 key:j@1.7 key:l@2.0 key:j@2.3 key:l@2.6
-expect: selected: map-node:17
+expect: selected: map-node:21
 expect: color:ol-4: #e9e3d8ff
 expect: color:ol-3: #aea9a1ff
 expect: text:word-count: '13 words'
 expect: text:read-time: '1 min read'
 expect: rect:status: None
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Packing <!-- markmap: fold -->

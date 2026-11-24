@@ -1,8 +1,12 @@
 An H2 dropped on an H3's middle goes under it as an H4, and its subheadings shift with it, the deepest to H6.
 note: Plan.md
-events: key:m+cmd@0.3 drag:map-node:7>314,-92.75,0.6@1.0 key:s+cmd@2.0
-expect: selected: map-node:7
+events: key:m+cmd@0.3 drag:map-node:11>314,-92.75,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:11
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -15,6 +19,10 @@ expect: selected: map-node:7
 
 #### Seat
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget

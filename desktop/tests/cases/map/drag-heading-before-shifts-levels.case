@@ -1,8 +1,12 @@
 An H3 dropped on the top of an H2 goes before it as an H2, and its subheading shifts with it.
 note: Plan.md
-events: key:m+cmd@0.3 drag:map-node:9>-237,-126,0.6@1.0 key:s+cmd@2.0
-expect: selected: map-node:3
+events: key:m+cmd@0.3 drag:map-node:13>-237,-126,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:7
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -15,6 +19,10 @@ expect: selected: map-node:3
 
 #### Seat
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Train

@@ -1,0 +1,22 @@
+In Both sides a click on each of the root's rings leaves the root alone with a pill on each side.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:1@1.0 tap:map-fold:1:2@1.6
+expect: nodes: 1
+expect: text:map-pill:1: '+3'
+expect: text:map-pill:1:2: '+4'
+expect: label:map-node:1: 'Plan, level 1, collapsed, 7 hidden'
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

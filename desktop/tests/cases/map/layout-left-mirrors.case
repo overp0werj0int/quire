@@ -1,7 +1,7 @@
 `layout: left` grows the map leftwards: the root (x 1026) sits right of its headings, whose right edges line up at x 866, an item sits left of its heading, and the root's fold ring is on its left side.
 note: Plan.md
 events: key:m+cmd@0.3
-expect: rect:map-node:5: [1026.0, 406.38, 116.0, 68.0]
+expect: rect:map-node:5: [1026.0, 406.38, 116.0, 60.0]
 expect: rect:map-node:7: [708.0, 339.75, 158.0, 59.0]
 expect: rect:map-node:12: [730.0, 479.0, 136.0, 59.0]
 expect: rect:map-dot:5: [986.0, 422.38, 28.0, 28.0]

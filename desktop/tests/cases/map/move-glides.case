@@ -2,8 +2,12 @@ A heading moved up glides from where it was to its new place over 180 ms: 60 ms 
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Up+alt@1.5 key:s+cmd@1.53
 at: 1.56
-expect: rect:map-node:3: [693.0, 374.5, 104.0, 59.0]
+expect: rect:map-node:7: [693.0, 374.5, 104.0, 59.0]
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -15,6 +19,10 @@ expect: rect:map-node:3: [693.0, 374.5, 104.0, 59.0]
 
 - Train
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Trip

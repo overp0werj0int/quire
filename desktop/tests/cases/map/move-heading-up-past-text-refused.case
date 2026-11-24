@@ -2,8 +2,12 @@ Alt+Up on a heading below a list stops: a heading moves only among headings.
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Down@1.2 key:Up+alt@1.6
 expect: text:toast: 'A heading moves only among headings'
-expect: selected: map-node:7
+expect: selected: map-node:11
 --- before
+---
+markmap:
+  layout: right
+---
 # T
 
 intro

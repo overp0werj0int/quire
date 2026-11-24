@@ -1,9 +1,13 @@
 Alt+Right on a heading below a list item stops: a heading can't go inside a list item.
 note: Plan.md
-events: key:m+cmd@0.3 key:Down@0.8 key:Right+alt@1.2
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Right+alt@1.2
 expect: text:toast: "A heading can't go inside a list item"
-expect: selected: map-node:3
+expect: selected: map-node:7
 --- before
+---
+markmap:
+  layout: right
+---
 - a
 
 ## H

@@ -1,14 +1,22 @@
 A footnote's menu only edits and copies.
 note: Foot.md
-events: key:m+cmd@0.3 key:l@0.6 key:j@0.8 type:_@1.0 rtap:map-node:5@1.4
+events: key:m+cmd@0.3 key:l@0.6 key:j@0.8 type:_@1.0 rtap:map-node:9@1.4
 expect: text:node-menu: 'Edit F2 Copy Markdown Ctrl+C'
 --- before
+---
+markmap:
+  layout: right
+---
 # Doc
 
 See.[^1]
 
 [^1]: The note.
 --- after
+---
+markmap:
+  layout: right
+---
 # Doc
 
 See.[^1]

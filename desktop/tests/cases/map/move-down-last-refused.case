@@ -1,7 +1,11 @@
 Alt+Down on the last node under its parent stops and says so.
 note: Plan.md
-events: key:m+cmd@0.3 key:Down@0.8 key:Down+alt@1.2
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Down+alt@1.2
 expect: text:toast: 'Already last'
 --- before
+---
+markmap:
+  layout: right
+---
 - a
 - b

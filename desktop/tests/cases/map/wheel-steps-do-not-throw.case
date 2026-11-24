@@ -2,8 +2,12 @@ Wheel deltas with no lift after them pan the map by just their own amount.
 note: Plan.md
 state: {"mode": "map"}
 events: wheel:-10,0,640,420@1.0 wheel:-10,0,640,420@1.016 wheel:-10,0,640,420@1.032
-expect: rect:map-node:1: [451.0, 388.0, 116.0, 68.0]
+expect: rect:map-node:5: [451.0, 388.0, 116.0, 60.0]
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## A

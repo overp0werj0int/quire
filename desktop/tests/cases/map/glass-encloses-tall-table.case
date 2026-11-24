@@ -1,10 +1,14 @@
 = A selected tall table grows no more than 4 points a side, so it stays inside its glass.
 note: Tall.md
 events: key:m+cmd@0.3 key:Right@1.0 key:Down@1.4
-expect: selected: map-node:5
+expect: selected: map-node:9
 expect: rect:map-glass: [592.89, 70.88, 480.36, 699.59]
-expect: rect:map-card:5: [611.11, 77.14, 443.92, 680.19]
+expect: rect:map-card:9: [611.11, 77.14, 443.92, 680.19]
 --- before
+---
+markmap:
+  layout: right
+---
 # Tall
 
 Above the table.

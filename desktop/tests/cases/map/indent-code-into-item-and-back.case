@@ -1,8 +1,12 @@
 A code block indented into a list item and outdented again gives back the note as it was.
 note: Plan.md
-events: key:m+cmd@0.3 key:Down@0.8 key:Right+alt@1.2 key:Tab+shift@1.7
-expect: selected: map-node:3
+events: key:m+cmd@0.3 key:Right@0.6 key:Down@0.8 key:Right+alt@1.2 key:Tab+shift@1.7
+expect: selected: map-node:7
 --- before
+---
+markmap:
+  layout: right
+---
 - a
 
 ```sh

@@ -1,9 +1,9 @@
 Zoomed far out in Down, a click in the gap between two tasks, nearer the left one (which ends at x 749), does not tick the right one: its target stops half way across the gap, at x 756.
 note: Plan.md
-events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 key:-@2.0 key:-@2.2 key:-@2.4 key:-@2.6 key:-@2.8 key:-@3.0 tap:754,342@3.8 key:s+cmd@4.2
-expect: rect:map-node:8: [727.67, 340.86, 21.31, 3.64]
-expect: rect:map-node:9: [763.0, 340.86, 23.36, 3.64]
-expect: rect:map-task:9: [755.98, 336.73, 10.72, 11.89]
+events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 key:-@2.0 key:-@2.2 key:-@2.4 key:-@2.6 key:-@2.8 key:-@3.0 tap:754,337@3.8 key:s+cmd@4.2
+expect: rect:map-node:8: [727.67, 334.81, 21.31, 4.94]
+expect: rect:map-node:9: [763.0, 334.81, 23.36, 4.94]
+expect: rect:map-task:9: [755.98, 330.69, 10.72, 13.19]
 --- before
 ---
 markmap:

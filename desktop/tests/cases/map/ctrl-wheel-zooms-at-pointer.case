@@ -1,12 +1,14 @@
 Ctrl + wheel zooms about the pointer.
 note: Trip.md
 events: key:m+cmd@0.3 wheel:0,-50,300,420+cmd@0.9
-expect: rect:map-node:6: [496.72, 395.27, 85.88, 53.08]
-expect: scale:map-node:6: 1.5612000226974487
+expect: rect:map-node:8: [496.72, 395.27, 85.88, 46.84]
+expect: scale:map-node:8: 1.5612000226974487
 --- before
 ---
 title: Trip
 tags: [a, b]
+markmap:
+  layout: right
 ---
 
 # Trip

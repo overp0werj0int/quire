@@ -122,17 +122,16 @@ impl<'a> Sizer<'a> {
     }
 }
 
-/// What a screen reader hears for node `i` (MAP-075).
-fn spoken(t: &Tree, i: usize, folded: bool) -> String {
+/// What a screen reader hears for node `i`, with `hidden` nodes folded away under it (MAP-075).
+fn spoken(t: &Tree, i: usize, folded: bool, hidden: usize) -> String {
     let n = &t.nodes[i];
     let shown = map_app::shown_label(n);
     let name = if n.label.is_empty() || n.label == "\u{200b}" || shown == "\u{200b}" { "New node" } else { shown.as_str() };
     let mut s = format!("{name}, level {}", n.depth + 1);
     if !n.children.is_empty() {
-        if folded {
-            s += &format!(", collapsed, {} hidden", n.end - i - 1);
-        } else {
-            s += ", expanded";
+        s += if folded { ", collapsed" } else { ", expanded" };
+        if hidden > 0 {
+            s += &format!(", {hidden} hidden");
         }
     }
     match n.kind {
@@ -155,7 +154,7 @@ pub(super) fn canvas(v: V) -> El {
     let (nodes, links) = s.map_mounted();
     let sel = s.map_selected();
     let view = s.map_view();
-    let folded = |i: usize| view.is_some_and(|v| v.folded.contains(&t.nodes[i].id));
+    let rings = |i: usize| view.filter(|_| !t.nodes[i].children.is_empty()).map_or(Vec::new(), |v| l.rings(&t, i, &v.folds));
     let (b, prose, mono) = (look.b, look.family, look.mono);
     // A fold circle's or task box's target is at least 24 points on screen (MAP-041, MAP-073).
     // Pin detail level during active camera glides (`map_detail_zoom`) so zooming across
@@ -197,7 +196,7 @@ pub(super) fn canvas(v: V) -> El {
     // The selected node sits under a glass card (MAP-055). Only its content grows under the glass
     // (`node`); its underline, links and fold ring stay put, so no line moves or breaks there.
     let glass = nodes.contains(&sel).then(|| l.at[sel]).flatten().map(|g| {
-        let lw = line_width(g.depth);
+        let lw = g.line_room();
         let [w, h] = match field_at {
             Some((i, _, room, _, [fw, fh])) if i == sel => [g.w.max(fw + room + 2.0 * l.metrics.pad_x), g.h.max(fh + l.metrics.pad_b)],
             _ => [g.w, g.h],
@@ -242,7 +241,10 @@ pub(super) fn canvas(v: V) -> El {
             let [x0, y0, x1, y1] = p.rect();
             x0 < x + w && x < x1 && y0 < y + h && y < y1
         });
-        let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover: no_hover || covered, plain_label, target, chip_compact, found };
+        let rings = rings(i);
+        let folded = !rings.is_empty() && rings.iter().all(|r| r.folded);
+        let hidden = rings.iter().filter(|r| r.folded).map(|r| r.side.nodes.len()).sum();
+        let st = State { folded, hidden, selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover: no_hover || covered, plain_label, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
     // The glass's top-lit rim, over the node. Paint it BEFORE fold targets so hover-revealed fold
@@ -262,12 +264,13 @@ pub(super) fn canvas(v: V) -> El {
         );
     }
     for &i in &nodes {
-        if !t.nodes[i].children.is_empty() {
-            world = world.children(fold(&t, &l, i, folded(i), editing == Some(i), lite, hit, c, b, mono).into_iter().map(|e| e.opacity(dim(i))));
+        let of = RingOf { t: &t, l: &l, i, editing: editing == Some(i), lite, hit, c, font: map_app::chip_font(b, mono) };
+        for (nth, r) in rings(i).iter().enumerate() {
+            world = world.children(fold(&of, r, nth).map(|e| e.opacity(dim(i))));
         }
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
-        world = world.child(field(v, p, room, st, w, l.metrics.pad_x));
+        world = world.child(field(v, p, room, st, w, &l.metrics));
     }
     if let Some((new, [x, y, _, _], k)) = bar {
         world = world.child(kind_bar(v, new, [x, y], k));
@@ -495,8 +498,24 @@ fn tapered_on(shape: Shape, [a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color
     ts.windows(2).fold(shape, |shape, t| shape.taper([at(t[0]), at(t[1])], width(t[0]), width(t[1]), LineCap::Round, color))
 }
 
+/// A wide curly bracket filling the box `[w, h]` at `[x, y]`: its point in the middle of the
+/// top, or of the bottom, and its two ends at the other edge.
+fn brace(shape: Shape, [x, y]: [f32; 2], [w, h]: [f32; 2], up: bool, lw: f32, color: Color) -> Shape {
+    let (mid, cx, edge) = (h / 2.0, w / 2.0, lw / 2.0);
+    let turn = 14f32.min(w / 4.0);
+    let half = |s: f32| {
+        let at = |px: f32, py: f32| [x + cx + s * (cx - px), y + if up { py } else { h - py }];
+        Path::new()
+            .move_to(at(edge, h - edge))
+            .cubic_to(at(edge, mid), at(turn * 0.4, mid), at(turn, mid))
+            .line_to(at(cx - turn, mid))
+            .cubic_to(at(cx - turn * 0.4, mid), at(cx, mid), at(cx, 0.0))
+    };
+    [-1.0, 1.0].into_iter().fold(shape, |shape, s| shape.stroke_path(&half(s), lw, LineCap::Round, color))
+}
+
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
-fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> El {
+fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_layout::Metrics) -> El {
     let Some(e) = &v.s.map.inline else { return el() };
     let c = Roles::new(v.p);
     let surface = c.on_page(c.raised);
@@ -510,7 +529,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
             None => &mut s.map.spare,
         })
         .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
-        .pin(Some(p.x + p.label_pads(pad_x, room)[0] + W), Some(p.y + W), None, None)
+        .pin(Some(p.x + p.label_pads(m.pad_x, room)[0] + W), Some(p.y + p.content(m.pad_b).0 + W), None, None)
         .w(w)
         .radius(3.0)
         .fill(surface)
@@ -583,6 +602,7 @@ struct Found<'a> {
 /// How node `i` draws, besides its place.
 struct State<'a> {
     folded: bool,
+    hidden: usize,
     selected: bool,
     editing: bool,
     alpha: f32,
@@ -604,7 +624,7 @@ fn label_marks(c: &Roles, text: &str, f: Found) -> Vec<TextHighlight> {
 }
 
 fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
-    let State { folded, selected, editing, alpha, lite, no_hover, plain_label, target, chip_compact, found } = st;
+    let State { folded, hidden, selected, editing, alpha, lite, no_hover, plain_label, target, chip_compact, found } = st;
     let Some(p) = l.at[i] else { return el() };
     let (c, b) = (&cx.look.c, cx.look.b);
     let n = &t.nodes[i];
@@ -623,11 +643,14 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     // label.
     let cell = l.cell[i];
     let (box_x, [lo, hi]) = p.task_slot(pad_x, room, crate::page::r(b * 0.9));
-    let room_at = [(cell[0] - p.x).max(lo), cell[1] - p.y, (cell[2] - p.x).min(hi), cell[3] - p.y];
     let lw = line_width(p.depth);
+    let line_h = p.line_room();
+    // The content sits on the line, or hangs under it.
+    let ((top, content_h), line_top) = (p.content(pad_b), p.line_top());
+    let room_at = [(cell[0] - p.x).max(lo), cell[1] - p.y - top, (cell[2] - p.x).min(hi), cell[3] - p.y - top];
     let tail = key_tail(&key).to_string();
     // Below `PLAIN_LABEL_ZOOM` (0.20×, where rows are <= 5 px tall), mount text nodes as a
-    // single flat plain-text element with its underline on `border_sides`, skipping rich inline
+    // single flat plain-text element with its line on `border_sides`, skipping rich inline
     // code-chip background spans, hover animations, and wrapper containers.
     if plain_label && !editing && !matches!(&n.body, Body::Card(_)) {
         let style = map_app::style(tier, b, cx.look.family, cx.look.mono);
@@ -640,11 +663,12 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .wrap_anywhere()
             .pl(label_x)
             .pr(label_end)
+            .pt(top)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
-            .size(p.w, p.h + lw)
-            .border_sides([0.0, 0.0, lw, 0.0], branch)
+            .size(p.w, p.h + line_h)
+            .border_sides(if p.overlined() { [lw, 0.0, 0.0, 0.0] } else { [0.0, 0.0, if p.depth > 0 { lw } else { 0.0 }, 0.0] }, branch)
             .role("treeitem")
-            .label(spoken(t, i, folded))
+            .label(spoken(t, i, folded, hidden))
             .level(n.depth as u32 + 1)
             .focus_selected(selected)
             .opacity(alpha);
@@ -655,23 +679,21 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             e = e.expanded(!folded);
         }
         return e
-            .children((room > 0.0).then(|| task_box(n, i, b, box_x, target, room_at, c, true, true)))
+            .children((room > 0.0).then(|| el().pin(Some(0.0), Some(top), None, None).size(p.w, content_h).child(task_box(n, i, b, box_x, target, room_at, c, true, true))))
             .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
             .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
             .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx));
     }
     let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
-    // Memoize the node's inner body (task box, rich label / card, underline) independently of
+    // Memoize the node's inner body (task box, rich label / card, bracket) independently of
     // `(p.x, p.y, alpha)` so rigid translations during fold/unfold relayout glides hit the cache
     // on every unchanged branch without rebuilding labels, cards or task controls.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (i, n.src, n.depth, selected, editing, b.to_bits(), room.to_bits(), [p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
     (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), room_at.map(f32::to_bits), found).hash(&mut h);
-    // A node whose branch runs on along its underline leaves the line to it (`link`).
-    let underlined = l.branch(t, i).is_none_or(|b| b.end.is_none());
-    (p.dir, underlined).hash(&mut h);
+    p.dir.hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
     let grow = if selected && !lite { glass_k(p.w, p.h) } else { 1.0 };
@@ -697,24 +719,24 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             shown.unwrap_or_else(text).pin(Some(label_x), Some(0.0), None, None)
         });
         // The node's content, its task box with its label or card, grows as one piece under the
-        // selection glass (MAP-055); the underline below it stays put.
+        // selection glass (MAP-055); the line stays put.
         let content = el()
-            .pin(Some(0.0), Some(0.0), None, None)
-            .size(p.w, p.h)
+            .pin(Some(0.0), Some(top), None, None)
+            .size(p.w, content_h)
             .scale(grow)
             .children((room > 0.0).then(|| task_box(n, i, b, box_x, target, room_at, c, lite, plain_label)))
             .children(label_el);
         el().key(body_key)
             .pin(Some(0.0), Some(0.0), None, None)
-            .size(p.w, p.h + lw)
+            .size(p.w, p.h + line_h)
             .child(content)
-            .children(underlined.then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
+            .children(p.braced().then(|| rune::canvas(brace(Shape::new(), [0.0, 0.0], [p.w, line_h], p.overlined(), lw, branch)).size(p.w, line_h).inert().pin(Some(0.0), Some(line_top), None, None)))
     });
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)
-        .size(p.w, p.h + lw)
+        .size(p.w, p.h + line_h)
         .role("treeitem")
-        .label(spoken(t, i, folded))
+        .label(spoken(t, i, folded, hidden))
         .level(n.depth as u32 + 1)
         .focus_selected(selected)
         .opacity(alpha);
@@ -803,45 +825,44 @@ fn task_box(n: &crate::map::Node, i: usize, b: f32, bx_x: f32, target: f32, cell
         .child(bx_el)
 }
 
-/// What the rings of one node share: the node, how it is shown and the size its targets aim for.
-struct Ring<'a> {
+/// A node whose rings are drawn: how it is shown, and the size its targets aim for.
+struct RingOf<'a> {
+    t: &'a Tree,
     l: &'a Laid,
     i: usize,
-    p: Place,
-    tail: &'a str,
-    branch: Color,
-    folded: bool,
     editing: bool,
     lite: bool,
     hit: f32,
     c: &'a Roles,
+    font: rune::TextStyle,
 }
 
-/// A press on node `i`'s ring or pill: fold or unfold, and everything under it with Ctrl.
-fn fold_press(i: usize) -> impl Fn(&mut App, &mut Tx) + 'static {
+/// A press on node `i`'s ring or pill on side `d`: fold or unfold what it hides, and everything
+/// under that with Ctrl.
+fn fold_press(i: usize, d: crate::map_geom::Dir) -> impl Fn(&mut App, &mut Tx) + 'static {
     move |s, tx| {
         let all = tx.mods().cmd;
-        s.map_toggle(i, all, tx);
+        s.map_toggle(i, Some(d), all, tx);
         s.keys_to_note(tx);
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, hit: f32, c: &Roles, b: f32, mono: rune::Family) -> Vec<El> {
-    let Some(p) = l.at[i] else { return Vec::new() };
-    let n = &t.nodes[i];
+/// A node's `nth` fold ring and its hit target, or the `+N` pill in the ring's place.
+fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate::map_layout::Ring, nth: usize) -> impl Iterator<Item = El> + use<> {
+    let (mut dot, mut target, mut pill) = (None, None, None);
+    let (d, folded) = (ring.side.dir, ring.folded);
     let tail = key_tail(&node_key(t, i)).to_string();
-    let branch = branch_color(c, n.branch);
-    let ring = Ring { l, i, p, tail: &tail, branch, folded, editing, lite, hit, c };
-    let mut out: Vec<El> = l.rings(t, i).enumerate().flat_map(|(nth, d)| fold_ring(&ring, d, nth)).collect();
-    // A folded node's `+N` badge takes its one ring's place.
+    let branch = branch_color(c, t.nodes[i].branch);
+    let (Some(p), Some([x0, y0, x1, y1])) = (l.at[i], l.ring_hit(i, d, hit)) else { return dot.into_iter().chain(target).chain(pill) };
+    let [cx, cy] = p.ring(d);
+    // A node with a ring on each side keys the second by its number.
+    let key = |name: &str| if nth == 0 { format!("{name}:{tail}") } else { format!("{name}:{tail}:{}", nth + 1) };
     if folded {
-        let hidden = n.end - i - 1;
-        let font = map_app::chip_font(b, mono);
-        let (pill, size) = map_app::pill_size(hidden, font);
-        let [x, y, w, h] = p.pill_box(p.dir, size);
-        out.push(
-            el().key(format!("map-pill:{tail}"))
+        let hidden = ring.side.nodes.len();
+        let (count, size) = map_app::pill_size(hidden, font);
+        let [x, y, w, h] = p.pill_box(d, size);
+        pill = Some(
+            el().key(key("map-pill"))
                 .size(w, h)
                 .center()
                 .fill(c.bg)
@@ -853,22 +874,11 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
                 .label(format!("Unfold, {hidden} hidden"))
                 .cursor(rune::Cursor::Pointer)
                 .pin(Some(x + W), Some(y + W), None, None)
-                .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
-                .on_press_tx(fold_press(i)),
+                .child(text(count).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
+                .on_press_tx(fold_press(i, d)),
         );
-    }
-    out
-}
-
-/// A node's `nth` fold ring, on side `d`, and its hit target.
-fn fold_ring(&Ring { l, i, p, tail, branch, folded, editing, lite, hit, c }: &Ring, d: crate::map_geom::Dir, nth: usize) -> impl Iterator<Item = El> + use<> {
-    let (mut dot, mut target) = (None, None);
-    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return dot.into_iter().chain(target) };
-    let [cx, cy] = p.ring(d);
-    // A node with a ring on each side keys the second by its number.
-    let key = |name: &str| if nth == 0 { format!("{name}:{tail}") } else { format!("{name}:{tail}:{}", nth + 1) };
-    // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
-    if !folded {
+    } else {
+        // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
         dot = Some(
             el().key(key("map-dot"))
                 .pin(Some(cx - FOLD_DOT_R + W), Some(cy - FOLD_DOT_R + W), None, None)
@@ -887,7 +897,7 @@ fn fold_ring(&Ring { l, i, p, tail, branch, folded, editing, lite, hit, c }: &Ri
             .role("button")
             .label(if folded { "Unfold" } else { "Fold" })
             .cursor(rune::Cursor::Pointer)
-            .on_press_tx(fold_press(i));
+            .on_press_tx(fold_press(i, d));
         if !folded && !lite {
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
@@ -928,7 +938,7 @@ fn fold_ring(&Ring { l, i, p, tail, branch, folded, editing, lite, hit, c }: &Ri
         }
         target = Some(hit_el);
     }
-    dot.into_iter().chain(target)
+    dot.into_iter().chain(target).chain(pill)
 }
 
 /// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it

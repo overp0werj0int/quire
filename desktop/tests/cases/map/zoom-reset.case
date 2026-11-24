@@ -1,7 +1,7 @@
 Ctrl+0 goes to 100%, centred on the selection.
 note: Trip.md
 events: key:m+cmd@0.3 key:0+cmd@0.9
-expect: rect:map-node:6: [736.5, 405.5, 55.0, 34.0]
+expect: rect:map-node:6: [736.5, 405.5, 55.0, 30.0]
 expect: scale:map-node:6: 1.0
 --- before
 ---

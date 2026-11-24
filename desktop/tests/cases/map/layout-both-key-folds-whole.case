@@ -1,0 +1,20 @@
+In Both sides the fold key on the root with one side folded folds the other too, and pressed again opens both.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:1@1.0 key:f@1.6 key:f@2.2
+expect: nodes: 1 3 5 7 9 11 12 14
+expect: text:map-pill:1: None
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

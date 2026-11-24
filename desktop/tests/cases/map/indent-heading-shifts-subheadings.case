@@ -1,8 +1,12 @@
 Alt+Right on a heading puts it under the heading above, a level deeper, and its subheadings go deeper with it.
 note: Plan.md
 events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Right+alt@1.4
-expect: selected: map-node:5
+expect: selected: map-node:9
 --- before
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
@@ -11,6 +15,10 @@ expect: selected: map-node:5
 
 ### Train
 --- after
+---
+markmap:
+  layout: right
+---
 # Plan
 
 ## Budget
