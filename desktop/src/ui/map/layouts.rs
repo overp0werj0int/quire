@@ -43,10 +43,11 @@ pub(in crate::ui) fn layouts(v: V) -> Card {
     let across = ((v.vw - 2.0 * EDGE - 2.0 * PAD + GAP) / (TILE_W + GAP)).floor().clamp(1.0, 5.0) as usize;
     let per = if across >= 5 { 5 } else { across.min(3) };
     let mut grid = col().key("layout-tiles").gap(GAP).role("group").label("Layout").focus_group();
-    for chunk in Layout::ALL.chunks(per) {
+    for (row_idx, chunk) in Layout::ALL.chunks(per).enumerate() {
         let mut line = row().gap(GAP);
-        for &l in chunk {
-            line = line.child(tile(v, &c, l, l == now));
+        for (col_idx, &l) in chunk.iter().enumerate() {
+            let idx = row_idx * per + col_idx;
+            line = line.child(tile(v, &c, l, idx, l == now));
         }
         grid = grid.child(line);
     }
@@ -97,10 +98,26 @@ fn fade(card: El) -> El {
     card.transition(rune::Transition::opacity().springs(rune::SpringPair::new(s, s)))
 }
 
-fn tile(v: V, c: &Roles, l: Layout, current: bool) -> El {
+fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
     let (rw, rg, rc) = crate::ui::focus_ring(v.p);
     let plate = el().w(THUMB[0]).h(THUMB[1]).radius(6.0).clip_rounded(6.0).fill(c.sunken).child(schematic(v.p, l));
-    let mut name = row().gap(4.0).center_y().child(text(l.name()).font(sans(12.0, if current { 600.0 } else { 400.0 })).color(if current { c.text } else { v.p.mute }));
+    let digit = idx + 1;
+    let key_badge = row()
+        .key(format!("layout-key-{digit}"))
+        .min_w(15.0)
+        .h(15.0)
+        .px(3.0)
+        .center()
+        .radius(3.5)
+        .fill(c.raised)
+        .border(1.0, c.hairline)
+        .border_layout()
+        .child(text(digit.to_string()).font(crate::ui::styles::keys(10.0).lh(10.0)).color(Roles::panel(v.p).dim));
+    let mut name = row()
+        .gap(5.0)
+        .center_y()
+        .child(key_badge)
+        .child(text(l.name()).font(sans(12.0, if current { 600.0 } else { 400.0 })).color(if current { c.text } else { v.p.mute }));
     if current {
         name = name.child(icon(&CHECK, 10.0).color(c.accent_text));
     }

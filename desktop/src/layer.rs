@@ -309,8 +309,12 @@ impl App {
     }
 
     /// Opens the map's layout picker and puts the keyboard on the tile of the layout the note
-    /// has, ringed when it came by keys (MAP-089).
+    /// has, ringed when it came by keys (MAP-089). Closes it when already open.
     pub fn open_layouts(&mut self, tx: &mut Tx) {
+        if self.layer_is(Kind::Layouts) {
+            self.close_layer(tx);
+            return;
+        }
         if !self.map_editable() {
             return;
         }
@@ -489,6 +493,7 @@ pub fn toggles(id: &str) -> Option<Kind> {
         "app.help" | "reader.help" | "map.help" => Some(Kind::Help),
         "app.toggle-sidebar" | "reader.toggle-sidebar" | "map.toggle-sidebar" => Some(Kind::Drawer(Drawer::Sidebar)),
         "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline" => Some(Kind::Drawer(Drawer::Outline)),
+        "map.layout" => Some(Kind::Layouts),
         _ => None,
     }
 }

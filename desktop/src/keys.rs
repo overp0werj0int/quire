@@ -174,6 +174,10 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
             }
             return true;
         }
+        if kind == Kind::Layouts && s.keymap.lookup(Ctx::Map, ev).iter().any(|a| a.id == "map.layout") {
+            s.close_layer(tx);
+            return true;
+        }
         if !crate::focus::chord(ev) {
             return false;
         }

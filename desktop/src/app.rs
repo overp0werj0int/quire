@@ -1899,7 +1899,12 @@ impl App {
         let val = md::clean_name(&e.text);
         let np = md::join(md::dir(&old), &format!("{val}.md"));
         let exists = self.files().contains_key(&np);
-        if val.is_empty() || np == old || exists {
+        if val.is_empty() || np == old {
+            self.focus_editor(tx);
+            return;
+        }
+        if exists {
+            self.notice = Some(format!("A note named “{val}” already exists."));
             self.focus_editor(tx);
             return;
         }

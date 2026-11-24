@@ -241,6 +241,7 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
                 ..item("Edit properties", Box::new(|s, tx| s.map_props(tx)))
             }));
             items.extend(fold);
+            items.extend((!root && !v.s.active_locked()).then(|| on("menu-cut", "Cut", "map.cut", true, |s, _, tx| s.map_cut(tx))));
             items.push(copy);
             items.push(on("menu-copy-branch", "Copy branch", "map.copy-subtree", true, |s, _, tx| s.map_copy(true, tx)));
             items.extend((!root).then(|| on("menu-delete", "Delete", "map.delete", true, |s, _, tx| s.map_delete(tx))));
