@@ -370,6 +370,7 @@ impl App {
         if let Some(open) = self.layers.pop() {
             if matches!(open.layer, Layer::Settings) {
                 self.key_edit = None;
+                self.keys_query = rune::TextEdit::new("");
             }
             if matches!(open.layer, Layer::Drawer(_)) {
                 self.map_drawer_closed(tx);
@@ -416,6 +417,7 @@ impl App {
     pub fn close_layers(&mut self, tx: &mut Tx) {
         if !self.layers.is_empty() {
             self.key_edit = None;
+            self.keys_query = rune::TextEdit::new("");
             let had_drawer = self.drawer().is_some();
             let back = self.layers.swap_remove(0).back;
             self.layers.clear();

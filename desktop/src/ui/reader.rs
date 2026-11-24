@@ -231,6 +231,10 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .color(super::styles::caption_ink(v.p)),
         )
         .child(el().grow(1.0))
+        .child(super::widgets::outline_button(v.p, "help-customize", "Customize shortcuts", 26.0, |s: &mut App, tx: &mut Tx| {
+            s.open_settings(tx);
+            s.set_sec = crate::app::Sec::Keys;
+        }))
         .child(cap(keymap::label_of("Esc"), v.p))
         .child(
             row()

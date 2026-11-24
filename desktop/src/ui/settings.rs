@@ -1,11 +1,11 @@
 //! The settings sheet.
 
 use crate::roles::Roles;
-use rune::{Color, El, ScrollSpec, Tx, col, el, icon, row, text};
+use rune::{Color, El, Key, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
 use super::layer::Card;
-use super::icons::CLOSE;
+use super::icons::{CLOSE, SEARCH};
 use super::widgets::{Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
@@ -34,7 +34,12 @@ pub(super) fn settings(v: V) -> Card {
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .hover_group()
                 .role("tab")
-                .control(move |s: &mut App, _: &mut Tx| s.set_sec = id)
+                .control(move |s: &mut App, _: &mut Tx| {
+                    if s.set_sec != id {
+                        s.set_sec = id;
+                        s.key_edit = None;
+                    }
+                })
                 .focus_selected(on)
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
@@ -483,6 +488,73 @@ fn keys(v: V) -> El {
         outline_button(p, "keys-reset-all", "Reset all", 26.0, |s: &mut App, _: &mut Tx| s.reset_all_key_bindings())
     };
     let mut c = col().key("keys").w_full().child(row_(v, "keybindings-head", "Keybindings", Some(&path_note), reset_all));
+    let query_empty = v.s.keys_query.text.is_empty();
+    let clear_btn = (!query_empty).then(|| {
+        row()
+            .key("keys-search-clear")
+            .size(22.0, 22.0)
+            .center()
+            .radius(5.0)
+            .hover(p.hover)
+            .hover_group()
+            .role("button")
+            .label("Clear shortcut filter")
+            .help("Clear filter")
+            .control(|s: &mut App, tx: &mut Tx| {
+                s.keys_query = rune::TextEdit::new("");
+                s.keys_query.focused = true;
+                tx.focus("keys-search", false);
+            })
+            .child(icon(&CLOSE, 12.0).color(p.mute).group_color(p.ink))
+    });
+    let search_bar = super::widgets::input_focus_ring_when(
+        row()
+            .key("keys-search-box")
+            .w_full()
+            .h(32.0)
+            .pl(10.0)
+            .pr(6.0)
+            .gap(8.0)
+            .center_y()
+            .radius(7.0)
+            .fill(p.bg)
+            .border(1.0, p.line)
+            .border_layout(),
+        p,
+        v.s.keys_query.focused,
+    )
+    .child(icon(&SEARCH, 14.0).color(p.mute))
+    .child(
+        text_input(&v.s.keys_query, sans(13.0, 400.0))
+            .key("keys-search")
+            .single_line()
+            .grow(1.0)
+            .min_w(0.0)
+            .color(p.ink)
+            .placeholder("Filter shortcuts by name, group, or key…", super::styles::placeholder_ink(p))
+            .caret(p.ink, p.sel)
+            .label("Filter shortcuts")
+            .on_edit(|s: &mut App| &mut s.keys_query)
+            .on_input_change(|s: &mut App, _| {
+                s.key_edit = None;
+            })
+            .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| {
+                if crate::keys::esc_again(ev, tx) {
+                    return true;
+                }
+                if ev.key == Key::Escape && !s.keys_query.text.is_empty() {
+                    s.keys_query = rune::TextEdit::new("");
+                    s.keys_query.focused = true;
+                    return true;
+                }
+                false
+            }),
+    )
+    .children(clear_btn);
+    c = c.child(el().w_full().pb(6.0).child(search_bar));
+
+    let q = v.s.keys_query.text.trim().to_lowercase();
+    let mut total_shown = 0usize;
     let groups = [
         (Ctx::Global, "Everywhere"),
         (Ctx::Reader, "In preview"),
@@ -496,13 +568,22 @@ fn keys(v: V) -> El {
         (Ctx::Help, "In keyboard help"),
     ];
     for (ctx, title) in groups {
+        let title_hit = !q.is_empty() && title.to_lowercase().contains(&q);
         let shown: Vec<&'static keymap::Action> = keymap::TABLE
             .iter()
             .filter(|a| a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape")
+            .filter(|a| {
+                q.is_empty()
+                    || title_hit
+                    || a.name.to_lowercase().contains(&q)
+                    || a.id.to_lowercase().contains(&q)
+                    || km.display_labels(a.id).iter().any(|l| l.to_lowercase().contains(&q))
+            })
             .collect();
         if shown.is_empty() {
             continue;
         }
+        total_shown += shown.len();
         c = c.child(styles::caption(title, false, p).key(format!("keys-{title}")).pt(18.0).pb(6.0));
         for a in shown {
             let id = a.id;
@@ -593,25 +674,44 @@ fn keys(v: V) -> El {
         ("Row context menu", &["Shift+F10"]),
         ("Return keyboard to note", &["Esc"]),
     ];
-    c = c.child(styles::caption("Sidebar & Open shelf", false, p).key("keys-sidebar").pt(18.0).pb(6.0));
-    for (i, &(name, chords)) in SIDEBAR_KEYS.iter().enumerate() {
-        let mut chips = row().gap(5.0).center_y().flex_wrap();
-        for ch in chords {
-            chips = chips.child(super::widgets::kbd(p, keymap::label_of(ch), false));
+    let sb_title = "Sidebar & Open shelf";
+    let sb_title_hit = !q.is_empty() && sb_title.to_lowercase().contains(&q);
+    let sb_shown: Vec<(usize, &str, &[&str])> = SIDEBAR_KEYS
+        .iter()
+        .enumerate()
+        .filter(|&(_, &(name, chords))| {
+            q.is_empty()
+                || sb_title_hit
+                || name.to_lowercase().contains(&q)
+                || chords.iter().any(|ch| keymap::label_of(ch).to_lowercase().contains(&q))
+        })
+        .map(|(i, &(name, chords))| (i, name, chords))
+        .collect();
+    if !sb_shown.is_empty() {
+        total_shown += sb_shown.len();
+        c = c.child(styles::caption(sb_title, false, p).key("keys-sidebar").pt(18.0).pb(6.0));
+        for (i, name, chords) in sb_shown {
+            let mut chips = row().gap(5.0).center_y().flex_wrap();
+            for ch in chords {
+                chips = chips.child(super::widgets::kbd(p, keymap::label_of(ch), false));
+            }
+            c = c.child(
+                row()
+                    .key(format!("key-sidebar-{i}"))
+                    .w_full()
+                    .gap(16.0)
+                    .py(10.0)
+                    .center_y()
+                    .justify_between()
+                    .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
+                    .border_layout()
+                    .child(label(name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
+                    .child(chips),
+            );
         }
-        c = c.child(
-            row()
-                .key(format!("key-sidebar-{i}"))
-                .w_full()
-                .gap(16.0)
-                .py(10.0)
-                .center_y()
-                .justify_between()
-                .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
-                .border_layout()
-                .child(label(name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
-                .child(chips),
-        );
+    }
+    if total_shown == 0 {
+        c = c.child(text("No matching shortcuts.").key("keys-empty").font(sans(13.0, 400.0)).color(p.mute).py(18.0));
     }
     c
 }

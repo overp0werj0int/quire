@@ -261,6 +261,8 @@ pub struct App {
     pub keymap: crate::keymap::Overrides,
     /// Active keybinding capture row in Settings → Shortcuts.
     pub key_edit: Option<KeyEdit>,
+    /// Live search filter in Settings → Shortcuts.
+    pub keys_query: TextEdit,
     /// Recently closed tabs in this folder, for `app.reopen-tab` (`Ctrl+Shift+T`).
     pub closed_tabs: Vec<String>,
 }
@@ -439,6 +441,7 @@ pub fn init() -> App {
         mode_swapped: false,
         keymap: crate::keymap::Overrides::load(),
         key_edit: None,
+        keys_query: TextEdit::new(""),
         closed_tabs: Vec::new(),
     };
     crate::theme::reload_omarchy();

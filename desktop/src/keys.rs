@@ -161,7 +161,7 @@ fn menu_key(ev: &KeyEvent) -> bool {
 /// it. Any other key goes on to Rune, which keeps it inside the layer, except over help and
 /// the edit sheet, which swallow it.
 fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if kind == Kind::Settings && s.key_edit.is_some() {
+    if kind == Kind::Settings && s.set_sec == crate::app::Sec::Keys && s.key_edit.is_some() {
         return s.handle_key_edit(ev);
     }
     if kind == Kind::Help {
