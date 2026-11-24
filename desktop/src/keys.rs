@@ -330,6 +330,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.tab-9" => |s, tx| s.switch_tab_index(8, tx),
         "app.next-tab" => |s, tx| s.step_tab(true, tx),
         "app.previous-tab" => |s, tx| s.step_tab(false, tx),
+        "app.nav-back" => |s, tx| s.nav_back(tx),
+        "app.nav-forward" => |s, tx| s.nav_forward(tx),
         "app.escape" => |s, tx| {
             s.escape(tx);
         },

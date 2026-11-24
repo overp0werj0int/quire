@@ -8906,6 +8906,8 @@ mod layer_matrix_tests {
             K::Tab => Key::Tab,
             K::Up => Key::Up,
             K::Down => Key::Down,
+            K::Left => Key::Left,
+            K::Right => Key::Right,
             K::F(n) => Key::Function(n),
             other => panic!("no key event for {other:?}"),
         };

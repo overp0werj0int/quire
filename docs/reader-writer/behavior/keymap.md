@@ -63,6 +63,8 @@ Notes on reading this file:
 - **KEY-99** [quire] [verify: -] app.tab-1 to app.tab-9 (global): `Ctrl+1` to `Ctrl+9`. Switches to the first through ninth tab in the Open shelf.
 - **KEY-100** [quire] [verify: -] app.next-tab (global): `Ctrl+Tab`. Switches to the next tab in the Open shelf, wrapping around.
 - **KEY-101** [quire] [verify: -] app.previous-tab (global): `Ctrl+Shift+Tab`. Switches to the previous tab in the Open shelf, wrapping around.
+- **KEY-186** [quire] [verify: -] app.nav-back (reader, writer): `Alt+Left`. Navigates back to the previously visited note in history.
+- **KEY-187** [quire] [verify: -] app.nav-forward (reader, writer): `Alt+Right`. Navigates forward to the next note in history.
 
 ## Reader
 

@@ -230,6 +230,8 @@ pub struct TrashEntry {
     pub is_dir: bool,
     /// Last modification time (nanoseconds since epoch), for newest-first order.
     pub deleted_at: u128,
+    /// Short content preview for trashed notes (empty for folders).
+    pub snippet: String,
 }
 
 /// Completed trash scan or recovery event sent from the `Writer` thread back to `App`.
@@ -246,6 +248,10 @@ pub enum TrashEvent {
         files: Vec<(String, String, u128)>,
         folders: Vec<String>,
         open_rel: Option<String>,
+        entries: Vec<TrashEntry>,
+    },
+    ItemDeleted {
+        root: PathBuf,
         entries: Vec<TrashEntry>,
     },
     Emptied {
@@ -368,10 +374,42 @@ pub fn list_trash(root: &Path) -> Vec<TrashEntry> {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map_or(0, |d| d.as_nanos());
         let original_rel = original_rel_from_trash(root, &meta, &name);
-        out.push(TrashEntry { name, original_rel, is_dir, deleted_at });
+        let snippet = if !is_dir && name.to_lowercase().ends_with(".md") {
+            trash_note_snippet(&entry.path())
+        } else {
+            String::new()
+        };
+        out.push(TrashEntry { name, original_rel, is_dir, deleted_at, snippet });
     }
     out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     out
+}
+
+fn trash_note_snippet(path: &Path) -> String {
+    let Ok(raw) = std::fs::read_to_string(path) else { return String::new() };
+    if crate::lock::is_locked(&raw) {
+        return "Locked note".to_string();
+    }
+    let mut lines = raw.lines().peekable();
+    if lines.peek().is_some_and(|l| l.trim() == "---") {
+        lines.next();
+        for l in lines.by_ref() {
+            if l.trim() == "---" {
+                break;
+            }
+        }
+    }
+    for l in lines {
+        let t = l.trim().trim_start_matches(['#', '-', '*', '>', ' ']).trim();
+        if !t.is_empty() {
+            let mut s: String = t.chars().take(72).collect();
+            if t.chars().count() > 72 {
+                s.push('…');
+            }
+            return s;
+        }
+    }
+    String::new()
 }
 
 /// Reads restored `.md` files and subfolders rooted at `root/dest_rel`.
@@ -451,6 +489,8 @@ pub enum Op {
     ListTrash { root: PathBuf },
     /// Restores a named entry from `<root>/.trash/` back into the vault and posts `TrashEvent::Restored`.
     RestoreTrash { root: PathBuf, trash_name: String },
+    /// Permanently removes a single named entry inside `<root>/.trash/` and posts `TrashEvent::ItemDeleted`.
+    DeleteTrashItem { root: PathBuf, trash_name: String },
     /// Permanently removes every entry inside `<root>/.trash/` and posts `TrashEvent::Emptied`.
     EmptyTrash { root: PathBuf },
     Mkdir { root: PathBuf, rel: String },
@@ -538,6 +578,24 @@ impl Writer {
                         }
                         continue;
                     }
+                    if let Op::DeleteTrashItem { root, trash_name } = &op {
+                        match delete_trash_item(root, trash_name, &mut trash) {
+                            Ok(entries) => {
+                                if let Ok(mut q) = tev.lock() {
+                                    q.push(TrashEvent::ItemDeleted { root: root.clone(), entries });
+                                }
+                                wake();
+                            }
+                            Err(e) => {
+                                failed2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                if let Ok(mut v) = errs.lock() {
+                                    v.push(format!("Could not delete {trash_name}: {e}"));
+                                }
+                                wake();
+                            }
+                        }
+                        continue;
+                    }
                     if let Op::EmptyTrash { root } = &op {
                         match empty_trash_dir(root, &mut trash) {
                             Ok(()) => {
@@ -563,7 +621,7 @@ impl Writer {
                             Op::Restore { rel, .. } => format!("put back {rel}"),
                             Op::Rename { from, .. } => format!("save {from}"),
                             Op::SaveState(_) => "save settings".into(),
-                            Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::EmptyTrash { .. } => "save".into(),
+                            Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::DeleteTrashItem { .. } | Op::EmptyTrash { .. } => "save".into(),
                         };
                         if let Ok(mut v) = errs.lock() {
                             v.push(format!("Could not {what}: {e}"));
@@ -615,6 +673,21 @@ fn restore_from_trash(root: &Path, trash_name: &str, trash: &mut Trash) -> std::
     };
     let entries = list_trash(root);
     Ok(TrashEvent::Restored { root: root.to_path_buf(), original_rel, label, files, folders, open_rel, entries })
+}
+
+fn delete_trash_item(root: &Path, trash_name: &str, trash: &mut Trash) -> std::io::Result<Vec<TrashEntry>> {
+    if trash_name.is_empty() || trash_name.contains('/') || trash_name.contains('\\') || trash_name == "." || trash_name == ".." {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid trash entry"));
+    }
+    let target = root.join(".trash").join(trash_name);
+    if target.is_dir() {
+        std::fs::remove_dir_all(&target)?;
+    } else if target.exists() {
+        std::fs::remove_file(&target)?;
+    }
+    remove_trash_meta(root, trash_name);
+    trash.retain(|_, v| v != &target);
+    Ok(list_trash(root))
 }
 
 fn empty_trash_dir(root: &Path, trash: &mut Trash) -> std::io::Result<()> {
@@ -733,7 +806,7 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
         }
         Op::Mkdir { root, rel } => std::fs::create_dir_all(root.join(rel)),
         Op::SaveState(p) => crate::store::save(p),
-        Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::EmptyTrash { .. } => Ok(()),
+        Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::DeleteTrashItem { .. } | Op::EmptyTrash { .. } => Ok(()),
     }
 }
 
@@ -935,6 +1008,94 @@ mod tests {
         });
         assert!(root.join("2026 - Plan.md").is_file());
         assert!(!root.join("2026/Plan.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nav_back_and_forward_history() {
+        let root = std::env::temp_dir().join(format!("quire-nav-hist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Alpha.md"), "# Alpha\n").unwrap();
+        std::fs::write(root.join("Beta.md"), "# Beta\n").unwrap();
+        std::fs::write(root.join("Gamma.md"), "# Gamma\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(root.clone(), tx);
+            s.open_file("Alpha.md", None, tx);
+            s.open_file("Beta.md", None, tx);
+            s.open_file("Gamma.md", None, tx);
+            assert_eq!(s.active.as_deref(), Some("Gamma.md"));
+            assert_eq!(s.nav_back, vec!["Alpha.md", "Beta.md"]);
+            assert!(s.nav_fwd.is_empty());
+
+            s.nav_back(tx);
+            assert_eq!(s.active.as_deref(), Some("Beta.md"));
+            assert_eq!(s.nav_fwd, vec!["Gamma.md"]);
+
+            s.nav_back(tx);
+            assert_eq!(s.active.as_deref(), Some("Alpha.md"));
+            assert_eq!(s.nav_fwd, vec!["Gamma.md", "Beta.md"]);
+
+            s.nav_forward(tx);
+            assert_eq!(s.active.as_deref(), Some("Beta.md"));
+
+            // Navigating to a fresh note clears forward history.
+            s.open_file("Alpha.md", None, tx);
+            assert!(s.nav_fwd.is_empty());
+        });
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn trash_per_item_delete_and_multi_restore_stays_open() {
+        let root = std::env::temp_dir().join(format!("quire-trash-c45-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("One.md"), "# First Heading\nBody preview line.\n").unwrap();
+        std::fs::write(root.join("Two.md"), "# Second Heading\nAnother preview.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(root.clone(), tx);
+            s.open_file("One.md", None, tx);
+            s.delete_note();
+            s.open_file("Two.md", None, tx);
+            s.delete_note();
+            s.open_trash(tx);
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        rt.update(|s, tx| {
+            s.poll(1.0, tx);
+            assert_eq!(s.trash_entries.len(), 2);
+            let one = s.trash_entries.iter().find(|e| e.original_rel == "One.md").expect("One in trash");
+            assert!(one.snippet.contains("First Heading"), "snippet: {:?}", one.snippet);
+            assert!(one.deleted_at > 0);
+            let one_name = one.name.clone();
+            s.restore_trash(&one_name, tx);
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        rt.update(|s, tx| {
+            s.poll(1.5, tx);
+            assert!(s.files().contains_key("One.md"));
+            assert_eq!(s.trash_entries.len(), 1);
+            assert!(matches!(s.layer(), Some(crate::layer::Layer::Trash(_))), "modal stays open while items remain");
+
+            // 2-click per-item permanent delete of Two.md.
+            let two_name = s.trash_entries[0].name.clone();
+            s.delete_trash_item_press(&two_name, tx);
+            assert!(matches!(s.layer(), Some(crate::layer::Layer::Trash(m)) if m.armed_delete.as_deref() == Some(two_name.as_str())));
+            s.delete_trash_item_press(&two_name, tx);
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        rt.update(|s, tx| {
+            s.poll(2.0, tx);
+            assert!(s.trash_entries.is_empty());
+        });
+        assert!(!root.join(".trash/.meta.json").exists(), "manifest cleaned up after last item deleted");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

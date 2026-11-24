@@ -29,6 +29,8 @@ pub enum LockDialog {
 pub struct TrashModal {
     /// First click on "Empty trash" arms permanent deletion; second click executes it.
     pub armed_empty: bool,
+    /// First click on a row's "Delete" arms permanent deletion of that trash entry.
+    pub armed_delete: Option<String>,
 }
 
 pub enum Layer {

@@ -100,6 +100,8 @@ pub const TABLE: &[Action] = &[
     a(99, "app.tab-9", "Tab 9", &[Global], Quire, &["Ctrl+9"]),
     a(100, "app.next-tab", "Next tab", &[Global], Quire, &["Ctrl+Tab"]),
     a(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
+    a(186, "app.nav-back", "Go back", &[Reader, Writer], Quire, &["Alt+Left"]),
+    a(187, "app.nav-forward", "Go forward", &[Reader, Writer], Quire, &["Alt+Right"]),
     // Reader.
     a(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
     a(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),

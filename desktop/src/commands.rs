@@ -114,6 +114,12 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     if !s.closed_tabs.is_empty() || !s.note_mode() {
         v.push(cmd("Reopen closed tab", "app.reopen-tab", |s, tx| s.reopen_tab(tx)));
     }
+    if !s.nav_back.is_empty() {
+        v.push(cmd("Go Back", "app.nav-back", |s, tx| s.nav_back(tx)));
+    }
+    if !s.nav_fwd.is_empty() {
+        v.push(cmd("Go Forward", "app.nav-forward", |s, tx| s.nav_forward(tx)));
+    }
     if s.sync_ready() {
         v.push(cmd("Sync now", "", |s, _| s.sync_now()));
     }

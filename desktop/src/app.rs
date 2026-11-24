@@ -278,6 +278,10 @@ pub struct App {
     pub keys_query: TextEdit,
     /// Recently closed tabs in this folder, for `app.reopen-tab` (`Ctrl+Shift+T`).
     pub closed_tabs: Vec<String>,
+    /// Back/forward navigation history within the open folder (`Alt+Left` / `Alt+Right`).
+    pub nav_back: Vec<String>,
+    pub nav_fwd: Vec<String>,
+    nav_jumping: bool,
     /// Trashed notes and folders inside `<vault>/.trash/`, scanned on the `Writer` thread.
     pub trash_entries: Vec<crate::vault::TrashEntry>,
 }
@@ -464,6 +468,9 @@ pub fn init() -> App {
         key_edit: None,
         keys_query: TextEdit::new(""),
         closed_tabs: Vec::new(),
+        nav_back: Vec::new(),
+        nav_fwd: Vec::new(),
+        nav_jumping: false,
         trash_entries: Vec::new(),
     };
     crate::theme::reload_omarchy();
@@ -1305,6 +1312,8 @@ impl App {
         self.flush_notes();
         self.store_session();
         self.closed_tabs.clear();
+        self.nav_back.clear();
+        self.nav_fwd.clear();
         match v.scope {
             Scope::Folder => {
                 self.notes.clear();
@@ -1667,6 +1676,16 @@ impl App {
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
         if changed {
+            if !self.nav_jumping
+                && let Some(prev) = from.as_ref()
+                && self.nav_back.last() != Some(prev)
+            {
+                self.nav_back.push(prev.clone());
+                if self.nav_back.len() > 64 {
+                    self.nav_back.remove(0);
+                }
+                self.nav_fwd.clear();
+            }
             self.cancel_unlock_job();
             let dir = match (old_idx, new_idx) {
                 (Some(a), Some(b)) if b < a => -1,
@@ -1932,15 +1951,82 @@ impl App {
         self.open_layer(Layer::Trash(crate::layer::TrashModal::default()), tx);
     }
 
+    /// Navigates back to the previously visited note (`Alt+Left`, `app.nav-back`).
+    pub fn nav_back(&mut self, tx: &mut Tx) {
+        while let Some(target) = self.nav_back.pop() {
+            if !self.files().contains_key(&target) || self.active.as_deref() == Some(target.as_str()) {
+                continue;
+            }
+            if let Some(cur) = self.active.clone() {
+                self.nav_fwd.push(cur);
+                if self.nav_fwd.len() > 64 {
+                    self.nav_fwd.remove(0);
+                }
+            }
+            self.nav_jumping = true;
+            self.open_file(&target, None, tx);
+            self.nav_jumping = false;
+            return;
+        }
+    }
+
+    /// Navigates forward to the next note in history (`Alt+Right`, `app.nav-forward`).
+    pub fn nav_forward(&mut self, tx: &mut Tx) {
+        while let Some(target) = self.nav_fwd.pop() {
+            if !self.files().contains_key(&target) || self.active.as_deref() == Some(target.as_str()) {
+                continue;
+            }
+            if let Some(cur) = self.active.clone() {
+                self.nav_back.push(cur);
+                if self.nav_back.len() > 64 {
+                    self.nav_back.remove(0);
+                }
+            }
+            self.nav_jumping = true;
+            self.open_file(&target, None, tx);
+            self.nav_jumping = false;
+            return;
+        }
+    }
+
     /// Restores a trashed note or folder out of `.trash/` on the `Writer` thread.
-    pub fn restore_trash(&mut self, trash_name: &str, tx: &mut Tx) {
+    /// Keeps `trash-dialog` open while other items remain in `.trash` (closed automatically in
+    /// `poll_trash` once the last item is restored).
+    pub fn restore_trash(&mut self, trash_name: &str, _tx: &mut Tx) {
         if self.refuse_in_note_mode() {
             return;
         }
         let Some(root) = self.vault.as_ref().map(|v| v.path.clone()) else { return };
+        if let Some(Layer::Trash(m)) = self.layers.iter_mut().find_map(|o| matches!(o.layer, Layer::Trash(_)).then_some(&mut o.layer)) {
+            m.armed_empty = false;
+            m.armed_delete = None;
+        }
         self.writer.send(Op::RestoreTrash { root, trash_name: trash_name.to_string() });
-        if self.layer_is(crate::layer::Kind::Trash) {
-            self.close_layer(tx);
+    }
+
+    /// Two-step armed permanent delete for a single entry inside `Layer::Trash`.
+    pub fn delete_trash_item_press(&mut self, trash_name: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() {
+            return;
+        }
+        let armed = self.layers.iter_mut().find_map(|o| match &mut o.layer {
+            Layer::Trash(m) => {
+                m.armed_empty = false;
+                if m.armed_delete.as_deref() == Some(trash_name) {
+                    m.armed_delete = None;
+                    Some(true)
+                } else {
+                    m.armed_delete = Some(trash_name.to_string());
+                    Some(false)
+                }
+            }
+            _ => None,
+        });
+        if armed == Some(true)
+            && let Some(root) = self.vault.as_ref().map(|v| v.path.clone())
+        {
+            self.writer.send(Op::DeleteTrashItem { root, trash_name: trash_name.to_string() });
+            self.toast("Deleted permanently", tx);
         }
     }
 
@@ -1951,6 +2037,7 @@ impl App {
         }
         let armed = self.layers.iter_mut().find_map(|o| match &mut o.layer {
             Layer::Trash(m) => {
+                m.armed_delete = None;
                 if m.armed_empty {
                     m.armed_empty = false;
                     Some(true)
@@ -2014,12 +2101,24 @@ impl App {
                     }
                     self.trash_entries = entries;
                     self.rebuild_names();
-                    if let Some(rel) = open_rel {
-                        self.open_file(&rel, None, tx);
+                    let stay_open = !self.trash_entries.is_empty() && self.layer_is(crate::layer::Kind::Trash);
+                    if !stay_open {
+                        if self.layer_is(crate::layer::Kind::Trash) {
+                            self.close_layer(tx);
+                        }
+                        if let Some(rel) = open_rel {
+                            self.open_file(&rel, None, tx);
+                        }
                     }
                     self.toast(&format!("Restored {label}"), tx);
                     self.sync_after_save();
                     changed = true;
+                }
+                crate::vault::TrashEvent::ItemDeleted { root, entries } => {
+                    if cur_root.as_ref() == Some(&root) {
+                        self.trash_entries = entries;
+                        changed = true;
+                    }
                 }
                 crate::vault::TrashEvent::Emptied { root } => {
                     if cur_root.as_ref() == Some(&root) {
