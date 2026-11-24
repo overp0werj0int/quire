@@ -486,3 +486,18 @@ fn page_82_autolinks() {
     let links: Vec<Option<&Link>> = runs(&d.blocks[0]).iter().map(|r| r.link.as_ref()).collect();
     assert_eq!(links.iter().flatten().count(), 2);
 }
+
+#[test]
+fn inline_highlight_marks_parse_and_respect_escapes_and_code() {
+    let d = build("Some ==highlighted text== and ==**bold** mark== here.\n");
+    let r = runs(&d.blocks[0]);
+    assert_eq!(plain(r), "Some highlighted text and bold mark here.");
+    assert!(r.iter().any(|x| x.t == "highlighted text" && x.mark));
+    assert!(r.iter().any(|x| x.t == "bold" && x.b && x.mark));
+    assert!(r.iter().any(|x| x.t == "Some " && !x.mark));
+
+    let esc = build("Escaped \\==literal== and `==in code==` and a == b == c.\n");
+    let re = runs(&esc.blocks[0]);
+    assert!(!re.iter().any(|x| x.mark), "escaped, code, and spaced == must not highlight: {re:?}");
+    assert_eq!(plain(re), "Escaped ==literal== and ==in code== and a == b == c.");
+}

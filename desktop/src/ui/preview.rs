@@ -110,7 +110,7 @@ impl Rich {
         let a = self.text.len();
         self.text.push_str(s);
         let b = self.text.len();
-        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono) {
+        if a < b && (sp.weight.is_some() || sp.italic || sp.color.is_some() || sp.size.is_some() || sp.mono || sp.bg.is_some()) {
             self.spans.push(Span { start: a as u32, end: b as u32, ..sp });
         }
     }
@@ -133,6 +133,8 @@ impl Rich {
                 weight: run.b.then_some(700.0),
                 italic: run.i,
                 color: if run.b && !linked { Some(c.strong) } else { None },
+                bg: run.mark.then_some(c.accent.alpha(0.22)),
+                bg_pad: if run.mark { 1.5 } else { 0.0 },
                 ..Span::default()
             };
             if run.code {

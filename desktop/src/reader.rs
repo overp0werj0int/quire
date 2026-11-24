@@ -1520,6 +1520,27 @@ impl App {
             Mode::Map => self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx),
         }
     }
+
+    /// `Ctrl+Z` and `Ctrl+Shift+Z` / `Ctrl+Y` in Preview: undoes or redoes on the note's shared
+    /// `TextEdit` history so task toggles and Edit Sheet saves can be undone without leaving Preview.
+    pub fn reader_undo(&mut self, redo: bool, tx: &mut Tx) {
+        if self.mode != Mode::Preview || self.active.is_none() || self.active_locked() {
+            return;
+        }
+        let before = self.active_text().to_string();
+        let e = self.cur_edit();
+        if redo {
+            e.redo();
+        } else {
+            e.undo();
+        }
+        self.after_edit();
+        if self.active_text() == before {
+            return;
+        }
+        self.flush_notes();
+        self.toast(if redo { "Redid" } else { "Undid" }, tx);
+    }
 }
 
 /// The page's folds: the map's folded headings for this tab, or the folds the note opens with
@@ -1724,5 +1745,28 @@ mod tests {
         assert!(from_up < 230.0, "same-direction key preserves wheel momentum: {from_up}");
         let from_down = hs.step_from(48.0, 0.48);
         assert_eq!(from_down, 230.0, "opposite-direction key starts from current offset");
+    }
+
+    #[test]
+    fn preview_undo_redo_reverts_and_reapplies_task_toggle() {
+        let dir = std::env::temp_dir().join(format!("quire-preview-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Tasks.md"), "# Tasks\n\n- [ ] First task\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Tasks.md", None, tx);
+            s.mode = crate::app::Mode::Preview;
+            s.toggle_task(2, true);
+        });
+        assert!(rt.state.active_text().contains("- [x] First task"));
+        rt.update(|s, tx| s.reader_undo(false, tx));
+        assert!(rt.state.active_text().contains("- [ ] First task"), "Ctrl+Z in Preview must undo task toggle");
+        rt.update(|s, tx| s.reader_undo(true, tx));
+        assert!(rt.state.active_text().contains("- [x] First task"), "Ctrl+Shift+Z in Preview must redo task toggle");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

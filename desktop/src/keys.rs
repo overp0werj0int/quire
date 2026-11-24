@@ -352,6 +352,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.copy-all" | "map.copy-all" => |s, tx| s.copy_all(tx),
         "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
+        "reader.undo" => |s, tx| s.reader_undo(false, tx),
+        "reader.redo" => |s, tx| s.reader_undo(true, tx),
         "sheet.save" => |s, tx| s.sheet_save(tx),
         "sheet.cancel" => |s, tx| s.sheet_escape(tx),
         "help.close" => |s, tx| s.close_layer(tx),

@@ -76,6 +76,7 @@ const READER: &[Group] = &[
             h("Edit the whole note", &["app.mode-source"]),
             k("Edit the block under the mouse", &["reader.edit-block"]),
             k("Edit its section", &["reader.edit-section"]),
+            h("Undo / redo", &["reader.undo", "reader.redo"]),
             k("In the edit sheet: save to the file / cancel", &["sheet.save", "sheet.cancel"]),
         ],
     ),

@@ -142,12 +142,22 @@ impl App {
         self.show_sheet(pick, scope, tx);
     }
 
-    /// The sheet on source lines `lines` of the note shown, from the map (MAP-020).
+    /// The sheet on source lines `lines` of the note shown, from the map or lightbox (MAP-020).
     pub fn open_sheet_lines(&mut self, lines: Range<usize>, scope: Scope, tx: &mut Tx) {
-        if self.mode != Mode::Map || self.active_locked() {
+        if !matches!(self.mode, Mode::Map | Mode::Preview) || self.active_locked() {
             return;
         }
-        self.show_sheet(Pick { lines, before: None, after: None }, scope, tx);
+        let pick = if self.mode == Mode::Preview {
+            let doc = self.doc();
+            doc.blocks
+                .iter()
+                .position(|b| b.lines.start == lines.start)
+                .and_then(|i| pick_range(&doc, i, i, scope))
+                .unwrap_or(Pick { lines, before: None, after: None })
+        } else {
+            Pick { lines, before: None, after: None }
+        };
+        self.show_sheet(pick, scope, tx);
     }
 
     fn show_sheet(&mut self, pick: Pick, scope: Scope, tx: &mut Tx) {
@@ -322,5 +332,29 @@ mod tests {
         let s = pick_range(&doc, at(&doc, 4), at(&doc, 12), Scope::Section).unwrap();
         assert_eq!(s.lines, 2..13);
         assert_eq!((s.before, s.after), (None, None));
+    }
+
+    #[test]
+    fn preview_lightbox_edit_opens_edit_sheet() {
+        let dir = std::env::temp_dir().join(format!("quire-lb-edit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Pic.md"), "# Pic\n\n![alt](attachments/a.png)\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Pic.md", None, tx);
+            s.mode = crate::app::Mode::Preview;
+            let img = crate::md::Img { alt: "alt".into(), src: "attachments/a.png".into(), embed: false };
+            s.open_image_lightbox(vec![img], 0, 2..3, tx);
+        });
+        assert!(matches!(rt.state.layer(), Some(Layer::Lightbox(_))));
+        rt.update(|s, tx| s.lightbox_edit(tx));
+        let sh = rt.state.sheet().expect("lightbox_edit in Preview must open Edit Sheet");
+        assert_eq!(sh.pick.lines, 2..3);
+        assert_eq!(sh.edit.text, "![alt](attachments/a.png)");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

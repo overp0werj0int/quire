@@ -22,6 +22,8 @@ pub struct Run {
     pub b: bool,
     pub i: bool,
     pub s: bool,
+    /// `==highlighted text==` inline mark.
+    pub mark: bool,
     pub code: bool,
     /// Raw inline HTML, shown literally (PAGE-80).
     pub raw: bool,
@@ -48,7 +50,7 @@ impl Run {
         !self.code && !self.raw && !self.br && !self.soft && !self.note && self.img.is_none() && self.anchor.is_none() && self.link.is_none()
     }
     fn same_style(&self, o: &Run) -> bool {
-        self.b == o.b && self.i == o.i && self.s == o.s
+        self.b == o.b && self.i == o.i && self.s == o.s && self.mark == o.mark
     }
 }
 
@@ -495,36 +497,52 @@ impl<'a> Walker<'a> {
 
     /// Inline events from here to the first block event, as runs, and the byte range they span.
     fn inline(&mut self) -> (Vec<Run>, Range<usize>) {
-        let mut out: Vec<Run> = Vec::new();
+        let mut out: Vec<(Run, bool)> = Vec::new();
         let (mut b, mut it, mut s) = (0, 0, 0);
         let mut links: Vec<Link> = Vec::new();
         let start = self.ev.get(self.i).map_or(0, |e| e.1.start);
         let mut end = start;
-        let push = |out: &mut Vec<Run>, mut r: Run, b: i32, it: i32, s: i32, links: &[Link]| {
+        let push = |out: &mut Vec<(Run, bool)>, mut r: Run, escaped_eq: bool, b: i32, it: i32, s: i32, links: &[Link]| {
             r.b = b > 0;
             r.i = it > 0;
             r.s = s > 0;
             if r.link.is_none() {
                 r.link = links.last().cloned();
             }
-            out.push(r);
+            out.push((r, escaped_eq));
         };
         while self.i < self.ev.len() && is_inline(&self.ev[self.i].0) {
             let (e, r) = self.ev[self.i].clone();
             end = end.max(r.end);
             self.i += 1;
             match e {
-                Event::Text(t) => push(&mut out, Run::text(t.to_string()), b, it, s, &links),
-                Event::Code(t) => push(&mut out, Run { t: t.to_string(), code: true, ..Run::default() }, b, it, s, &links),
-                Event::SoftBreak => push(&mut out, Run { t: " ".into(), soft: true, ..Run::default() }, b, it, s, &links),
-                Event::HardBreak => push(&mut out, Run { t: "\n".into(), br: true, ..Run::default() }, b, it, s, &links),
+                Event::Text(t) => {
+                    let mut bs = 0;
+                    let mut k = r.start;
+                    while k > 0 && self.src.as_bytes()[k - 1] == b'\\' {
+                        bs += 1;
+                        k -= 1;
+                    }
+                    let leading_esc = self.src.as_bytes().get(r.start) == Some(&b'\\') || bs % 2 == 1;
+                    if leading_esc && t.starts_with('=') {
+                        push(&mut out, Run::text("="), true, b, it, s, &links);
+                        if t.len() > 1 {
+                            push(&mut out, Run::text(t[1..].to_string()), false, b, it, s, &links);
+                        }
+                    } else {
+                        push(&mut out, Run::text(t.to_string()), false, b, it, s, &links);
+                    }
+                }
+                Event::Code(t) => push(&mut out, Run { t: t.to_string(), code: true, ..Run::default() }, false, b, it, s, &links),
+                Event::SoftBreak => push(&mut out, Run { t: " ".into(), soft: true, ..Run::default() }, false, b, it, s, &links),
+                Event::HardBreak => push(&mut out, Run { t: "\n".into(), br: true, ..Run::default() }, false, b, it, s, &links),
                 Event::InlineHtml(h) => {
                     let h = h.trim();
                     if h.starts_with("<!--") {
                     } else if is_br(h) {
-                        push(&mut out, Run { t: "\n".into(), br: true, ..Run::default() }, b, it, s, &links);
+                        push(&mut out, Run { t: "\n".into(), br: true, ..Run::default() }, false, b, it, s, &links);
                     } else {
-                        push(&mut out, Run { t: h.to_string(), raw: true, ..Run::default() }, b, it, s, &links);
+                        push(&mut out, Run { t: h.to_string(), raw: true, ..Run::default() }, false, b, it, s, &links);
                     }
                 }
                 Event::FootnoteReference(label) => {
@@ -539,7 +557,7 @@ impl<'a> Walker<'a> {
                     self.cites[n].1 += 1;
                     let (num, sub) = (n + 1, self.cites[n].1);
                     let r = Run { t: num.to_string(), note: true, anchor: Some(format!("fnref-{num}-{sub}")), link: Some(Link::Anchor(format!("fn-{num}"))), ..Run::default() };
-                    push(&mut out, r, b, it, s, &links);
+                    push(&mut out, r, false, b, it, s, &links);
                 }
                 Event::Start(Tag::Strong) => b += 1,
                 Event::End(TagEnd::Strong) => b = (b - 1).max(0),
@@ -565,16 +583,16 @@ impl<'a> Walker<'a> {
                         Some(img) => {
                             let link = links.last().cloned().or_else(|| Some(Link::Url(img.src.clone())));
                             let t = if alt.is_empty() { "image".to_string() } else { alt };
-                            push(&mut out, Run { t, img: Some(img.src), link, ..Run::default() }, b, it, s, &links);
+                            push(&mut out, Run { t, img: Some(img.src), link, ..Run::default() }, false, b, it, s, &links);
                         }
                         // `![[Note]]`, an embed of a note: its link.
-                        None => push(&mut out, Run { t: dest_url.to_string(), link: Some(Link::Wiki(dest_url.to_string())), ..Run::default() }, b, it, s, &links),
+                        None => push(&mut out, Run { t: dest_url.to_string(), link: Some(Link::Wiki(dest_url.to_string())), ..Run::default() }, false, b, it, s, &links),
                     }
                 }
                 _ => {}
             }
         }
-        (finish(out), start..end)
+        (finish(apply_highlights(out)), start..end)
     }
 
     fn list(&mut self, start: Option<u64>, depth: usize, r: &Range<usize>) -> Block {
@@ -721,7 +739,108 @@ fn own_number(s: &str) -> Option<u64> {
     digits.parse().ok()
 }
 
-// ---------- Runs: merge, typographer, autolinks, tags ----------
+// ---------- Runs: highlights, merge, typographer, autolinks, tags ----------
+
+/// Parses `==highlighted text==` spans across non-code, non-escaped runs (skipping inline code
+/// and backslash-escaped `\==`, and requiring non-whitespace just inside both `==` marks).
+fn apply_highlights(items: Vec<(Run, bool)>) -> Vec<Run> {
+    // Merge adjacent plain non-escaped runs of identical style first so pulldown-cmark splits on
+    // unescaped `=` recombine, while escaped `\=` stays isolated and cannot form `==`.
+    let mut coalesced: Vec<(Run, bool)> = Vec::with_capacity(items.len());
+    for (r, esc) in items {
+        if !esc
+            && r.plain()
+            && let Some((last, last_esc)) = coalesced.last_mut()
+            && !*last_esc
+            && last.plain()
+            && last.same_style(&r)
+        {
+            last.t.push_str(&r.t);
+            continue;
+        }
+        coalesced.push((r, esc));
+    }
+
+    enum Piece {
+        Mark(Run),
+        Run(Run),
+    }
+
+    let mut pieces: Vec<Piece> = Vec::with_capacity(coalesced.len());
+    for (r, esc) in coalesced {
+        if esc || !r.plain() || !r.t.contains("==") {
+            pieces.push(Piece::Run(r));
+            continue;
+        }
+        let s = r.t.as_str();
+        let mut at = 0;
+        while let Some(rel) = s[at..].find("==") {
+            let pos = at + rel;
+            if pos > at {
+                pieces.push(Piece::Run(Run { t: s[at..pos].to_string(), ..r.clone() }));
+            }
+            pieces.push(Piece::Mark(Run { t: "==".to_string(), ..r.clone() }));
+            at = pos + 2;
+        }
+        if at < s.len() {
+            pieces.push(Piece::Run(Run { t: s[at..].to_string(), ..r }));
+        }
+    }
+
+    let mut out = Vec::with_capacity(pieces.len());
+    let mut i = 0;
+    while i < pieces.len() {
+        match &pieces[i] {
+            Piece::Run(r) => {
+                out.push(r.clone());
+                i += 1;
+            }
+            Piece::Mark(open) => {
+                // Must have non-whitespace immediately inside the opening `==`.
+                let open_ok = match pieces.get(i + 1) {
+                    Some(Piece::Run(r)) => !r.br && !r.soft && r.t.chars().next().is_some_and(|c| !c.is_whitespace()),
+                    _ => false,
+                };
+                let close = if open_ok {
+                    let mut found = None;
+                    for j in (i + 2)..pieces.len() {
+                        match &pieces[j] {
+                            Piece::Run(r) if r.br => break,
+                            Piece::Mark(_) => {
+                                let close_ok = match &pieces[j - 1] {
+                                    Piece::Run(r) => !r.br && !r.soft && r.t.chars().next_back().is_some_and(|c| !c.is_whitespace()),
+                                    _ => false,
+                                };
+                                if close_ok {
+                                    found = Some(j);
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    found
+                } else {
+                    None
+                };
+                if let Some(j) = close {
+                    for p in &pieces[i + 1..j] {
+                        let mut r = match p {
+                            Piece::Run(r) | Piece::Mark(r) => r.clone(),
+                        };
+                        r.mark = true;
+                        out.push(r);
+                    }
+                    i = j + 1;
+                } else {
+                    out.push(open.clone());
+                    i += 1;
+                }
+            }
+        }
+    }
+    out
+}
 
 /// Joins neighbouring plain runs of one style, then applies the typographer's remaining
 /// replacements (PAGE-81), autolinks (PAGE-82) and `#tags` (BLK-101).
