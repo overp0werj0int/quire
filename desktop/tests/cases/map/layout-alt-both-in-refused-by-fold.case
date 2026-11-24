@@ -1,0 +1,22 @@
+In Both sides with the right side folded, Alt+Left on the first left branch still stops with a toast: the branch it would go under is across the root.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:1@0.8 key:Left@1.4 key:Left+alt@2.0 key:s+cmd@3.0
+at: 2.4
+expect: label:map-node:9: 'South, level 2, expanded'
+expect: text:toast: 'Nothing above on this side to go under'
+expect: nodes: 1 9 11 12 14
+--- before
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

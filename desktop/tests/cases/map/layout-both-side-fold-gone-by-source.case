@@ -1,0 +1,24 @@
+A layout changed in Source forgets a half-folded root: typing Down, and then Both sides again, shows the whole map.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:5:2@0.8 key:m+cmd@1.40 tap:editor@1.80 key:Home+cmd@2.00 key:Down@2.10 key:Down@2.20 key:End@2.30 key:Backspace@2.40 key:Backspace@2.45 key:Backspace@2.50 key:Backspace@2.55 type:down@2.90 key:m+cmd@3.60 key:m+cmd@4.40 tap:editor@4.80 key:Home+cmd@5.00 key:Down@5.10 key:Down@5.20 key:End@5.30 key:Backspace@5.40 key:Backspace@5.45 key:Backspace@5.50 key:Backspace@5.55 type:both@5.90 key:m+cmd@6.60
+expect: nodes: 5 7 9 11 13 15 16 18
+expect: text:map-pill:5:2: None
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+- Rent
+
+## East
+
+## South
+
+- Food
+- Fares
+
+## West

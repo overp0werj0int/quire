@@ -1,0 +1,23 @@
+In Down a click on a task whose bracket alone is cut by the canvas edge ticks it and moves nothing.
+note: Plan.md
+events: key:m+cmd@0.3 wheel:0,-450,900,650@1.0 tap:map-task:7@1.8 key:s+cmd@3.0
+at: 2.8
+expect: rect:map-task:7: [618.22, 63.05, 26.91, 26.91]
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- [ ] Rent
+- [ ] Food
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- [x] Rent
+- [ ] Food

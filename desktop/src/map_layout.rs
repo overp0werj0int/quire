@@ -108,6 +108,11 @@ impl Sides {
         self.each().find(|s| s.nodes.contains(&i)).map(|s| s.dir)
     }
 
+    /// Nodes `a` and `b` grow the same way: neither is across Both's root from the other.
+    pub fn same(&self, a: usize, b: usize) -> bool {
+        self.way(a) == self.way(b)
+    }
+
     /// The side across the root from `d`.
     pub fn other(&self, d: Dir) -> Option<Dir> {
         self.second.as_ref()?;
@@ -418,11 +423,6 @@ impl Laid {
             return self.sides.each().map(|s| Ring { folded: whole || half == Some(s.dir), side: s.clone() }).collect();
         }
         self.at[i].map(|p| Ring { side: Side { dir: p.dir, nodes: i + 1..t.nodes[i].end }, folded: whole }).into_iter().collect()
-    }
-
-    /// Nodes `a` and `b` grow the same way: neither is across Both's root from the other.
-    pub fn same_side(&self, a: usize, b: usize) -> bool {
-        self.at[a].zip(self.at[b]).is_none_or(|(p, q)| p.dir == q.dir)
     }
 
     /// What arrow `a` means on node `i`. Both's root has children either side, so its Left and

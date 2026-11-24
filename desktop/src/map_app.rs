@@ -75,10 +75,9 @@ impl MapView {
     /// After change `s` turned map `old` into `t`: the folds and the selection follow their
     /// nodes, the selection else to the node at the change (MAP-010, MAP-068).
     fn follow(&mut self, old: &Tree, t: &Tree, s: &map::Splice) {
-        let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
         self.selected = map::follow(old, t, s, self.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
         let sel = t.find(self.selected).unwrap_or(ROOT);
-        self.folds.follow(&map_layout::sides(t), sel, |id| map::follow(old, t, s, id).filter(shut));
+        self.folds.follow(old, t, sel, |id| map::follow(old, t, s, id));
         self.fold_ver += 1;
     }
 }
@@ -894,7 +893,7 @@ impl App {
             Some(Rel::Next) => map::Step::Down,
             None => return,
         };
-        if step == map::Step::In && self.map_editable() && map::step(&t, s, step).is_ok_and(|at| !l.same_side(s, at.node())) {
+        if step == map::Step::In && self.map_editable() && map::step(&t, s, step).is_ok_and(|at| !l.sides.same(s, at.node())) {
             return self.toast(OTHER_SIDE, tx);
         }
         self.map_step(step, tx);
@@ -1366,7 +1365,8 @@ impl App {
         let (x_lo, x_hi, y_lo, y_hi) = if room > 0.0 {
             let lh = page::line(b, 1.45);
             let [x_lo, x_hi] = p.task_span(l.metrics.pad_x, room);
-            (x_lo, x_hi, p.y, p.y + lh.min(p.h))
+            let (top, h) = p.content(l.metrics.pad_b);
+            (x_lo, x_hi, p.y + top, p.y + top + lh.min(h))
         } else {
             (p.x, p.right(), p.y, p.bottom())
         };
@@ -1374,8 +1374,9 @@ impl App {
     }
 
     /// The layout picker's pick (MAP-089): the note says `layout`, as one undo step. The
-    /// selection stays, the nodes glide to their new places and the camera, at the zoom it had,
-    /// glides to centre the selected node. Picking the layout the note has writes nothing.
+    /// selection stays, the nodes glide to their new places and the camera glides: a map that was
+    /// all in view stays so, else the selected node is centred at the zoom it had. Picking the
+    /// layout the note has writes nothing.
     pub fn map_set_layout(&mut self, layout: map::Layout, tx: &mut Tx) {
         self.map_commit(tx);
         self.close_layers(tx);
@@ -1483,10 +1484,9 @@ impl App {
     /// placed, or None with no note shown.
     pub(crate) fn map_open_to(&mut self, i: usize) -> Option<bool> {
         let t = self.map_tree();
-        let sides = map_layout::sides(&t);
         let v = self.map_view_mut()?;
         v.selected = t.nodes[i].id;
-        if v.folds.open_to(&t, &sides, i) {
+        if v.folds.open_to(&t, i) {
             v.fold_ver += 1;
         }
         Some(v.placed)
@@ -1826,6 +1826,11 @@ impl App {
         e.multi = !matches!(new.kind, map::NewKind::Heading(_));
         let t = self.map_tree();
         let n = s.focus.map_or(ROOT, |l| t.at_line(l));
+        if let Some(v) = self.map_view_mut()
+            && v.folds.keep_shown(&shown, &t, n, |id| map::follow(&shown, &t, &change, id))
+        {
+            v.fold_ver += 1;
+        }
         self.map_open_to(n);
         self.map_relayout(Some((&*shown, &change)), tx);
         self.frame_inline_edit(n, tx);

@@ -1563,10 +1563,10 @@ impl App {
 
     /// Folds or unfolds the heading whose map node is `n`, on the page and on the map.
     pub fn toggle_page_fold(&mut self, n: usize) {
-        let (t, l) = (self.map_tree(), self.map_laid());
+        let t = self.map_tree();
         if let Some(v) = self.map_view_mut() {
             let fold = !v.folds.whole(t.nodes[n].id);
-            v.folds.set(&t, &l.sides, n, None, fold);
+            v.folds.set(&t, &crate::map_layout::sides(&t), n, None, fold);
             v.fold_ver += 1;
         }
     }

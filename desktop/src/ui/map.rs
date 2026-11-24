@@ -266,7 +266,7 @@ pub(super) fn canvas(v: V) -> El {
     for &i in &nodes {
         let of = RingOf { t: &t, l: &l, i, editing: editing == Some(i), lite, hit, c, font: map_app::chip_font(b, mono) };
         for (nth, r) in rings(i).iter().enumerate() {
-            world = world.children(fold(&of, r, nth).map(|e| e.opacity(dim(i))));
+            world = world.children(fold(&of, r, nth).into_iter().flatten().map(|e| e.opacity(dim(i))));
         }
     }
     if let Some((_, p, room, st, [w, _])) = field_at {
@@ -848,12 +848,12 @@ fn fold_press(i: usize, d: crate::map_geom::Dir) -> impl Fn(&mut App, &mut Tx) +
 }
 
 /// A node's `nth` fold ring and its hit target, or the `+N` pill in the ring's place.
-fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate::map_layout::Ring, nth: usize) -> impl Iterator<Item = El> + use<> {
+fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate::map_layout::Ring, nth: usize) -> [Option<El>; 3] {
     let (mut dot, mut target, mut pill) = (None, None, None);
     let (d, folded) = (ring.side.dir, ring.folded);
     let tail = key_tail(&node_key(t, i)).to_string();
     let branch = branch_color(c, t.nodes[i].branch);
-    let (Some(p), Some([x0, y0, x1, y1])) = (l.at[i], l.ring_hit(i, d, hit)) else { return dot.into_iter().chain(target).chain(pill) };
+    let (Some(p), Some([x0, y0, x1, y1])) = (l.at[i], l.ring_hit(i, d, hit)) else { return [dot, target, pill] };
     let [cx, cy] = p.ring(d);
     // A node with a ring on each side keys the second by its number.
     let key = |name: &str| if nth == 0 { format!("{name}:{tail}") } else { format!("{name}:{tail}:{}", nth + 1) };
@@ -938,7 +938,7 @@ fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate:
         }
         target = Some(hit_el);
     }
-    dot.into_iter().chain(target).chain(pill)
+    [dot, target, pill]
 }
 
 /// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it

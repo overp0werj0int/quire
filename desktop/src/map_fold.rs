@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::map::{NodeId, ROOT, Tree};
 use crate::map_geom::Dir;
-use crate::map_layout::Sides;
+use crate::map_layout::{Sides, sides};
 
 #[derive(Clone, Debug, Default)]
 pub struct Folds {
@@ -68,8 +68,11 @@ impl Folds {
         self.whole(t.nodes[p].id) || (p == ROOT && self.side(sides).is_some_and(|d| sides.way(i) == Some(d)))
     }
 
-    /// Opens what hides node `i`. Whether anything did.
-    pub fn open_to(&mut self, t: &Tree, sides: &Sides, i: usize) -> bool {
+    /// Opens what hides node `i`. Whether anything did. A root with one side forgets the side
+    /// it had folded, so the layout's way back to two shows both.
+    pub fn open_to(&mut self, t: &Tree, i: usize) -> bool {
+        let sides = &sides(t);
+        self.side = self.side(sides);
         let mut opened = false;
         let mut a = i;
         while let Some(p) = t.nodes[a].parent {
@@ -79,11 +82,23 @@ impl Folds {
         opened
     }
 
-    /// The folds after a change to the note: `keep` follows a folded node, None when it has
-    /// gone or has nothing left to fold. A root that lost a side opens the other, and the side
-    /// that now holds node `sel` opens.
-    pub fn follow(&mut self, sides: &Sides, sel: usize, keep: impl FnMut(NodeId) -> Option<NodeId>) {
-        self.whole = std::mem::take(&mut self.whole).into_iter().filter_map(keep).collect();
-        self.side = self.side(sides).filter(|&d| sides.way(sel) != Some(d));
+    /// The folds after a change turned `old` into `t`, where `to` says which node a node became,
+    /// None when it has gone, and `sel` is the node now selected.
+    pub fn follow(&mut self, old: &Tree, t: &Tree, sel: usize, to: impl Fn(NodeId) -> Option<NodeId>) {
+        let shut = |id: &NodeId| t.find(*id).is_some_and(|i| !t.nodes[i].children.is_empty());
+        self.whole = std::mem::take(&mut self.whole).into_iter().filter_map(&to).filter(shut).collect();
+        self.keep_shown(old, t, sel, to);
+    }
+
+    /// After a change turned `old` into `t`: a root that lost a side opens the other, and a
+    /// folded side opens when it now holds node `sel`, or a branch that showed has come to it
+    /// as the two sides balance again. Whether anything opened.
+    pub fn keep_shown(&mut self, old: &Tree, t: &Tree, sel: usize, to: impl Fn(NodeId) -> Option<NodeId>) -> bool {
+        let Some(d) = self.side else { return false };
+        let (was, now) = (sides(old), sides(t));
+        let shown = old.nodes[ROOT].children.iter().filter(|&&c| was.way(c) != Some(d));
+        let mut still = shown.filter_map(|&c| t.find(to(old.nodes[c].id)?)).chain([sel]);
+        self.side = self.side(&now).filter(|_| !still.any(|i| now.way(i) == Some(d)));
+        self.side.is_none()
     }
 }
