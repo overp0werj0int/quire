@@ -160,8 +160,9 @@ role `button` and not `radio`, because Rune picks a radio on an arrow key and th
 must write the note only on Enter, Space, a press or a digit. Each tile draws the real
 `map_layout::layout` on a fixed sample tree through `map::build`, with the map's own branch
 curves (`tapered_on`), memoised on the layout and the palette. A pick is `App::map_set_layout`:
-`map::layout_splice` writes `markmap: layout` into the front matter (None when the note
-already says it; Right removes the line and whatever it leaves empty), and `map_apply_inner`
+`map::layout_splice` writes `markmap: layout` into the front matter (refused when the note
+already says it, and with a toast when `markmap:` has its options on one line; it fences bare
+front matter; Right removes every `layout:` line and whatever that leaves empty), and `map_apply_inner`
 takes `Reveal::Keep`, which leaves the selection where it was and scrolls nothing, then the
 camera glides to centre the selected node at the zoom it had. `layout` is read by the desktop
 only (`SYNC.md`).
