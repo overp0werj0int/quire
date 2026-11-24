@@ -44,10 +44,11 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
         Layer::Layouts => Some(super::map::layouts(v)),
     };
     let Some(card) = card else { return };
-    // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
+    // A press outside any layer routes through `App::dismiss` (for the edit sheet, `sheet_escape`:
+    // closes a clean sheet at once, and arms/confirms discard on a dirty sheet, SHEET-015).
     // As it closes, focus goes back where it was (`App::give_back`); when that is gone, such as
     // the row a menu deleted, the note has the keyboard, as for any stop that goes away.
-    let mut el = card.el.modal_tx(kind != Kind::Sheet, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind)).focus_return(crate::focus::NOTE);
+    let mut el = card.el.modal_tx(true, |s: &mut App, tx| s.dismiss(tx)).modal_keeps(keeps(kind)).focus_return(crate::focus::NOTE);
     if matches!(kind, Kind::Drawer(_)) {
         // In a drawer the first Esc takes a showing notice and the keyboard stays where it was
         // (`App::esc_takes_notice`). This hears it from any stop inside before Rune's modal
@@ -105,15 +106,12 @@ fn plane(kind: Kind) -> (&'static str, i16) {
     }
 }
 
-/// What stays live to the pointer outside the card: the toast and the notice; over the edit
-/// sheet the strip that moves the window (SHEET-015); over a drawer the title bar and the
-/// window corner.
+/// What stays live to the pointer outside the card: the toast and the notice; over a drawer
+/// the title bar and the window corner.
 fn keeps(kind: Kind) -> Vec<&'static str> {
     let mut keys = vec!["toast-row", "notice"];
-    match kind {
-        Kind::Sheet => keys.push("sheet-drag"),
-        Kind::Drawer(_) => keys.extend(["titlebar", "left-zone"]),
-        _ => {}
+    if matches!(kind, Kind::Drawer(_)) {
+        keys.extend(["titlebar", "left-zone"]);
     }
     keys
 }

@@ -18,7 +18,7 @@ use crate::theme;
 const PAD: f32 = 22.0;
 const GAP: f32 = 10.0;
 const FADE: f32 = 28.0;
-const KEY_ROW: f32 = 24.0;
+const KEY_ROW: f32 = 30.0;
 /// The title row's height: one line of bodySmall.
 const TITLE: f32 = 18.0;
 
@@ -93,23 +93,48 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .scroll_margin(6.0)
         .child(el().key("sheet-pad").w_full().py(6.0).child(input));
 
-    // SHEET-030, SHEET-038, SHEET-047: the key row, or the problem in its place.
+    // SHEET-030, SHEET-038, SHEET-047: the key row with clickable actions, or the problem with a close button.
     let key_of = |id: &str| s.keymap.label(id);
+    let armed = sh.armed.is_some();
     let foot = match sh.problem {
-        Some(p) => row().key("sheet-problem").h(KEY_ROW).w_full().center_y().child(text(p).font(sans(11.5, 400.0)).color(c.red).truncate().shrink().min_w(0.0)),
+        Some(p) => {
+            let cancel_lbl = if armed { "Discard" } else { "Close" };
+            row()
+                .key("sheet-problem")
+                .h(KEY_ROW)
+                .w_full()
+                .gap(12.0)
+                .center_y()
+                .child(text(p).font(sans(11.5, 400.0)).color(c.red).truncate().shrink().min_w(0.0).grow(1.0))
+                .child(super::widgets::outline_button(v.p, "sheet-btn-cancel", cancel_lbl, 28.0, |s, tx| s.sheet_escape(tx)))
+        }
         None => {
-            let armed = sh.armed.is_some();
             let (cancel, tone) = if armed { ("again to discard your edit", c.text) } else { ("cancels", c.faint) };
+            let hints = row()
+                .gap(8.0)
+                .center_y()
+                .grow(1.0)
+                .shrink()
+                .min_w(0.0)
+                .child(cap(key_of("sheet.cancel"), v.p))
+                .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone).truncate().shrink().min_w(0.0))
+                .child(el().w(10.0 - 8.0))
+                .child(cap(key_of("sheet.save"), v.p))
+                .child(text("saves").font(sans(11.5, 400.0)).color(c.faint));
+            let cancel_lbl = if armed { "Discard" } else { "Cancel" };
+            let actions = row()
+                .gap(8.0)
+                .center_y()
+                .child(super::widgets::outline_button(v.p, "sheet-btn-cancel", cancel_lbl, 28.0, |s, tx| s.sheet_escape(tx)))
+                .child(super::widgets::primary_button(v.p, "sheet-btn-save", "Save", 28.0, 14.0, 12.5, |s, tx| s.sheet_save(tx)));
             row()
                 .key("sheet-keys")
                 .h(KEY_ROW)
-                .gap(8.0)
+                .w_full()
+                .gap(12.0)
                 .center_y()
-                .child(cap(key_of("sheet.cancel"), v.p))
-                .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone))
-                .child(el().w(10.0 - 8.0))
-                .child(cap(key_of("sheet.save"), v.p))
-                .child(text("saves").font(sans(11.5, 400.0)).color(c.faint))
+                .child(hints)
+                .child(actions)
         }
     };
 
