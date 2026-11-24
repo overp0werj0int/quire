@@ -50,6 +50,7 @@ pub(super) fn menu(v: V, m: &Menu) -> Card {
         MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, 0.0, block(v, *line)),
         MenuOf::Node(id) => list(v, "node-menu", m.at, 200.0, None, 0.0, node(v, *id)),
         MenuOf::RecentVault(path) => list(v, "recent-menu", m.at, 180.0, None, 0.0, recent_vault(path)),
+        MenuOf::Tab(t) => list(v, "tab-menu", m.at, 180.0, None, 0.0, tab_menu(v, t)),
     };
     Card { el, plane: None }
 }
@@ -131,16 +132,52 @@ fn recent_vault(path: &std::path::Path) -> Vec<Item> {
     vec![Item { key: Some("menu-forget"), ..item("Remove from recent", Box::new(move |s, tx| s.forget_vault(&p, tx))) }]
 }
 
-/// The tree's menu: new notes and folders, rename, move or delete for a note, and delete for a
-/// folder.
+/// An Open shelf tab's context menu: Rename (folder mode), Copy path, Close, Close others.
+fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
+    let mut items = Vec::new();
+    if let crate::app::Shelved::Tab(p) = t {
+        let p = p.clone();
+        items.push(Item {
+            key: Some("menu-tab-rename"),
+            ..item("Rename", Box::new(move |s, tx| s.rename_note_path(&p, tx)))
+        });
+    }
+    let (t1, t2, t3) = (t.clone(), t.clone(), t.clone());
+    items.push(Item {
+        key: Some("menu-tab-copy-path"),
+        ..item("Copy path", Box::new(move |s, tx| s.copy_shelved_path(&t1, tx)))
+    });
+    let close_key = Some(v.s.keymap.label("app.close-tab")).filter(|k| !k.is_empty());
+    items.push(Item {
+        key: Some("menu-tab-close"),
+        keys: close_key,
+        ..item("Close", Box::new(move |s, tx| {
+            s.close_shelved(&t2);
+            s.keys_to_note(tx);
+        }))
+    });
+    items.push(Item {
+        key: Some("menu-tab-close-others"),
+        enabled: v.s.shelf().len() > 1,
+        ..item("Close others", Box::new(move |s, tx| s.close_other_shelved(&t3, tx)))
+    });
+    items
+}
+
+/// The tree's menu: new notes and folders, rename, move or delete for a note, and rename or delete
+/// for a folder.
 fn tree(on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
     match on.clone() {
         MenuOn::Folder(f) => {
-            let (f2, f3) = (f.clone(), f.clone());
+            let (f2, f3, f4) = (f.clone(), f.clone(), f.clone());
             vec![
                 item("New note here", Box::new(move |s, tx| s.new_note_in(Some(&f), None, tx))),
                 item("New folder here", Box::new(move |s, tx| s.start_new_folder(&f2, tx))),
-                item("Delete folder", Box::new(move |s, tx| s.ask_delete_folder(&f3, at, tx))),
+                Item {
+                    key: Some("menu-rename-folder"),
+                    ..item("Rename folder", Box::new(move |s, tx| s.start_rename_folder(&f3, tx)))
+                },
+                item("Delete folder", Box::new(move |s, tx| s.ask_delete_folder(&f4, at, tx))),
             ]
         }
         MenuOn::Note(n) => {

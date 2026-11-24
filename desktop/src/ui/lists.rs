@@ -79,6 +79,7 @@ pub(super) fn tree_arrows(el: El, branch: Branch, parent: Option<String>) -> El 
             }
             (Key::Right, _) => {}
             (Key::Function(2), Branch::Note { path }) => s.rename_note_path(path, tx),
+            (Key::Function(2), Branch::Folder { path, .. }) => s.start_rename_folder(path, tx),
             _ => return false,
         }
         true

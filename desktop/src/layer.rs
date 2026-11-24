@@ -80,6 +80,8 @@ pub enum MenuOf {
     Node(crate::map::NodeId),
     /// A recent folder row on the welcome screen.
     RecentVault(std::path::PathBuf),
+    /// An Open shelf tab in the sidebar: rename, copy path, close, close others.
+    Tab(crate::app::Shelved),
 }
 
 /// Which layer, without its state: what a key toggles.

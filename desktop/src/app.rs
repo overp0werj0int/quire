@@ -217,6 +217,8 @@ pub struct App {
     /// and goes once another is (SB-25, SB-26). Not kept between sessions.
     pub outline_out: Option<Shelved>,
     pub new_folder: Option<crate::folders::NewFolder>,
+    /// A folder being renamed inline in the sidebar tree.
+    pub renaming_folder: Option<crate::folders::RenameFolder>,
     pub sync: crate::sync::app::SyncState,
     pub images: crate::images::Images,
     /// Files are dragged over the note.
@@ -426,6 +428,7 @@ pub fn init() -> App {
         tree_reveal: None,
         outline_out: None,
         new_folder: None,
+        renaming_folder: None,
         sync: Default::default(),
         images: Default::default(),
         drop_over: false,
@@ -1172,6 +1175,7 @@ impl App {
         self.flush_notes();
         self.tabs.clear();
         self.edits.clear();
+        self.renaming_folder = None;
         self.unlocked.clear();
         self.active = None;
         self.bump_tab(0);
@@ -1195,6 +1199,63 @@ impl App {
         let Some(path) = self.active_path() else { return };
         tx.copy(path.to_string_lossy().into_owned());
         self.toast("Copied path", tx);
+    }
+
+    /// Copies the full on-disk path of an Open shelf tab (folder or single-file note).
+    pub fn copy_shelved_path(&mut self, t: &Shelved, tx: &mut Tx) {
+        let path = match t {
+            Shelved::Tab(p) => self.vault.as_ref().map(|v| v.path.join(p)),
+            Shelved::File(f) => Some(f.clone()),
+        };
+        let Some(path) = path else { return };
+        tx.copy(path.to_string_lossy().into_owned());
+        self.toast("Copied path", tx);
+    }
+
+    /// Closes every Open shelf tab except `keep` and makes `keep` active.
+    pub fn close_other_shelved(&mut self, keep: &Shelved, tx: &mut Tx) {
+        match keep {
+            Shelved::Tab(p) => {
+                if !self.tabs.iter().any(|t| t == p) {
+                    return;
+                }
+                if self.active.as_deref() != Some(p.as_str()) {
+                    self.open_file(p, None, tx);
+                }
+                let others: Vec<String> = self.tabs.iter().filter(|t| t.as_str() != p.as_str()).cloned().collect();
+                for o in others {
+                    self.close_tab(&o);
+                }
+            }
+            Shelved::File(f) => {
+                if !self.notes.iter().any(|n| n == f) {
+                    return;
+                }
+                if self.note_path().as_ref() != Some(f) {
+                    self.open_note(f);
+                }
+                let others: Vec<PathBuf> = self.notes.iter().filter(|n| *n != f).cloned().collect();
+                for o in others {
+                    self.close_note(&o);
+                }
+            }
+        }
+        self.keys_to_note(tx);
+    }
+
+    /// Opens the active Note-mode file's parent directory as a full Folder vault, keeping the note open.
+    pub fn open_note_folder(&mut self, tx: &mut Tx) {
+        if !self.note_mode() {
+            return;
+        }
+        let Some(dir) = self.vault.as_ref().map(|v| v.path.clone()) else { return };
+        let file = self.active.clone();
+        self.open_vault(dir, tx);
+        if let Some(f) = file
+            && self.files().contains_key(&f)
+        {
+            self.open_file(&f, None, tx);
+        }
     }
 
     /// Ctrl+O: the quick switcher, or in Note mode the system's file picker.
@@ -1278,6 +1339,7 @@ impl App {
         }
         self.vault = Some(v);
         self.edits.clear();
+        self.renaming_folder = None;
         // An Undo offer puts a note back into the folder it left, so it ends with that folder.
         self.deleted = None;
         self.notice_open = None;
@@ -2360,6 +2422,8 @@ impl App {
         }
         if self.new_folder.is_some() {
             self.new_folder = None;
+        } else if self.renaming_folder.is_some() {
+            self.renaming_folder = None;
         } else if self.renaming.is_some() {
             self.cancel_rename(tx);
         } else if self.creating.is_some() {

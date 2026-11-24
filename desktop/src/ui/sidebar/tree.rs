@@ -26,7 +26,7 @@ const COUNT_END: f32 = 5.0;
 /// switches, and palette opens skip rebuilding the vault tree (`LIVEPACE`).
 pub(super) fn tree(v: V) -> El {
     let s = v.s;
-    let live_edit = s.new_folder.is_some() || s.dragging.as_ref().is_some_and(|d| d.active);
+    let live_edit = s.new_folder.is_some() || s.renaming_folder.is_some() || s.dragging.as_ref().is_some_and(|d| d.active);
     if live_edit {
         return build_tree(v, true);
     }
@@ -92,15 +92,19 @@ fn walk(v: V, n: &Folder, depth: usize, rows: &mut Vec<(usize, El)>) {
     let parent = (!n.path.is_empty()).then(|| row_key("dir", &n.path));
     for f in &n.folders {
         let open = s.expanded.contains(&f.path);
-        let path = f.path.clone();
-        let menu_path = f.path.clone();
-        let branch = Branch::Folder { path: f.path.clone(), open, first: first_row(f) };
-        let r = lists::item(folder_row(v, f, depth, open), v.p, false, move |s: &mut App, _| s.toggle_folder(&path));
-        rows.push((
-            depth,
-            lists::tree_arrows(r, branch, parent.clone())
-                .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx)),
-        ));
+        if let Some(rf) = s.renaming_folder.as_ref().filter(|rf| rf.path == f.path) {
+            rows.push((depth, rename_folder_row(v, depth, open, &rf.edit)));
+        } else {
+            let path = f.path.clone();
+            let menu_path = f.path.clone();
+            let branch = Branch::Folder { path: f.path.clone(), open, first: first_row(f) };
+            let r = lists::item(folder_row(v, f, depth, open), v.p, false, move |s: &mut App, _| s.toggle_folder(&path));
+            rows.push((
+                depth,
+                lists::tree_arrows(r, branch, parent.clone())
+                    .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Folder(menu_path.clone())), (at.x, at.y), tx)),
+            ));
+        }
         if open {
             walk(v, f, depth + 1, rows);
         }
@@ -300,6 +304,44 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                         if ev.key == rune::Key::Escape {
                             if !s.esc_takes_notice() {
                                 s.end_new_folder(false, tx);
+                            }
+                            return true;
+                        }
+                        false
+                    }),
+            ),
+        )
+}
+
+/// The inline input row for renaming an existing folder in the tree (`F2` or folder menu).
+fn rename_folder_row(v: V, depth: usize, open: bool, edit: &rune::TextEdit) -> El {
+    let p = v.p;
+    let c = Roles::panel(p);
+    let glyph = if open { &FOLDER_OPEN } else { &FOLDER };
+    shade(v, "rename-folder-row")
+        .pl(lead(depth) - INSET)
+        .gap(ICON_GAP - FIELD_PAD)
+        .child(icon(glyph, ICON).color(p.acc))
+        .child(
+            super::super::widgets::input_focus_ring(
+                el().key("rename-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(INNER_RADIUS).fill(c.hover),
+                p,
+            )
+            .child(
+                super::super::focus::stop(text_input(edit, medium(ROW_TEXT)))
+                    .key("rename-folder")
+                    .single_line()
+                    .w_full()
+                    .color(p.ink)
+                    .placeholder("Folder name", c.faint)
+                    .caret(p.ink, p.sel)
+                    .label("Rename folder")
+                    .on_edit(|s: &mut App| &mut s.renaming_folder.get_or_insert_with(|| crate::folders::RenameFolder { path: String::new(), edit: rune::TextEdit::new("") }).edit)
+                    .on_submit(|s: &mut App, tx| s.end_rename_folder(true, tx))
+                    .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx| {
+                        if ev.key == rune::Key::Escape {
+                            if !s.esc_takes_notice() {
+                                s.end_rename_folder(false, tx);
                             }
                             return true;
                         }

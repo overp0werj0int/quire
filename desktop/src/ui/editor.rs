@@ -700,12 +700,14 @@ pub(super) fn crumb(v: V) -> El {
     let reloaded = s.reader.reloaded.is_some();
     let locked = s.is_locked(&active);
     let unlocked = s.note_unlocked(&active);
+    let note_mode = s.note_mode();
     let copy_w = 24.0 + 6.0;
     let lock_w = if locked { 24.0 + 6.0 } else { 0.0 };
+    let note_pill_w = if note_mode { 84.0 + 6.0 } else { 0.0 };
     let fit = s.renaming.is_none().then(|| rune::memo::layout_size("title")).flatten().map(|[w, _]| {
         let pad = if v.left_visible() { 20.0 } else { 6.0 } + 8.0;
         let mark = if reloaded { 6.0 + super::reader::reloaded_w() } else { 0.0 };
-        crumb_fit(&dir, &name, (w - pad - mark - copy_w - lock_w).max(0.0), style)
+        crumb_fit(&dir, &name, (w - pad - mark - copy_w - lock_w - note_pill_w).max(0.0), style)
     });
     let (rw, rg, rc) = super::focus_ring(p);
     let copy_btn = super::focus::stop(row())
@@ -740,6 +742,17 @@ pub(super) fn crumb(v: V) -> El {
     let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
     name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
     let mut r = match &s.renaming {
+        None if note_mode => r.child(
+            row()
+                .key("crumb-file")
+                .h(24.0)
+                .center_y()
+                .shrink()
+                .min_w(0.0)
+                .no_window_drag()
+                .child(name_el)
+                .child(label(".md", style, quiet.faint).ml(if cut { CUT_GAP } else { 0.0 })),
+        ),
         None => r.child(
             super::focus::stop(row())
                 .key("crumb-file")
@@ -804,6 +817,28 @@ pub(super) fn crumb(v: V) -> El {
             )
         }
     };
+    if note_mode {
+        r = r.child(
+            super::focus::stop(row())
+                .key("note-mode-pill")
+                .h(22.0)
+                .px(8.0)
+                .center_y()
+                .radius(11.0)
+                .fill(p.soft)
+                .border(1.0, p.line)
+                .border_layout()
+                .hover(p.hover)
+                .no_window_drag()
+                .role("button")
+                .label("Single file · Open containing folder")
+                .help("Open containing folder")
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(super::titlebar::act(|s, tx| s.open_note_folder(tx)))
+                .child(label("Single file", sans(11.0, 500.0), quiet.dim)),
+        );
+    }
     if locked {
         let badge = if unlocked {
             super::focus::stop(row())
@@ -1216,9 +1251,13 @@ pub fn group(n: usize) -> String {
 fn no_tab(v: V) -> El {
     let p = v.p;
     let (rw, rg, rc) = super::focus_ring(p);
-    let hints = [("Open a note", "app.quick-switcher"), ("New note", "app.new-note"), ("All commands", "app.command-palette"), ("Search", "app.search-notes")];
+    let hints: &[(&str, &str)] = if v.s.note_mode() {
+        &[("Open a note", "app.quick-switcher"), ("All commands", "app.command-palette")]
+    } else {
+        &[("Open a note", "app.quick-switcher"), ("New note", "app.new-note"), ("All commands", "app.command-palette"), ("Search", "app.search-notes")]
+    };
     let mut c = col().key("hints").w(260.0).gap(12.0);
-    for (i, (l, id)) in hints.into_iter().enumerate() {
+    for (i, &(l, id)) in hints.iter().enumerate() {
         let Some(run) = crate::keys::handler(id) else { continue };
         c = c.child(
             super::focus::stop(row())

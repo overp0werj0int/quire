@@ -10,7 +10,7 @@ use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Live, Mods, Phase, PointerBut
 use super::super::V;
 use super::super::lists;
 use super::super::styles::nav;
-use super::super::icons::{CLOSE, LOCK, WARNING};
+use super::super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, LOCK, WARNING};
 use super::super::widgets::name_tip;
 use super::{BUTTON_END, ICON};
 use super::parts::{GAP, INNER_RADIUS, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
@@ -177,15 +177,30 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
     } else {
         title_text.w_full()
     };
+    let chev_id = match t {
+        Shelved::Tab(p) => p.clone(),
+        Shelved::File(f) => f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+    };
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small)).help_when_truncated(folder);
     let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| {
-        row()
+        let mut sec = row()
             .key("sections")
             .ml(DOT_GAP)
             .gap(DOT_GAP)
             .center_y()
             .child(text("·").key("sections-dot").font(small).color(c.faint))
-            .child(text(n).key("sections-count").font(small).color(c.faint))
+            .child(text(n).key("sections-count").font(small).color(c.faint));
+        if on {
+            let tip_text = if out { "Collapse outline" } else { "Expand outline" };
+            sec = sec.child(
+                icon(if out { &CHEVRON_DOWN } else { &CHEVRON_RIGHT }, 10.0)
+                    .key(format!("tab-chev:{chev_id}"))
+                    .color(c.dim)
+                    .label(tip_text)
+                    .help(tip_text),
+            );
+        }
+        sec
     }));
     let mut el = two_rows(t.key(), title_el, caption)
         .pr(BUTTON_END)
@@ -198,7 +213,7 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         el = el.expanded(out);
     }
     el = if on { el.fill(c.selected) } else { el.hover(c.hover) };
-    let (key_t, press_t) = (t.clone(), t.clone());
+    let (key_t, press_t, menu_t) = (t.clone(), t.clone(), t.clone());
     let el = lists::item(el, v.p, on, move |s: &mut App, tx| {
         if tx.button() == PointerButton::Middle {
             close_tab(s, &press_t, tx);
@@ -231,7 +246,9 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         s.close_drawer(tx);
         s.keys_to_note(tx);
     });
-    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, sections, ev, tx)).child(close)
+    el.on_key(move |s: &mut App, ev: &KeyEvent, tx| tab_key(s, &key_t, sections, ev, tx))
+        .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Tab(menu_t.clone()), (at.x, at.y), tx))
+        .child(close)
 }
 
 /// Folds the active tab `t`'s outline out, or back. Out, the shelf scrolls to show it, and its

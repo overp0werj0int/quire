@@ -54,6 +54,7 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("label-", Pane::Sidebar),
     ("new-note", Pane::Sidebar),
     ("new-folder", Pane::Sidebar),
+    ("rename-folder", Pane::Sidebar),
     ("file:", Pane::Sidebar),
     ("dir:", Pane::Sidebar),
     ("search", Pane::Sidebar),
@@ -73,6 +74,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "toggle-left",
     "copy-path",
     "crumb-file",
+    "note-mode-pill",
     "crumb-lock",
     "find",
     "copy-all",
@@ -105,7 +107,7 @@ const NOTE_BUTTONS: &[&str] = &[
 /// and a new folder's. While one has focus its own keys edit it, and the writer's chords at
 /// the caret (`at_caret`) do nothing; the window's shortcuts still act. The palette's,
 /// Settings' and the lock dialog's fields sit in layers, which take only the window's keys.
-pub const FIELDS: &[&str] = &["search", "find-input", "replace-input", "rename", "new-folder", crate::map_app::FIELD];
+pub const FIELDS: &[&str] = &["search", "find-input", "replace-input", "rename", "new-folder", "rename-folder", crate::map_app::FIELD];
 
 /// Whether the element keyed `key` is one of the page's text fields.
 pub fn field(key: &str) -> bool {
