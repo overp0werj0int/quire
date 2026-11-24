@@ -1,0 +1,19 @@
+In Left, Left goes to the first child and Down to the next sibling.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Down@1.0 key:Left@1.2
+expect: selected: map-node:14
+--- before
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

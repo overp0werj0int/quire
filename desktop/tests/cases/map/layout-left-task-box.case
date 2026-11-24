@@ -1,0 +1,29 @@
+In Left a task's box sits at the right end of its label, away from the fold rings on the left, and a click on it ticks the task.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-task:9@1.0 key:s+cmd@1.6
+expect: rect:map-node:9: [402.0, 355.0, 134.0, 51.5]
+expect: rect:map-task:9: [494.88, 361.41, 26.91, 26.91]
+expect: rect:map-dot:7: [656.0, 404.75, 28.0, 28.0]
+expect: rect:map-node:7: [696.0, 391.75, 158.0, 59.0]
+--- before
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- [ ] Rent
+- [x] Food
+--- after
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- [x] Rent
+- [x] Food

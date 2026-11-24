@@ -1,0 +1,20 @@
+Fit in Left takes in what lies left of the root: a folded heading's pill and the Properties badge are both inside the canvas.
+note: Plan.md
+size: 700x400
+events: key:m+cmd@0.3 key:Left@0.6 key:f@0.8 key:0@1.2
+expect: rect:map-canvas: [248.0, 41.0, 452.0, 359.0]
+expect: rect:map-pill:8: [259.3, 183.61, 32.47, 23.61]
+expect: rect:map-props: [547.05, 232.31, 141.66, 35.41]
+expect: rect:map-node:6: [535.23, 173.28, 85.58, 50.17]
+--- before
+---
+tags: [a]
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food

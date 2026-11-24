@@ -1,0 +1,121 @@
+A big map in Left opens at 100% with the root near the canvas's right edge, half way down, and builds the nodes left of it.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: rect:map-node:5: [1166.0, 405.5, 58.0, 34.0]
+expect: scale:map-node:5: 1.0
+expect: nodes: 5 18 20 21 22 23 25 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 43 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 61 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 79 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 99 100 101 102 103
+expect: rect:map-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Part 1
+
+- Step 1.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 1.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 1.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 1.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 1.5 of the plan
+  - Detail one of it
+  - Detail two of it
+
+## Part 2
+
+- Step 2.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 2.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 2.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 2.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 2.5 of the plan
+  - Detail one of it
+  - Detail two of it
+
+## Part 3
+
+- Step 3.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 3.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 3.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 3.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 3.5 of the plan
+  - Detail one of it
+  - Detail two of it
+
+## Part 4
+
+- Step 4.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 4.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 4.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 4.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 4.5 of the plan
+  - Detail one of it
+  - Detail two of it
+
+## Part 5
+
+- Step 5.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 5.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 5.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 5.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 5.5 of the plan
+  - Detail one of it
+  - Detail two of it
+
+## Part 6
+
+- Step 6.1 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 6.2 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 6.3 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 6.4 of the plan
+  - Detail one of it
+  - Detail two of it
+- Step 6.5 of the plan
+  - Detail one of it
+  - Detail two of it

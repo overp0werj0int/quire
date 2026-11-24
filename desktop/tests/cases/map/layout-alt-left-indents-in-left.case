@@ -1,0 +1,35 @@
+In Left, Alt+Left moves an item the way the branches grow: under the item before it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Left@1.0 key:Down@1.2 key:Left+alt@1.6 key:s+cmd@2.2
+expect: selected: map-node:11
+--- before
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+
+  - Food
+
+## Dates
+
+Late May.

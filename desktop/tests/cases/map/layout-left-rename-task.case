@@ -1,0 +1,17 @@
+Renaming a task in Left puts the field at the label, left of the task's box.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Left@1.0 key:F2@1.4
+expect: rect:map-node:9: [398.0, 355.0, 138.0, 51.5]
+expect: rect:map-inline-edit: [414.0, 355.0, 68.0, 40.0]
+expect: rect:map-task:9: [494.94, 361.41, 26.92, 26.91]
+--- before
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- [ ] Rent
+- [x] Food
