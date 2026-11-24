@@ -3,7 +3,7 @@ note: Trip.md
 events: tap:mode-map@0.3
 expect: selected: map-node:1
 expect: label:mode-map: 'Map'
-expect: label:mode-source: 'Show source (Ctrl+M)'
+expect: label:mode-source: 'Show source (Ctrl+E)'
 expect: label:mode-preview: 'Show preview (Ctrl+P)'
 --- before
 # Plan

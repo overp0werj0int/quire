@@ -155,7 +155,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .child(hint("Esc".into(), "close"))
         .child(el().grow(1.0))
         .child(if cmds {
-            hint(crate::keymap::label(v.s.preset(), "app.quick-switcher"), "for notes")
+            hint(v.s.keymap.label("app.quick-switcher"), "for notes")
         } else {
             row()
                 .gap(5.0)

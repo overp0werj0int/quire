@@ -4,7 +4,7 @@
 use rune::{Key, KeyEvent, TextEdit, Tx};
 
 use crate::app::{App, Mode};
-use crate::keymap::{self, Preset};
+use crate::keymap::{self, Overrides};
 
 /// One row of the help sheet: what it does and the actions whose keys it shows.
 pub struct Row {
@@ -42,7 +42,7 @@ const APP: Group = (
     ],
 );
 
-/// The reader's groups, in omarky's order and wording (RD-90), then the window's.
+/// The reader's groups (RD-90), then the window's.
 const READER: &[Group] = &[
     (
         "Read",
@@ -50,10 +50,12 @@ const READER: &[Group] = &[
             h("Scroll", &["reader.scroll-down", "reader.scroll-up"]),
             h("Page down / up", &["reader.page-down", "reader.page-up"]),
             h("Top / bottom", &["reader.top", "reader.bottom"]),
+            h("Sidebar", &["reader.toggle-sidebar"]),
             h("Outline", &["reader.toggle-outline", "app.toggle-outline"]),
             h("Readable / full width", &["reader.toggle-wide"]),
-            h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
-            h("Mind map", &["app.toggle-map"]),
+            h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
+            h("Source / preview / map", &["app.mode-source", "reader.mode-preview", "app.mode-preview", "reader.mode-map", "app.mode-map"]),
+            h("Zen / settings / image", &["reader.focus-mode", "reader.settings", "reader.insert-image"]),
         ],
     ),
     (
@@ -71,7 +73,7 @@ const READER: &[Group] = &[
     (
         "Edit",
         &[
-            h("Edit the whole note", &["app.toggle-mode"]),
+            h("Edit the whole note", &["app.mode-source"]),
             k("Edit the block under the mouse", &["reader.edit-block"]),
             k("Edit its section", &["reader.edit-section"]),
             k("In the edit sheet: save to the file / cancel", &["sheet.save", "sheet.cancel"]),
@@ -82,29 +84,31 @@ const READER: &[Group] = &[
         &[
             h("Open a note", &["app.quick-switcher"]),
             h("New note", &["app.new-note"]),
-            h("Save now", &["app.save"]),
+            h("Save now", &["reader.save", "app.save"]),
+            h("Read from disk", &["reader.read-from-disk", "app.read-from-disk"]),
             h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
             k("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
-            h("Read from disk", &["reader.read-from-disk"]),
-            h("Close the tab", &["reader.close-tab", "app.close-tab"]),
-            h("This sheet", &["reader.help"]),
+            h("Close / reopen tab", &["app.close-tab", "app.reopen-tab"]),
+            h("This sheet", &["reader.help", "app.help"]),
         ],
     ),
     APP,
 ];
 
-/// The writer's groups (WR-166), in omarky's order and wording, then the window's.
+/// The writer's groups (WR-166), then the window's.
 const WRITER: &[Group] = &[
     (
         "Write",
         &[
             h("Bold / italic", &["writer.bold", "writer.italic"]),
-            h("Inline code", &["writer.inline-code"]),
-            h("Strikethrough", &["writer.strikethrough"]),
-            h("Link", &["writer.link"]),
+            h("Inline code / strikethrough", &["writer.inline-code", "writer.strikethrough"]),
+            h("Link / note link", &["writer.link", "writer.wiki-link"]),
+            h("Blockquote", &["writer.blockquote"]),
             k("Heading 1 to 6", &["writer.heading-1", "writer.heading-6"]),
             h("Plain paragraph", &["writer.plain-paragraph"]),
-            h("Numbered / bulleted list / task", &["writer.numbered-list", "writer.bulleted-list", "writer.task-list"]),
+            h("Numbered / bulleted / task list", &["writer.numbered-list", "writer.bulleted-list", "writer.task-list"]),
+            h("Toggle task", &["writer.toggle-checkbox"]),
+            h("Move line up / down", &["writer.move-up", "writer.move-down"]),
             h("Indent / outdent", &["writer.indent", "writer.outdent"]),
             h("Continue a list or quote", &["writer.continue-block"]),
             h("Follow the link", &["writer.follow-link", "writer.follow-link-click"]),
@@ -113,8 +117,7 @@ const WRITER: &[Group] = &[
     (
         "View",
         &[
-            h("Preview", &["app.toggle-mode"]),
-            h("Mind map", &["app.toggle-map"]),
+            h("Source / preview / map", &["app.mode-source", "app.mode-preview", "app.mode-map"]),
             h("Find", &["writer.find"]),
             h("Next / previous match", &["writer.find-next", "writer.find-previous"]),
             h("Close find, else show the preview", &["writer.escape", "app.escape"]),
@@ -122,20 +125,20 @@ const WRITER: &[Group] = &[
             h("Typewriter scrolling", &["writer.typewriter"]),
             h("Next font", &["writer.next-font"]),
             h("Outline", &["app.toggle-outline"]),
-            h("Zoom text", &["app.zoom-in", "app.zoom-out", "reader.zoom-reset"]),
+            h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
         ],
     ),
     (
         "File",
         &[
             h("Save", &["app.save"]),
+            h("Read from disk", &["app.read-from-disk"]),
             h("New note", &["app.new-note"]),
             h("Open a note", &["app.quick-switcher"]),
-            h("Recent notes", &["writer.recent-notes"]),
             h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
             k("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
-            h("Close the tab", &["app.close-tab"]),
-            h("This sheet", &["writer.help"]),
+            h("Close / reopen tab", &["app.close-tab", "app.reopen-tab"]),
+            h("This sheet", &["app.help"]),
         ],
     ),
     APP,
@@ -167,7 +170,7 @@ const MAP: &[Group] = &[
             h("Outdent", &["map.outdent"]),
             k("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
             h("Undo / redo", &["map.undo", "map.redo"]),
-            h("Copy the node / its branch", &["map.copy-node", "map.copy-subtree"]),
+            h("Cut / copy node / branch", &["map.cut", "map.copy-node", "map.copy-subtree"]),
             h("Copy the whole note", &["map.copy-all"]),
             k("Paste as child / sibling", &["map.paste"]),
         ],
@@ -179,7 +182,7 @@ const MAP: &[Group] = &[
             k("Cancel", &["mapedit.cancel"]),
             k("Commit and add a child / outdent", &["mapedit.commit-add-child", "mapedit.commit-outdent"]),
             k("Bold / italic / inline code", &["writer.bold", "writer.italic", "writer.inline-code"]),
-            k("Strikethrough / link", &["writer.strikethrough", "writer.link"]),
+            k("Strikethrough / link / note link", &["writer.strikethrough", "writer.link", "writer.wiki-link"]),
             k("New node: paragraph", &["mapedit.paragraph"]),
             k("New node: heading 1 to 6", &["mapedit.heading-1", "mapedit.heading-6"]),
             k("New node: numbered / bulleted / task", &["mapedit.numbered", "mapedit.bulleted", "mapedit.task"]),
@@ -190,8 +193,8 @@ const MAP: &[Group] = &[
         &[
             h("Fit the map", &["map.fit"]),
             h("Choose the layout", &["map.layout"]),
-            h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
-            h("Zoom 100%", &["map.zoom-reset"]),
+            h("Zoom in / out", &["map.zoom-in", "app.zoom-in", "map.zoom-out", "app.zoom-out"]),
+            h("Zoom 100%", &["app.zoom-reset"]),
             h("Centre the node", &["map.center"]),
         ],
     ),
@@ -200,11 +203,12 @@ const MAP: &[Group] = &[
         &[
             h("Find", &["map.find"]),
             h("Next / previous match", &["map.find-next", "map.find-previous"]),
-            h("Close find, else leave the map", &["map.escape", "app.escape"]),
+            h("Close find or cancel drag", &["map.escape", "app.escape"]),
+            h("Sidebar", &["map.toggle-sidebar"]),
             h("Outline", &["map.toggle-outline", "app.toggle-outline"]),
-            h("Source or preview", &["app.toggle-mode"]),
-            h("Leave the map", &["app.toggle-map"]),
-            h("This sheet", &["map.help"]),
+            h("Source / preview / map", &["app.mode-source", "map.mode-preview", "app.mode-preview", "map.mode-map", "app.mode-map"]),
+            h("Zen / settings / image", &["map.focus-mode", "map.settings", "map.insert-image"]),
+            h("This sheet", &["map.help", "app.help"]),
         ],
     ),
     (
@@ -212,11 +216,11 @@ const MAP: &[Group] = &[
         &[
             h("Open a note", &["app.quick-switcher"]),
             h("New note", &["app.new-note"]),
-            h("Save now", &["app.save"]),
-            h("Read from disk", &["map.read-from-disk"]),
+            h("Save now", &["map.save", "app.save"]),
+            h("Read from disk", &["map.read-from-disk", "app.read-from-disk"]),
             h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
             k("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
-            h("Close the tab", &["map.close-tab", "app.close-tab"]),
+            h("Close / reopen tab", &["app.close-tab", "app.reopen-tab"]),
         ],
     ),
     APP,
@@ -236,12 +240,9 @@ pub fn is_range(a: &str, b: &str) -> bool {
     a.strip_suffix("-1").is_some_and(|stem| b.strip_prefix(stem).is_some_and(|n| matches!(n, "-6" | "-9")))
 }
 
-/// The keys a row shows for one action: the help keys all theirs, any other its first.
-pub fn chords(p: Preset, id: &str) -> Vec<String> {
-    let Some(a) = keymap::action(id) else { return Vec::new() };
-    let chords = a.chords(p);
-    let show = if matches!(id, "reader.help" | "writer.help" | "map.help") { chords } else { &chords[..chords.len().min(1)] };
-    show.iter().map(|k| keymap::label_of(k)).collect()
+/// Every user-facing chord of `id` from `km` (showing secondary chords too for discoverability).
+pub fn chords(km: &Overrides, id: &str) -> Vec<String> {
+    km.display_labels(id)
 }
 
 /// What runs when the row is picked: its first action that does something here.
@@ -251,7 +252,7 @@ pub fn action(r: &Row) -> Option<&'static keymap::Action> {
 
 /// The groups the query keeps, each with the rows whose words, keys or action names hold every
 /// word of it; with no query, every row.
-pub fn filter(p: Preset, mode: Mode, q: &str) -> Vec<(&'static str, Vec<&'static Row>)> {
+pub fn filter(km: &Overrides, mode: Mode, q: &str) -> Vec<(&'static str, Vec<&'static Row>)> {
     let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
     groups(mode)
         .0
@@ -262,7 +263,7 @@ pub fn filter(p: Preset, mode: Mode, q: &str) -> Vec<(&'static str, Vec<&'static
                 .filter(|r| {
                     let hay = std::iter::once(r.what.to_string())
                         .chain(std::iter::once(title.to_string()))
-                        .chain(r.ids.iter().flat_map(|id| keymap::action(id).map(|a| a.name.to_string()).into_iter().chain(chords(p, id))))
+                        .chain(r.ids.iter().flat_map(|id| keymap::action(id).map(|a| a.name.to_string()).into_iter().chain(chords(km, id))))
                         .collect::<Vec<_>>()
                         .join(" ")
                         .to_lowercase();
@@ -305,7 +306,7 @@ impl App {
     /// The rows the help's query keeps, and the selected one among those that run.
     pub fn help_found(&self) -> (Vec<(&'static str, Vec<&'static Row>)>, Option<&'static Row>) {
         let (q, idx) = self.help_search().map_or(("", 0), |h| (h.q.text.as_str(), h.idx));
-        let found = filter(self.preset(), self.mode, q);
+        let found = filter(&self.keymap, self.mode, q);
         let pick = picks(&found).get(idx).copied();
         (found, pick)
     }
@@ -314,7 +315,7 @@ impl App {
     pub fn help_run(&mut self, r: &'static Row, tx: &mut Tx) {
         let Some(a) = action(r) else { return };
         self.close_layer(tx);
-        if crate::layer::toggles(a.id) != Some(crate::layer::Kind::Help) && a.id != "map.help" {
+        if crate::layer::toggles(a.id) != Some(crate::layer::Kind::Help) {
             crate::keys::handler(a.id).expect("action() found one")(self, tx);
         }
     }
@@ -355,8 +356,8 @@ impl App {
             Key::Home | Key::End if !chord && !ev.mods.shift && !query => return self.scroll_help(ev.key.clone(), tx),
             _ => {}
         }
-        let own = keymap::lookup(self.preset(), keymap::Ctx::Help, ev);
-        // `?` closes while the query is empty; a letter such as `q` types.
+        let own = self.keymap.lookup(keymap::Ctx::Help, ev);
+        // `?` closes while the query is empty; Esc, F1 and Ctrl+/ always close.
         let closes = own.iter().any(|a| a.id == "help.close") && (chord || matches!(ev.key, Key::Escape | Key::Function(_)) || (!query && ev.key == Key::Text("?".into())));
         if closes {
             self.close_layer(tx);
@@ -376,23 +377,22 @@ mod tests {
     use super::*;
     use crate::keymap::{Ctx, Status, TABLE};
 
-    /// Every key bound in a mode shows in that mode's help sheet. The map's text-size keys do
-    /// nothing there (MAP-034), so its sheet leaves them out.
+    /// Every key bound in a mode shows in that mode's help sheet.
     #[test]
     fn every_bound_key_shows_in_its_modes_help() {
-        let modes: [(Mode, &[Ctx], &[&str]); 3] = [
-            (Mode::Preview, &[Ctx::Global, Ctx::Reader], &[]),
-            (Mode::Source, &[Ctx::Global, Ctx::Writer], &[]),
-            (Mode::Map, &[Ctx::Global, Ctx::Map, Ctx::MapEdit], &["app.zoom-in", "app.zoom-out"]),
+        let modes: [(Mode, &[Ctx]); 3] = [
+            (Mode::Preview, &[Ctx::Global, Ctx::Reader]),
+            (Mode::Source, &[Ctx::Global, Ctx::Writer]),
+            (Mode::Map, &[Ctx::Global, Ctx::Map, Ctx::MapEdit]),
         ];
         let mut missing = Vec::new();
-        for (mode, ctxs, inert) in modes {
+        for (mode, ctxs) in modes {
             let shown: Vec<&str> = groups(mode).0.iter().flat_map(|(_, rows)| rows.iter().flat_map(|r| r.ids.iter().copied())).collect();
             let covers = |id: &str| {
                 shown.contains(&id) || id.rsplit_once('-').is_some_and(|(stem, n)| n.parse::<u8>().is_ok() && shown.contains(&format!("{stem}-1").as_str()))
             };
             for a in TABLE.iter().filter(|a| a.ctx.iter().any(|c| ctxs.contains(c)) && !matches!(a.status, Status::Deferred | Status::Dropped)) {
-                if Preset::ALL.iter().any(|p| !a.chords(*p).is_empty()) && !covers(a.id) && !inert.contains(&a.id) {
+                if !a.chords.is_empty() && !covers(a.id) {
                     missing.push(format!("{mode:?}: {} ({})", a.id, a.name));
                 }
             }
@@ -439,10 +439,14 @@ mod tests {
 
     #[test]
     fn a_query_keeps_rows_by_words_and_keys() {
-        let found = filter(Preset::Quire, Mode::Source, "bold");
+        let km = Overrides::default();
+        let found = filter(&km, Mode::Source, "bold");
         assert_eq!(found.iter().map(|(_, r)| r.iter().map(|r| r.what).collect::<Vec<_>>()).collect::<Vec<_>>(), [["Bold / italic"]]);
-        let by_key = filter(Preset::Quire, Mode::Source, "ctrl+alt+9");
-        assert_eq!(by_key.iter().flat_map(|(_, r)| r.iter().map(|r| r.what)).collect::<Vec<_>>(), ["Numbered / bulleted list / task"]);
-        assert!(filter(Preset::Quire, Mode::Map, "zzz").is_empty());
+        let by_key = filter(&km, Mode::Source, "ctrl+shift+9");
+        assert_eq!(by_key.iter().flat_map(|(_, r)| r.iter().map(|r| r.what)).collect::<Vec<_>>(), ["Numbered / bulleted / task list"]);
+        // Secondary chords are searchable and visible too.
+        let by_secondary = filter(&km, Mode::Preview, "down");
+        assert!(by_secondary.iter().flat_map(|(_, r)| r.iter().map(|r| r.what)).any(|w| w == "Scroll"));
+        assert!(filter(&km, Mode::Map, "zzz").is_empty());
     }
 }

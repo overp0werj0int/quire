@@ -738,7 +738,7 @@ pub(crate) mod scroll_tests {
         let dir = std::env::temp_dir().join(format!("quire-tip-names-{}", std::process::id()));
         let mut rt = vault(&dir, &[("note.md", "# A\n\nSome text.\n")], crate::watch::EVERY);
         // Each button, and the palette command it runs: by its key, or by name for the lock.
-        let pairs = [("toggle-left", "app.toggle-sidebar"), ("toggle-right", "app.toggle-outline"), ("mode-source", "app.toggle-mode"), ("mode-preview", "app.toggle-mode"), ("mode-map", "app.toggle-map"), ("focus", "app.focus-mode"), ("fmt-image", "app.insert-image"), ("fmt-lock", "")];
+        let pairs = [("toggle-left", "app.toggle-sidebar"), ("toggle-right", "app.toggle-outline"), ("mode-source", "app.mode-source"), ("mode-preview", "app.mode-preview"), ("mode-map", "app.mode-map"), ("focus", "app.focus-mode"), ("fmt-image", "app.insert-image"), ("fmt-lock", "")];
         let name = |tip: &str| match tip.rsplit_once(" (") {
             Some((n, k)) if k.ends_with(')') => n.to_string(),
             _ => tip.to_string(),
@@ -834,7 +834,7 @@ pub(crate) mod scroll_tests {
             }
         };
         check(tips(&rt), 9, "mode-preview");
-        rt.update(|s, tx| s.toggle_mode(tx));
+        rt.update(|s, tx| s.show_mode(crate::app::Mode::Source, tx));
         for _ in 0..3 {
             rt.frame(DT);
         }
@@ -1754,7 +1754,7 @@ pub(crate) mod scroll_tests {
         });
         rt.frame(DT);
         assert!(rt.elements().iter().any(|e| e.focused && e.key.as_deref() == Some("editor")), "the editor has the keyboard");
-        let label = crate::keymap::label(crate::keymap::Preset::Omarky, "app.undo-delete");
+        let label = crate::keymap::default_label("app.undo-delete");
         assert!(rt.elements().iter().any(|e| e.text.as_deref() == Some(label.as_str())), "the toast names {label}");
         rt.key(rune::KeyEvent { key: rune::Key::Command('r'), mods: rune::Mods { cmd: true, ctrl: true, shift: true, ..Default::default() } });
         settle(&mut rt);
@@ -2903,7 +2903,7 @@ mod writer_chrome_tests {
         let wc = info(&rt, "word-count").unwrap().rect;
         assert!((wc[0] - caret_pos[0]).abs() <= 1.0, "word-count {wc:?} aligns horizontally with caret-pos {caret_pos:?}");
         counts_end_at(&rt, foot[1]);
-        rt.update(|s, tx| s.toggle_mode(tx));
+        rt.update(|s, tx| s.show_mode(crate::app::Mode::Preview, tx));
         for _ in 0..30 {
             rt.frame(DT);
         }
@@ -3511,11 +3511,7 @@ mod writer_chrome_tests {
             rt.set_viewport((w, 600.0), 1.0);
             let mut at = Vec::new();
             for mode in [crate::app::Mode::Source, crate::app::Mode::Preview] {
-                rt.update(|s, tx| {
-                    if s.mode != mode {
-                        s.toggle_mode(tx);
-                    }
-                });
+                rt.update(|s, tx| s.show_mode(mode, tx));
                 for _ in 0..60 {
                     rt.frame(DT);
                 }
@@ -3610,7 +3606,7 @@ mod writer_chrome_tests {
             false
         });
         assert_eq!(on, (true, true), "the button turns paragraph focus on and zen mode stays");
-        rt.update(|s, tx| s.toggle_mode(tx));
+        rt.update(|s, tx| s.show_mode(crate::app::Mode::Preview, tx));
         for _ in 0..60 {
             rt.frame(DT);
         }
@@ -4092,7 +4088,7 @@ mod escape_tests {
     const DT: f64 = 1.0 / 60.0;
 
     /// WR-77: Esc in the editor closes what is open first, one thing per press, and with
-    /// nothing open goes to the preview. Esc there comes back (WR-111).
+    /// nothing open goes to the preview. Esc there stays in preview (one-way Esc).
     #[test]
     fn wr_77_esc_in_the_editor_goes_to_the_preview() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -4142,7 +4138,7 @@ mod escape_tests {
         assert!(open, "the right-click opened the editor's menu");
         assert_eq!(esc(&mut rt), (Mode::Source, false, false), "Esc closes the editor's menu and stays");
         assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "with nothing open, Esc goes to the preview");
-        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "and Esc in the preview comes back");
+        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "and Esc in the preview stays in preview");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
@@ -4177,7 +4173,7 @@ mod bar_focus_tests {
             s.focus_editor(tx);
             s.cur_edit().set_selection(5, 5);
         });
-        let mut typed = |rt: &mut Runtime<crate::app::App>, button: &str, ch: &str| {
+        let typed = |rt: &mut Runtime<crate::app::App>, button: &str, ch: &str| {
             for _ in 0..30 {
                 rt.frame(DT);
             }
@@ -4937,7 +4933,7 @@ mod layer_matrix_tests {
         let wide = (960.0, 600.0);
         let narrow = (640.0, 480.0);
         vec![
-            Overlay { name: "palette", preview: false, size: wide, light: false, back: None, open: |rt| key(rt, Key::Command('k'), ctrl(true)) },
+            Overlay { name: "palette", preview: false, size: wide, light: false, back: None, open: |rt| key(rt, Key::Command('k'), ctrl(false)) },
             Overlay { name: "settings", preview: false, size: wide, light: false, back: None, open: |rt| key(rt, Key::Command(','), ctrl(false)) },
             Overlay { name: "lock dialog", preview: false, size: wide, light: false, back: None, open: |rt| press_key(rt, "fmt-lock", false) },
             Overlay { name: "help", preview: true, size: wide, light: false, back: None, open: |rt| key(rt, Key::Text("?".into()), Mods { shift: true, ..Mods::default() }) },
@@ -5049,10 +5045,17 @@ mod layer_matrix_tests {
                 }
             }),
             ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
-            ("Ctrl+Shift+K", |rt| key(rt, Key::Command('k'), ctrl(true))),
+            ("Ctrl+K", |rt| key(rt, Key::Command('k'), ctrl(false))),
             ("Ctrl+,", |rt| key(rt, Key::Command(','), ctrl(false))),
             ("Ctrl+F", |rt| key(rt, Key::Command('f'), ctrl(false))),
-            ("Ctrl+P", |rt| key(rt, Key::Command('p'), ctrl(false))),
+            ("mode switch", |rt| {
+                let mut preview = false;
+                rt.update_if(|s, _| {
+                    preview = s.mode == Mode::Preview;
+                    false
+                });
+                key(rt, Key::Command(if preview { 'e' } else { 'p' }), ctrl(false));
+            }),
             ("arrows and the wheel", |rt| {
                 for _ in 0..4 {
                     key(rt, Key::Down, Mods::default());
@@ -5087,9 +5090,9 @@ mod layer_matrix_tests {
                             fail("the editor does not have the keyboard back");
                         }
                     }
-                    "Ctrl+Shift+K" | "Ctrl+," | "Ctrl+F" if o.light => {
+                    "Ctrl+K" | "Ctrl+," | "Ctrl+F" if o.light => {
                         let acted = match *input {
-                            "Ctrl+Shift+K" => after.palette,
+                            "Ctrl+K" => after.palette,
                             "Ctrl+," => after.settings,
                             _ => after.find,
                         };
@@ -5097,7 +5100,7 @@ mod layer_matrix_tests {
                             fail("the shortcut did nothing");
                         }
                     }
-                    "Ctrl+P" if o.light => {
+                    "mode switch" if o.light => {
                         if after.layers != 0 || after.mode == before.mode {
                             fail("a mode switch should close it and switch");
                         }
@@ -5127,7 +5130,7 @@ mod layer_matrix_tests {
             ("Esc", |rt| key(rt, Key::Escape, Mods::default())),
             ("Ctrl+P, the palette, Esc", |rt| {
                 key(rt, Key::Command('p'), ctrl(false));
-                key(rt, Key::Command('k'), ctrl(true));
+                key(rt, Key::Command('k'), ctrl(false));
                 key(rt, Key::Escape, Mods::default());
             }),
             ("Ctrl+P, Settings, Esc", |rt| {
@@ -5359,7 +5362,7 @@ mod layer_matrix_tests {
         }
 
         let mut rt = window(&dir, false, (960.0, 600.0));
-        key(&mut rt, Key::Command('k'), ctrl(true));
+        key(&mut rt, Key::Command('k'), ctrl(false));
         assert!(rt.find("palette-frame").is_some(), "the palette is open");
         rt.key(KeyEvent { key: Key::Command(','), mods: ctrl(false) });
         rt.frame(DT);
@@ -5581,14 +5584,13 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// SB-11, SB-100: Ctrl+/, Ctrl+? and the preset's own key put the keyboard in the search
-    /// field from the note in both modes, showing a hidden sidebar first, and select the text
-    /// already there.
+    /// SB-11, SB-100: Ctrl+Shift+F puts the keyboard in the search field from the note in
+    /// both modes, showing a hidden sidebar first, and selects the text already there.
     #[test]
     fn ctrl_slash_focuses_search() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-ctrl-slash-{}", std::process::id()));
-        let chords = [(Key::Command('/'), ctrl(false)), (Key::Command('?'), ctrl(true)), (Key::Command('g'), ctrl(true))];
+        let chords = [(Key::Command('f'), ctrl(true))];
         for mode in [Mode::Source, Mode::Preview] {
             for (k, m) in chords.clone() {
                 let mut rt = garden(&dir, mode);
@@ -5611,8 +5613,8 @@ mod layer_matrix_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// SB-101, SB-102: F1 opens help in both modes and closes it; `?` still opens the
-    /// reader's; Ctrl+/ over help leaves it open.
+    /// SB-101, SB-102: F1 and Ctrl+/ open and close help in both modes; `?` still opens the
+    /// reader's.
     #[test]
     fn f1_opens_help() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -5632,7 +5634,9 @@ mod layer_matrix_tests {
             key(&mut rt, Key::Function(1), Mods::default());
             assert!(help(&mut rt), "{mode:?}: F1 opens help");
             key(&mut rt, Key::Command('/'), ctrl(false));
-            assert!(help(&mut rt), "{mode:?}: Ctrl+/ leaves help open");
+            assert!(!help(&mut rt), "{mode:?}: Ctrl+/ closes help");
+            key(&mut rt, Key::Command('/'), ctrl(false));
+            assert!(help(&mut rt), "{mode:?}: Ctrl+/ opens help");
             key(&mut rt, Key::Function(1), Mods::default());
             assert!(!help(&mut rt), "{mode:?}: F1 closes it");
             if mode == Mode::Source {
@@ -6040,7 +6044,7 @@ mod layer_matrix_tests {
             rt.update(|s, _| s.focus = false);
             // An open layer takes Esc first.
             notice(&mut rt);
-            key(&mut rt, Key::Command('k'), ctrl(true));
+            key(&mut rt, Key::Command('k'), ctrl(false));
             settle(&mut rt);
             assert!(rt.find("pal-input").is_some(), "{mode:?}: the palette opened");
             key(&mut rt, Key::Escape, Mods::default());
@@ -6170,7 +6174,7 @@ mod layer_matrix_tests {
                 rt.set_viewport((640.0, 480.0), 1.0);
                 settle(rt);
                 rt.update(|s, tx| s.focus_editor(tx));
-                key(rt, Key::Command('g'), ctrl(true));
+                key(rt, Key::Command('f'), ctrl(true));
                 key(rt, Key::Text("text".into()), Mods::default());
             }),
             ("a backlink", Mode::Preview, |rt| {
@@ -6315,15 +6319,15 @@ mod layer_matrix_tests {
     }
 
     /// MODESC: on the note in preview, Esc with Shift, Ctrl or Alt runs the reader's Esc order
-    /// as Esc does: a showing notice goes, then find closes, then the writer shows.
+    /// as Esc does: a showing notice goes, then find closes, then zen ends, staying in preview.
     #[test]
     fn esc_with_a_modifier_is_esc_on_the_reader_note() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("quire-modesc-{}", std::process::id()));
         let state = |rt: &mut Runtime<App>| {
-            let mut seen = (false, false, Mode::Source);
+            let mut seen = (false, false, false, Mode::Source);
             rt.update_if(|s, _| {
-                seen = (s.notice.is_some(), s.reader.find.open, s.mode);
+                seen = (s.notice.is_some(), s.reader.find.open, s.focus, s.mode);
                 false
             });
             seen
@@ -6333,17 +6337,20 @@ mod layer_matrix_tests {
             key(&mut rt, Key::Command('f'), ctrl(false));
             rt.update(|s, tx| {
                 s.notice = Some("A folder named Docs is already there.".into());
+                s.focus = true;
                 s.keys_to_note(tx);
             });
             settle(&mut rt);
             assert_eq!(focused(&rt).as_deref(), Some("note-keys"), "{m:?}: the note has the keyboard");
             key(&mut rt, Key::Escape, m);
-            assert_eq!(state(&mut rt), (false, true, Mode::Preview), "{m:?}: Esc dismisses the notice first");
+            assert_eq!(state(&mut rt), (false, true, true, Mode::Preview), "{m:?}: Esc dismisses the notice first");
             key(&mut rt, Key::Escape, m);
-            assert_eq!(state(&mut rt), (false, false, Mode::Preview), "{m:?}: then closes find");
+            assert_eq!(state(&mut rt), (false, false, true, Mode::Preview), "{m:?}: then closes find");
             key(&mut rt, Key::Escape, m);
-            assert_eq!(state(&mut rt).2, Mode::Source, "{m:?}: then shows the writer");
-            assert_eq!(focused(&rt).as_deref(), Some("editor"), "{m:?}: with the editor's caret");
+            assert_eq!(state(&mut rt), (false, false, false, Mode::Preview), "{m:?}: then leaves zen");
+            key(&mut rt, Key::Escape, m);
+            assert_eq!(state(&mut rt), (false, false, false, Mode::Preview), "{m:?}: and stays in preview");
+            assert_eq!(focused(&rt).as_deref(), Some("note-keys"), "{m:?}: keeping note focus");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -6426,7 +6433,7 @@ mod layer_matrix_tests {
         // A layer that closes gives the label its focus back.
         rt.update(|_, tx| tx.focus("label-shelf", true));
         settle(&mut rt);
-        key(&mut rt, Key::Command('k'), ctrl(true));
+        key(&mut rt, Key::Command('k'), ctrl(false));
         settle(&mut rt);
         assert!(rt.find("pal-input").is_some(), "the palette opened");
         key(&mut rt, Key::Escape, Mods::default());
@@ -9040,16 +9047,16 @@ mod layer_matrix_tests {
             let mut rt = garden(&dir, mode);
             let mut now = None;
             rt.update_if(|s, _| {
-                now = Some((s.preset(), crate::keys::page_stack(s)));
+                now = Some(crate::keys::page_stack(s));
                 false
             });
-            let (preset, ctxs) = now.expect("read");
+            let ctxs = now.expect("read");
             let mut chords = Vec::new();
             for a in crate::keymap::TABLE.iter().filter(|a| a.ctx.iter().any(|c| ctxs.contains(c)) && crate::keys::handler(a.id).is_some()) {
                 if matches!(a.status, crate::keymap::Status::Deferred | crate::keymap::Status::Dropped) || matches!(a.id, "app.quit" | "app.insert-image") {
                     continue;
                 }
-                for c in a.chords(preset).iter().filter_map(|s| crate::keymap::parse(s)).filter(|seq| seq.len() == 1).map(|seq| seq[0]) {
+                for c in a.chords.iter().filter_map(|s| crate::keymap::parse(s)).filter(|seq| seq.len() == 1).map(|seq| seq[0]) {
                     if (c.ctrl || c.alt) && !chords.iter().any(|(_, d)| *d == c) {
                         chords.push((a.id, c));
                     }
@@ -9249,7 +9256,7 @@ mod layer_matrix_tests {
             let k2 = k.to_string();
             rt.update(move |_, tx| tx.focus(k2, true));
             settle(&mut rt);
-            key(&mut rt, Key::Command('k'), ctrl(true));
+            key(&mut rt, Key::Command('k'), ctrl(false));
             key(&mut rt, Key::Escape, Mods::default());
             let ring = rt.elements().into_iter().find(|e| e.focused).map(|e| (e.key, e.focus_visible));
             if ring != Some((Some(k.to_string()), true)) {
@@ -9503,8 +9510,8 @@ mod layer_matrix_tests {
             }
         }
 
-        // A text field keeps the writer's edits at the caret from the note (FLD): Ctrl+B, Ctrl+K,
-        // Ctrl+E, Ctrl+I and Ctrl+Alt+0 in it leave the note as it was and the field focused, docked
+        // A text field keeps the writer's edits at the caret from the note (FLD): Ctrl+B, Ctrl+L,
+        // Ctrl+I and Ctrl+Alt+0 in it leave the note as it was and the field focused, docked
         // and in the drawer. A window shortcut still acts from it. Every text field on the page
         // but the editor is one of `focus::FIELDS`.
         let search = |rt: &mut Runtime<App>| {
@@ -9535,7 +9542,7 @@ mod layer_matrix_tests {
                 }
             }
             let before = seen(&mut rt);
-            for (c, alt) in [('b', false), ('k', false), ('e', false), ('i', false), ('0', true)] {
+            for (c, alt) in [('b', false), ('l', false), ('i', false), ('0', true)] {
                 key(&mut rt, Key::Command(c), Mods { alt, ..ctrl(false) });
                 let after = seen(&mut rt);
                 if after.text != before.text || focused(&rt).as_deref() != Some(field) {
@@ -9572,7 +9579,7 @@ mod layer_matrix_tests {
         }
 
         // A drawer opened by its key shows the ring on the stop that has the keyboard.
-        for (name, k, shift) in [("the sidebar's drawer", 'b', true), ("the outline's drawer", '\\', false)] {
+        for (name, k, shift) in [("the sidebar's drawer", 'b', true), ("the outline's drawer", 'o', false)] {
             let mut rt = garden(&dir, Mode::Source);
             rt.set_viewport((640.0, 480.0), 1.0);
             settle(&mut rt);
@@ -9782,6 +9789,232 @@ mod layer_matrix_tests {
                 "enter {step}: caret {caret:?} hidden outside sheet-scroll {scroll:?}"
             );
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unified_keymap_modes_bare_keys_reopen_and_sidebar_f2() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-unified-modes-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        let mode_of = |rt: &mut Runtime<App>| {
+            let mut m = Mode::Source;
+            rt.update_if(|s, _| {
+                m = s.mode;
+                false
+            });
+            m
+        };
+        // Idempotent mode keys: Ctrl+E stays in Source, Ctrl+P goes to Preview (and stays),
+        // bare m goes to Map (and Ctrl+M stays), bare p returns to Preview, Esc stays in Preview.
+        key(&mut rt, Key::Command('e'), ctrl(false));
+        assert_eq!(mode_of(&mut rt), Mode::Source, "Ctrl+E in Source is idempotent");
+        key(&mut rt, Key::Command('p'), ctrl(false));
+        assert_eq!(mode_of(&mut rt), Mode::Preview, "Ctrl+P switches to Preview");
+        key(&mut rt, Key::Command('p'), ctrl(false));
+        assert_eq!(mode_of(&mut rt), Mode::Preview, "Ctrl+P in Preview is idempotent");
+        text_key(&mut rt, "m");
+        assert_eq!(mode_of(&mut rt), Mode::Map, "bare m in Preview switches to Map");
+        key(&mut rt, Key::Command('m'), ctrl(false));
+        assert_eq!(mode_of(&mut rt), Mode::Map, "Ctrl+M in Map is idempotent");
+        text_key(&mut rt, "p");
+        assert_eq!(mode_of(&mut rt), Mode::Preview, "bare p in Map switches to Preview");
+
+        // Bare non-edit keys in Preview: b toggles sidebar, z toggles zen, , opens settings, q does not close tab.
+        let mut left0 = false;
+        rt.update_if(|s, _| {
+            left0 = s.persist.left_open;
+            false
+        });
+        text_key(&mut rt, "b");
+        let mut left1 = false;
+        rt.update_if(|s, _| {
+            left1 = s.persist.left_open;
+            false
+        });
+        assert_ne!(left0, left1, "bare b toggles sidebar in Preview");
+        text_key(&mut rt, "b");
+
+        text_key(&mut rt, "z");
+        let mut zen = false;
+        rt.update_if(|s, _| {
+            zen = s.focus;
+            false
+        });
+        assert!(zen, "bare z enters zen mode in Preview");
+        key(&mut rt, Key::Escape, Mods::default());
+        rt.update_if(|s, _| {
+            zen = s.focus;
+            false
+        });
+        assert!(!zen && mode_of(&mut rt) == Mode::Preview, "Esc leaves zen and stays in Preview");
+
+        text_key(&mut rt, ",");
+        assert!(seen(&mut rt).settings, "bare , opens Settings in Preview");
+        key(&mut rt, Key::Escape, Mods::default());
+
+        // Bare q in Preview does not close the tab; Ctrl+W closes it and Ctrl+Shift+T reopens it.
+        rt.update(|s, tx| s.open_file("Box/a.md", None, tx));
+        settle(&mut rt);
+        let tabs = |rt: &mut Runtime<App>| {
+            let mut t = Vec::new();
+            rt.update_if(|s, _| {
+                t = s.tabs.clone();
+                false
+            });
+            t
+        };
+        let before_tabs = tabs(&mut rt);
+        text_key(&mut rt, "q");
+        assert_eq!(tabs(&mut rt), before_tabs, "bare q does not close a tab");
+        key(&mut rt, Key::Command('w'), ctrl(false));
+        assert!(!tabs(&mut rt).contains(&"Box/a.md".to_string()), "Ctrl+W closes active tab");
+        key(&mut rt, Key::Command('t'), ctrl(true));
+        assert!(tabs(&mut rt).contains(&"Box/a.md".to_string()), "Ctrl+Shift+T reopens closed tab");
+
+        // Map: Ctrl+= zooms in, Ctrl+0 resets zoom to 100%, Ctrl+X cuts selected node.
+        text_key(&mut rt, "m");
+        assert_eq!(mode_of(&mut rt), Mode::Map);
+        let zoom_of = |rt: &mut Runtime<App>| {
+            let mut z: f32 = 0.0;
+            rt.update_if(|s, _| {
+                z = s.map_view().map_or(0.0, |v| v.zoom);
+                false
+            });
+            z
+        };
+        key(&mut rt, Key::Command('='), ctrl(false));
+        glide(&mut rt);
+        let z_in = zoom_of(&mut rt);
+        key(&mut rt, Key::Command('0'), ctrl(false));
+        glide(&mut rt);
+        let z_reset = zoom_of(&mut rt);
+        assert!((z_reset - 1.0_f32).abs() < 0.01 && z_in > z_reset, "Ctrl+= / Ctrl+0 zoom in and reset Map: z_in={z_in}, z_reset={z_reset}");
+        // Map: Ctrl+X cuts a non-root node from the note.
+        let before_cut = seen(&mut rt).text;
+        key(&mut rt, Key::Right, Mods::default());
+        key(&mut rt, Key::Command('x'), ctrl(false));
+        let after_cut = seen(&mut rt).text;
+        assert!(after_cut.len() < before_cut.len(), "Ctrl+X cuts selected map branch");
+
+        // Sidebar tree F2 starts renaming the focused note row.
+        key(&mut rt, Key::Command('e'), ctrl(false));
+        rt.update(|_, tx| tx.focus("file:Box|a.md", true));
+        settle(&mut rt);
+        key(&mut rt, Key::Function(2), Mods::default());
+        let mut renaming = (false, None);
+        rt.update_if(|s, _| {
+            renaming = (s.renaming.is_some(), s.active.clone());
+            false
+        });
+        assert_eq!(renaming, (true, Some("Box/a.md".to_string())), "F2 on sidebar note row starts rename");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn writer_new_shortcuts_work() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-writer-new-keys-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "alpha\nbeta\ngamma\n", Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.update(|s, tx| {
+            s.cur_edit().set_selection(0, 5);
+            s.focus_editor(tx);
+        });
+        settle(&mut rt);
+        // Ctrl+Shift+C wraps inline code.
+        key(&mut rt, Key::Command('c'), ctrl(true));
+        assert!(seen(&mut rt).text.starts_with("`alpha`"), "Ctrl+Shift+C wraps inline code: {:?}", seen(&mut rt).text);
+        // Ctrl+Shift+Q toggles blockquote on line 1.
+        key(&mut rt, Key::Command('q'), ctrl(true));
+        assert!(seen(&mut rt).text.starts_with("> `alpha`"), "Ctrl+Shift+Q toggles blockquote: {:?}", seen(&mut rt).text);
+        // Ctrl+Shift+Q again unwraps blockquote.
+        key(&mut rt, Key::Command('q'), ctrl(true));
+        assert!(seen(&mut rt).text.starts_with("`alpha`"), "Ctrl+Shift+Q removes blockquote: {:?}", seen(&mut rt).text);
+        // Alt+Down moves line 1 below line 2.
+        key(&mut rt, Key::Down, Mods { alt: true, ..Mods::default() });
+        assert!(seen(&mut rt).text.starts_with("beta\n`alpha`\n"), "Alt+Down moves line down: {:?}", seen(&mut rt).text);
+        // Alt+Up moves it back up.
+        key(&mut rt, Key::Up, Mods { alt: true, ..Mods::default() });
+        assert!(seen(&mut rt).text.starts_with("`alpha`\nbeta\n"), "Alt+Up moves line up: {:?}", seen(&mut rt).text);
+        // Ctrl+Shift+Enter toggles task checkbox.
+        key(&mut rt, Key::Enter, ctrl(true));
+        assert!(seen(&mut rt).text.starts_with("- [ ] `alpha`"), "Ctrl+Shift+Enter adds task checkbox: {:?}", seen(&mut rt).text);
+        key(&mut rt, Key::Enter, ctrl(true));
+        assert!(seen(&mut rt).text.starts_with("- [x] `alpha`"), "Ctrl+Shift+Enter checks task: {:?}", seen(&mut rt).text);
+        // Ctrl+Shift+L inserts wiki link around selection.
+        rt.update(|s, _| {
+            let t = s.active_text().to_string();
+            let pos = t.find("beta").unwrap();
+            s.cur_edit().set_selection(pos, pos + 4);
+        });
+        key(&mut rt, Key::Command('l'), ctrl(true));
+        assert!(seen(&mut rt).text.contains("[[beta]]"), "Ctrl+Shift+L wraps wiki link: {:?}", seen(&mut rt).text);
+        // F9 toggles typewriter scrolling; Ctrl+Shift+D toggles paragraph focus.
+        let mut modes0 = (false, false);
+        rt.update_if(|s, _| {
+            modes0 = (s.settings().typewriter_scroll, s.settings().paragraph_focus);
+            false
+        });
+        key(&mut rt, Key::Function(9), Mods::default());
+        key(&mut rt, Key::Command('d'), ctrl(true));
+        let mut modes1 = (false, false);
+        rt.update_if(|s, _| {
+            modes1 = (s.settings().typewriter_scroll, s.settings().paragraph_focus);
+            false
+        });
+        assert_eq!(modes1, (!modes0.0, !modes0.1), "F9 and Ctrl+Shift+D toggle typewriter and paragraph focus");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn settings_keybinding_editor_rebinds_validates_and_persists() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-key-editor-{}", std::process::id()));
+        let mut rt = garden(&dir, Mode::Source);
+        // Open Settings -> Shortcuts.
+        key(&mut rt, Key::Command(','), ctrl(false));
+        press_key(&mut rt, "nav-Shortcuts", false);
+        glide(&mut rt);
+        // Start recording for app.command-palette.
+        press_key(&mut rt, "key-edit-app.command-palette", false);
+        assert!(rt.find("key-rec-app.command-palette").is_some(), "recording indicator shows");
+        // Pressing a conflicting chord (Ctrl+S) keeps recording open with an error.
+        key(&mut rt, Key::Command('s'), ctrl(false));
+        let mut err = None;
+        rt.update_if(|s, _| {
+            err = s.key_edit.as_ref().and_then(|e| e.error.clone());
+            false
+        });
+        assert!(err.as_deref().is_some_and(|m| m.contains("Save")), "conflict error names conflicting action: {err:?}");
+        // Pressing a free chord (Ctrl+Shift+P) binds and saves to keybindings.json.
+        key(&mut rt, Key::Command('p'), ctrl(true));
+        let mut bound: Vec<String> = Vec::new();
+        rt.update_if(|s, _| {
+            bound = s.keymap.chords("app.command-palette").into_iter().map(str::to_string).collect();
+            false
+        });
+        assert_eq!(bound, vec!["Ctrl+Shift+P".to_string()], "chord rebound");
+        let reloaded = crate::keymap::Overrides::load();
+        assert_eq!(reloaded.chords("app.command-palette"), vec!["Ctrl+Shift+P"], "persisted to keybindings.json");
+        // Close Settings and verify the new chord opens the palette while the old Ctrl+K does not.
+        key(&mut rt, Key::Escape, Mods::default());
+        key(&mut rt, Key::Command('k'), ctrl(false));
+        assert!(!seen(&mut rt).palette, "old Ctrl+K no longer opens palette");
+        key(&mut rt, Key::Command('p'), ctrl(true));
+        assert!(seen(&mut rt).palette, "new Ctrl+Shift+P opens palette");
+        key(&mut rt, Key::Escape, Mods::default());
+        // Reset all restores default Ctrl+K.
+        key(&mut rt, Key::Command(','), ctrl(false));
+        press_key(&mut rt, "nav-Shortcuts", false);
+        glide(&mut rt);
+        press_key(&mut rt, "keys-reset-all", false);
+        rt.update_if(|s, _| {
+            bound = s.keymap.chords("app.command-palette").into_iter().map(str::to_string).collect();
+            false
+        });
+        assert_eq!(bound, vec!["Ctrl+K".to_string()], "Reset all restores default");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -54,15 +54,16 @@ pub(super) fn opener(el: El, p: &Pal, current: bool, run: impl Fn(&mut App, &mut
     })
 }
 
-/// What a tree row is, for Left and Right.
+/// What a tree row is, for Left, Right and F2.
 pub(super) enum Branch {
-    Note,
+    /// A note, by path, so F2 renames it from the tree.
+    Note { path: String },
     /// A folder, by path, whether it is open, and its first row inside when it has one.
     Folder { path: String, open: bool, first: Option<String> },
 }
 
-/// A tree row's Left and Right: Right opens a closed folder or moves into an open one; Left
-/// closes an open folder or moves to the row's folder, keyed `parent`.
+/// A tree row's Left, Right and F2: Right opens a closed folder or moves into an open one; Left
+/// closes an open folder or moves to the row's folder, keyed `parent`; F2 renames a note.
 pub(super) fn tree_arrows(el: El, branch: Branch, parent: Option<String>) -> El {
     el.on_key(move |s: &mut App, ev: &KeyEvent, tx| {
         if ev.mods != Mods::default() {
@@ -77,6 +78,7 @@ pub(super) fn tree_arrows(el: El, branch: Branch, parent: Option<String>) -> El 
                 }
             }
             (Key::Right, _) => {}
+            (Key::Function(2), Branch::Note { path }) => s.rename_note_path(path, tx),
             _ => return false,
         }
         true

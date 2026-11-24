@@ -470,45 +470,148 @@ fn files(v: V) -> El {
 }
 
 fn keys(v: V) -> El {
-    use crate::keymap::{self, Ctx, Preset, Status};
+    use crate::keymap::{self, Ctx, Status};
     let p = v.p;
-    let preset = v.s.preset();
-    let pick = |pr: Preset, name: &str| {
-        seg(name, preset == pr, move |s: &mut App, _: &mut Tx| s.settings_mut().keymap = pr.id().into())
+    let km = &v.s.keymap;
+    let editing = v.s.key_edit.as_ref();
+    let path_note = crate::store::keybindings_path()
+        .map(|pp| format!("Saved in {}. Click any shortcut to rebind it.", crate::store::tilde(&pp)))
+        .unwrap_or_else(|| "Click any shortcut to rebind it.".to_string());
+    let reset_all = if km.is_empty() {
+        el()
+    } else {
+        outline_button(p, "keys-reset-all", "Reset all", 26.0, |s: &mut App, _: &mut Tx| s.reset_all_key_bindings())
     };
-    let mut c = col().key("keys").w_full().child(row_(
-        v,
-        "preset",
-        "Keys",
-        Some("omarky's keys, or the keys Quire used before. Every label in the app follows."),
-        settings_seg(v, "preset-seg", vec![pick(Preset::Omarky, "omarky"), pick(Preset::Quire, "Quire")]),
-    ));
-    // Only keys whose feature is built: the rest arrive with the reader and writer work.
-    let groups = [(Ctx::Global, "Everywhere"), (Ctx::Reader, "In preview"), (Ctx::Writer, "In the editor"), (Ctx::Map, "In the map")];
+    let mut c = col().key("keys").w_full().child(row_(v, "keybindings-head", "Keybindings", Some(&path_note), reset_all));
+    let groups = [
+        (Ctx::Global, "Everywhere"),
+        (Ctx::Reader, "In preview"),
+        (Ctx::Writer, "In the editor"),
+        (Ctx::Sheet, "In the edit sheet"),
+        (Ctx::Map, "In the map"),
+        (Ctx::MapEdit, "Naming a map node"),
+        (Ctx::Find, "In find"),
+        (Ctx::Palette, "In the palette"),
+        (Ctx::Field, "In name fields"),
+        (Ctx::Help, "In keyboard help"),
+    ];
     for (ctx, title) in groups {
+        let shown: Vec<&'static keymap::Action> = keymap::TABLE
+            .iter()
+            .filter(|a| a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape")
+            .collect();
+        if shown.is_empty() {
+            continue;
+        }
         c = c.child(styles::caption(title, false, p).key(format!("keys-{title}")).pt(18.0).pb(6.0));
-        let shown = keymap::TABLE.iter().filter(|a| {
-            a.ctx.first() == Some(&ctx) && !matches!(a.status, Status::Deferred | Status::Dropped) && a.id != "app.escape" && crate::keys::handler(a.id).is_some()
-        });
         for a in shown {
-            let mut chips = row().gap(5.0).center_y();
-            for kb in keymap::display_labels(preset, a.id) {
-                chips = chips.child(super::widgets::kbd(p, kb, false));
+            let id = a.id;
+            let mouse_only = a.chords.iter().all(|s| s.contains("click"));
+            let is_editing = editing.is_some_and(|e| e.action_id == id);
+            let err = editing.filter(|e| e.action_id == id).and_then(|e| e.error.as_deref());
+            let custom = km.is_custom(id);
+            let mut left = col().grow(1.0).shrink().min_w(0.0).gap(2.0);
+            let mut title_row = row().gap(6.0).center_y().child(label(a.name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0));
+            if custom {
+                title_row = title_row.child(label("custom", sans(11.0, 500.0), p.acc));
             }
+            left = left.child(title_row);
+            if let Some(msg) = err {
+                left = left.child(label(msg, sans(11.5, 400.0), p.err).wrap());
+            }
+            let right = if is_editing {
+                row()
+                    .gap(6.0)
+                    .center_y()
+                    .child(
+                        row()
+                            .key(format!("key-rec-{id}"))
+                            .h(26.0)
+                            .px(10.0)
+                            .center_y()
+                            .radius(6.0)
+                            .fill(p.soft)
+                            .border(1.0, p.acc)
+                            .child(label("Press shortcut…", sans(12.0, 500.0), p.acc)),
+                    )
+                    .child(outline_button(p, &format!("key-clear-{id}"), "Clear", 26.0, move |s: &mut App, _: &mut Tx| s.clear_key_binding(id)))
+                    .child(outline_button(p, &format!("key-cancel-{id}"), "Cancel", 26.0, |s: &mut App, _: &mut Tx| s.cancel_key_edit()))
+            } else {
+                let mut chips = row().gap(5.0).center_y().flex_wrap();
+                let labels = km.display_labels(id);
+                if labels.is_empty() {
+                    chips = chips.child(label("Unbound", sans(12.0, 400.0), p.mute));
+                } else {
+                    for kb in labels {
+                        chips = chips.child(super::widgets::kbd(p, kb, false));
+                    }
+                }
+                let trigger = if mouse_only {
+                    chips
+                } else {
+                    chips
+                        .key(format!("key-edit-{id}"))
+                        .px(6.0)
+                        .py(3.0)
+                        .radius(6.0)
+                        .hover(p.hover)
+                        .role("button")
+                        .label(format!("Change shortcut for {}", a.name))
+                        .help("Click to rebind")
+                        .control(move |s: &mut App, _: &mut Tx| s.start_key_edit(id))
+                };
+                let mut r = row().gap(6.0).center_y().child(trigger);
+                if custom {
+                    r = r.child(outline_button(p, &format!("key-reset-{id}"), "Reset", 26.0, move |s: &mut App, _: &mut Tx| s.reset_key_binding(id)));
+                }
+                r
+            };
             c = c.child(
                 row()
-                    .key(format!("key-{}", a.id))
+                    .key(format!("key-{id}"))
                     .w_full()
                     .gap(16.0)
-                    .py(11.0)
+                    .py(10.0)
                     .center_y()
                     .justify_between()
                     .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
                     .border_layout()
-                    .child(label(a.name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
-                    .child(chips),
+                    .child(left)
+                    .child(right),
             );
         }
+    }
+    // Reference section for sidebar tree and Open shelf keys handled by focus groups.
+    const SIDEBAR_KEYS: &[(&str, &[&str])] = &[
+        ("Move selection", &["Up", "Down"]),
+        ("First / last row", &["Home", "End"]),
+        ("Expand or collapse folder / tab outline", &["Right", "Left"]),
+        ("Open focused row", &["Enter", "Space"]),
+        ("Rename focused note in tree", &["F2"]),
+        ("Move focused tab up / down", &["Alt+Up", "Alt+Down"]),
+        ("Close focused tab in Open shelf", &["Delete", "Backspace"]),
+        ("Row context menu", &["Shift+F10"]),
+        ("Return keyboard to note", &["Esc"]),
+    ];
+    c = c.child(styles::caption("Sidebar & Open shelf", false, p).key("keys-sidebar").pt(18.0).pb(6.0));
+    for (i, &(name, chords)) in SIDEBAR_KEYS.iter().enumerate() {
+        let mut chips = row().gap(5.0).center_y().flex_wrap();
+        for ch in chords {
+            chips = chips.child(super::widgets::kbd(p, keymap::label_of(ch), false));
+        }
+        c = c.child(
+            row()
+                .key(format!("key-sidebar-{i}"))
+                .w_full()
+                .gap(16.0)
+                .py(10.0)
+                .center_y()
+                .justify_between()
+                .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
+                .border_layout()
+                .child(label(name, sans(13.5, 400.0), p.ink).wrap().shrink().min_w(0.0))
+                .child(chips),
+        );
     }
     c
 }

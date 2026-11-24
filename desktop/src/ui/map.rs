@@ -549,7 +549,7 @@ fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
     use super::icons::{BULLETS, HEADING, NUMBERS, PARAGRAPH, TASK};
     use crate::map::NewKind;
     let p = v.p;
-    let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
+    let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, kind: NewKind, on: bool, run: fn(&mut App, &mut Tx)| {
         let b = rune::row().key(key).size(28.0 * k, 28.0 * k).center().radius(6.0 * k).role("radio").checked(on).label(help.clone()).help(help);
         let glyph = rune::icon(glyph, 16.0 * k);
@@ -1076,8 +1076,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let c = &look.c;
     let mono = look.mono;
     let zoom = s.map_target_zoom();
-    let preset = s.preset();
-    let tip = |name: &str, id: &str| crate::keymap::tip(preset, name, id);
+    let tip = |name: &str, id: &str| s.keymap.tip(name, id);
     let hud_bg = c.on_page(c.panel);
     let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
     let sep_color = Roles::readable_on(hud_edge, hud_bg, 3.2);
@@ -1125,7 +1124,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
         .cursor(rune::Cursor::Pointer)
         .role("button")
         .label(format!("Zoom {pct}, reset to 100%"))
-        .help(tip("Zoom 100%", "map.zoom-reset"))
+        .help(tip("Zoom 100%", "app.zoom-reset"))
         .on_press_tx(|s: &mut App, tx: &mut Tx| {
             s.map_zoom_reset(tx);
             s.keys_to_note(tx);

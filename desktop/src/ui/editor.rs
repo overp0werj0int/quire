@@ -9,7 +9,7 @@ use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, TextEdit, TextHighl
 use super::widgets::{Control, label};
 use super::{V, outline, preview};
 use crate::app::{App, Mode};
-use crate::keymap::{self, Ctx};
+use crate::keymap::Ctx;
 use crate::roles::Roles;
 use crate::md::{self, Tok};
 use super::styles::{keys, literal, note, sans};
@@ -470,7 +470,7 @@ fn toolbar(v: V) -> El {
     use super::widgets::icon_button;
     use crate::format::Fmt;
     let p = v.p;
-    let tip = |name: &str, id: &str| crate::keymap::tip(v.s.preset(), name, id);
+    let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
     let (rw, rg, rc) = super::focus_ring(p);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).role("button").focus_ring(rw, rg, rc).control(move |s: &mut App, tx| s.format(f, tx));
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
@@ -538,15 +538,15 @@ fn toolbar(v: V) -> El {
         .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
         .child(btn("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic))
         .child(btn("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike))
-        .child(btn("fmt-heading", &HEADING, format!("Heading ({} to {})", crate::keymap::label(v.s.preset(), "writer.heading-1"), crate::keymap::label(v.s.preset(), "writer.heading-6")), Fmt::Heading))
+        .child(btn("fmt-heading", &HEADING, format!("Heading ({} to {})", v.s.keymap.label("writer.heading-1"), v.s.keymap.label("writer.heading-6")), Fmt::Heading))
         .child(sep("sep-1"))
         .child(btn("fmt-link", &LINK, tip("Insert link", "writer.link"), Fmt::Link))
-        .child(btn("fmt-wiki", &WIKI, "Insert note link".into(), Fmt::Wiki))
+        .child(btn("fmt-wiki", &WIKI, tip("Insert note link", "writer.wiki-link"), Fmt::Wiki))
         .child(sep("sep-2"))
         .child(btn("fmt-bullets", &BULLETS, tip("Bulleted list", "writer.bulleted-list"), Fmt::Bullet))
         .child(btn("fmt-numbers", &NUMBERS, tip("Numbered list", "writer.numbered-list"), Fmt::Number))
         .child(btn("fmt-task", &TASK, tip("Task", "writer.task-list"), Fmt::Task))
-        .child(btn("fmt-quote", &QUOTE, "Quote".into(), Fmt::Quote))
+        .child(btn("fmt-quote", &QUOTE, tip("Quote", "writer.blockquote"), Fmt::Quote))
         .child(btn("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code))
         .child(sep("sep-3"))
         .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).role("button").focus_ring(rw, rg, rc).control(|s: &mut App, tx| s.pick_image(tx)))
@@ -934,7 +934,7 @@ fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         s.note_editor_key(tx);
     }
     // The writer's editing keys come from the keymap, so a preset changes them here too.
-    match keymap::lookup(s.preset(), Ctx::Writer, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
+    match s.keymap.lookup(Ctx::Writer, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
         Some(run) => {
             run(s, tx);
             true
@@ -975,7 +975,7 @@ fn no_tab(v: V) -> El {
                 .focus_ring(rw, rg, rc)
                 .control(move |s: &mut App, tx| run(s, tx))
                 .child(label(l, sans(13.5, 400.0), p.ink2).group_color(p.acc))
-                .child(label(crate::keymap::label(v.s.preset(), id), keys(12.0), p.mute)),
+                .child(label(v.s.keymap.label(id), keys(12.0), p.mute)),
         );
     }
     c
@@ -1008,6 +1008,6 @@ fn empty_vault(v: V) -> El {
                 .focus_ring(rw, rg, rc)
                 .control(|s: &mut App, tx| s.new_note(None, tx))
                 .child(label("Create your first note", sans(13.5, 500.0), p.on_acc))
-                .child(label(crate::keymap::label(v.s.preset(), "app.new-note"), keys(11.0), p.on_acc.alpha(0.8))),
+                .child(label(v.s.keymap.label("app.new-note"), keys(11.0), p.on_acc.alpha(0.8))),
         )
 }

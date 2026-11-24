@@ -1,0 +1,9 @@
+Ctrl+Shift+Q toggles blockquote, Alt+Down moves a line down, and Ctrl+Shift+Enter toggles a task checkbox.
+note: Edit.md
+events: tap:editor@0.2 key:Home+cmd@0.4 key:Down+alt@0.6 key:Enter+cmd+shift@0.8 key:Enter+cmd+shift@1.0 key:Up@1.2 key:q+cmd+shift@1.4 key:s+cmd@1.8
+--- before
+alpha
+beta
+--- after
+> beta
+- [x] alpha

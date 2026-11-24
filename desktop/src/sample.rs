@@ -1,14 +1,14 @@
 //! The "Field Notes" sample folder. Quire writes it on first launch and on "Restore".
 
-use crate::keymap::{Preset, label};
+use crate::keymap::default_label;
 
 pub const NAME: &str = "Field Notes";
 pub const FOLDERS: [&str; 4] = ["Docs", "Drafts", "Journal", "Projects"];
 pub const TABS: [&str; 3] = ["Drafts/On slow software.md", "Journal/2026-11-12.md", "Welcome.md"];
 
-/// The sample is written once, in the default preset, so its keys come from that preset's table.
+/// The sample is written once, using the default keymap's labels.
 pub fn files() -> Vec<(&'static str, String)> {
-    let key = |id| label(Preset::Omarky, id);
+    let key = default_label;
     vec![
         (
             "Welcome.md",
@@ -19,7 +19,7 @@ Quire edits a folder of plain Markdown files. Each note is a `.md` file on your 
 
 ## The basics
 
-- Write in Markdown. {} switches between source and preview.
+- Write in Markdown. {} shows preview, {} edits source, and {} opens the mind map.
 - Link notes with double brackets, like [[Reading list]] or [[On slow software]]. Click a link in the preview, or {} it in the source, to follow it.
 - Tag anything with a hash, like #idea or #todo.
 - {} jumps to any note. {} lists every command.
@@ -33,7 +33,9 @@ Quire edits a folder of plain Markdown files. Each note is a `.md` file on your 
 
 > A link to a note that doesn't exist yet, like [[Someday]], creates it when you follow it.
 ",
-                key("app.toggle-mode"),
+                key("app.mode-preview"),
+                key("app.mode-source"),
+                key("app.mode-map"),
                 key("writer.follow-link-click"),
                 key("app.quick-switcher"),
                 key("app.command-palette"),
@@ -229,15 +231,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn welcome_names_the_default_presets_keys() {
+    fn welcome_names_the_default_keys() {
         let welcome = files().into_iter().find(|f| f.0 == "Welcome.md").unwrap().1;
         for (id, says) in [
-            ("app.toggle-mode", " switches between source and preview"),
+            ("app.mode-preview", " shows preview"),
+            ("app.mode-source", " edits source"),
+            ("app.mode-map", " opens the mind map"),
             ("app.quick-switcher", " jumps to any note"),
             ("app.command-palette", " lists every command"),
             ("app.focus-mode", "zen mode with "),
         ] {
-            let key = label(Preset::Omarky, id);
+            let key = default_label(id);
             let line = if says.starts_with(' ') { format!("{key}{says}") } else { format!("{says}{key}") };
             assert!(welcome.contains(&line), "{line:?} missing from the Welcome note");
         }

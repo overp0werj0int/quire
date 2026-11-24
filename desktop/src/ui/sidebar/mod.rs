@@ -20,7 +20,6 @@ use super::styles::nav;
 use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG};
 use super::widgets::Control;
 use crate::app::App;
-use crate::keymap;
 use crate::roles::Roles;
 
 /// The sidebar's width, docked or in its drawer.
@@ -102,7 +101,7 @@ fn top_bar(v: V) -> El {
         .border_layout()
         .role("button")
         .label("New note")
-        .help(keymap::tip(v.s.preset(), "New note", "app.new-note"))
+        .help(v.s.keymap.tip("New note", "app.new-note"))
         .focus_ring(rw, rg, rc)
         .keeps_text_selection()
         .control(|s: &mut App, tx| s.new_note(None, tx))
@@ -137,7 +136,7 @@ fn search_field(v: V) -> El {
         .placeholder("Search notes", c.faint)
         .caret(p.ink, p.sel)
         .label("Search notes")
-        .help(keymap::tip(s.preset(), "Search notes", "app.search-notes"))
+        .help(s.keymap.tip("Search notes", "app.search-notes"))
         .on_edit(|s: &mut App| &mut s.query)
         // Down moves into the results and Enter chooses the filled row, the first (SB-66);
         // with no match Enter does nothing (SB-69). Esc goes by `App::search_escape`, then
@@ -172,7 +171,7 @@ fn search_field(v: V) -> El {
         });
     // The hint shows only when it is short enough to leave "Search notes" whole: Ctrl+/ fits
     // (SB-100), Ctrl+Shift+G does not, and the field's tooltip names it instead.
-    let k = keymap::label(s.preset(), "app.search-notes");
+    let k = s.keymap.label("app.search-notes");
     let end = if s.query.text.is_empty() {
         (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k).mr(5.0))
     } else {
@@ -233,7 +232,7 @@ fn foot(v: V) -> El {
         let on = s.query.text.trim_start().starts_with('#');
         foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, tx| s.toggle_tags(tx)).role("switch").checked(on)
     });
-    let settings = foot_button(v, "foot-settings", &GEAR, keymap::tip(s.preset(), "Settings", "app.settings"), false, |s: &mut App, tx| s.open_settings(tx)).role("button");
+    let settings = foot_button(v, "foot-settings", &GEAR, s.keymap.tip("Settings", "app.settings"), false, |s: &mut App, tx| s.open_settings(tx)).role("button");
     row()
         .key("side-foot")
         .w_full()

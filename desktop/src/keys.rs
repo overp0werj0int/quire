@@ -4,9 +4,8 @@ use rune::{KeyEvent, Tx};
 
 use crate::app::{App, Screen};
 use crate::focus::Pane;
-use crate::keymap::{self, Ctx};
+use crate::keymap::Ctx;
 use crate::layer::{Kind, Layer};
-use crate::map_geom::Arrow;
 
 pub fn is_mac() -> bool {
     cfg!(target_os = "macos")
@@ -29,10 +28,9 @@ pub fn on_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
 
 /// A key for the page, with the stop that holds the keyboard, if one does.
 fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool {
-    let preset = s.preset();
     let vault = s.screen == Screen::Vault;
     // The toast is not a layer: its Undo key acts whatever is open.
-    if vault && keymap::lookup(preset, Ctx::Global, ev).iter().any(|a| a.id == "app.undo-delete") {
+    if vault && s.keymap.lookup(Ctx::Global, ev).iter().any(|a| a.id == "app.undo-delete") {
         s.undo_delete(tx);
         return true;
     }
@@ -65,17 +63,18 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             let now = s.now.get();
             if let Some((first, at)) = s.reader.pending.take()
                 && now - at < 0.9
-                && let Some(run) = keymap::lookup_seq(preset, *ctx, &first, ev).iter().find_map(|a| handler(a.id))
+                && let Some(run) = s.keymap.lookup_seq(*ctx, &first, ev).iter().find_map(|a| handler(a.id))
             {
                 run(s, tx);
                 return true;
             }
-            if keymap::starts_seq(preset, *ctx, ev) {
+            if s.keymap.starts_seq(*ctx, ev) {
                 s.reader.pending = Some((ev.clone(), now));
                 return true;
             }
         }
-        for a in keymap::lookup(preset, *ctx, ev) {
+        let actions = s.keymap.lookup(*ctx, ev);
+        for a in actions {
             // Away from the notes, only Esc and Quit act; from a text field or when no editable
             // note is open (empty vault, no tab, locked note), nothing at the note's caret does
             // (so Tab/Shift+Tab/Enter reach Rune's focus traversal cleanly, `FOCUSMODEL`).
@@ -94,17 +93,29 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             if a.id == "map.escape" {
                 return s.map_escape(tx);
             }
-            // A locked note's map is hidden behind the lock panel: its keys select nothing.
-            if *ctx == Ctx::Map && s.active_locked() && !matches!(a.id, "map.close-tab" | "map.toggle-outline" | "map.help" | "map.read-from-disk") {
+            // A locked note's map is hidden behind the lock panel: its node keys select nothing.
+            if *ctx == Ctx::Map
+                && s.active_locked()
+                && !matches!(
+                    a.id,
+                    "map.toggle-sidebar" | "map.toggle-outline" | "map.help" | "map.read-from-disk" | "map.mode-preview" | "map.mode-map" | "map.settings"
+                )
+            {
                 continue;
             }
-            // From Find or another text field the map's own keys do nothing but find, help and
-            // reading from disk (MAP-060, MAP-066): Tab in the find field adds no child.
-            if *ctx == Ctx::Map && field && !matches!(a.id, "map.find" | "map.find-next" | "map.find-previous" | "map.help" | "map.read-from-disk") {
+            // From Find or another text field, Reader/Map single-key shortcuts stay quiet so typing
+            // in the field never fires them (MAP-060, MAP-066).
+            if matches!(ctx, Ctx::Reader | Ctx::Map)
+                && field
+                && !matches!(a.id, "reader.find" | "reader.find-next" | "reader.find-previous" | "map.find" | "map.find-next" | "map.find-previous")
+            {
                 continue;
             }
-            // n and N step only while a query exists; F3 and Ctrl+G open Find (MAP-066, WR-120).
-            if matches!(a.id, "map.find-next" | "map.find-previous") && s.find_query().is_none() && matches!(ev.key, rune::Key::Text(_)) {
+            // n and N step only while a query exists; F3, Shift+F3, Ctrl+G and Ctrl+Shift+G open Find.
+            if matches!(a.id, "reader.find-next" | "reader.find-previous" | "map.find-next" | "map.find-previous")
+                && s.find_query().is_none()
+                && matches!(ev.key, rune::Key::Text(_))
+            {
                 continue;
             }
             if let Some(run) = handler(a.id) {
@@ -116,7 +127,7 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
     false
 }
 
-/// Esc with Shift, Ctrl or Alt is Esc wherever Esc does something (MODESC2): no preset gives
+/// Esc with Shift, Ctrl or Alt is Esc wherever Esc does something (MODESC2): no action gives
 /// it a meaning of its own. It goes round again as plain Esc, which then reaches every
 /// handler as Esc would, Rune's included: a modal's dismissal and a field's blur take plain
 /// Esc only. The window's keys call this first, and so does a handler that hears keys before
@@ -150,7 +161,9 @@ fn menu_key(ev: &KeyEvent) -> bool {
 /// it. Any other key goes on to Rune, which keeps it inside the layer, except over help and
 /// the edit sheet, which swallow it.
 fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    let preset = s.preset();
+    if kind == Kind::Settings && s.key_edit.is_some() {
+        return s.handle_key_edit(ev);
+    }
     if kind == Kind::Help {
         return s.help_key(ev, tx);
     }
@@ -172,7 +185,7 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
         let (own, window) = under.map_or((page_stack(s), &[][..]), layer_stack);
         let field = tx.focused().is_some_and(crate::focus::field);
-        let Some(a) = own.iter().chain(window).flat_map(|c| keymap::lookup(preset, *c, ev)).find(|a| handler(a.id).is_some() && !(field && crate::focus::at_caret(a))) else { return false };
+        let Some(a) = own.iter().chain(window).flat_map(|c| s.keymap.lookup(*c, ev)).find(|a| handler(a.id).is_some() && !(field && crate::focus::at_caret(a))) else { return false };
         if crate::layer::toggles(a.id) == Some(kind) {
             handler(a.id).expect("found above")(s, tx);
             return true;
@@ -182,13 +195,13 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         return page_key(s, ev, tx, None);
     }
     let (own, window) = layer_stack(kind);
-    for a in own.iter().flat_map(|c| keymap::lookup(preset, *c, ev)) {
+    for a in own.iter().flat_map(|c| s.keymap.lookup(*c, ev)) {
         if let Some(run) = handler(a.id) {
             run(s, tx);
             return true;
         }
     }
-    for a in window.iter().flat_map(|c| keymap::lookup(preset, *c, ev)) {
+    for a in window.iter().flat_map(|c| s.keymap.lookup(*c, ev)) {
         if a.id == "app.escape" {
             s.dismiss(tx);
             return true;
@@ -233,8 +246,9 @@ type Run = fn(&mut App, &mut Tx);
 /// What an action does, or None while the feature it belongs to is not built yet, so its key
 /// falls through. Mouse-only actions run from their pointer handlers instead.
 pub fn handler(id: &str) -> Option<Run> {
-    use crate::app::PalMode;
+    use crate::app::{Mode, PalMode};
     use crate::format::Fmt;
+    use crate::map_geom::Arrow;
     // The closed note's editor goes away with it: the note shown now gets the keys.
     fn close_tab(s: &mut App, tx: &mut Tx) {
         if let Some(a) = s.active.clone() {
@@ -245,24 +259,44 @@ pub fn handler(id: &str) -> Option<Run> {
     Some(match id {
         "app.command-palette" => |s, tx| s.open_palette(PalMode::Commands, tx),
         "app.quick-switcher" => |s, tx| s.quick_open(tx),
-        "writer.recent-notes" => |s, tx| s.open_palette(PalMode::Files, tx),
         "app.search-notes" => |s, tx| s.open_search(tx),
-        "app.toggle-sidebar" => |s, tx| s.toggle_left(tx),
+        "app.toggle-sidebar" | "reader.toggle-sidebar" | "map.toggle-sidebar" => |s, tx| s.toggle_left(tx),
         "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline" => |s, tx| s.toggle_right(tx),
-        "app.toggle-mode" => |s, tx| s.toggle_mode(tx),
-        "app.toggle-map" => |s, tx| s.toggle_map(tx),
-        "app.settings" => |s, tx| s.toggle_settings(tx),
-        "app.focus-mode" => |s, tx| s.toggle_focus(tx),
+        "app.mode-source" => |s, tx| s.show_mode(Mode::Source, tx),
+        "app.mode-preview" | "reader.mode-preview" | "map.mode-preview" => |s, tx| s.show_mode(Mode::Preview, tx),
+        "app.mode-map" | "reader.mode-map" | "map.mode-map" => |s, tx| s.show_mode(Mode::Map, tx),
+        "app.settings" | "reader.settings" | "map.settings" => |s, tx| s.toggle_settings(tx),
+        "app.focus-mode" | "reader.focus-mode" | "map.focus-mode" => |s, tx| s.toggle_focus(tx),
         "app.new-note" => |s, tx| s.new_note(None, tx),
         // macOS quits from its app menu.
         "app.quit" if !cfg!(target_os = "macos") => |s, tx| s.quit(tx),
-        "app.insert-image" => |s, tx| s.pick_image(tx),
-        "app.save" => |s, tx| s.save_now(tx),
-        "app.close-tab" | "reader.close-tab" | "map.close-tab" => close_tab,
-        // The map zooms by `+` and `-` alone (MAP-034); its text size stays.
-        "app.zoom-in" => |s, tx| if s.mode != crate::app::Mode::Map { s.zoom(Some(true), tx) },
-        "app.zoom-out" => |s, tx| if s.mode != crate::app::Mode::Map { s.zoom(Some(false), tx) },
-        "reader.zoom-reset" => |s, tx| s.zoom(None, tx),
+        "app.insert-image" | "reader.insert-image" | "map.insert-image" => |s, tx| s.pick_image(tx),
+        "app.save" | "reader.save" | "map.save" => |s, tx| s.save_now(tx),
+        "app.close-tab" => close_tab,
+        "app.reopen-tab" => |s, tx| s.reopen_tab(tx),
+        "app.read-from-disk" | "reader.read-from-disk" | "map.read-from-disk" => |s, _| s.read_from_disk(),
+        "app.zoom-in" => |s, tx| {
+            if s.mode == Mode::Map {
+                s.map_zoom_step(1.25, tx);
+            } else {
+                s.zoom(Some(true), tx);
+            }
+        },
+        "app.zoom-out" => |s, tx| {
+            if s.mode == Mode::Map {
+                s.map_zoom_step(0.8, tx);
+            } else {
+                s.zoom(Some(false), tx);
+            }
+        },
+        "app.zoom-reset" => |s, tx| {
+            if s.mode == Mode::Map {
+                s.map_zoom_reset(tx);
+            } else {
+                s.zoom(None, tx);
+            }
+        },
+        "app.help" | "reader.help" | "map.help" => |s, tx| s.toggle_help(tx),
         "app.undo-delete" => |s, tx| s.undo_delete(tx),
         "app.next-pane" => |s, tx| s.step_pane(false, tx),
         "app.previous-pane" => |s, tx| s.step_pane(true, tx),
@@ -288,17 +322,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.bottom" => |s, tx| s.scroll_bottom(tx),
         "reader.toggle-wide" => |s, _| s.toggle_wide(),
         "reader.find" => |s, tx| s.open_find(tx),
-        // n and N step only while a query exists (RD-58).
-        "reader.find-next" => |s, tx| {
-            if s.find_query().is_some() {
-                s.find_step(true, tx);
-            }
-        },
-        "reader.find-previous" => |s, tx| {
-            if s.find_query().is_some() {
-                s.find_step(false, tx);
-            }
-        },
+        "reader.find-next" => |s, tx| find_step_or_open(s, true, tx),
+        "reader.find-previous" => |s, tx| find_step_or_open(s, false, tx),
         "find.next" => |s, tx| s.find_step(true, tx),
         "find.previous" => |s, tx| s.find_step(false, tx),
         "find.close" => |s, tx| s.close_find(tx),
@@ -306,8 +331,6 @@ pub fn handler(id: &str) -> Option<Run> {
         "reader.copy-selection" => |s, tx| s.copy_selection(tx),
         "reader.copy-block-under-pointer" => |s, tx| s.copy_block_here(tx),
         "reader.copy-all" | "map.copy-all" => |s, tx| s.copy_all(tx),
-        "reader.read-from-disk" | "map.read-from-disk" => |s, _| s.read_from_disk(),
-        "reader.help" | "writer.help" => |s, tx| s.toggle_help(tx),
         "reader.edit-block" => |s, tx| s.open_sheet(crate::sheet::Scope::Block, tx),
         "reader.edit-section" => |s, tx| s.open_sheet(crate::sheet::Scope::Section, tx),
         "sheet.save" => |s, tx| s.sheet_save(tx),
@@ -318,6 +341,11 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.inline-code" => |s, tx| s.format(Fmt::Code, tx),
         "writer.strikethrough" => |s, tx| s.format(Fmt::Strike, tx),
         "writer.link" => |s, tx| s.format(Fmt::Link, tx),
+        "writer.wiki-link" => |s, tx| s.format(Fmt::Wiki, tx),
+        "writer.blockquote" => |s, tx| s.format(Fmt::Quote, tx),
+        "writer.toggle-checkbox" => |s, tx| s.writer_toggle_checkbox(tx),
+        "writer.move-up" => |s, tx| s.writer_move_lines(false, tx),
+        "writer.move-down" => |s, tx| s.writer_move_lines(true, tx),
         "writer.heading-1" => |s, tx| s.writer_heading(1, tx),
         "writer.heading-2" => |s, tx| s.writer_heading(2, tx),
         "writer.heading-3" => |s, tx| s.writer_heading(3, tx),
@@ -352,7 +380,6 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.collapse-to-level" => |s, tx| s.map_collapse_to_level(tx),
         "map.fit" => |s, tx| s.map_fit(tx),
         "map.layout" => |s, tx| s.open_layouts(tx),
-        "map.zoom-reset" => |s, tx| s.map_zoom_reset(tx),
         "map.center" => |s, tx| s.map_center(tx),
         "map.zoom-in" => |s, tx| s.map_zoom_step(1.25, tx),
         "map.zoom-out" => |s, tx| s.map_zoom_step(0.8, tx),
@@ -377,12 +404,12 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.heading-6" => |s, tx| s.map_level(6, tx),
         "map.undo" => |s, tx| s.map_undo(false, tx),
         "map.redo" => |s, tx| s.map_undo(true, tx),
+        "map.cut" => |s, tx| s.map_cut(tx),
         "map.copy-node" => |s, tx| s.map_copy(false, tx),
         "map.copy-subtree" => |s, tx| s.map_copy(true, tx),
         "map.find" => |s, tx| s.open_find(tx),
-        "map.find-next" => |s, tx| map_find_step(s, true, tx),
-        "map.find-previous" => |s, tx| map_find_step(s, false, tx),
-        "map.help" => |s, tx| s.toggle_help(tx),
+        "map.find-next" => |s, tx| find_step_or_open(s, true, tx),
+        "map.find-previous" => |s, tx| find_step_or_open(s, false, tx),
         "map.escape" => |s, tx| {
             s.map_escape(tx);
         },
@@ -392,9 +419,9 @@ pub fn handler(id: &str) -> Option<Run> {
     })
 }
 
-/// F3, Ctrl+G, n and their reverses on the map: the next or previous match, or Find opening
-/// when no query exists (MAP-066).
-fn map_find_step(s: &mut App, forward: bool, tx: &mut Tx) {
+/// F3, Shift+F3, Ctrl+G, Ctrl+Shift+G, n and N in Preview and Map: the next or previous match,
+/// or Find opening when no query exists.
+fn find_step_or_open(s: &mut App, forward: bool, tx: &mut Tx) {
     if s.find_query().is_some() {
         s.find_step(forward, tx);
     } else {

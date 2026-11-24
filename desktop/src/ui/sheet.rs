@@ -9,7 +9,7 @@ use super::layer::Card;
 use super::styles::sans;
 use super::reader::{cap, popup};
 use crate::app::App;
-use crate::keymap::{self, Ctx};
+use crate::keymap::Ctx;
 use crate::page::r;
 use crate::roles::Roles;
 use crate::sheet::{EDITOR, Scope, Sheet};
@@ -94,8 +94,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .child(el().key("sheet-pad").w_full().py(6.0).child(input));
 
     // SHEET-030, SHEET-038, SHEET-047: the key row, or the problem in its place.
-    let preset = s.preset();
-    let key_of = |id: &str| keymap::action(id).and_then(|a| a.chords(preset).first().copied()).map(keymap::label_of).unwrap_or_default();
+    let key_of = |id: &str| s.keymap.label(id);
     let foot = match sh.problem {
         Some(p) => row().key("sheet-problem").h(KEY_ROW).w_full().center_y().child(text(p).font(sans(11.5, 400.0)).color(c.red).truncate().shrink().min_w(0.0)),
         None => {
@@ -141,7 +140,7 @@ fn on_sheet_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         s.sheet_escape(tx);
         return true;
     }
-    match keymap::lookup(s.preset(), Ctx::Sheet, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
+    match s.keymap.lookup(Ctx::Sheet, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
         Some(run) => {
             run(s, tx);
             true

@@ -612,14 +612,36 @@ impl App {
         self.apply_edit(writer::heading(&text, focus, level), tx);
     }
 
-    /// Ctrl+Shift+F (WR-79, WR-80).
+    /// Ctrl+Shift+Enter: toggle task checkbox `[ ]` / `[x]` on the current line or selection.
+    pub fn writer_toggle_checkbox(&mut self, tx: &mut Tx) {
+        if !self.writing() {
+            return;
+        }
+        let (text, a, b) = self.sel();
+        if let Some(ed) = writer::toggle_checkbox(&text, a, b) {
+            self.apply_edit(ed, tx);
+        }
+    }
+
+    /// Alt+Up / Alt+Down: move the current line or selected lines up or down one line.
+    pub fn writer_move_lines(&mut self, down: bool, tx: &mut Tx) {
+        if !self.writing() {
+            return;
+        }
+        let (text, a, b) = self.sel();
+        if let Some(ed) = writer::move_lines(&text, a, b, down) {
+            self.apply_edit(ed, tx);
+        }
+    }
+
+    /// Ctrl+Shift+D (WR-79, WR-80).
     pub fn toggle_paragraph_focus(&mut self, tx: &mut Tx) {
         let on = !self.settings().paragraph_focus;
         self.settings_mut().paragraph_focus = on;
         self.toast(if on { "Focus on" } else { "Focus off" }, tx);
     }
 
-    /// Ctrl+Shift+T (WR-85).
+    /// F9 (WR-85).
     pub fn toggle_typewriter(&mut self, tx: &mut Tx) {
         let on = !self.settings().typewriter_scroll;
         self.settings_mut().typewriter_scroll = on;
@@ -658,7 +680,7 @@ impl App {
         if self.active.is_none() {
             return false;
         }
-        self.toggle_mode(tx);
+        self.show_mode(crate::app::Mode::Preview, tx);
         true
     }
 

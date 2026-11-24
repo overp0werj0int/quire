@@ -1,6 +1,6 @@
 Map to Preview and back selects the same deep node again, not its section's first one, and centres it.
 note: Long.md
-events: tap:mode-preview@0.2 key:m+cmd@0.6 key:l@1.0 key:j@1.2 key:j@1.4 key:j@1.6 key:l@1.8 key:j@2.0 key:j@2.2 key:m+cmd@2.8 key:m+cmd@3.6
+events: tap:mode-preview@0.2 key:m+cmd@0.6 key:l@1.0 key:j@1.2 key:j@1.4 key:j@1.6 key:l@1.8 key:j@2.0 key:j@2.2 key:p@2.8 key:m@3.6
 expect: selected: map-node:40
 expect: focus: note-keys (no ring)
 expect: rect:map-node:40: [724.5, 408.5, 79.0, 25.75]

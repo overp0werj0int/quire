@@ -360,6 +360,9 @@ impl App {
     /// Closes the top layer and gives focus back to where it was before it opened.
     pub fn close_layer(&mut self, tx: &mut Tx) {
         if let Some(open) = self.layers.pop() {
+            if matches!(open.layer, Layer::Settings) {
+                self.key_edit = None;
+            }
             if matches!(open.layer, Layer::Drawer(_)) {
                 self.map_drawer_closed(tx);
             }
@@ -404,6 +407,7 @@ impl App {
     /// Closes every open layer.
     pub fn close_layers(&mut self, tx: &mut Tx) {
         if !self.layers.is_empty() {
+            self.key_edit = None;
             let had_drawer = self.drawer().is_some();
             let back = self.layers.swap_remove(0).back;
             self.layers.clear();
@@ -471,10 +475,10 @@ impl App {
 /// closes it, rather than closing it and acting.
 pub fn toggles(id: &str) -> Option<Kind> {
     match id {
-        "app.settings" => Some(Kind::Settings),
-        "reader.help" | "writer.help" => Some(Kind::Help),
-        "app.toggle-sidebar" => Some(Kind::Drawer(Drawer::Sidebar)),
-        "app.toggle-outline" | "reader.toggle-outline" => Some(Kind::Drawer(Drawer::Outline)),
+        "app.settings" | "reader.settings" | "map.settings" => Some(Kind::Settings),
+        "app.help" | "reader.help" | "map.help" => Some(Kind::Help),
+        "app.toggle-sidebar" | "reader.toggle-sidebar" | "map.toggle-sidebar" => Some(Kind::Drawer(Drawer::Sidebar)),
+        "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline" => Some(Kind::Drawer(Drawer::Outline)),
         _ => None,
     }
 }

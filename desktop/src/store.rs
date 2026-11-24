@@ -30,8 +30,6 @@ pub struct Settings {
     pub preview_font: String,
     /// Code in both modes, an id in `theme::CODE_FONTS`.
     pub code_font: String,
-    /// The keymap preset, "omarky" or "quire" (`docs/reader-writer/behavior/keymap.md`).
-    pub keymap: String,
     pub spellcheck: bool,
     pub continue_lists: bool,
     /// Lines outside the paragraph being written fade (WR-79).
@@ -61,7 +59,6 @@ impl Default for Settings {
             width: "readable".into(),
             preview_font: "quattro".into(),
             code_font: "ia-mono".into(),
-            keymap: "omarky".into(),
             spellcheck: false,
             continue_lists: true,
             paragraph_focus: false,
@@ -232,6 +229,33 @@ fn state_path() -> Option<PathBuf> {
         return Some(PathBuf::from(p));
     }
     dirs().map(|d| d.config().join("state.json"))
+}
+
+pub fn keybindings_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("QUIRE_KEYMAP") {
+        return Some(PathBuf::from(p));
+    }
+    if let Ok(p) = std::env::var("QUIRE_STATE") {
+        let p = PathBuf::from(p);
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("quire");
+        return Some(p.with_file_name(format!("{stem}.keybindings.json")));
+    }
+    dirs().map(|d| d.config().join("keybindings.json"))
+}
+
+pub fn load_keybindings() -> BTreeMap<String, Vec<String>> {
+    let Some(p) = keybindings_path() else { return BTreeMap::new() };
+    std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+pub fn save_keybindings(bindings: &BTreeMap<String, Vec<String>>) -> std::io::Result<()> {
+    let Some(path) = keybindings_path() else { return Ok(()) };
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(bindings).unwrap_or_default())?;
+    std::fs::rename(&tmp, &path)
 }
 
 pub const SIZE_MIN: u32 = 9;

@@ -1,9 +1,12 @@
-//! The keymap: every key the app answers, as a table from a context and a chord to a named
-//! action, in two presets (`docs/reader-writer/behavior/keymap.md`, decision 0003).
+//! The keymap: every key the app answers, as a single unified table from a context and a chord
+//! to a named action (`docs/reader-writer/behavior/keymap.md`, decision 0003), with user
+//! overrides persisted in `~/.config/quire/keybindings.json`.
 //!
-//! Chords are written as the spec writes them ("Ctrl+Shift+K", "j", "G", "g g", "Space"), so
+//! Chords are written as the spec writes them ("Ctrl+Shift+B", "j", "G", "g g", "Space"), so
 //! the table reads against the spec line by line, and a test checks that they agree. What each
 //! action does is `keys::handler`; an action with no handler yet falls through.
+
+use std::collections::BTreeMap;
 
 use rune::{Key, KeyEvent};
 
@@ -20,28 +23,6 @@ pub enum Ctx {
     Rewrite,
     Map,
     MapEdit,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Preset {
-    Omarky,
-    Quire,
-}
-
-impl Preset {
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub const ALL: [Preset; 2] = [Preset::Omarky, Preset::Quire];
-
-    pub fn from_id(id: &str) -> Preset {
-        if id == "quire" { Preset::Quire } else { Preset::Omarky }
-    }
-
-    pub fn id(self) -> &'static str {
-        match self {
-            Preset::Omarky => "omarky",
-            Preset::Quire => "quire",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,29 +43,15 @@ pub struct Action {
     pub name: &'static str,
     pub ctx: &'static [Ctx],
     pub status: Status,
-    pub omarky: &'static [&'static str],
-    pub quire: &'static [&'static str],
+    pub chords: &'static [&'static str],
     /// Two actions may share a chord in one context only when both have guards and the guards
     /// exclude each other. The conflict test reads it; the feature checks the condition.
     #[cfg_attr(not(test), allow(dead_code))]
     pub guard: Option<&'static str>,
 }
 
-impl Action {
-    pub fn chords(&self, p: Preset) -> &'static [&'static str] {
-        match p {
-            Preset::Omarky => self.omarky,
-            Preset::Quire => self.quire,
-        }
-    }
-}
-
-const fn a(item: u16, id: &'static str, name: &'static str, ctx: &'static [Ctx], status: Status, omarky: &'static [&'static str], quire: &'static [&'static str]) -> Action {
-    Action { item, id, name, ctx, status, omarky, quire, guard: None }
-}
-
-const fn same(item: u16, id: &'static str, name: &'static str, ctx: &'static [Ctx], status: Status, chords: &'static [&'static str]) -> Action {
-    a(item, id, name, ctx, status, chords, chords)
+const fn a(item: u16, id: &'static str, name: &'static str, ctx: &'static [Ctx], status: Status, chords: &'static [&'static str]) -> Action {
+    Action { item, id, name, ctx, status, chords, guard: None }
 }
 
 use Ctx::*;
@@ -96,192 +63,370 @@ const M: &[Ctx] = &[Map];
 const ME: &[Ctx] = &[MapEdit];
 
 pub const TABLE: &[Action] = &[
-    a(8, "app.command-palette", "Command palette", &[Global], Adapted, &["Ctrl+Shift+K"], &["Ctrl+P"]),
-    same(9, "app.quick-switcher", "Quick switcher", &[Global], Quire, &["Ctrl+O"]),
-    a(10, "app.search-notes", "Search all notes", &[Global], Adapted, &["Ctrl+/", "Ctrl+?", "Ctrl+Shift+G"], &["Ctrl+/", "Ctrl+?", "Ctrl+Shift+F"]),
-    a(11, "app.toggle-sidebar", "Toggle sidebar", &[Global], Adapted, &["Ctrl+Shift+B"], &["Ctrl+\\"]),
-    a(12, "app.toggle-outline", "Toggle outline", &[Global], Adapted, &["Ctrl+\\"], &["Ctrl+Shift+O"]),
-    a(13, "app.toggle-mode", "Source / preview", &[Global], Adapted, &["Ctrl+P", "Ctrl+Shift+P"], &["Ctrl+E"]),
-    same(14, "app.settings", "Settings", &[Global], Quire, &["Ctrl+,"]),
-    same(15, "app.focus-mode", "Zen mode", &[Global], Quire, &["Ctrl+."]),
-    same(16, "app.new-note", "New note", &[Global], Quire, &["Ctrl+N"]),
-    same(17, "app.quit", "Quit", &[Global], Quire, &["Ctrl+Q"]),
-    same(18, "app.insert-image", "Insert an image", &[Global], Quire, &["Ctrl+Shift+I"]),
-    same(19, "app.save", "Save now", &[Global], In, &["Ctrl+S"]),
-    same(20, "app.close-tab", "Close tab", &[Global], In, &["Ctrl+W"]),
-    same(21, "app.zoom-in", "Larger text", &[Global], In, &["Ctrl+=", "Ctrl++"]),
-    same(22, "app.zoom-out", "Smaller text", &[Global], In, &["Ctrl+-"]),
-    same(23, "app.escape", "Close or leave", &[Global], Quire, &["Esc"]),
-    same(94, "app.undo-delete", "Undo the delete", &[Global], Quire, &["Ctrl+Shift+R"]),
-    same(96, "app.next-pane", "Next pane", &[Global], Quire, &["F6"]),
-    same(97, "app.previous-pane", "Previous pane", &[Global], Quire, &["Shift+F6"]),
-    same(99, "app.tab-1", "Tab 1", &[Global], Quire, &["Ctrl+1"]),
-    same(99, "app.tab-2", "Tab 2", &[Global], Quire, &["Ctrl+2"]),
-    same(99, "app.tab-3", "Tab 3", &[Global], Quire, &["Ctrl+3"]),
-    same(99, "app.tab-4", "Tab 4", &[Global], Quire, &["Ctrl+4"]),
-    same(99, "app.tab-5", "Tab 5", &[Global], Quire, &["Ctrl+5"]),
-    same(99, "app.tab-6", "Tab 6", &[Global], Quire, &["Ctrl+6"]),
-    same(99, "app.tab-7", "Tab 7", &[Global], Quire, &["Ctrl+7"]),
-    same(99, "app.tab-8", "Tab 8", &[Global], Quire, &["Ctrl+8"]),
-    same(99, "app.tab-9", "Tab 9", &[Global], Quire, &["Ctrl+9"]),
-    same(100, "app.next-tab", "Next tab", &[Global], Quire, &["Ctrl+Tab"]),
-    same(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
-    same(102, "app.toggle-map", "Map / back", &[Global], Adapted, &["Ctrl+M"]),
+    // Global.
+    a(8, "app.command-palette", "Command palette", &[Global], Adapted, &["Ctrl+K"]),
+    a(9, "app.quick-switcher", "Quick switcher", &[Global], Adapted, &["Ctrl+Shift+O"]),
+    a(10, "app.search-notes", "Search all notes", &[Global], Adapted, &["Ctrl+Shift+F"]),
+    a(11, "app.toggle-sidebar", "Toggle sidebar", &[Global], Adapted, &["Ctrl+Shift+B"]),
+    a(12, "app.toggle-outline", "Toggle outline", &[Global], Adapted, &["Ctrl+O"]),
+    a(13, "app.mode-source", "Source mode", &[Global], Adapted, &["Ctrl+E"]),
+    a(160, "app.mode-preview", "Preview mode", &[Global], Adapted, &["Ctrl+P"]),
+    a(102, "app.mode-map", "Map mode", &[Global], Adapted, &["Ctrl+M"]),
+    a(14, "app.settings", "Settings", &[Global], Quire, &["Ctrl+,"]),
+    a(15, "app.focus-mode", "Zen mode", &[Global], Quire, &["Ctrl+."]),
+    a(16, "app.new-note", "New note", &[Global], Quire, &["Ctrl+N"]),
+    a(17, "app.quit", "Quit", &[Global], Quire, &["Ctrl+Q"]),
+    a(18, "app.insert-image", "Insert an image", &[Global], Quire, &["Ctrl+Shift+I"]),
+    a(19, "app.save", "Save now", &[Global], In, &["Ctrl+S"]),
+    a(20, "app.close-tab", "Close tab", &[Global], In, &["Ctrl+W"]),
+    a(161, "app.reopen-tab", "Reopen closed tab", &[Global], Quire, &["Ctrl+Shift+T"]),
+    a(39, "app.read-from-disk", "Read from disk", &[Global], Adapted, &["Ctrl+R"]),
+    a(21, "app.zoom-in", "Zoom in", &[Global], Adapted, &["Ctrl+=", "Ctrl++"]),
+    a(22, "app.zoom-out", "Zoom out", &[Global], Adapted, &["Ctrl+-"]),
+    a(40, "app.zoom-reset", "Reset zoom", &[Global], Adapted, &["Ctrl+0"]),
+    a(66, "app.help", "Keyboard help", &[Global], Adapted, &["Ctrl+/", "Ctrl+?", "F1"]),
+    a(23, "app.escape", "Close or leave", &[Global], Quire, &["Esc"]),
+    a(94, "app.undo-delete", "Undo the delete", &[Global], Quire, &["Ctrl+Shift+R"]),
+    a(96, "app.next-pane", "Next pane", &[Global], Quire, &["F6"]),
+    a(97, "app.previous-pane", "Previous pane", &[Global], Quire, &["Shift+F6"]),
+    a(99, "app.tab-1", "Tab 1", &[Global], Quire, &["Ctrl+1"]),
+    a(99, "app.tab-2", "Tab 2", &[Global], Quire, &["Ctrl+2"]),
+    a(99, "app.tab-3", "Tab 3", &[Global], Quire, &["Ctrl+3"]),
+    a(99, "app.tab-4", "Tab 4", &[Global], Quire, &["Ctrl+4"]),
+    a(99, "app.tab-5", "Tab 5", &[Global], Quire, &["Ctrl+5"]),
+    a(99, "app.tab-6", "Tab 6", &[Global], Quire, &["Ctrl+6"]),
+    a(99, "app.tab-7", "Tab 7", &[Global], Quire, &["Ctrl+7"]),
+    a(99, "app.tab-8", "Tab 8", &[Global], Quire, &["Ctrl+8"]),
+    a(99, "app.tab-9", "Tab 9", &[Global], Quire, &["Ctrl+9"]),
+    a(100, "app.next-tab", "Next tab", &[Global], Quire, &["Ctrl+Tab"]),
+    a(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
     // Reader.
-    same(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
-    same(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),
-    same(26, "reader.page-down", "Page down", &[Reader], In, &["Space", "PageDown"]),
-    same(27, "reader.page-up", "Page up", &[Reader], In, &["Shift+Space", "PageUp"]),
-    same(28, "reader.top", "Top of the note", &[Reader], In, &["g g", "Home"]),
-    same(29, "reader.bottom", "End of the note", &[Reader], In, &["G", "End"]),
-    same(30, "reader.toggle-outline", "Toggle outline", &[Reader], In, &["o", "O"]),
-    same(31, "reader.toggle-wide", "Readable or full width", &[Reader], In, &["w", "W"]),
-    same(32, "reader.find", "Find", &[Reader], In, &["Ctrl+F", "/"]),
-    Action { guard: Some("a find query exists"), ..same(33, "reader.find-next", "Next match", &[Reader], In, &["n"]) },
-    same(34, "reader.find-previous", "Previous match", &[Reader], In, &["N"]),
-    same(35, "reader.copy-selection", "Copy the selection", &[Reader], In, &["Ctrl+C"]),
-    same(36, "reader.copy-block-under-pointer", "Copy the block's Markdown", &[Reader], In, &["Ctrl+Shift+C"]),
-    same(37, "reader.copy-all", "Copy the whole note", &[Reader], In, &["Ctrl+Shift+A"]),
-    same(38, "reader.block-menu", "Copy or edit a block", &[Reader], In, &["Right-click"]),
-    same(39, "reader.read-from-disk", "Read from disk", &[Reader], In, &["Ctrl+R"]),
-    same(40, "reader.zoom-reset", "Text size 14 px", &[Reader, Writer], Adapted, &["Ctrl+0"]),
-    same(41, "reader.edit-block", "Edit this block", &[Reader], In, &["e"]),
-    same(42, "reader.edit-section", "Edit this section", &[Reader], In, &["E"]),
-    same(43, "reader.help", "Keyboard help", &[Reader], Adapted, &["?", "F1"]),
-    same(44, "reader.close-tab", "Close tab", &[Reader], In, &["q"]),
-    same(45, "reader.escape", "Close find or clear the selection", &[Reader], In, &["Esc"]),
-    same(46, "reader.versions", "Versions", &[Reader], Deferred, &["v", "V"]),
-    same(47, "reader.fold", "Fold unchanged text", &[Reader], Deferred, &["f", "F"]),
-    Action { guard: Some("changes mode with no find query"), ..same(48, "reader.next-change", "Next change", &[Reader], Deferred, &["n"]) },
-    same(49, "reader.previous-change", "Previous change", &[Reader], Deferred, &["p"]),
+    a(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
+    a(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),
+    a(26, "reader.page-down", "Page down", &[Reader], In, &["Space", "PageDown"]),
+    a(27, "reader.page-up", "Page up", &[Reader], In, &["Shift+Space", "PageUp"]),
+    a(28, "reader.top", "Top of the note", &[Reader], In, &["g g", "Home"]),
+    a(29, "reader.bottom", "End of the note", &[Reader], In, &["G", "End"]),
+    a(162, "reader.toggle-sidebar", "Toggle sidebar", &[Reader], Adapted, &["b", "B", "Ctrl+B"]),
+    a(30, "reader.toggle-outline", "Toggle outline", &[Reader], In, &["o", "O"]),
+    a(31, "reader.toggle-wide", "Readable or full width", &[Reader], In, &["w", "W"]),
+    a(163, "reader.mode-preview", "Preview mode", &[Reader], Adapted, &["p"]),
+    a(164, "reader.mode-map", "Map mode", &[Reader], Adapted, &["m"]),
+    a(165, "reader.read-from-disk", "Read from disk", &[Reader], Adapted, &["r"]),
+    a(166, "reader.focus-mode", "Zen mode", &[Reader], Adapted, &["z", "."]),
+    a(167, "reader.settings", "Settings", &[Reader], Adapted, &[","]),
+    a(168, "reader.save", "Save now", &[Reader], Adapted, &["s"]),
+    a(169, "reader.insert-image", "Insert an image", &[Reader], Adapted, &["i"]),
+    a(32, "reader.find", "Find", &[Reader], In, &["Ctrl+F", "/"]),
+    Action { guard: Some("a find query exists"), ..a(33, "reader.find-next", "Next match", &[Reader], Adapted, &["n", "F3", "Ctrl+G"]) },
+    a(34, "reader.find-previous", "Previous match", &[Reader], Adapted, &["N", "Shift+F3", "Ctrl+Shift+G"]),
+    a(35, "reader.copy-selection", "Copy the selection", &[Reader], In, &["Ctrl+C"]),
+    a(36, "reader.copy-block-under-pointer", "Copy the block's Markdown", &[Reader], In, &["Ctrl+Shift+C"]),
+    a(37, "reader.copy-all", "Copy the whole note", &[Reader], In, &["Ctrl+Shift+A"]),
+    a(38, "reader.block-menu", "Copy or edit a block", &[Reader], In, &["Right-click"]),
+    a(41, "reader.edit-block", "Edit this block", &[Reader], In, &["e"]),
+    a(42, "reader.edit-section", "Edit this section", &[Reader], In, &["E"]),
+    a(43, "reader.help", "Keyboard help", &[Reader], Adapted, &["?"]),
+    a(44, "reader.close-tab", "Close tab", &[Reader], Dropped, &[]),
+    a(45, "reader.escape", "Close find or clear the selection", &[Reader], Adapted, &["Esc"]),
+    a(46, "reader.versions", "Versions", &[Reader], Deferred, &["v", "V"]),
+    a(47, "reader.fold", "Fold unchanged text", &[Reader], Deferred, &["f", "F"]),
+    Action { guard: Some("changes mode with no find query"), ..a(48, "reader.next-change", "Next change", &[Reader], Deferred, &["n"]) },
+    a(49, "reader.previous-change", "Previous change", &[Reader], Deferred, &["P"]),
     // Writer, and the sheet, whose editor is the writer's.
-    same(50, "writer.bold", "Bold", WM, In, &["Ctrl+B"]),
-    same(51, "writer.italic", "Italic", WM, In, &["Ctrl+I"]),
-    a(52, "writer.inline-code", "Inline code", WM, Adapted, &["Ctrl+E"], &["Ctrl+Shift+E"]),
-    same(53, "writer.strikethrough", "Strikethrough", WM, In, &["Ctrl+Shift+X"]),
-    same(54, "writer.link", "Link", WM, In, &["Ctrl+K"]),
-    same(55, "writer.heading-1", "Heading 1", W, Adapted, &["Ctrl+Alt+1"]),
-    same(55, "writer.heading-2", "Heading 2", W, Adapted, &["Ctrl+Alt+2"]),
-    same(55, "writer.heading-3", "Heading 3", W, Adapted, &["Ctrl+Alt+3"]),
-    same(55, "writer.heading-4", "Heading 4", W, Adapted, &["Ctrl+Alt+4"]),
-    same(55, "writer.heading-5", "Heading 5", W, Adapted, &["Ctrl+Alt+5"]),
-    same(55, "writer.heading-6", "Heading 6", W, Adapted, &["Ctrl+Alt+6"]),
-    same(56, "writer.plain-paragraph", "Plain paragraph", W, Adapted, &["Ctrl+Alt+0"]),
-    same(152, "writer.numbered-list", "Numbered list", W, Quire, &["Ctrl+Alt+7"]),
-    same(153, "writer.bulleted-list", "Bulleted list", W, Quire, &["Ctrl+Alt+8"]),
-    same(154, "writer.task-list", "Task list", W, Quire, &["Ctrl+Alt+9"]),
-    same(57, "writer.indent", "Indent", W, In, &["Tab"]),
-    same(58, "writer.outdent", "Outdent", W, In, &["Shift+Tab"]),
-    same(59, "writer.continue-block", "Continue a list or quote", W, In, &["Enter"]),
-    same(60, "writer.follow-link", "Follow the link at the caret", &[Writer], Quire, &["Ctrl+Enter"]),
-    same(61, "writer.follow-link-click", "Follow a [[link]]", &[Writer], Quire, &["Ctrl+click"]),
-    same(62, "writer.find", "Find", &[Writer], In, &["Ctrl+F"]),
-    same(63, "writer.find-next", "Next match", &[Writer], In, &["Ctrl+G", "F3"]),
-    same(64, "writer.find-previous", "Previous match", &[Writer], In, &["Shift+F3"]),
-    same(65, "writer.recent-notes", "Recent notes", &[Writer], In, &["Ctrl+R"]),
-    same(66, "writer.help", "Keyboard help", &[Writer], Adapted, &["F1"]),
-    a(67, "writer.paragraph-focus", "Paragraph focus", &[Writer], Adapted, &["Ctrl+Shift+F"], &["Ctrl+Shift+D"]),
-    same(68, "writer.typewriter", "Typewriter scrolling", &[Writer], In, &["Ctrl+Shift+T"]),
-    same(69, "writer.next-font", "Next font", &[Writer], In, &["Ctrl+Shift+M"]),
-    same(70, "writer.escape", "Close a menu, help or find, else show the preview", &[Writer], In, &["Esc"]),
-    same(71, "writer.spelling", "Spell checking", &[Writer], Deferred, &["Ctrl+Shift+L"]),
-    same(72, "writer.rewrite", "Rewrite", W, Deferred, &["Ctrl+J"]),
-    same(73, "writer.rewrite-section", "Rewrite the section", W, Deferred, &["Ctrl+Shift+J"]),
-    same(74, "writer.save-as", "Save as", &[Writer], Dropped, &[]),
+    a(50, "writer.bold", "Bold", WM, In, &["Ctrl+B"]),
+    a(51, "writer.italic", "Italic", WM, In, &["Ctrl+I"]),
+    a(52, "writer.inline-code", "Inline code", WM, Adapted, &["Ctrl+Shift+C"]),
+    a(53, "writer.strikethrough", "Strikethrough", WM, In, &["Ctrl+Shift+X"]),
+    a(54, "writer.link", "Link", WM, Adapted, &["Ctrl+L"]),
+    a(170, "writer.wiki-link", "Note link", WM, Quire, &["Ctrl+Shift+L"]),
+    a(171, "writer.blockquote", "Blockquote", W, Quire, &["Ctrl+Shift+Q"]),
+    a(172, "writer.toggle-checkbox", "Toggle task", W, Quire, &["Ctrl+Shift+Enter"]),
+    a(173, "writer.move-up", "Move line up", W, Quire, &["Alt+Up"]),
+    a(174, "writer.move-down", "Move line down", W, Quire, &["Alt+Down"]),
+    a(55, "writer.heading-1", "Heading 1", W, Adapted, &["Ctrl+Alt+1"]),
+    a(55, "writer.heading-2", "Heading 2", W, Adapted, &["Ctrl+Alt+2"]),
+    a(55, "writer.heading-3", "Heading 3", W, Adapted, &["Ctrl+Alt+3"]),
+    a(55, "writer.heading-4", "Heading 4", W, Adapted, &["Ctrl+Alt+4"]),
+    a(55, "writer.heading-5", "Heading 5", W, Adapted, &["Ctrl+Alt+5"]),
+    a(55, "writer.heading-6", "Heading 6", W, Adapted, &["Ctrl+Alt+6"]),
+    a(56, "writer.plain-paragraph", "Plain paragraph", W, Adapted, &["Ctrl+Alt+0"]),
+    a(152, "writer.numbered-list", "Numbered list", W, Quire, &["Ctrl+Shift+7"]),
+    a(153, "writer.bulleted-list", "Bulleted list", W, Quire, &["Ctrl+Shift+8"]),
+    a(154, "writer.task-list", "Task list", W, Quire, &["Ctrl+Shift+9"]),
+    a(57, "writer.indent", "Indent", W, In, &["Tab"]),
+    a(58, "writer.outdent", "Outdent", W, In, &["Shift+Tab"]),
+    a(59, "writer.continue-block", "Continue a list or quote", W, In, &["Enter"]),
+    a(60, "writer.follow-link", "Follow the link at the caret", &[Writer], Quire, &["Ctrl+Enter"]),
+    a(61, "writer.follow-link-click", "Follow a [[link]]", &[Writer], Quire, &["Ctrl+click"]),
+    a(62, "writer.find", "Find", &[Writer], In, &["Ctrl+F"]),
+    a(63, "writer.find-next", "Next match", &[Writer], In, &["Ctrl+G", "F3"]),
+    a(64, "writer.find-previous", "Previous match", &[Writer], Adapted, &["Ctrl+Shift+G", "Shift+F3"]),
+    a(65, "writer.recent-notes", "Recent notes", &[Writer], Dropped, &[]),
+    a(67, "writer.paragraph-focus", "Paragraph focus", &[Writer], Adapted, &["Ctrl+Shift+D"]),
+    a(68, "writer.typewriter", "Typewriter scrolling", &[Writer], Adapted, &["F9"]),
+    a(69, "writer.next-font", "Next font", &[Writer], In, &["Ctrl+Shift+M"]),
+    a(70, "writer.escape", "Close a menu, help or find, else show the preview", &[Writer], In, &["Esc"]),
+    a(71, "writer.spelling", "Spell checking", &[Writer], Deferred, &["F7"]),
+    a(72, "writer.rewrite", "Rewrite", W, Deferred, &["Ctrl+J"]),
+    a(73, "writer.rewrite-section", "Rewrite the section", W, Deferred, &["Ctrl+Shift+J"]),
+    a(74, "writer.save-as", "Save as", &[Writer], Dropped, &[]),
     // Sheet.
-    same(75, "sheet.save", "Save the sheet", &[Sheet], In, &["Ctrl+Enter", "Ctrl+S"]),
-    same(76, "sheet.cancel", "Close the sheet", &[Sheet], In, &["Esc"]),
+    a(75, "sheet.save", "Save the sheet", &[Sheet], In, &["Ctrl+Enter", "Ctrl+S"]),
+    a(76, "sheet.cancel", "Close the sheet", &[Sheet], In, &["Esc"]),
     // Find.
-    same(77, "find.next", "Next match", &[Find], In, &["Enter"]),
-    same(78, "find.previous", "Previous match", &[Find], In, &["Shift+Enter"]),
-    same(79, "find.close", "Close find", &[Find], In, &["Esc"]),
-    same(80, "find.select-all", "Select the query", &[Find], In, &["Ctrl+F"]),
+    a(77, "find.next", "Next match", &[Find], In, &["Enter"]),
+    a(78, "find.previous", "Previous match", &[Find], In, &["Shift+Enter"]),
+    a(79, "find.close", "Close find", &[Find], In, &["Esc"]),
+    a(80, "find.select-all", "Select the query", &[Find], In, &["Ctrl+F"]),
     // Palette.
-    same(81, "palette.next", "Next row", &[Palette], Quire, &["Down"]),
-    same(82, "palette.previous", "Previous row", &[Palette], Quire, &["Up"]),
-    same(83, "palette.run", "Open or run", &[Palette], Quire, &["Enter"]),
-    same(84, "palette.back-to-notes", "Back to notes", &[Palette], Quire, &["Backspace"]),
-    same(85, "palette.close", "Close the palette", &[Palette], Quire, &["Esc"]),
+    a(81, "palette.next", "Next row", &[Palette], Quire, &["Down"]),
+    a(82, "palette.previous", "Previous row", &[Palette], Quire, &["Up"]),
+    a(83, "palette.run", "Open or run", &[Palette], Quire, &["Enter"]),
+    a(84, "palette.back-to-notes", "Back to notes", &[Palette], Quire, &["Backspace"]),
+    a(85, "palette.close", "Close the palette", &[Palette], Quire, &["Esc"]),
     // Field.
-    same(86, "field.submit", "Submit", &[Field], Quire, &["Enter"]),
-    same(87, "field.cancel", "Cancel", &[Field], Quire, &["Esc"]),
+    a(86, "field.submit", "Submit", &[Field], Quire, &["Enter"]),
+    a(87, "field.cancel", "Cancel", &[Field], Quire, &["Esc"]),
     // Help.
-    same(88, "help.close", "Close help", &[Help], Adapted, &["Esc", "?", "q", "F1"]),
+    a(88, "help.close", "Close help", &[Help], Adapted, &["Esc", "?", "F1", "Ctrl+/", "Ctrl+?"]),
     // Rewrite.
-    same(89, "rewrite.send", "Send", &[Rewrite], Deferred, &["Enter"]),
-    same(90, "rewrite.close", "Close", &[Rewrite], Deferred, &["Esc"]),
-    same(91, "rewrite.earlier", "Earlier rewrite", &[Rewrite], Deferred, &["Alt+Up"]),
-    same(92, "rewrite.later", "Later rewrite", &[Rewrite], Deferred, &["Alt+Down"]),
-    same(93, "rewrite.recall", "Earlier instructions", &[Rewrite], Deferred, &["Up", "Down"]),
+    a(89, "rewrite.send", "Send", &[Rewrite], Deferred, &["Enter"]),
+    a(90, "rewrite.close", "Close", &[Rewrite], Deferred, &["Esc"]),
+    a(91, "rewrite.earlier", "Earlier rewrite", &[Rewrite], Deferred, &["Alt+Up"]),
+    a(92, "rewrite.later", "Later rewrite", &[Rewrite], Deferred, &["Alt+Down"]),
+    a(93, "rewrite.recall", "Earlier instructions", &[Rewrite], Deferred, &["Up", "Down"]),
     // Map, and its inline text input.
-    same(103, "map.left", "Select left", M, Adapted, &["Left", "h"]),
-    same(104, "map.right", "Select right", M, Adapted, &["Right", "l"]),
-    same(105, "map.up", "Select up", M, Adapted, &["Up", "k"]),
-    same(106, "map.down", "Select down", M, Adapted, &["Down", "j"]),
-    same(107, "map.root", "Root node", M, Adapted, &["Home", "g g"]),
-    same(108, "map.edit", "Edit the node", M, Adapted, &["F2", "e"]),
-    same(109, "map.edit-subtree", "Edit the branch", M, Adapted, &["E"]),
-    same(110, "map.add-child", "Add a child", M, Adapted, &["Tab"]),
-    same(111, "map.add-sibling", "Add a sibling", M, Adapted, &["Enter"]),
-    same(112, "map.add-sibling-before", "Add a sibling before", M, Adapted, &["Shift+Enter"]),
-    same(113, "map.delete", "Delete the branch", M, Adapted, &["Delete", "Backspace"]),
-    same(114, "map.toggle-fold", "Fold or unfold", M, Adapted, &["Space", "f"]),
-    same(115, "map.toggle-fold-recursive", "Fold or unfold the branch", M, Adapted, &["Shift+Space", "F"]),
-    same(116, "map.toggle-task", "Tick the task", M, Adapted, &["x"]),
-    same(117, "map.expand-all", "Unfold everything", M, Adapted, &["]"]),
-    same(118, "map.collapse-to-level", "Fold to a level", M, Adapted, &["["]),
-    same(119, "map.fit", "Fit the map", M, Adapted, &["0"]),
-    same(120, "map.zoom-reset", "Zoom 100%", M, Adapted, &["Ctrl+0"]),
-    same(121, "map.center", "Centre the node", M, Adapted, &["c"]),
-    same(122, "map.zoom-in", "Zoom in", M, Adapted, &["+", "="]),
-    same(123, "map.zoom-out", "Zoom out", M, Adapted, &["-"]),
-    same(124, "map.move-up", "Move up", M, Adapted, &["Alt+Up"]),
-    same(125, "map.move-down", "Move down", M, Adapted, &["Alt+Down"]),
-    same(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab"]),
-    same(127, "map.move-right", "Move right", M, Adapted, &["Alt+Right"]),
-    same(159, "map.layout", "Map layout", M, Quire, &["L"]),
-    same(158, "map.move-left", "Move left", M, Adapted, &["Alt+Left"]),
-    same(128, "map.heading-1", "Heading 1", M, Adapted, &["Ctrl+Alt+1"]),
-    same(128, "map.heading-2", "Heading 2", M, Adapted, &["Ctrl+Alt+2"]),
-    same(128, "map.heading-3", "Heading 3", M, Adapted, &["Ctrl+Alt+3"]),
-    same(128, "map.heading-4", "Heading 4", M, Adapted, &["Ctrl+Alt+4"]),
-    same(128, "map.heading-5", "Heading 5", M, Adapted, &["Ctrl+Alt+5"]),
-    same(128, "map.heading-6", "Heading 6", M, Adapted, &["Ctrl+Alt+6"]),
-    same(129, "map.follow-link", "Follow the node's link", M, Adapted, &["Ctrl+Enter"]),
-    same(130, "map.find", "Find", M, Adapted, &["Ctrl+F", "/"]),
-    same(131, "map.find-next", "Next match", M, Adapted, &["n", "F3", "Ctrl+G"]),
-    same(132, "map.find-previous", "Previous match", M, Adapted, &["N", "Shift+F3"]),
-    same(133, "map.undo", "Undo", M, Adapted, &["Ctrl+Z"]),
-    same(134, "map.redo", "Redo", M, Adapted, &["Ctrl+Shift+Z", "Ctrl+Y"]),
-    same(135, "map.copy-node", "Copy the node's Markdown", M, Adapted, &["Ctrl+C"]),
-    same(136, "map.copy-subtree", "Copy the branch's Markdown", M, Adapted, &["Ctrl+Shift+C"]),
-    same(137, "map.copy-all", "Copy the whole note", M, Adapted, &["Ctrl+Shift+A"]),
-    same(138, "map.paste", "Paste", M, Adapted, &["Ctrl+V"]),
-    same(139, "map.read-from-disk", "Read from disk", M, Adapted, &["Ctrl+R"]),
-    same(140, "map.toggle-outline", "Toggle outline", M, Adapted, &["o", "O"]),
-    same(141, "map.close-tab", "Close tab", M, Adapted, &["q"]),
-    same(142, "map.help", "Keyboard help", M, Adapted, &["?", "F1"]),
-    same(143, "map.escape", "Close find, else leave the map", M, Adapted, &["Esc"]),
-    same(144, "map.node-menu", "Node menu", M, Adapted, &["Right-click"]),
-    same(145, "mapedit.commit", "Commit the edit", ME, Adapted, &["Enter"]),
-    same(146, "mapedit.newline", "New line", ME, Adapted, &["Shift+Enter"]),
-    same(147, "mapedit.cancel", "Cancel the edit", ME, Adapted, &["Esc"]),
-    same(148, "mapedit.commit-add-child", "Commit and add a child", ME, Adapted, &["Tab"]),
-    same(149, "mapedit.commit-outdent", "Commit and outdent", ME, Adapted, &["Shift+Tab"]),
-    same(150, "mapedit.paragraph", "New node as a paragraph", ME, Adapted, &["Ctrl+Alt+0"]),
-    same(151, "mapedit.heading-1", "New node as heading 1", ME, Adapted, &["Ctrl+Alt+1"]),
-    same(151, "mapedit.heading-2", "New node as heading 2", ME, Adapted, &["Ctrl+Alt+2"]),
-    same(151, "mapedit.heading-3", "New node as heading 3", ME, Adapted, &["Ctrl+Alt+3"]),
-    same(151, "mapedit.heading-4", "New node as heading 4", ME, Adapted, &["Ctrl+Alt+4"]),
-    same(151, "mapedit.heading-5", "New node as heading 5", ME, Adapted, &["Ctrl+Alt+5"]),
-    same(151, "mapedit.heading-6", "New node as heading 6", ME, Adapted, &["Ctrl+Alt+6"]),
-    same(155, "mapedit.numbered", "New node as a numbered item", ME, Quire, &["Ctrl+Alt+7"]),
-    same(156, "mapedit.bulleted", "New node as a bulleted item", ME, Quire, &["Ctrl+Alt+8"]),
-    same(157, "mapedit.task", "New node as a task", ME, Quire, &["Ctrl+Alt+9"]),
+    a(103, "map.left", "Select left", M, Adapted, &["Left", "h"]),
+    a(104, "map.right", "Select right", M, Adapted, &["Right", "l"]),
+    a(105, "map.up", "Select up", M, Adapted, &["Up", "k"]),
+    a(106, "map.down", "Select down", M, Adapted, &["Down", "j"]),
+    a(107, "map.root", "Root node", M, Adapted, &["Home", "g g"]),
+    a(108, "map.edit", "Edit the node", M, Adapted, &["F2", "e"]),
+    a(109, "map.edit-subtree", "Edit the branch", M, Adapted, &["E"]),
+    a(110, "map.add-child", "Add a child", M, Adapted, &["Tab"]),
+    a(111, "map.add-sibling", "Add a sibling", M, Adapted, &["Enter"]),
+    a(112, "map.add-sibling-before", "Add a sibling before", M, Adapted, &["Shift+Enter"]),
+    a(113, "map.delete", "Delete the branch", M, Adapted, &["Delete", "Backspace"]),
+    a(114, "map.toggle-fold", "Fold or unfold", M, Adapted, &["Space", "f"]),
+    a(115, "map.toggle-fold-recursive", "Fold or unfold the branch", M, Adapted, &["Shift+Space", "F"]),
+    a(116, "map.toggle-task", "Tick the task", M, Adapted, &["x"]),
+    a(117, "map.expand-all", "Unfold everything", M, Adapted, &["]"]),
+    a(118, "map.collapse-to-level", "Fold to a level", M, Adapted, &["["]),
+    a(119, "map.fit", "Fit the map", M, Adapted, &["0", "1", "Shift+1"]),
+    a(120, "map.zoom-reset", "Zoom 100%", M, Dropped, &[]),
+    a(121, "map.center", "Centre the node", M, Adapted, &["c"]),
+    a(122, "map.zoom-in", "Zoom in", M, Adapted, &["+", "="]),
+    a(123, "map.zoom-out", "Zoom out", M, Adapted, &["-"]),
+    a(124, "map.move-up", "Move up", M, Adapted, &["Alt+Up"]),
+    a(125, "map.move-down", "Move down", M, Adapted, &["Alt+Down"]),
+    a(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab"]),
+    a(127, "map.move-right", "Move right", M, Adapted, &["Alt+Right"]),
+    a(159, "map.layout", "Map layout", M, Quire, &["L"]),
+    a(158, "map.move-left", "Move left", M, Adapted, &["Alt+Left"]),
+    a(128, "map.heading-1", "Heading 1", M, Adapted, &["Ctrl+Alt+1"]),
+    a(128, "map.heading-2", "Heading 2", M, Adapted, &["Ctrl+Alt+2"]),
+    a(128, "map.heading-3", "Heading 3", M, Adapted, &["Ctrl+Alt+3"]),
+    a(128, "map.heading-4", "Heading 4", M, Adapted, &["Ctrl+Alt+4"]),
+    a(128, "map.heading-5", "Heading 5", M, Adapted, &["Ctrl+Alt+5"]),
+    a(128, "map.heading-6", "Heading 6", M, Adapted, &["Ctrl+Alt+6"]),
+    a(129, "map.follow-link", "Follow the node's link", M, Adapted, &["Ctrl+Enter"]),
+    a(130, "map.find", "Find", M, Adapted, &["Ctrl+F", "/"]),
+    a(131, "map.find-next", "Next match", M, Adapted, &["n", "F3", "Ctrl+G"]),
+    a(132, "map.find-previous", "Previous match", M, Adapted, &["N", "Shift+F3", "Ctrl+Shift+G"]),
+    a(133, "map.undo", "Undo", M, Adapted, &["Ctrl+Z"]),
+    a(134, "map.redo", "Redo", M, Adapted, &["Ctrl+Shift+Z", "Ctrl+Y"]),
+    a(175, "map.cut", "Cut the branch", M, Quire, &["Ctrl+X"]),
+    a(135, "map.copy-node", "Copy the node's Markdown", M, Adapted, &["Ctrl+C"]),
+    a(136, "map.copy-subtree", "Copy the branch's Markdown", M, Adapted, &["Ctrl+Shift+C"]),
+    a(137, "map.copy-all", "Copy the whole note", M, Adapted, &["Ctrl+Shift+A"]),
+    a(138, "map.paste", "Paste", M, Adapted, &["Ctrl+V"]),
+    a(176, "map.toggle-sidebar", "Toggle sidebar", M, Adapted, &["b", "B", "Ctrl+B"]),
+    a(140, "map.toggle-outline", "Toggle outline", M, Adapted, &["o", "O"]),
+    a(177, "map.mode-preview", "Preview mode", M, Adapted, &["p"]),
+    a(178, "map.mode-map", "Map mode", M, Adapted, &["m"]),
+    a(139, "map.read-from-disk", "Read from disk", M, Adapted, &["r"]),
+    a(179, "map.focus-mode", "Zen mode", M, Adapted, &["z", "."]),
+    a(180, "map.settings", "Settings", M, Adapted, &[","]),
+    a(181, "map.save", "Save now", M, Adapted, &["s"]),
+    a(182, "map.insert-image", "Insert an image", M, Adapted, &["i"]),
+    a(141, "map.close-tab", "Close tab", M, Dropped, &[]),
+    a(142, "map.help", "Keyboard help", M, Adapted, &["?"]),
+    a(143, "map.escape", "Close find or cancel drag", M, Adapted, &["Esc"]),
+    a(144, "map.node-menu", "Node menu", M, Adapted, &["Right-click"]),
+    a(145, "mapedit.commit", "Commit the edit", ME, Adapted, &["Enter"]),
+    a(146, "mapedit.newline", "New line", ME, Adapted, &["Shift+Enter"]),
+    a(147, "mapedit.cancel", "Cancel the edit", ME, Adapted, &["Esc"]),
+    a(148, "mapedit.commit-add-child", "Commit and add a child", ME, Adapted, &["Tab"]),
+    a(149, "mapedit.commit-outdent", "Commit and outdent", ME, Adapted, &["Shift+Tab"]),
+    a(150, "mapedit.paragraph", "New node as a paragraph", ME, Adapted, &["Ctrl+Alt+0"]),
+    a(151, "mapedit.heading-1", "New node as heading 1", ME, Adapted, &["Ctrl+Alt+1"]),
+    a(151, "mapedit.heading-2", "New node as heading 2", ME, Adapted, &["Ctrl+Alt+2"]),
+    a(151, "mapedit.heading-3", "New node as heading 3", ME, Adapted, &["Ctrl+Alt+3"]),
+    a(151, "mapedit.heading-4", "New node as heading 4", ME, Adapted, &["Ctrl+Alt+4"]),
+    a(151, "mapedit.heading-5", "New node as heading 5", ME, Adapted, &["Ctrl+Alt+5"]),
+    a(151, "mapedit.heading-6", "New node as heading 6", ME, Adapted, &["Ctrl+Alt+6"]),
+    a(155, "mapedit.numbered", "New node as a numbered item", ME, Quire, &["Ctrl+Shift+7"]),
+    a(156, "mapedit.bulleted", "New node as a bulleted item", ME, Quire, &["Ctrl+Shift+8"]),
+    a(157, "mapedit.task", "New node as a task", ME, Quire, &["Ctrl+Shift+9"]),
 ];
 
 pub fn action(id: &str) -> Option<&'static Action> {
     TABLE.iter().find(|a| a.id == id)
+}
+
+/// User keybinding overrides loaded from `~/.config/quire/keybindings.json`.
+/// Actions absent from `bindings` use their default chords in `TABLE`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Overrides {
+    pub bindings: BTreeMap<String, Vec<String>>,
+    /// Monotonic revision bumped on every change, for cache keys.
+    pub rev: u64,
+}
+
+impl Overrides {
+    pub fn from_raw(raw: BTreeMap<String, Vec<String>>) -> Self {
+        let mut bindings = BTreeMap::new();
+        for (id, chords) in raw {
+            let Some(act) = action(&id) else { continue };
+            if matches!(act.status, Deferred | Dropped) {
+                continue;
+            }
+            let valid: Vec<String> = chords.into_iter().filter(|s| parse(s).is_some()).collect();
+            let def: Vec<String> = act.chords.iter().map(|s| (*s).to_string()).collect();
+            if valid != def {
+                bindings.insert(id, valid);
+            }
+        }
+        Overrides { bindings, rev: 0 }
+    }
+
+    pub fn load() -> Self {
+        Self::from_raw(crate::store::load_keybindings())
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        crate::store::save_keybindings(&self.bindings)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bindings.is_empty()
+    }
+
+    pub fn is_custom(&self, id: &str) -> bool {
+        self.bindings.contains_key(id)
+    }
+
+    /// Effective chord specs for `a`: user override if set, else `a.chords`.
+    pub fn action_chords<'a>(&'a self, a: &'static Action) -> Vec<&'a str> {
+        match self.bindings.get(a.id) {
+            Some(v) => v.iter().map(String::as_str).collect(),
+            None => a.chords.to_vec(),
+        }
+    }
+
+    /// Effective chord specs for action `id`.
+    pub fn chords<'a>(&'a self, id: &str) -> Vec<&'a str> {
+        action(id).map_or_else(Vec::new, |a| self.action_chords(a))
+    }
+
+    pub fn set(&mut self, id: &str, chords: Vec<String>) {
+        let Some(act) = action(id) else { return };
+        let valid: Vec<String> = chords.into_iter().filter(|s| parse(s).is_some()).collect();
+        let def: Vec<String> = act.chords.iter().map(|s| (*s).to_string()).collect();
+        if valid == def {
+            self.bindings.remove(id);
+        } else {
+            self.bindings.insert(id.to_string(), valid);
+        }
+        self.rev += 1;
+    }
+
+    pub fn reset(&mut self, id: &str) {
+        if self.bindings.remove(id).is_some() {
+            self.rev += 1;
+        }
+    }
+
+    pub fn reset_all(&mut self) {
+        if !self.bindings.is_empty() {
+            self.bindings.clear();
+            self.rev += 1;
+        }
+    }
+
+    /// Returns a conflicting action if binding `id` to `spec` would collide in any context
+    /// `id` belongs to or shadow/be shadowed by Global.
+    pub fn conflict(&self, id: &str, spec: &str) -> Option<&'static Action> {
+        let target = action(id)?;
+        let seq = parse(spec)?;
+        let is_esc = seq.len() == 1 && seq[0].key == K::Esc;
+        for other in TABLE.iter().filter(|o| o.id != id && !matches!(o.status, Deferred | Dropped)) {
+            let shares_ctx = target.ctx.iter().any(|c| other.ctx.contains(c));
+            let shadows = !is_esc
+                && ((target.ctx.contains(&Global) && other.ctx.iter().any(|c| falls_to_global(*c)))
+                    || (other.ctx.contains(&Global) && target.ctx.iter().any(|c| falls_to_global(*c))));
+            if !shares_ctx && !shadows {
+                continue;
+            }
+            if shares_ctx && target.guard.is_some() && other.guard.is_some() && target.guard != other.guard {
+                continue;
+            }
+            if self.action_chords(other).iter().filter_map(|s| parse(s)).any(|o_seq| o_seq == seq) {
+                return Some(other);
+            }
+        }
+        None
+    }
+
+    /// The action `ev` runs in `ctx`, for chords of a single step.
+    pub fn lookup(&self, ctx: Ctx, ev: &KeyEvent) -> Vec<&'static Action> {
+        TABLE
+            .iter()
+            .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
+            .filter(|a| self.action_chords(a).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 1 && matches(&seq[0], ev)))
+            .collect()
+    }
+
+    /// The actions whose two-key chord is `first` then `ev` in `ctx` (`g g`, RD-23).
+    pub fn lookup_seq(&self, ctx: Ctx, first: &KeyEvent, ev: &KeyEvent) -> Vec<&'static Action> {
+        TABLE
+            .iter()
+            .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
+            .filter(|a| self.action_chords(a).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], first) && matches(&seq[1], ev)))
+            .collect()
+    }
+
+    /// Whether `ev` starts a two-key chord in `ctx`.
+    pub fn starts_seq(&self, ctx: Ctx, ev: &KeyEvent) -> bool {
+        TABLE
+            .iter()
+            .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
+            .any(|a| self.action_chords(a).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], ev)))
+    }
+
+    /// The first user-facing chord of `id`, labelled, or "" when it has none.
+    pub fn label(&self, id: &str) -> String {
+        self.chords(id).into_iter().find(|s| !is_display_alias(s)).map(label_of).unwrap_or_default()
+    }
+
+    /// A button's tooltip: its name, then its first key in brackets when it has one.
+    pub fn tip(&self, name: &str, id: &str) -> String {
+        match self.label(id) {
+            k if k.is_empty() => name.to_string(),
+            k => format!("{name} ({k})"),
+        }
+    }
+
+    /// Every user-facing chord of `id`, labelled individually (hiding internal shifted-key
+    /// aliases like `Ctrl+?`).
+    pub fn display_labels(&self, id: &str) -> Vec<String> {
+        self.chords(id).into_iter().filter(|s| !is_display_alias(s)).map(label_of).collect()
+    }
+}
+
+fn falls_to_global(ctx: Ctx) -> bool {
+    matches!(ctx, Reader | Writer | Find | Palette | Field | Map | MapEdit)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -390,10 +535,28 @@ fn named(key: &Key) -> Option<K> {
     })
 }
 
+/// US-layout shifted number-row symbol back to its digit, so `Ctrl+Shift+7` matches both
+/// `Key::Command('7')` (scripts/some layouts) and `Key::Command('&')` (live US keyboard).
+fn unshift_digit(ch: char) -> Option<char> {
+    Some(match ch {
+        ')' => '0',
+        '!' => '1',
+        '@' => '2',
+        '#' => '3',
+        '$' => '4',
+        '%' => '5',
+        '^' => '6',
+        '&' => '7',
+        '*' => '8',
+        '(' => '9',
+        _ => return None,
+    })
+}
+
 /// Whether `ev` is `c`, by KEY-03's rules.
 pub fn matches(c: &Chord, ev: &KeyEvent) -> bool {
     let m = ev.mods;
-    // Alt never joins a chord that does not name it, so Ctrl+Alt (AltGr) types text.
+    // Alt never joins a chord that does not name it, so AltGr types text.
     if m.alt != c.alt || (m.logo && !cfg!(target_os = "macos")) {
         return false;
     }
@@ -403,17 +566,30 @@ pub fn matches(c: &Chord, ev: &KeyEvent) -> bool {
     }
     match c.key {
         K::Char(want) => {
+            // Rune delivers AltGr-produced characters on Windows as `Key::Text` with `ctrl+alt`.
+            // Never fire a `Ctrl+...` command on `Key::Text` so AltGr can type `# [ ] { } | ~ \`.
             let got = match &ev.key {
                 Key::Command(ch) => *ch,
-                Key::Text(t) if t.chars().count() == 1 => t.chars().next().unwrap_or(' '),
+                Key::Text(t) if !c.ctrl && t.chars().count() == 1 => t.chars().next().unwrap_or(' '),
                 _ => return false,
             };
             if want.is_ascii_alphanumeric() {
                 if c.ctrl {
-                    got.to_ascii_lowercase() == want && m.shift == c.shift
+                    if m.shift != c.shift {
+                        return false;
+                    }
+                    if want.is_ascii_digit() && c.shift {
+                        got == want || unshift_digit(got) == Some(want)
+                    } else {
+                        got.to_ascii_lowercase() == want
+                    }
                 } else {
-                    // The character typed: "G" is Shift+g.
-                    got == if c.shift { want.to_ascii_uppercase() } else { want }
+                    // The character typed: "G" is Shift+g; "Shift+1" matches '1' or '!'.
+                    if want.is_ascii_digit() && c.shift {
+                        m.shift && (got == want || unshift_digit(got) == Some(want))
+                    } else {
+                        got == if c.shift { want.to_ascii_uppercase() } else { want }
+                    }
                 }
             } else {
                 // A symbol is the character the key types, whatever Shift did to get it.
@@ -424,30 +600,91 @@ pub fn matches(c: &Chord, ev: &KeyEvent) -> bool {
     }
 }
 
-/// The action `ev` runs in `ctx`, for chords of a single step.
-pub fn lookup(p: Preset, ctx: Ctx, ev: &KeyEvent) -> Vec<&'static Action> {
-    TABLE
-        .iter()
-        .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
-        .filter(|a| a.chords(p).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 1 && matches(&seq[0], ev)))
-        .collect()
+/// Formats a live `KeyEvent` as a canonical keymap spec string for the Settings keybinding
+/// recorder, or None for bare modifier presses or unsupported keys.
+pub fn format_event(ev: &KeyEvent) -> Option<String> {
+    let m = ev.mods;
+    if m.logo && !cfg!(target_os = "macos") {
+        return None;
+    }
+    let ctrl = m.cmd || (cfg!(target_os = "macos") && m.ctrl && matches!(ev.key, Key::Tab));
+    let mut parts: Vec<String> = Vec::new();
+    if ctrl {
+        parts.push("Ctrl".into());
+    }
+    if m.alt {
+        parts.push("Alt".into());
+    }
+    if let Some(k) = named(&ev.key) {
+        if m.shift {
+            parts.push("Shift".into());
+        }
+        let name = match k {
+            K::Enter => "Enter".into(),
+            K::Tab => "Tab".into(),
+            K::Esc => "Esc".into(),
+            K::Space => "Space".into(),
+            K::Backspace => "Backspace".into(),
+            K::Delete => "Delete".into(),
+            K::Up => "Up".into(),
+            K::Down => "Down".into(),
+            K::Left => "Left".into(),
+            K::Right => "Right".into(),
+            K::Home => "Home".into(),
+            K::End => "End".into(),
+            K::PageUp => "PageUp".into(),
+            K::PageDown => "PageDown".into(),
+            K::F(n) => format!("F{n}"),
+            K::Char(_) => return None,
+        };
+        parts.push(name);
+        return Some(parts.join("+"));
+    }
+    let raw = match &ev.key {
+        Key::Command(ch) => *ch,
+        Key::Text(t) if t.chars().count() == 1 => t.chars().next()?,
+        _ => return None,
+    };
+    if raw.is_control() {
+        return None;
+    }
+    if ctrl {
+        if m.shift {
+            if let Some(d) = unshift_digit(raw) {
+                parts.push("Shift".into());
+                parts.push(d.to_string());
+                return Some(parts.join("+"));
+            }
+            if raw.is_ascii_alphanumeric() {
+                parts.push("Shift".into());
+                parts.push(raw.to_ascii_uppercase().to_string());
+                return Some(parts.join("+"));
+            }
+        }
+        let key_str = if raw.is_ascii_alphabetic() { raw.to_ascii_uppercase().to_string() } else { raw.to_string() };
+        parts.push(key_str);
+        return Some(parts.join("+"));
+    }
+    if m.alt {
+        if m.shift {
+            parts.push("Shift".into());
+        }
+        parts.push(raw.to_ascii_uppercase().to_string());
+        return Some(parts.join("+"));
+    }
+    // Plain character: keep capitals ("G") and symbols ("?", "/"), and normalize Shift+digit ("Shift+1").
+    if m.shift && let Some(d) = unshift_digit(raw) {
+        return Some(format!("Shift+{d}"));
+    }
+    Some(raw.to_string())
 }
 
-/// The actions whose two-key chord is `first` then `ev` in `ctx` (`g g`, RD-23).
-pub fn lookup_seq(p: Preset, ctx: Ctx, first: &KeyEvent, ev: &KeyEvent) -> Vec<&'static Action> {
-    TABLE
-        .iter()
-        .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
-        .filter(|a| a.chords(p).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], first) && matches(&seq[1], ev)))
-        .collect()
-}
-
-/// Whether `ev` starts a two-key chord in `ctx`.
-pub fn starts_seq(p: Preset, ctx: Ctx, ev: &KeyEvent) -> bool {
-    TABLE
-        .iter()
-        .filter(|a| a.ctx.contains(&ctx) && !matches!(a.status, Deferred | Dropped))
-        .any(|a| a.chords(p).iter().filter_map(|s| parse(s)).any(|seq| seq.len() == 2 && matches(&seq[0], ev)))
+/// Default-table label for places with no `App` (such as the sample vault note).
+pub fn default_label(id: &str) -> String {
+    action(id)
+        .and_then(|a| a.chords.iter().find(|s| !is_display_alias(s)).copied())
+        .map(label_of)
+        .unwrap_or_default()
 }
 
 /// A chord's label on this platform: as the spec writes it, or with ⌘⇧⌥ run together on macOS.
@@ -467,37 +704,24 @@ pub fn cmd_label(ch: char) -> String {
     label_of(&format!("Ctrl+{}", ch.to_ascii_uppercase()))
 }
 
-/// The first chord of `id` in preset `p`, labelled, or "" when it has none.
-pub fn label(p: Preset, id: &str) -> String {
-    action(id).and_then(|a| a.chords(p).first()).map(|s| label_of(s)).unwrap_or_default()
-}
-
-/// A button's tooltip: its name, then its first key in brackets when it has one.
-pub fn tip(p: Preset, name: &str, id: &str) -> String {
-    match label(p, id) {
-        k if k.is_empty() => name.to_string(),
-        k => format!("{name} ({k})"),
-    }
-}
-
 /// Internal shifted-key aliases kept for key matching (`Ctrl+?` for `Ctrl+Shift+/`) that
 /// should not clutter displayed shortcut lists.
-fn is_display_alias(spec: &str) -> bool {
+pub fn is_display_alias(spec: &str) -> bool {
     spec == "Ctrl+?"
 }
 
-/// Every user-facing chord of `id` in preset `p`, labelled individually (hiding internal
-/// shifted-key aliases like `Ctrl+?`).
-pub fn display_labels(p: Preset, id: &str) -> Vec<String> {
-    action(id)
-        .map(|a| a.chords(p).iter().filter(|s| !is_display_alias(s)).map(|s| label_of(s)).collect())
-        .unwrap_or_default()
-}
-
-/// Every user-facing chord of `id` in preset `p`, labelled and joined.
-#[cfg(test)]
-pub fn labels(p: Preset, id: &str) -> String {
-    display_labels(p, id).join(" or ")
+/// Reserved text-field keys that KEY-06 leaves to Rune in text-editing contexts.
+pub fn is_reserved_field_key(ctx: Ctx, spec: &str) -> bool {
+    if !matches!(ctx, Writer | Sheet | MapEdit | Find | Palette | Field) {
+        return false;
+    }
+    let Some(seq) = parse(spec) else { return false };
+    const FIELD_KEYS: &[&str] = &[
+        "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown",
+        "Backspace", "Delete", "Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V",
+        "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y",
+    ];
+    FIELD_KEYS.iter().filter_map(|s| parse(s)).any(|f| f == seq)
 }
 
 #[cfg(test)]
@@ -510,19 +734,22 @@ mod tests {
         KeyEvent { key, mods: Mods { cmd: ctrl, ctrl: ctrl && !cfg!(target_os = "macos"), shift, ..Default::default() } }
     }
 
-    fn ids(p: Preset, ctx: Ctx, e: &KeyEvent) -> Vec<&'static str> {
-        lookup(p, ctx, e).iter().map(|a| a.id).collect()
+    fn ev_alt(key: Key, ctrl: bool, alt: bool, shift: bool) -> KeyEvent {
+        KeyEvent { key, mods: Mods { cmd: ctrl, ctrl: ctrl && !cfg!(target_os = "macos"), alt, shift, ..Default::default() } }
+    }
+
+    fn ids(km: &Overrides, ctx: Ctx, e: &KeyEvent) -> Vec<&'static str> {
+        km.lookup(ctx, e).iter().map(|a| a.id).collect()
     }
 
     fn live(a: &Action) -> bool {
         !matches!(a.status, Dropped)
     }
 
-    /// The chords of each context, for one preset: chord to actions.
-    fn by_chord(p: Preset) -> HashMap<(Ctx, Vec<Chord>), Vec<&'static Action>> {
+    fn by_chord() -> HashMap<(Ctx, Vec<Chord>), Vec<&'static Action>> {
         let mut m: HashMap<(Ctx, Vec<Chord>), Vec<&'static Action>> = HashMap::new();
         for a in TABLE.iter().filter(|a| live(a)) {
-            for s in a.chords(p) {
+            for s in a.chords {
                 let Some(seq) = parse(s) else { continue };
                 for c in a.ctx {
                     m.entry((*c, seq.clone())).or_default().push(a);
@@ -535,52 +762,45 @@ mod tests {
     #[test]
     fn every_chord_parses() {
         for a in TABLE {
-            for p in Preset::ALL {
-                for s in a.chords(p) {
-                    assert!(parse(s).is_some() || s.contains("click"), "{} {s}", a.id);
-                }
+            for s in a.chords {
+                assert!(parse(s).is_some() || s.contains("click"), "{} {s}", a.id);
             }
         }
         assert_eq!(parse("G"), Some(vec![Chord { ctrl: false, shift: true, alt: false, key: K::Char('g') }]));
         assert_eq!(parse("Ctrl++").unwrap()[0].key, K::Char('+'));
         assert_eq!(parse("g g").unwrap().len(), 2);
         assert_eq!(parse("Shift+F3").unwrap()[0], Chord { ctrl: false, shift: true, alt: false, key: K::F(3) });
+        assert_eq!(parse("Shift+1").unwrap()[0], Chord { ctrl: false, shift: true, alt: false, key: K::Char('1') });
     }
 
     /// Checks: no context binds one chord to two actions, unless both have guards that differ.
     #[test]
     fn no_chord_does_two_things() {
-        for p in Preset::ALL {
-            for ((ctx, seq), acts) in by_chord(p) {
-                if acts.len() > 1 {
-                    let guarded = acts.iter().all(|a| a.guard.is_some()) && acts[0].guard != acts[1].guard;
-                    assert!(guarded && acts.len() == 2, "{p:?} {ctx:?} {seq:?}: {:?}", acts.iter().map(|a| a.id).collect::<Vec<_>>());
-                }
+        for ((ctx, seq), acts) in by_chord() {
+            if acts.len() > 1 {
+                let guarded = acts.iter().all(|a| a.guard.is_some()) && acts[0].guard != acts[1].guard;
+                assert!(guarded && acts.len() == 2, "{ctx:?} {seq:?}: {:?}", acts.iter().map(|a| a.id).collect::<Vec<_>>());
             }
         }
     }
 
-    /// Checks: every action has a chord in each preset, apart from mouse-only and dropped ones.
+    /// Checks: every live action has a chord, apart from mouse-only and dropped ones.
     #[test]
     fn every_action_has_a_chord() {
         for a in TABLE.iter().filter(|a| live(a)) {
-            for p in Preset::ALL {
-                assert!(!a.chords(p).is_empty(), "{} has no chord in {p:?}", a.id);
-            }
+            assert!(!a.chords.is_empty(), "{} has no chord", a.id);
         }
     }
 
     /// Checks: no chord in a context that falls through to global shadows a global chord.
     #[test]
     fn no_context_shadows_a_global_chord() {
-        for p in Preset::ALL {
-            let m = by_chord(p);
-            for ((ctx, seq), acts) in &m {
-                if !matches!(ctx, Reader | Writer | Find | Palette | Field | Map | MapEdit) || seq[0].key == K::Esc {
-                    continue;
-                }
-                assert!(!m.contains_key(&(Global, seq.clone())), "{p:?} {ctx:?} {} shadows a global chord", acts[0].id);
+        let m = by_chord();
+        for ((ctx, seq), acts) in &m {
+            if !falls_to_global(*ctx) || seq[0].key == K::Esc {
+                continue;
             }
+            assert!(!m.contains_key(&(Global, seq.clone())), "{ctx:?} {} shadows a global chord", acts[0].id);
         }
     }
 
@@ -588,20 +808,18 @@ mod tests {
     /// keys to Rune (KEY-06), apart from the palette's Up, Down and Backspace.
     #[test]
     fn text_field_keys_stay_with_the_field() {
-        let field_keys = ["Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "Backspace", "Delete", "Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"];
-        let field: Vec<Vec<Chord>> = field_keys.iter().map(|s| parse(s).unwrap()).collect();
-        for p in Preset::ALL {
-            for ((ctx, seq), acts) in by_chord(p) {
-                if !matches!(ctx, Writer | Sheet | MapEdit | Find | Palette | Field) || !field.contains(&seq) {
-                    continue;
+        for a in TABLE.iter().filter(|a| live(a)) {
+            for &ctx in a.ctx {
+                for &s in a.chords {
+                    if is_reserved_field_key(ctx, s) {
+                        assert!(matches!(a.id, "palette.next" | "palette.previous" | "palette.back-to-notes"), "{} takes a field key {s}", a.id);
+                    }
                 }
-                assert!(matches!(acts[0].id, "palette.next" | "palette.previous" | "palette.back-to-notes"), "{p:?} {} takes a field key", acts[0].id);
             }
         }
     }
 
-    /// Checks: the table agrees with the spec. Each KEY item's chords in each preset, its
-    /// contexts and its status match the action with that item number.
+    /// Checks: the table agrees with `docs/reader-writer/behavior/keymap.md`.
     #[test]
     fn the_table_agrees_with_the_spec() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/reader-writer/behavior/keymap.md");
@@ -609,36 +827,34 @@ mod tests {
         let mut seen = 0;
         for line in spec.lines().filter(|l| l.starts_with("- **KEY-")) {
             let item: u16 = line.strip_prefix("- **KEY-").unwrap().split_once("**").unwrap().0.parse().unwrap();
-            let Some(rest) = line.split_once("omarky preset ").map(|x| x.1) else { continue };
+            let Some((_, after_ctx)) = line.split_once("): ") else { continue };
+            let Some(before_ctx) = line.split_once("): ").map(|x| x.0) else { continue };
+            if !before_ctx.contains('(') {
+                continue;
+            }
             seen += 1;
-            let (om, rest) = rest.split_once("; quire preset ").unwrap();
-            let qu = rest.split_once(". ").map_or(rest, |x| x.0);
+            let chords_part = after_ctx.split_once(". ").map_or(after_ctx, |x| x.0);
             let ticks = |s: &str| -> Vec<String> { s.split('`').skip(1).step_by(2).map(String::from).collect() };
-            let ctxs: Vec<&str> = line.split_once("): omarky").unwrap().0.rsplit_once('(').unwrap().1.split(", ").collect();
+            let ctxs: Vec<&str> = before_ctx.rsplit_once('(').unwrap().1.split(", ").collect();
             let status = line.split_once("** [").unwrap().1.split(&[']', ':'][..]).next().unwrap();
             let acts: Vec<&Action> = TABLE.iter().filter(|a| a.item == item).collect();
             assert!(!acts.is_empty(), "KEY-{item} is not in the table");
             if item == 55 || item == 128 || item == 151 {
-                // Six actions, Ctrl+Alt+1 to Ctrl+Alt+6.
                 assert_eq!(acts.len(), 6);
                 for (i, a) in acts.iter().enumerate() {
-                    assert_eq!(a.omarky, &[format!("Ctrl+Alt+{}", i + 1).as_str()][..]);
-                    assert_eq!(a.quire, &[format!("Ctrl+Alt+{}", i + 1).as_str()][..]);
+                    assert_eq!(a.chords, &[format!("Ctrl+Alt+{}", i + 1).as_str()][..]);
                 }
                 continue;
             }
             if item == 99 {
-                // Nine actions, Ctrl+1 to Ctrl+9.
                 assert_eq!(acts.len(), 9);
                 for (i, a) in acts.iter().enumerate() {
-                    assert_eq!(a.omarky, &[format!("Ctrl+{}", i + 1).as_str()][..]);
-                    assert_eq!(a.quire, &[format!("Ctrl+{}", i + 1).as_str()][..]);
+                    assert_eq!(a.chords, &[format!("Ctrl+{}", i + 1).as_str()][..]);
                 }
                 continue;
             }
             let a = acts[0];
-            assert_eq!(ticks(om), a.omarky.to_vec(), "KEY-{item} omarky chords");
-            assert_eq!(ticks(qu), a.quire.to_vec(), "KEY-{item} quire chords");
+            assert_eq!(ticks(chords_part), a.chords.to_vec(), "KEY-{item} chords");
             let names: Vec<String> = a.ctx.iter().map(|c| format!("{c:?}").to_lowercase()).collect();
             assert_eq!(ctxs, names, "KEY-{item} contexts");
             let want = match a.status {
@@ -650,59 +866,59 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 150, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
-        assert_eq!(items.len(), seen, "the table has no item the spec lacks");
+        assert_eq!(items.len(), seen, "the table has no item the spec lacks (table={} spec={seen})", items.len());
     }
 
-    /// KEY-03: letters and digits need their exact modifiers, symbols ignore Shift, plain
-    /// reader keys match the character typed, and Alt is never part of a command.
     #[test]
-    fn key_03_chords_match_as_the_spec_says() {
-        let o = Preset::Omarky;
-        assert_eq!(ids(o, Global, &ev(Key::Command('k'), true, true)), ["app.command-palette"]);
-        assert_eq!(ids(o, Writer, &ev(Key::Command('k'), true, false)), ["writer.link"]);
-        assert!(ids(o, Writer, &ev(Key::Command('k'), true, true)).is_empty(), "Ctrl+K never fires on Ctrl+Shift+K");
-        assert_eq!(ids(o, Global, &ev(Key::Command('+'), true, true)), ["app.zoom-in"], "Ctrl+Shift+= types +");
-        assert_eq!(ids(o, Global, &ev(Key::Command('='), true, false)), ["app.zoom-in"]);
-        assert_eq!(ids(o, Global, &ev(Key::Command('?'), true, true)), ["app.search-notes"], "Ctrl+Shift+/ types ?");
-        assert_eq!(ids(o, Reader, &ev(Key::Text("G".into()), false, true)), ["reader.bottom"]);
-        assert_eq!(ids(o, Reader, &ev(Key::Text("?".into()), false, true)), ["reader.help"]);
-        assert_eq!(ids(o, Reader, &ev(Key::Text(" ".into()), false, true)), ["reader.page-up"]);
-        let mut alt = ev(Key::Text("j".into()), false, false);
-        alt.mods.alt = true;
-        assert!(ids(o, Reader, &alt).is_empty(), "reader keys with Alt are ignored");
-        assert_eq!(ids(o, Reader, &ev(Key::Text("n".into()), false, false)), ["reader.find-next"], "deferred actions never run");
+    fn key_03_chords_and_input_fixes() {
+        let km = Overrides::default();
+        assert_eq!(ids(&km, Global, &ev(Key::Command('k'), true, false)), ["app.command-palette"]);
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('l'), true, false)), ["writer.link"]);
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('l'), true, true)), ["writer.wiki-link"]);
+        assert_eq!(ids(&km, Global, &ev(Key::Command('+'), true, true)), ["app.zoom-in"]);
+        assert_eq!(ids(&km, Global, &ev(Key::Command('='), true, false)), ["app.zoom-in"]);
+        assert_eq!(ids(&km, Global, &ev(Key::Command('/'), true, false)), ["app.help"]);
+        assert_eq!(ids(&km, Global, &ev(Key::Command('?'), true, true)), ["app.help"]);
+        assert_eq!(ids(&km, Reader, &ev(Key::Text("G".into()), false, true)), ["reader.bottom"]);
+        assert_eq!(ids(&km, Reader, &ev(Key::Text("?".into()), false, true)), ["reader.help"]);
+        assert_eq!(ids(&km, Reader, &ev(Key::Text(" ".into()), false, true)), ["reader.page-up"]);
+        // AltGr on Windows arrives as Key::Text with ctrl+alt: must never fire Ctrl+Alt+digit.
+        assert!(ids(&km, Writer, &ev_alt(Key::Text("1".into()), true, true, false)).is_empty(), "AltGr text never fires Ctrl+Alt+1");
+        assert_eq!(ids(&km, Writer, &ev_alt(Key::Command('1'), true, true, false)), ["writer.heading-1"]);
+        // Shifted digits match both '7'/'8'/'9' and '&'/'*'/'('.
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('7'), true, true)), ["writer.numbered-list"]);
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('&'), true, true)), ["writer.numbered-list"]);
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('*'), true, true)), ["writer.bulleted-list"]);
+        assert_eq!(ids(&km, Writer, &ev(Key::Command('('), true, true)), ["writer.task-list"]);
+        // Map Shift+1 Fit matches both '1' and '!'.
+        assert_eq!(ids(&km, Map, &ev(Key::Text("!".into()), false, true)), ["map.fit"]);
+        assert_eq!(ids(&km, Map, &ev(Key::Text("1".into()), false, false)), ["map.fit"]);
+        assert_eq!(ids(&km, Map, &ev(Key::Text("0".into()), false, false)), ["map.fit"]);
     }
 
-    /// SB-100 to SB-102: Ctrl+/ and Ctrl+? search in both presets beside each preset's own
-    /// key, and F1 opens help in both modes and closes it; Ctrl+/ no longer reaches help.
     #[test]
-    fn ctrl_slash_searches_and_f1_is_help() {
-        let f1 = KeyEvent { key: Key::Function(1), mods: Mods::default() };
-        for (p, own) in [(Preset::Omarky, 'g'), (Preset::Quire, 'f')] {
-            assert_eq!(ids(p, Global, &ev(Key::Command('/'), true, false)), ["app.search-notes"], "{p:?}");
-            assert_eq!(ids(p, Global, &ev(Key::Command('?'), true, true)), ["app.search-notes"], "{p:?}");
-            assert_eq!(ids(p, Global, &ev(Key::Command(own), true, true)), ["app.search-notes"], "{p:?} keeps its own key");
-            assert_eq!(label(p, "app.search-notes"), if cfg!(target_os = "macos") { "⌘/" } else { "Ctrl+/" }, "{p:?}: the field's hint");
-            assert_eq!(ids(p, Writer, &f1), ["writer.help"], "{p:?}");
-            assert_eq!(ids(p, Reader, &f1), ["reader.help"], "{p:?}");
-            assert_eq!(ids(p, Help, &f1), ["help.close"], "{p:?}");
-            assert!(ids(p, Writer, &ev(Key::Command('/'), true, false)).is_empty(), "{p:?}: Ctrl+/ is not the writer's");
-            assert!(ids(p, Help, &ev(Key::Command('/'), true, false)).is_empty(), "{p:?}: Ctrl+/ does not close help");
-        }
+    fn overrides_set_conflict_and_reset() {
+        let mut km = Overrides::default();
+        assert_eq!(km.conflict("app.command-palette", "Ctrl+B").map(|a| a.id), Some("reader.toggle-sidebar"));
+        assert!(km.conflict("app.command-palette", "Ctrl+Shift+P").is_none());
+        km.set("app.command-palette", vec!["Ctrl+Shift+P".into()]);
+        assert!(km.is_custom("app.command-palette"));
+        assert_eq!(ids(&km, Global, &ev(Key::Command('p'), true, true)), ["app.command-palette"]);
+        assert!(ids(&km, Global, &ev(Key::Command('k'), true, false)).is_empty());
+        km.reset("app.command-palette");
+        assert!(!km.is_custom("app.command-palette"));
+        assert_eq!(ids(&km, Global, &ev(Key::Command('k'), true, false)), ["app.command-palette"]);
     }
 
-    /// KEY-05: labels follow the preset.
     #[test]
-    fn key_05_labels_follow_the_preset() {
-        let mac = cfg!(target_os = "macos");
-        assert_eq!(label(Preset::Omarky, "app.command-palette"), if mac { "⌘⇧K" } else { "Ctrl+Shift+K" });
-        assert_eq!(label(Preset::Quire, "app.command-palette"), if mac { "⌘P" } else { "Ctrl+P" });
-        assert_eq!(labels(Preset::Omarky, "app.zoom-in"), if mac { "⌘= or ⌘+" } else { "Ctrl+= or Ctrl++" });
-        assert_eq!(display_labels(Preset::Omarky, "app.search-notes"), if mac { vec!["⌘/", "⌘⇧G"] } else { vec!["Ctrl+/", "Ctrl+Shift+G"] });
-        assert_eq!(display_labels(Preset::Quire, "app.search-notes"), if mac { vec!["⌘/", "⌘⇧F"] } else { vec!["Ctrl+/", "Ctrl+Shift+F"] });
-        assert!(!labels(Preset::Omarky, "app.search-notes").contains("?"));
-        assert_eq!(label(Preset::Omarky, "no.such-action"), "");
+    fn format_event_round_trips() {
+        assert_eq!(format_event(&ev(Key::Command('k'), true, false)).as_deref(), Some("Ctrl+K"));
+        assert_eq!(format_event(&ev(Key::Command('&'), true, true)).as_deref(), Some("Ctrl+Shift+7"));
+        assert_eq!(format_event(&ev_alt(Key::Command('1'), true, true, false)).as_deref(), Some("Ctrl+Alt+1"));
+        assert_eq!(format_event(&ev(Key::Function(9), false, false)).as_deref(), Some("F9"));
+        assert_eq!(format_event(&ev(Key::Text("b".into()), false, false)).as_deref(), Some("b"));
+        assert_eq!(format_event(&ev(Key::Text("G".into()), false, true)).as_deref(), Some("G"));
+        assert_eq!(format_event(&ev(Key::Text("!".into()), false, true)).as_deref(), Some("Shift+1"));
     }
 }

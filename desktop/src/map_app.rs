@@ -1219,12 +1219,6 @@ impl App {
         }
     }
 
-    /// `Ctrl+M`: into the map, or back to the linear mode it came from (KEY-102).
-    pub fn toggle_map(&mut self, tx: &mut Tx) {
-        let to = if self.mode == Mode::Map { self.map.back } else { Mode::Map };
-        self.show_mode(to, tx);
-    }
-
     /// Shows the map, keeping the place (MAP-065).
     pub fn enter_map(&mut self, tx: &mut Tx) {
         if self.mode == Mode::Map {
@@ -1264,9 +1258,12 @@ impl App {
         }
     }
 
-    /// Esc on the map, after the layers (MAP-061): the notice, find, then `App::escape`'s
-    /// list, then back to the linear mode.
+    /// Esc on the map, after the layers (MAP-061): cancels drag, dismisses the notice, closes
+    /// find, and runs `App::escape` (zen mode), staying in Map mode.
     pub fn map_escape(&mut self, tx: &mut Tx) -> bool {
+        if self.map.node_drag.take().is_some() {
+            return true;
+        }
         if self.notice.take().is_some() {
             return true;
         }
@@ -1274,12 +1271,7 @@ impl App {
             self.close_find(tx);
             return true;
         }
-        if self.escape(tx) {
-            return true;
-        }
-        self.leave_map(self.map.back, tx);
-        self.persist_later();
-        true
+        self.escape(tx)
     }
 
     /// A tab closed: its map goes with it (MAP-044).
@@ -1528,7 +1520,7 @@ impl App {
                 self.map_apply(&t, &s, tx);
                 if n > 1 || t.nodes[i].card() {
                     let nodes = if n == 1 { "1 node".to_string() } else { format!("{n} nodes") };
-                    let undo = crate::keymap::label(self.preset(), "map.undo");
+                    let undo = self.keymap.label("map.undo");
                     self.toast(&format!("Deleted {nodes} · {undo} to undo"), tx);
                 }
             }
@@ -1624,6 +1616,25 @@ impl App {
         let t = self.map_tree();
         tx.copy(map::markdown(self.active_text(), &t, self.map_selected(), branch));
         self.toast(if branch { "Copied the branch's Markdown" } else { "Copied" }, tx);
+    }
+
+    /// `Ctrl+X`: copies the selected node's branch Markdown and deletes it as one undo step.
+    pub fn map_cut(&mut self, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        let t = self.map_tree();
+        let i = self.map_selected();
+        match map::delete(self.active_text(), &t, i) {
+            Ok((s, _)) => {
+                tx.copy(map::markdown(self.active_text(), &t, i, true));
+                self.map_apply(&t, &s, tx);
+                let undo = self.keymap.label("map.undo");
+                self.toast(&format!("Cut · {undo} to undo"), tx);
+            }
+            Err(Some(why)) => self.toast(why, tx),
+            Err(None) => {}
+        }
     }
 }
 
@@ -2142,7 +2153,7 @@ impl App {
     /// A key in the inline field before the field's own (KEY-145 to KEY-149, MAP-016).
     pub fn map_field_key(&mut self, ev: &rune::KeyEvent, tx: &mut Tx) -> bool {
         let multi = self.map.inline.as_ref().is_some_and(|e| e.multi);
-        for a in crate::keymap::lookup(self.preset(), crate::keymap::Ctx::MapEdit, ev) {
+        for a in self.keymap.lookup(crate::keymap::Ctx::MapEdit, ev) {
             match a.id {
                 "mapedit.newline" if multi => return false,
                 "mapedit.commit" | "mapedit.newline" => {

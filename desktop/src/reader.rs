@@ -1426,16 +1426,13 @@ impl App {
         }
         if self.reader.find.open {
             self.close_find(tx);
-        } else if tx.text_selection().is_some() {
-            tx.clear_text_selection();
-        } else if !self.escape(tx) {
-            // Nothing else takes Esc: back to the writer (WR-111).
-            if self.active.is_none() {
-                return false;
-            }
-            self.toggle_mode(tx);
+            return true;
         }
-        true
+        if tx.text_selection().is_some() {
+            tx.clear_text_selection();
+            return true;
+        }
+        self.escape(tx)
     }
 
     // ---------- Tabs and links ----------

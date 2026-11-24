@@ -1,9 +1,9 @@
-Ctrl+Alt+7, 8 and 9 make the caret line a numbered item, a bullet and a task, as the toolbar's list buttons do, whose tooltips name them (WR-222).
+Ctrl+Shift+7, 8 and 9 make the caret line a numbered item, a bullet and a task, as the toolbar's list buttons do, whose tooltips name them (WR-222).
 note: L.md
-events: tap:editor@0.2 key:Home+cmd@0.4 key:7+cmd+alt@0.6 key:Down@0.8 key:Down@0.9 key:8+cmd+alt@1.0 key:Down@1.2 key:Down@1.3 key:9+cmd+alt@1.4 key:s+cmd@1.8
-expect: label:fmt-numbers: 'Numbered list (Ctrl+Alt+7)'
-expect: label:fmt-bullets: 'Bulleted list (Ctrl+Alt+8)'
-expect: label:fmt-task: 'Task (Ctrl+Alt+9)'
+events: tap:editor@0.2 key:Home+cmd@0.4 key:7+cmd+shift@0.6 key:Down@0.8 key:Down@0.9 key:8+cmd+shift@1.0 key:Down@1.2 key:Down@1.3 key:9+cmd+shift@1.4 key:s+cmd@1.8
+expect: label:fmt-numbers: 'Numbered list (Ctrl+Shift+7)'
+expect: label:fmt-bullets: 'Bulleted list (Ctrl+Shift+8)'
+expect: label:fmt-task: 'Task (Ctrl+Shift+9)'
 expect: label:fmt-heading: 'Heading (Ctrl+Alt+1 to Ctrl+Alt+6)'
 --- before
 one

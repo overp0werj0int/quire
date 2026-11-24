@@ -188,8 +188,7 @@ fn edit(v: V) -> Vec<Item> {
 /// names its key from the active keymap where it has one.
 fn block(v: V, line: usize) -> Vec<Item> {
     use crate::sheet::Scope;
-    let p = v.s.preset();
-    let keys = |id: &str| Some(keymap::label(p, id)).filter(|k| !k.is_empty());
+    let keys = |id: &str| Some(v.s.keymap.label(id)).filter(|k| !k.is_empty());
     let with = |label: &'static str, keys: Option<String>, run: Run| Item { keys, ..item(label, run) };
     let mut items = vec![
         with("Copy Markdown", keys("reader.copy-block-under-pointer"), Box::new(move |s, tx| s.copy_block(line, tx))),
@@ -215,10 +214,9 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
     let t = v.s.map_tree();
     let Some(i) = t.find(id) else { return Vec::new() };
     let n = &t.nodes[i];
-    let p = v.s.preset();
     let on = |key: &'static str, label: &'static str, keymap_id: &str, enabled: bool, run: fn(&mut App, usize, &mut rune::Tx)| Item {
         key: Some(key),
-        keys: Some(keymap::label(p, keymap_id)).filter(|k| !k.is_empty()),
+        keys: Some(v.s.keymap.label(keymap_id)).filter(|k| !k.is_empty()),
         enabled,
         ..item(label, Box::new(move |s, tx| if let Some(i) = s.map_pick(id, tx) { run(s, i, tx) }))
     };

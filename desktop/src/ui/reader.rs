@@ -89,8 +89,7 @@ pub fn find_bar(v: V) -> El {
         crate::reader::FindState::NoMatches => ("No matches".to_string(), c.readable_err(), false),
         crate::reader::FindState::Matches(n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint, true),
     };
-    let preset = s.preset();
-    let tip = |name: &str, id: &str| keymap::tip(preset, name, id);
+    let tip = |name: &str, id: &str| s.keymap.tip(name, id);
     let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
     let (_, _, rc) = super::focus_ring(v.p);
     let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, enabled: bool, run: fn(&mut App, &mut Tx)| {
@@ -178,7 +177,7 @@ fn on_find_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
         return true;
     }
-    match keymap::lookup(s.preset(), Ctx::Find, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
+    match s.keymap.lookup(Ctx::Find, ev).iter().find_map(|a| crate::keys::handler(a.id)) {
         Some(run) => {
             run(s, tx);
             true
@@ -196,11 +195,11 @@ pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
 /// The keyboard help, a card in the middle of the window (`super::layer`).
 pub(super) fn help_sheet(v: V) -> Card {
     let c = Roles::new(v.p);
-    let preset = v.s.preset();
+    let km = &v.s.keymap;
     let (row_h, row_gap, keys_w, col_w) = match v.s.mode {
-        crate::app::Mode::Source => (26.0, 7.0, 170.0, 470.0),
-        crate::app::Mode::Map => (24.0, 6.0, 190.0, 490.0),
-        crate::app::Mode::Preview => (24.0, 0.0, 190.0 - 24.0, 520.0 - 48.0),
+        crate::app::Mode::Source => (26.0, 7.0, 210.0, 490.0),
+        crate::app::Mode::Map => (24.0, 6.0, 220.0, 510.0),
+        crate::app::Mode::Preview => (24.0, 2.0, 210.0, 520.0),
     };
     let (all, left) = crate::help::groups(v.s.mode);
     let (found, pick) = v.s.help_found();
@@ -243,7 +242,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .hover_group()
                 .role("button")
                 .label("Close help")
-                .help(keymap::tip(preset, "Close help", "help.close"))
+                .help(km.tip("Close help", "help.close"))
                 .control(|s: &mut App, tx| s.close_layer(tx))
                 .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink)),
         );
@@ -289,27 +288,27 @@ pub(super) fn help_sheet(v: V) -> Card {
         let gi = all.iter().position(|(t, _)| t == title).unwrap_or(0);
         let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(caption(title, false, v.p).mb(6.0));
         for (i, r) in rows.iter().enumerate() {
-            let mut keys = row().gap(4.0).w(keys_w).center_y();
+            let mut keys = row().gap(4.0).w(keys_w).flex_wrap().center_y();
             let mut shown: Vec<String> = Vec::new();
             for (idx, id) in r.ids.iter().enumerate() {
                 if idx == 1 && crate::help::is_range(r.ids[0], id) {
                     keys = keys.child(text("\u{2013}").font(sans(12.0, 400.0)).color(help_muted));
                 }
-                if *id == "map.node-menu" {
+                if matches!(*id, "map.node-menu" | "reader.block-menu") {
                     keys = keys
                         .child(cap(keymap::label_of("Shift+F10"), v.p))
                         .child(text("or right-click").font(sans(11.5, 400.0)).color(help_muted));
                     continue;
                 }
                 // Two actions on one key (Esc) show it once.
-                for k in crate::help::chords(preset, id) {
+                for k in crate::help::chords(km, id) {
                     if !shown.contains(&k) {
                         keys = keys.child(cap(k.clone(), v.p));
                         shown.push(k);
                     }
                 }
             }
-            let mut line = row().key(format!("r-{i}")).h(row_h).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
+            let mut line = row().key(format!("r-{i}")).min_h(row_h).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
             if crate::help::action(r).is_some() {
                 let at = n;
                 n += 1;
@@ -475,7 +474,7 @@ fn foot_pill_w(v: V) -> f32 {
     let body = styles::popup();
     let room = foot_room(v);
     let toast_w = if let Some(d) = &v.s.deleted {
-        let key = keymap::label(v.s.preset(), "app.undo-delete");
+        let key = v.s.keymap.label("app.undo-delete");
         let fit = undo_fit(room, &d.name, &key);
         let hint = matches!(fit, UndoFit::Named(_, true));
         let btn_w = 20.0 + width("Undo", body) + if hint { 8.0 + width(&key, keys(11.0)) } else { 0.0 };
@@ -592,7 +591,7 @@ fn undo_fit(room: f32, name: &str, key: &str) -> UndoFit {
 pub fn undo_toast(v: V, name: &str) -> El {
     let c = Roles::new(v.p);
     let body = styles::popup();
-    let key = keymap::label(v.s.preset(), "app.undo-delete");
+    let key = v.s.keymap.label("app.undo-delete");
     let fit = undo_fit(foot_room(v), name, &key);
     let hint = matches!(fit, UndoFit::Named(_, true));
     let undo = pill_button(&c, "toast-undo")

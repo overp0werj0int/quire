@@ -1,7 +1,7 @@
-A session that quit in the map from Preview leaves it for Preview on Ctrl+M, not for Source.
+A session that quit in the map stays in Map on Ctrl+M (idempotent) and switches to Preview on bare p.
 note: Trip.md
 state: {"mode": "map", "back": "preview"}
-events: key:m+cmd@0.6
+events: key:m+cmd@0.6 key:p@1.0
 expect: rect:map-canvas: None
 expect: rect:editor: None
 --- before

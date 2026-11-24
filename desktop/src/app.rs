@@ -257,13 +257,26 @@ pub struct App {
     /// True after an in-tab mode switch (`Source`/`Preview`/`Map`) so mode content plays `WR-109`
     /// `swap()` fade, and false on a tab switch so the sliding page mounts at full 100% opacity.
     pub(crate) mode_swapped: bool,
+    /// User keybinding overrides loaded from `~/.config/quire/keybindings.json`.
+    pub keymap: crate::keymap::Overrides,
+    /// Active keybinding capture row in Settings → Shortcuts.
+    pub key_edit: Option<KeyEdit>,
+    /// Recently closed tabs in this folder, for `app.reopen-tab` (`Ctrl+Shift+T`).
+    pub closed_tabs: Vec<String>,
+}
+
+/// Recording state for one action row in Settings → Shortcuts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyEdit {
+    pub action_id: &'static str,
+    pub error: Option<String>,
 }
 
 /// Inputs that determine whether Source and Command Palette text layouts are already pre-warmed.
 #[derive(Clone, PartialEq, Eq)]
 struct PrepareKey {
     source: Option<(TextKey, u32, u32, String, bool, bool, bool, bool)>,
-    palette: (bool, crate::keymap::Preset, bool, bool, String),
+    palette: (bool, u64, bool, bool, String),
 }
 
 /// A locked note while it is open.
@@ -424,6 +437,9 @@ pub fn init() -> App {
         tab_gen: 0,
         tab_slide: 0,
         mode_swapped: false,
+        keymap: crate::keymap::Overrides::load(),
+        key_edit: None,
+        closed_tabs: Vec::new(),
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -489,13 +505,63 @@ fn seed_sample(p: &mut Persist) {
 }
 
 impl App {
-    /// The keymap preset the settings pick.
-    pub fn preset(&self) -> crate::keymap::Preset {
-        crate::keymap::Preset::from_id(&self.settings().keymap)
-    }
-
     pub fn settings(&self) -> &Settings {
         &self.persist.settings
+    }
+
+    pub fn start_key_edit(&mut self, action_id: &'static str) {
+        self.key_edit = Some(KeyEdit { action_id, error: None });
+    }
+
+    pub fn cancel_key_edit(&mut self) {
+        self.key_edit = None;
+    }
+
+    pub fn clear_key_binding(&mut self, action_id: &'static str) {
+        self.keymap.set(action_id, Vec::new());
+        let _ = self.keymap.save();
+        self.key_edit = None;
+    }
+
+    pub fn reset_key_binding(&mut self, action_id: &str) {
+        self.keymap.reset(action_id);
+        let _ = self.keymap.save();
+        if self.key_edit.as_ref().is_some_and(|e| e.action_id == action_id) {
+            self.key_edit = None;
+        }
+    }
+
+    pub fn reset_all_key_bindings(&mut self) {
+        self.keymap.reset_all();
+        let _ = self.keymap.save();
+        self.key_edit = None;
+    }
+
+    /// Captures a chord while recording an action in Settings → Shortcuts.
+    pub fn handle_key_edit(&mut self, ev: &rune::KeyEvent) -> bool {
+        let Some(edit) = self.key_edit.clone() else { return false };
+        if matches!(ev.key, rune::Key::Escape) {
+            self.key_edit = None;
+            return true;
+        }
+        let Some(spec) = crate::keymap::format_event(ev) else {
+            return true;
+        };
+        if let Some(act) = crate::keymap::action(edit.action_id)
+            && act.ctx.iter().any(|&c| crate::keymap::is_reserved_field_key(c, &spec))
+            && !matches!(act.id, "palette.next" | "palette.previous" | "palette.back-to-notes")
+        {
+            self.key_edit = Some(KeyEdit { action_id: edit.action_id, error: Some(format!("{} is reserved for text editing", crate::keymap::label_of(&spec))) });
+            return true;
+        }
+        if let Some(other) = self.keymap.conflict(edit.action_id, &spec) {
+            self.key_edit = Some(KeyEdit { action_id: edit.action_id, error: Some(format!("Already used by {}", other.name)) });
+            return true;
+        }
+        self.keymap.set(edit.action_id, vec![spec]);
+        let _ = self.keymap.save();
+        self.key_edit = None;
+        true
     }
 
     pub fn files(&self) -> &BTreeMap<String, String> {
@@ -722,7 +788,7 @@ impl App {
         let source = (matches!(self.mode, Mode::Preview | Mode::Map) && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
             (self.active_text_key().to_owned(), vw.to_bits(), set.size, set.font.clone(), self.wide(), left_vis, right_vis, dark)
         });
-        let palette = (dark, self.preset(), self.note_mode(), self.active.is_some(), set.panel_font.clone());
+        let palette = (dark, self.keymap.rev, self.note_mode(), self.active.is_some(), set.panel_font.clone());
         let cur = PrepareKey { source, palette };
         if self.prepared_key.as_ref() == Some(&cur)
             || (cur.source.is_none() && self.prepared_key.as_ref().is_some_and(|p| p.palette == cur.palette))
@@ -1139,6 +1205,7 @@ impl App {
         self.map_new_notes();
         self.flush_notes();
         self.store_session();
+        self.closed_tabs.clear();
         match v.scope {
             Scope::Folder => {
                 self.notes.clear();
@@ -1532,6 +1599,12 @@ impl App {
         }
         let Some(i) = self.tabs.iter().position(|x| x == p) else { return };
         self.tabs.remove(i);
+        if self.closed_tabs.last().map(String::as_str) != Some(p) {
+            self.closed_tabs.push(p.to_string());
+            if self.closed_tabs.len() > 32 {
+                self.closed_tabs.remove(0);
+            }
+        }
         self.reorder = None;
         self.edits.remove(p);
         self.drop_map(p);
@@ -1556,6 +1629,30 @@ impl App {
         }
         self.renaming = None;
         self.persist_later();
+    }
+
+    /// Reopens the most recently closed tab in this folder (`app.reopen-tab`, `Ctrl+Shift+T`).
+    pub fn reopen_tab(&mut self, tx: &mut Tx) {
+        if self.note_mode() {
+            return;
+        }
+        while let Some(p) = self.closed_tabs.pop() {
+            if self.files().contains_key(&p) && !self.tabs.contains(&p) {
+                self.open_file(&p, None, tx);
+                return;
+            }
+        }
+    }
+
+    /// Starts renaming `path` from the file tree (`F2`): opens it if needed, then focuses rename.
+    pub fn rename_note_path(&mut self, path: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() || !self.files().contains_key(path) {
+            return;
+        }
+        if self.active.as_deref() != Some(path) {
+            self.open_file(path, None, tx);
+        }
+        self.start_rename(tx);
     }
 
     /// The Open shelf's tabs in their order: in Folder mode the tabs whose notes exist, in Note
@@ -1845,17 +1942,6 @@ impl App {
     }
 
     // ---------- Modes and panels ----------
-
-    pub fn toggle_mode(&mut self, tx: &mut Tx) {
-        let to = match self.mode {
-            Mode::Source => Mode::Preview,
-            Mode::Preview => Mode::Source,
-            // From the map, the linear mode it did not come from (MAP-057).
-            Mode::Map if self.map.back == Mode::Source => Mode::Preview,
-            Mode::Map => Mode::Source,
-        };
-        self.show_mode(to, tx);
-    }
 
     /// Shows `to`, keeping the place: the mode buttons, the palette and the mode keys
     /// (MAP-064, MAP-065).

@@ -1,8 +1,8 @@
-= Ctrl+= and Ctrl+- do nothing on the map: + and - are its keyboard zoom (MAP-034).
+= Ctrl+= and Ctrl+- zoom the map in and out, unified with Source and Preview.
 note: Trip.md
 events: key:m+cmd@0.3 key:=+cmd@0.9 key:-+cmd@1.1 key:-+cmd@1.2
-expect: rect:map-dot:7: [712.95, 280.88, 26.97, 26.95]
-expect: rect:map-link:9: [739.92, 229.95, 248.47, 67.77]
+expect: rect:map-dot:7: [663.17, 309.39, 21.58, 21.56]
+expect: rect:map-link:9: [684.75, 268.66, 198.77, 54.22]
 --- before
 ---
 markmap:

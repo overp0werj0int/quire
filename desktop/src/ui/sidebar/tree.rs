@@ -102,10 +102,11 @@ fn walk(v: V, n: &Folder, depth: usize, rows: &mut Vec<(usize, El)>) {
         let path = f.clone();
         let drag_path = f.clone();
         let menu_path = f.clone();
+        let rename_path = f.clone();
         let r = lists::opener(note_row(v, f, depth, on), v.p, on, move |s: &mut App, tx| s.open_file(&path, None, tx));
         rows.push((
             depth,
-            lists::tree_arrows(r, Branch::Note, parent.clone())
+            lists::tree_arrows(r, Branch::Note { path: rename_path }, parent.clone())
                 .on_drag(move |s: &mut App, d: &mut rune::Drag, tx| s.drag_note(&drag_path, d, tx))
                 .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(MenuOf::Tree(MenuOn::Note(menu_path.clone())), (at.x, at.y), tx)),
         ));

@@ -1,9 +1,8 @@
-Ctrl+M again goes back to Preview when the map was entered from Preview.
+Ctrl+M is idempotent on the map: pressing it again stays in Map; bare p goes to Preview.
 note: Trip.md
 events: tap:mode-preview@0.3 key:m+cmd@0.9 key:m+cmd@1.5
 expect: focus: note-keys (no ring)
-expect: rect:map-canvas: None
-expect: label:mode-preview: 'Preview'
+expect: label:mode-map: 'Map'
 --- before
 # Plan
 

@@ -1074,6 +1074,66 @@ pub fn heading(text: &str, focus: usize, level: usize) -> Edit {
     Edit { start: ls, end: ls + plen, insert: prefix, sel: caret(at) }
 }
 
+/// Ctrl+Shift+Enter: toggles `[ ]` / `[x]` on every task line in the selection (if all tasks are
+/// checked, unchecks them; otherwise checks all unchecked tasks). If no line in the selection is
+/// a task yet, converts via `Fmt::Task`.
+pub fn toggle_checkbox(text: &str, a: usize, b: usize) -> Option<Edit> {
+    let lines = lines_of(text, a.min(b), a.max(b));
+    let mut has_task = false;
+    let mut all_checked = true;
+    for &(ls, le) in &lines {
+        let ln = &text[ls..le];
+        if let Some(l) = md::list_line(ln)
+            && let Some(t) = l.task
+        {
+            has_task = true;
+            if &ln[t.start + 1..t.start + 2] == " " {
+                all_checked = false;
+            }
+        }
+    }
+    if !has_task {
+        return Some(crate::format::apply(text, a, b, crate::format::Fmt::Task));
+    }
+    let mark = if all_checked { " " } else { "x" };
+    per_line(text, a, b, |ln| {
+        let l = md::list_line(ln)?;
+        let t = l.task?;
+        let mut s = ln.to_string();
+        s.replace_range(t.start + 1..t.start + 2, mark);
+        (s != ln).then_some((s, 0))
+    })
+}
+
+/// Alt+Up / Alt+Down: moves the line or selected lines up or down one line as a single edit,
+/// keeping the caret or selection at the same offset within the moved lines.
+pub fn move_lines(text: &str, a: usize, b: usize, down: bool) -> Option<Edit> {
+    let lines = lines_of(text, a.min(b), a.max(b));
+    let (start, end) = (lines[0].0, lines[lines.len() - 1].1);
+    let block = &text[start..end];
+    if !down {
+        if start == 0 {
+            return None;
+        }
+        let prev_end = start - 1;
+        let prev_start = text[..prev_end].rfind('\n').map_or(0, |i| i + 1);
+        let prev = &text[prev_start..prev_end];
+        let delta = prev.len() + 1;
+        let insert = format!("{block}\n{prev}");
+        Some(Edit { start: prev_start, end, insert, sel: (a - delta, b - delta) })
+    } else {
+        if end >= text.len() {
+            return None;
+        }
+        let next_start = end + 1;
+        let next_end = text[next_start..].find('\n').map_or(text.len(), |i| next_start + i);
+        let next = &text[next_start..next_end];
+        let delta = next.len() + 1;
+        let insert = format!("{next}\n{block}");
+        Some(Edit { start, end: next_end, insert, sel: (a + delta, b + delta) })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1375,5 +1435,38 @@ mod tests {
         assert_eq!(h("#idea", 0, 2), ("## #idea".into(), 3));
         assert_eq!(h("- item", 6, 1), ("# - item".into(), 8));
         assert_eq!(h("# a\nb", 5, 3), ("# a\n### b".into(), 9));
+    }
+
+    #[test]
+    fn toggle_checkbox_and_move_lines() {
+        let ed = toggle_checkbox("- [ ] milk\n- [x] bread", 2, 2).unwrap();
+        let mut s = "- [ ] milk\n- [x] bread".to_string();
+        s.replace_range(ed.start..ed.end, &ed.insert);
+        assert_eq!(s, "- [x] milk\n- [x] bread");
+        assert_eq!(ed.sel, (2, 2));
+
+        let ed = toggle_checkbox(&s, 0, s.len()).unwrap();
+        s.replace_range(ed.start..ed.end, &ed.insert);
+        assert_eq!(s, "- [ ] milk\n- [ ] bread");
+
+        let ed = toggle_checkbox("plain line", 3, 3).unwrap();
+        let mut p = "plain line".to_string();
+        p.replace_range(ed.start..ed.end, &ed.insert);
+        assert_eq!(p, "- [ ] plain line");
+
+        let text = "one\ntwo\nthree";
+        let up = move_lines(text, 5, 5, false).unwrap();
+        let mut t = text.to_string();
+        t.replace_range(up.start..up.end, &up.insert);
+        assert_eq!(t, "two\none\nthree");
+        assert_eq!(up.sel, (1, 1));
+        assert!(move_lines(&t, 1, 1, false).is_none());
+
+        let dn = move_lines(text, 1, 1, true).unwrap();
+        let mut t = text.to_string();
+        t.replace_range(dn.start..dn.end, &dn.insert);
+        assert_eq!(t, "two\none\nthree");
+        assert_eq!(dn.sel, (5, 5));
+        assert!(move_lines(text, 10, 10, true).is_none());
     }
 }

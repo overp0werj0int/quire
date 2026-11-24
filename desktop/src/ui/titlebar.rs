@@ -7,7 +7,6 @@ use super::V;
 use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, LAYOUT_RIGHT, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, icon_of};
 use super::widgets::{Control, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
-use crate::keymap::tip;
 use crate::layer::Kind;
 use super::styles::sans;
 
@@ -84,7 +83,7 @@ pub fn corner(v: V) -> El {
         .window_drag()
         .preserve_focus_on_press(true)
         .children((super::widgets::DOTS_W > 0.0).then(|| dots(p)))
-        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &tip(v.s.preset(), crate::commands::sidebar_name(v.s), "app.toggle-sidebar"), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
+        .child(bar_button(p, "toggle-left", &SIDEBAR_LEFT, &v.s.keymap.tip(crate::commands::sidebar_name(v.s), if matches!(v.s.mode, Mode::Preview | Mode::Map) { "reader.toggle-sidebar" } else { "app.toggle-sidebar" }), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
 }
 
 /// The room under the corner, at the sidebar's top or the title bar's start.
@@ -135,7 +134,7 @@ fn actions(v: V, mut r: El) -> El {
     let p = v.p;
     let s = v.s;
     let zen = v.focus();
-    let tip = |name: &str, id: &str| tip(s.preset(), name, id);
+    let tip = |name: &str, id: &str| s.keymap.tip(name, id);
     // In preview, omarky's header chips: find, copy all, the measure and the shortcuts (RD-34).
     // Each shows as on while its feature is (RD-35).
     let preview = v.has_doc() && s.mode == Mode::Preview;
@@ -190,7 +189,7 @@ fn actions(v: V, mut r: El) -> El {
         let mut modes = row().key("modes").gap(4.0).center_y().role("radiogroup").label("Mode");
         for (m, key, glyph, name) in [(Mode::Source, "mode-source", &CODE, "Source"), (Mode::Preview, "mode-preview", &EYE, "Preview"), (Mode::Map, "mode-map", &MAP, "Map")] {
             let on = s.mode == m;
-            let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(s, m)) };
+            let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(m)) };
             modes = modes.child(bar_toggle(p, key, glyph, &help, on, act(crate::commands::show(m))).role("radio"));
         }
         r = r.child(modes);
@@ -198,7 +197,7 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_toggle(p, "focus", &FOCUS, &help, zen, act(|s, tx| s.toggle_focus(tx))));
     }
     if !zen && v.has_doc() {
-        let outline = tip(crate::commands::outline_name(s), if preview { "reader.toggle-outline" } else { "app.toggle-outline" });
+        let outline = tip(crate::commands::outline_name(s), if matches!(s.mode, Mode::Preview | Mode::Map) { "reader.toggle-outline" } else { "app.toggle-outline" });
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
     }
     r

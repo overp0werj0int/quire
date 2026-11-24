@@ -148,8 +148,8 @@ pub fn edit_chord(ev: &KeyEvent) -> bool {
 /// The actions that show and hide a pane.
 fn toggles(pane: Pane, id: &str) -> bool {
     match pane {
-        Pane::Sidebar => id == "app.toggle-sidebar",
-        Pane::Outline => matches!(id, "app.toggle-outline" | "reader.toggle-outline"),
+        Pane::Sidebar => matches!(id, "app.toggle-sidebar" | "reader.toggle-sidebar" | "map.toggle-sidebar"),
+        Pane::Outline => matches!(id, "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline"),
         Pane::Note => false,
     }
 }
@@ -215,9 +215,8 @@ impl App {
         if self.layer().is_some() {
             return false;
         }
-        let preset = self.preset();
         let ctxs = crate::keys::page_stack(self);
-        let Some(a) = ctxs.iter().flat_map(|c| crate::keymap::lookup(preset, *c, ev)).find(|a| toggles(pane, a.id)) else { return false };
+        let Some(a) = ctxs.iter().flat_map(|c| self.keymap.lookup(*c, ev)).find(|a| toggles(pane, a.id)) else { return false };
         let Some(run) = crate::keys::handler(a.id) else { return false };
         run(self, tx);
         true

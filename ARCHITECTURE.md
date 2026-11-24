@@ -520,8 +520,8 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `main.rs` | The entry point. It builds the Rune app, or runs a CLI subcommand. Also the headless scenes. |
 | `cli.rs` | Subcommands (`quire mcp`), and what the launch argument opens (`start_target`). |
 | `app.rs` | `App`, `init`, `poll` and most actions. |
-| `keymap.rs` | The keymap table: every key as a context, chord and action, in the omarky and Quire presets. |
-| `keys.rs` | Routes window keys through the keymap to each action's handler. |
+| `keymap.rs` | The single unified keymap table (`TABLE`) and user overrides (`Overrides`, persisted in `~/.config/quire/keybindings.json` and edited in Settings → Shortcuts), with AltGr-safe `Ctrl+Alt` matching, shifted-digit matching (`Ctrl+Shift+7..9`), and conflict checks. |
+| `keys.rs` | Routes window keys through `App::keymap` to each action's handler, intercepts Settings keybinding recording, and runs idempotent mode switches (`Ctrl+E` Source, `Ctrl+P`/`p` Preview, `Ctrl+M`/`m` Map) plus one-way `Esc` out of Source into Preview. |
 | `layer.rs` | The layers over the page: what is open, where focus goes back, and when a layer closes (see Layers). |
 | `focus.rs` | The focus stops, their panes, the rule a focused stop keeps, and F6 (see Focus). |
 | `commands.rs` | The command palette and the quick switcher. |

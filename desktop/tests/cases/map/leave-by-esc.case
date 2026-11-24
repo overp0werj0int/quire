@@ -1,9 +1,8 @@
-Esc on the map goes back to Source, the mode it came from.
+Esc on the map with nothing open stays in the map (one-way Esc).
 note: Trip.md
 events: key:m+cmd@0.3 key:Escape@1.0
-expect: focus: editor (no ring)
-expect: rect:map-canvas: None
-expect: label:mode-source: 'Source'
+expect: focus: note-keys (no ring)
+expect: label:mode-map: 'Map'
 --- before
 # Plan
 

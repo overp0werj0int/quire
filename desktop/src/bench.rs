@@ -38,7 +38,7 @@ pub(crate) fn open(dir: &std::path::Path, text: &str, mode: Mode) -> (Runtime<Ap
         s.open_vault(root, tx);
         s.open_file("note.md", None, tx);
         s.mode = mode;
-        // The keyboard goes with the mode, as `toggle_mode` sends it.
+        // The keyboard goes with the mode, as `show_mode` sends it.
         s.keys_to_note(tx);
     });
     rt.frame(DT);
@@ -389,35 +389,36 @@ fn bench_livepace_long() {
             took
         };
 
+        let ctrl_e = KeyEvent { key: Key::Command('e'), mods: Mods { cmd: true, ..Mods::default() } };
         let ctrl_p = KeyEvent { key: Key::Command('p'), mods: Mods { cmd: true, ..Mods::default() } };
-        let ctrl_shift_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, shift: true, ..Mods::default() } };
+        let ctrl_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, ..Mods::default() } };
         let ctrl_s = KeyEvent { key: Key::Command('s'), mods: Mods { cmd: true, ..Mods::default() } };
         let esc = KeyEvent { key: Key::Escape, mods: Mods::default() };
 
-        // 4x Ctrl+P: Preview->Source, Source->Preview, Preview->Source, Source->Preview
+        // 4x mode switch: Preview->Source, Source->Preview, Preview->Source, Source->Preview
         for i in 1..=4 {
             let want = if i % 2 == 1 { Mode::Source } else { Mode::Preview };
-            let dir_lbl = if i % 2 == 1 { "Preview->Source" } else { "Source->Preview" };
-            step_key(&mut rt, &format!("Ctrl+P #{i} ({dir_lbl})"), ctrl_p.clone());
-            assert_eq!(query_state(&mut rt).0, want, "Ctrl+P #{i} switched mode");
+            let (dir_lbl, ev) = if i % 2 == 1 { ("Preview->Source", ctrl_e.clone()) } else { ("Source->Preview", ctrl_p.clone()) };
+            step_key(&mut rt, &format!("Mode #{i} ({dir_lbl})"), ev);
+            assert_eq!(query_state(&mut rt).0, want, "Mode #{i} switched mode");
             for _ in 0..6 {
                 rt.frame(DT);
             }
         }
 
-        // Ctrl+Shift+K in Preview, then Esc
-        step_key(&mut rt, "Ctrl+Shift+K (Preview)", ctrl_shift_k.clone());
+        // Ctrl+K in Preview, then Esc
+        step_key(&mut rt, "Ctrl+K (Preview)", ctrl_k.clone());
         assert!(query_state(&mut rt).1, "palette opened in Preview");
         step_key(&mut rt, "Esc palette (Preview)", esc.clone());
         assert!(!query_state(&mut rt).1, "palette closed in Preview");
 
-        // Switch to Source, then Ctrl+Shift+K in Source, then Esc
-        step_key(&mut rt, "Ctrl+P #5 (Preview->Src)", ctrl_p.clone());
+        // Switch to Source, then Ctrl+K in Source, then Esc
+        step_key(&mut rt, "Ctrl+E #5 (Preview->Src)", ctrl_e.clone());
         assert_eq!(query_state(&mut rt).0, Mode::Source);
         for _ in 0..6 {
             rt.frame(DT);
         }
-        step_key(&mut rt, "Ctrl+Shift+K (Source)", ctrl_shift_k.clone());
+        step_key(&mut rt, "Ctrl+K (Source)", ctrl_k.clone());
         assert!(query_state(&mut rt).1, "palette opened in Source");
         step_key(&mut rt, "Esc palette (Source)", esc.clone());
         assert!(!query_state(&mut rt).1, "palette closed in Source");
@@ -513,25 +514,25 @@ fn bench_livepace_long() {
         for _ in 0..3 {
             rt.frame(DT);
         }
-        let ctrl_p = KeyEvent { key: Key::Command('p'), mods: Mods { cmd: true, ..Mods::default() } };
-        let ctrl_shift_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, shift: true, ..Mods::default() } };
+        let ctrl_e = KeyEvent { key: Key::Command('e'), mods: Mods { cmd: true, ..Mods::default() } };
+        let ctrl_k = KeyEvent { key: Key::Command('k'), mods: Mods { cmd: true, ..Mods::default() } };
         let esc = KeyEvent { key: Key::Escape, mods: Mods::default() };
 
         eprintln!("\n=== LIVEPACE-PREPARED ({label}: {} lines, {} bytes) ===", text.lines().count(), text.len());
         eprintln!("  idle prepare_cold:      {warm_ms:6.2} ms{warm_ph}");
         phases();
         let t = Instant::now();
-        rt.key(ctrl_p);
+        rt.key(ctrl_e);
         rt.frame(DT);
-        eprintln!("  Ctrl+P #1 (warmed):     {:6.2} ms{}", ms(t), phases());
+        eprintln!("  Ctrl+E #1 (warmed):     {:6.2} ms{}", ms(t), phases());
         for _ in 0..4 {
             rt.frame(DT);
         }
         phases();
         let t = Instant::now();
-        rt.key(ctrl_shift_k);
+        rt.key(ctrl_k);
         rt.frame(DT);
-        eprintln!("  Ctrl+Shift+K (warmed):  {:6.2} ms{}", ms(t), phases());
+        eprintln!("  Ctrl+K (warmed):        {:6.2} ms{}", ms(t), phases());
         rt.key(esc);
         rt.frame(DT);
         let _ = std::fs::remove_dir_all(&dir);

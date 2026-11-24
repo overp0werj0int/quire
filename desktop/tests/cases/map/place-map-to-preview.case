@@ -1,6 +1,6 @@
 Back in Preview the page lands on the selected node's block.
 note: Long.md
-events: tap:mode-preview@0.2 key:m+cmd@0.8 key:l@1.2 key:j@1.4 key:j@1.6 key:j@1.8 key:m+cmd@2.2
+events: tap:mode-preview@0.2 key:m+cmd@0.8 key:l@1.2 key:j@1.4 key:j@1.6 key:j@1.8 key:p@2.2
 expect: doc-y: -1013.0
 --- before
 # Long

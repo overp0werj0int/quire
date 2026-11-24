@@ -28,10 +28,13 @@ pub fn show_name(m: Mode) -> &'static str {
     }
 }
 
-/// The action whose key shows `m` from the mode shown now: `Ctrl+M` into the map and back to
-/// the mode it came from, the mode toggle for the other (MAP-057).
-pub fn mode_action(s: &App, m: Mode) -> &'static str {
-    if m == Mode::Map || (s.mode == Mode::Map && m == s.map.back) { "app.toggle-map" } else { "app.toggle-mode" }
+/// The action whose key switches to `m`: each mode has its own idempotent chord.
+pub fn mode_action(m: Mode) -> &'static str {
+    match m {
+        Mode::Source => "app.mode-source",
+        Mode::Preview => "app.mode-preview",
+        Mode::Map => "app.mode-map",
+    }
 }
 
 pub fn show(m: Mode) -> Run {
@@ -73,7 +76,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     if has {
         for m in [Mode::Source, Mode::Preview, Mode::Map] {
             if m != s.mode {
-                v.push(cmd(show_name(m), mode_action(s, m), show(m)));
+                v.push(cmd(show_name(m), mode_action(m), show(m)));
             }
         }
     }
@@ -219,7 +222,7 @@ pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx
             list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         }
         for (_, c, idx) in list {
-            let sub = crate::keymap::label(s.preset(), c.action);
+            let sub = s.keymap.label(c.action);
             items.push(Item { segs: segs(&c.label, &idx), sub, action: Action::Cmd(c.run) });
         }
     }
