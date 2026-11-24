@@ -1,13 +1,13 @@
 //! The layout picker (MAP-089): a card under the title bar's layout button with one tile for
-//! each way the map's branches can grow. Each tile draws the real layout pass on a small
-//! sample tree, so the schematic can never drift from what picking it does.
+//! each way the map's branches can grow. Each tile's schematic is the real layout pass on a
+//! small sample tree, so it cannot drift from what picking it does. The title bar's 16 pt
+//! glyphs (`icons::LAYOUT_*`) are drawn by hand and can.
 
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 
 use rune::{Color, El, LineCap, Shape, col, el, icon, row, text};
 
-use super::{branch_color, color_bits, tapered_on};
+use super::{branch_color, tapered_on};
 use crate::app::App;
 use crate::keymap;
 use crate::layer::tile_key;
@@ -18,7 +18,7 @@ use crate::ui::V;
 use crate::ui::icons::CHECK;
 use crate::ui::layer::Card;
 use crate::ui::styles::sans;
-use crate::ui::titlebar::{BAR_H, layout_button_inset};
+use crate::ui::titlebar::BAR_H;
 use crate::ui::widgets::{Control, floating, kbd};
 
 const PAD: f32 = 12.0;
@@ -51,7 +51,7 @@ pub(in crate::ui) fn layouts(v: V) -> Card {
         grid = grid.child(line);
     }
     let w = per as f32 * TILE_W + (per - 1) as f32 * GAP + 2.0 * PAD;
-    let x = (v.vw - layout_button_inset(v) - w).max(EDGE);
+    let x = (v.s.map.layout_button_right - w).max(EDGE);
     let esc = keymap::label_of("Esc");
     let header = row()
         .key("layouts-header")
@@ -99,7 +99,7 @@ fn fade(card: El) -> El {
 
 fn tile(v: V, c: &Roles, l: Layout, current: bool) -> El {
     let (rw, rg, rc) = crate::ui::focus_ring(v.p);
-    let plate = el().w(THUMB[0]).h(THUMB[1]).radius(6.0).clip_rounded(6.0).fill(c.sunken).child(schematic(c, l));
+    let plate = el().w(THUMB[0]).h(THUMB[1]).radius(6.0).clip_rounded(6.0).fill(c.sunken).child(schematic(v.p, l));
     let mut name = row().gap(4.0).center_y().child(text(l.name()).font(sans(12.0, if current { 600.0 } else { 400.0 })).color(if current { c.text } else { v.p.mute }));
     if current {
         name = name.child(icon(&CHECK, 10.0).color(c.accent_text));
@@ -127,22 +127,14 @@ fn tile(v: V, c: &Roles, l: Layout, current: bool) -> El {
         .child(name)
 }
 
-/// What the sample's drawing depends on besides the layout: the colours it uses.
-fn palette_hash(c: &Roles) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    for k in [c.accent, c.bg, c.blue, c.green, c.orange, c.magenta, c.cyan, c.yellow, c.dim, c.strong] {
-        color_bits(k).hash(&mut h);
-    }
-    h.finish()
-}
-
 /// The sample under layout `l`, laid out by the map's own pass with sizes of a label's bar, and
 /// drawn scaled into a plate: branches through the map's curve code in the branch colours,
 /// labels as bars, the root's the strongest.
-fn schematic(c: &Roles, l: Layout) -> El {
-    let c = *c;
-    let key = (l, palette_hash(&c));
+fn schematic(p: &'static crate::theme::Pal, l: Layout) -> El {
+    // A palette is made once and kept (`theme::themed`), so its address stands for its colours.
+    let key = (l, std::ptr::from_ref(p) as usize);
     rune::memo(format!("layout-thumb:{}", l.word()), key, move || {
+        let c = Roles::new(p);
         let sample = if l == Layout::Both { SAMPLE_BOTH } else { SAMPLE };
         let src = format!("---\nmarkmap:\n  layout: {}\n---\n{sample}", l.word());
         let tree: Tree = crate::map::build(&crate::blocks::build(&src), &src, "");

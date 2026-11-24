@@ -120,6 +120,9 @@ pub struct MapState {
     pub size: Cell<[f32; 2]>,
     /// The canvas's top-left corner in the window.
     pub(crate) origin: Cell<[f32; 2]>,
+    /// The right edge of the title bar's Layout button as last laid out, for the picker that
+    /// hangs under it (MAP-089).
+    pub(crate) layout_button_right: f32,
     tree: RefCell<Option<(u64, Rc<Tree>)>>,
     laid: RefCell<Option<(LaidKey, Rc<Laid>)>>,
     sizes: RefCell<Sizes>,
@@ -200,6 +203,7 @@ impl Default for MapState {
             back: Mode::Source,
             size: Cell::new([0.0, 0.0]),
             origin: Cell::new([0.0, 0.0]),
+            layout_button_right: 0.0,
             tree: RefCell::new(None),
             laid: RefCell::new(None),
             sizes: RefCell::new((0, "", "", HashMap::new())),
