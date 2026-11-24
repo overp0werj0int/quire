@@ -11,7 +11,7 @@ use super::{V, outline, preview};
 use crate::app::{App, Mode};
 use crate::keymap::Ctx;
 use crate::roles::Roles;
-use crate::md::{self, Tok};
+use crate::md;
 use super::styles::{keys, literal, note, sans};
 use crate::theme;
 
@@ -567,7 +567,32 @@ fn toolbar(v: V) -> El {
     let p = v.p;
     let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
     let (rw, rg, rc) = super::focus_ring(p);
+    let doc = v.s.active_text();
+    let caret = v.s.active.as_ref().and_then(|a| v.s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
+    let active = crate::writer::active_formats(doc, caret);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).role("button").focus_ring(rw, rg, rc).control(move |s: &mut App, tx| s.format(f, tx));
+    let toggle = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt, on: bool| {
+        let mut b = row()
+            .key(key)
+            .size(28.0, 28.0)
+            .center()
+            .radius(6.0)
+            .role("switch")
+            .checked(on)
+            .label(help.clone())
+            .help(help)
+            .focus_ring(rw, rg, rc)
+            .control(move |s: &mut App, tx| s.format(f, tx));
+        if on {
+            b = b
+                .fill(p.act)
+                .border(1.0, p.acc.alpha(if p.dark { 0.45 } else { 0.35 }))
+                .child(icon(glyph, 16.0).color(p.acc));
+        } else {
+            b = b.hover(p.hover).hover_group().child(icon(glyph, 16.0).color(p.mute).group_color(p.ink));
+        }
+        b
+    };
     let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
     // At rest the toolbar has no background and no border, as the text around it. The
     // background, its shadow and the find bar's corner and hairline come in while the note
@@ -630,19 +655,19 @@ fn toolbar(v: V) -> El {
         .keeps_text_selection()
         .children(band)
         .child(back)
-        .child(btn("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold))
-        .child(btn("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic))
-        .child(btn("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike))
-        .child(btn("fmt-heading", &HEADING, format!("Heading ({} to {})", v.s.keymap.label("writer.heading-1"), v.s.keymap.label("writer.heading-6")), Fmt::Heading))
+        .child(toggle("fmt-bold", &BOLD, tip("Bold", "writer.bold"), Fmt::Bold, active.bold))
+        .child(toggle("fmt-italic", &ITALIC, tip("Italic", "writer.italic"), Fmt::Italic, active.italic))
+        .child(toggle("fmt-strike", &STRIKE, tip("Strikethrough", "writer.strikethrough"), Fmt::Strike, active.strike))
+        .child(toggle("fmt-heading", &HEADING, format!("Heading (click H1–H3, {}–{})", v.s.keymap.label("writer.heading-1"), v.s.keymap.label("writer.heading-6")), Fmt::Heading, active.heading))
         .child(sep("sep-1"))
         .child(btn("fmt-link", &LINK, tip("Insert link", "writer.link"), Fmt::Link))
         .child(btn("fmt-wiki", &WIKI, tip("Insert note link", "writer.wiki-link"), Fmt::Wiki))
         .child(sep("sep-2"))
-        .child(btn("fmt-bullets", &BULLETS, tip("Bulleted list", "writer.bulleted-list"), Fmt::Bullet))
-        .child(btn("fmt-numbers", &NUMBERS, tip("Numbered list", "writer.numbered-list"), Fmt::Number))
-        .child(btn("fmt-task", &TASK, tip("Task", "writer.task-list"), Fmt::Task))
-        .child(btn("fmt-quote", &QUOTE, tip("Quote", "writer.blockquote"), Fmt::Quote))
-        .child(btn("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code))
+        .child(toggle("fmt-bullets", &BULLETS, tip("Bulleted list", "writer.bulleted-list"), Fmt::Bullet, active.bullet))
+        .child(toggle("fmt-numbers", &NUMBERS, tip("Numbered list", "writer.numbered-list"), Fmt::Number, active.number))
+        .child(toggle("fmt-task", &TASK, tip("Task", "writer.task-list"), Fmt::Task, active.task))
+        .child(toggle("fmt-quote", &QUOTE, tip("Quote", "writer.blockquote"), Fmt::Quote, active.quote))
+        .child(toggle("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code, active.code))
         .child(sep("sep-3"))
         .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).role("button").focus_ring(rw, rg, rc).control(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
@@ -1016,26 +1041,15 @@ pub(super) fn writer_caret(input: El, c: &Roles) -> El {
     input.caret(c.accent, c.selection).selection_style(sel)
 }
 
-/// The `[[link]]` around the caret, if any.
-pub fn link_at_caret(text: &str, caret: usize) -> Option<String> {
-    let (_, ls) = md::line_col(text, caret);
-    let le = text[ls..].find('\n').map_or(text.len(), |n| ls + n);
-    let line = &text[ls..le];
-    let col = caret - ls;
-    for (t, r) in md::inline_tokens(line) {
-        // `[[cat.png]]` names an image, not a note, so there is no note to open or make.
-        if t == Tok::Wiki && col >= r.start && col <= r.end && !md::is_image(&md::link_target(&line[r.start + 2..r.end - 2])) {
-            return Some(md::link_target(&line[r.start + 2..r.end - 2]).to_string());
-        }
-    }
-    None
-}
+pub use crate::writer::{CaretLink, link_at_caret};
 
 pub fn follow_link_at_caret(s: &mut App, tx: &mut Tx) {
     let text = s.active_text().to_string();
     let caret = s.cur_edit().focus.min(text.len());
-    if let Some(t) = link_at_caret(&text, caret) {
-        s.open_link(&t, tx);
+    match link_at_caret(&text, caret) {
+        Some(CaretLink::Wiki(t)) => s.open_link(&t, tx),
+        Some(CaretLink::Url(u)) => s.follow(&u, tx),
+        None => {}
     }
 }
 

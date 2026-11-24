@@ -730,6 +730,408 @@ pub fn fade(s: &Styled, len: usize, ghost: Color) -> Styled {
     Styled { spans, strikes: s.strikes.iter().map(|&(a, b, _)| (a, b, ghost)).collect(), hang: s.hang }
 }
 
+/// Which formatting toolbar toggles apply at the caret in Source mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ActiveFormats {
+    pub bold: bool,
+    pub italic: bool,
+    pub strike: bool,
+    pub code: bool,
+    pub heading: bool,
+    pub bullet: bool,
+    pub number: bool,
+    pub task: bool,
+    pub quote: bool,
+}
+
+/// A clickable link under the caret in Source mode.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CaretLink {
+    /// A `[[note]]` or `[[note|alias]]` wikilink (excluding image embeds).
+    Wiki(String),
+    /// A Markdown inline link `[text](url)`, autolink `<https://...>`, or bare URL.
+    Url(String),
+}
+
+/// Returns `(line_start, line_end, block_state_entering_line)` for `caret`.
+fn caret_line_state(text: &str, caret: usize) -> (usize, usize, State, bool) {
+    let mut at = caret.min(text.len());
+    while at > 0 && !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    let mut st = State::default();
+    let mut ls = 0usize;
+    let mut first = true;
+    for ln in text.split('\n') {
+        let le = ls + ln.len();
+        if at <= le {
+            return (ls, le, st, first);
+        }
+        let has_text = !ln.trim().is_empty();
+        st = match st.block {
+            Block::Fence(ch, len) => {
+                if fence_close(ln, ch, len) { State { block: Block::None, after_text: has_text } } else { State { block: st.block, after_text: has_text } }
+            }
+            Block::Front => {
+                if ln == "---" || ln == "..." { State { block: Block::None, after_text: has_text } } else { State { block: Block::Front, after_text: has_text } }
+            }
+            Block::Comment => {
+                State { block: if ln.contains("-->") { Block::None } else { Block::Comment }, after_text: has_text }
+            }
+            Block::None => {
+                let block = if first && ln == "---" {
+                    Block::Front
+                } else if let Some((ch, len)) = fence_open(ln) {
+                    Block::Fence(ch, len)
+                } else {
+                    let t = ln.trim_start();
+                    if t.starts_with("<!--") && !t[4..].contains("-->") { Block::Comment } else { Block::None }
+                };
+                State { block, after_text: has_text }
+            }
+        };
+        ls = le + 1;
+        first = false;
+    }
+    (text.len(), text.len(), st, first)
+}
+
+/// Detects block and inline Markdown formats enclosing `caret` so the Source toolbar can reflect
+/// active formatting states.
+pub fn active_formats(text: &str, caret: usize) -> ActiveFormats {
+    let mut out = ActiveFormats::default();
+    let (ls, le, st, first) = caret_line_state(text, caret);
+    if st.block != Block::None {
+        return out;
+    }
+    let ln = &text[ls..le];
+    if (first && ln == "---") || fence_open(ln).is_some() || ln.trim_start().starts_with("<!--") {
+        return out;
+    }
+    let col = caret.min(le).saturating_sub(ls);
+    let (from, to) = if let Some((_, mark, close)) = atx(ln) {
+        out.heading = true;
+        (mark, close)
+    } else if let Some(q) = quote(ln) {
+        out.quote = true;
+        (q, ln.len())
+    } else if let Some(l) = md::list_line(ln) {
+        if let Some(t) = &l.task {
+            out.task = true;
+            (t.end, ln.len())
+        } else if l.number.is_some() {
+            out.number = true;
+            (l.after, ln.len())
+        } else {
+            out.bullet = true;
+            (l.after, ln.len())
+        }
+    } else {
+        (0, ln.len())
+    };
+    if col < from || col > to {
+        return out;
+    }
+
+    let b = ln.as_bytes();
+    let mut taken = vec![false; ln.len()];
+    let free = |taken: &[bool], a: usize, z: usize| a <= z && z <= to && !taken[a..z].iter().any(|&t| t);
+
+    // Escapes.
+    let mut i = from;
+    while i + 1 < to {
+        if b[i] == b'\\' && ESCAPABLE.contains(&b[i + 1]) {
+            taken[i..i + 2].fill(true);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Inline code spans, plus empty `` `|` `` pair inserted by Ctrl+E / toolbar.
+    let mut i = from;
+    while i < to {
+        if b[i] != b'`' || taken[i] {
+            i += 1;
+            continue;
+        }
+        let run = |at: usize| b[at..to].iter().take_while(|&&c| c == b'`').count();
+        let n = run(i);
+        if n == 2 && col == i + 1 {
+            out.code = true;
+            return out;
+        }
+        let mut j = i + n;
+        let mut close = None;
+        while j < to {
+            if b[j] == b'`' {
+                let m = run(j);
+                if m == n {
+                    close = Some(j);
+                    break;
+                }
+                j += m;
+            } else {
+                j += 1;
+            }
+        }
+        match close {
+            Some(j) => {
+                if col >= i + n && col <= j {
+                    out.code = true;
+                    return out;
+                }
+                taken[i..j + n].fill(true);
+                i = j + n;
+            }
+            None => i += n,
+        }
+    }
+
+    // Mark link destination parens `(url)` taken so `_` inside URLs does not trigger italic.
+    let mut i = from;
+    while i < to {
+        if b[i] == b']' && !taken[i] && b.get(i + 1) == Some(&b'(') {
+            if let Some(p) = ln[i + 2..to].find(')').map(|k| i + 2 + k)
+                && free(&taken, i, p + 1)
+            {
+                taken[i..p + 1].fill(true);
+                i = p + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+
+    let check_empty_pair = |taken: &[bool], m: &[u8]| -> bool {
+        let n = m.len();
+        col >= from + n
+            && col + n <= to
+            && &b[col - n..col] == m
+            && &b[col..col + n] == m
+            && !taken[col - n..col + n].iter().any(|&t| t)
+            && (m != b"*" || ((col - n == 0 || b[col - n - 1] != b'*') && b.get(col + n) != Some(&b'*')))
+    };
+
+    let scan_delim = |taken: &mut [bool], m: &str| -> bool {
+        let n = m.len();
+        let mb = m.as_bytes();
+        let star = m == "*";
+        let under = m == "_";
+        let is_mark = |taken: &[bool], at: usize| at + n <= to && &b[at..at + n] == mb && !taken[at..at + n].iter().any(|&t| t);
+        let lone = |at: usize| !star || ((at == 0 || b[at - 1] != b'*') && b.get(at + 1) != Some(&b'*') && (at == 0 || b[at - 1] != b'\\'));
+        let word = |at: Option<usize>| at.and_then(|k| ln[k..].chars().next()).is_some_and(|c| c.is_alphanumeric());
+        let prev = |at: usize| ln[..at].char_indices().next_back().map(|(k, _)| k);
+        let mut hit = false;
+        let mut i = from;
+        while i < to {
+            let opens = is_mark(taken, i) && lone(i) && b.get(i + n).is_some_and(|c| !c.is_ascii_whitespace()) && (!under || i == 0 || !word(prev(i)));
+            if !opens {
+                i += 1;
+                continue;
+            }
+            let mut j = i + n + 1;
+            let mut close = None;
+            while j + n <= to {
+                if is_mark(taken, j) && lone(j) && !b[j - 1].is_ascii_whitespace() && (!under || !word(Some(j + n).filter(|&k| k < ln.len()))) {
+                    close = Some(j);
+                    break;
+                }
+                j += 1;
+            }
+            let Some(j) = close else {
+                i += n;
+                continue;
+            };
+            if col >= i + n && col <= j {
+                hit = true;
+            }
+            taken[i..i + n].fill(true);
+            taken[j..j + n].fill(true);
+            i = j + n;
+        }
+        hit
+    };
+
+    if scan_delim(&mut taken, "***") {
+        out.bold = true;
+        out.italic = true;
+    }
+    if scan_delim(&mut taken, "**") || scan_delim(&mut taken, "__") || check_empty_pair(&taken, b"**") {
+        out.bold = true;
+    }
+    if scan_delim(&mut taken, "*") || scan_delim(&mut taken, "_") || check_empty_pair(&taken, b"*") {
+        out.italic = true;
+    }
+    if scan_delim(&mut taken, "~~") || check_empty_pair(&taken, b"~~") {
+        out.strike = true;
+    }
+    out
+}
+
+/// The `[[note]]`, Markdown `[text](url)`, autolink `<url>`, or bare URL under `caret`, if any.
+pub fn link_at_caret(text: &str, caret: usize) -> Option<CaretLink> {
+    let (ls, le, st, first) = caret_line_state(text, caret);
+    if st.block != Block::None {
+        return None;
+    }
+    let ln = &text[ls..le];
+    if (first && ln == "---") || fence_open(ln).is_some() || ln.trim_start().starts_with("<!--") {
+        return None;
+    }
+    let col = caret.min(le).saturating_sub(ls);
+    let b = ln.as_bytes();
+    let to = ln.len();
+    let mut taken = vec![false; to];
+    let free = |taken: &[bool], a: usize, z: usize| a <= z && z <= to && !taken[a..z].iter().any(|&t| t);
+
+    // Escapes.
+    let mut i = 0;
+    while i + 1 < to {
+        if b[i] == b'\\' && ESCAPABLE.contains(&b[i + 1]) {
+            taken[i..i + 2].fill(true);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Inline code spans are literal text, not links.
+    let mut i = 0;
+    while i < to {
+        if b[i] != b'`' || taken[i] {
+            i += 1;
+            continue;
+        }
+        let run = |at: usize| b[at..to].iter().take_while(|&&c| c == b'`').count();
+        let n = run(i);
+        let mut j = i + n;
+        let mut close = None;
+        while j < to {
+            if b[j] == b'`' {
+                let m = run(j);
+                if m == n {
+                    close = Some(j);
+                    break;
+                }
+                j += m;
+            } else {
+                j += 1;
+            }
+        }
+        match close {
+            Some(j) => {
+                taken[i..j + n].fill(true);
+                i = j + n;
+            }
+            None => i += n,
+        }
+    }
+
+    // 1. Wiki links `[[target]]` / `[[target|alias]]` (skip `![[embed]]` and images).
+    let mut i = 0;
+    while i + 1 < to {
+        if &b[i..i + 2] != b"[[" || taken[i] {
+            i += 1;
+            continue;
+        }
+        let Some(k) = ln[i + 2..to].find("]]").map(|k| i + 2 + k) else { break };
+        let inner = &ln[i + 2..k];
+        if inner.is_empty() || inner.contains('[') || !free(&taken, i, k + 2) {
+            i += 2;
+            continue;
+        }
+        let embed = i > 0 && b[i - 1] == b'!' && !taken[i - 1];
+        let a = if embed { i - 1 } else { i };
+        if !embed && col >= i && col <= k + 2 {
+            let target = md::link_target(inner);
+            if !target.is_empty() && !md::is_image(&target) {
+                return Some(CaretLink::Wiki(target.to_string()));
+            }
+        }
+        taken[a..k + 2].fill(true);
+        i = k + 2;
+    }
+
+    // 2. Markdown inline links `[text](url "title")` (skip `![alt](img)`).
+    let mut i = 0;
+    while i < to {
+        if b[i] != b'[' || taken[i] || b.get(i + 1) == Some(&b'^') {
+            i += 1;
+            continue;
+        }
+        let Some(c) = ln[i + 1..to].find(']').map(|c| i + 1 + c) else { break };
+        let image = i > 0 && b[i - 1] == b'!' && !taken[i - 1];
+        let a = if image { i - 1 } else { i };
+        if b.get(c + 1) == Some(&b'(')
+            && let Some(p) = ln[c + 2..to].find(')').map(|p| c + 2 + p)
+            && free(&taken, c, p + 1)
+            && !taken[a]
+        {
+            if !image && col >= i && col <= p + 1 {
+                let raw = ln[c + 2..p].trim();
+                let dest = if let Some(rest) = raw.strip_prefix('<') {
+                    rest.split('>').next().unwrap_or("").trim()
+                } else {
+                    raw.split_whitespace().next().unwrap_or("")
+                };
+                if !dest.is_empty() {
+                    return Some(CaretLink::Url(dest.to_string()));
+                }
+            }
+            taken[a..p + 1].fill(true);
+            i = p + 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    // 3. Autolinks `<https://...>`, `<http://...>`, `<mailto:...>`.
+    for i in 0..to {
+        if b[i] != b'<' || taken[i] {
+            continue;
+        }
+        let rest = &ln[i + 1..to];
+        if (rest.starts_with("https://") || rest.starts_with("http://") || rest.starts_with("mailto:"))
+            && let Some(k) = rest.find('>').map(|k| i + 1 + k)
+            && !ln[i + 1..k].contains(char::is_whitespace)
+            && free(&taken, i, k + 1)
+        {
+            if col >= i && col <= k + 1 {
+                return Some(CaretLink::Url(ln[i + 1..k].to_string()));
+            }
+            taken[i..k + 1].fill(true);
+        }
+    }
+
+    // 4. Bare URLs `https://...`, `http://...`, `www....` (WR-34).
+    let mut i = 0;
+    while i < to {
+        let rest = &ln[i..to];
+        let starts = rest.starts_with("http://") || rest.starts_with("https://") || rest.starts_with("www.");
+        let before_ok = i == 0 || !(b[i - 1].is_ascii_alphanumeric() || matches!(b[i - 1], b'(' | b'<' | b'/' | b'_'));
+        if !starts || taken[i] || !before_ok {
+            i += rest.chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        let mut z = i + rest.find(|c: char| c.is_whitespace() || c == '<').unwrap_or(rest.len());
+        while z > i && matches!(b[z - 1], b'.' | b',' | b';' | b':' | b'!' | b'?' | b'\'' | b'"' | b')' | b']' | b'}' | b'>' | b'(' | b'[' | b'{') {
+            z -= 1;
+        }
+        if free(&taken, i, z) {
+            if col >= i && col <= z {
+                let raw = &ln[i..z];
+                let url = if raw.starts_with("www.") { format!("https://{raw}") } else { raw.to_string() };
+                return Some(CaretLink::Url(url));
+            }
+            taken[i..z].fill(true);
+        }
+        i = z.max(i + 1);
+    }
+
+    None
+}
+
 // ---------- Word count (WR-188) ----------
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1468,5 +1870,44 @@ mod tests {
         assert_eq!(t, "two\none\nthree");
         assert_eq!(dn.sel, (5, 5));
         assert!(move_lines(text, 10, 10, true).is_none());
+    }
+
+    #[test]
+    fn active_formats_detects_block_and_inline_marks() {
+        let doc = "---\ntitle: A\n---\n# Heading **bold** and *italic*\n\n- [ ] task with ~~strike~~ and `code`\n- bullet\n1. number\n> quote ***both***\n```\n**not bold**\n```\n";
+        assert_eq!(active_formats(doc, doc.find("title").unwrap()), ActiveFormats::default());
+        let h_bold = active_formats(doc, doc.find("bold").unwrap() + 2);
+        assert!(h_bold.heading && h_bold.bold && !h_bold.italic);
+        // Caret right at the closing mark (as after Find selects inner text).
+        let h_bold_end = active_formats(doc, doc.find("bold").unwrap() + 4);
+        assert!(h_bold_end.heading && h_bold_end.bold);
+        let h_it = active_formats(doc, doc.find("italic").unwrap() + 2);
+        assert!(h_it.heading && h_it.italic && !h_it.bold);
+        let task_st = active_formats(doc, doc.find("strike").unwrap() + 2);
+        assert!(task_st.task && task_st.strike && !task_st.bullet);
+        let task_cd = active_formats(doc, doc.find("code").unwrap() + 2);
+        assert!(task_cd.task && task_cd.code);
+        assert!(active_formats(doc, doc.find("bullet").unwrap()).bullet);
+        assert!(active_formats(doc, doc.find("number").unwrap()).number);
+        let qb = active_formats(doc, doc.find("both").unwrap() + 2);
+        assert!(qb.quote && qb.bold && qb.italic);
+        assert_eq!(active_formats(doc, doc.find("not bold").unwrap() + 2), ActiveFormats::default());
+        // Empty pair right after Ctrl+B / Ctrl+I / Ctrl+E.
+        assert!(active_formats("a **** b", 4).bold);
+        assert!(active_formats("a `` b", 3).code);
+        assert!(active_formats("a ~~ ~~", 3).strike == false);
+        assert!(active_formats("a ~~~~ b", 4).strike);
+    }
+
+    #[test]
+    fn link_at_caret_detects_wiki_markdown_autolink_and_bare_urls() {
+        let line = "See [[Beta#Details|B]], [Quire](https://example.com \"home\"), <mailto:a@b.c>, www.rust-lang.org. and `https://skip.me`";
+        assert_eq!(link_at_caret(line, line.find("Beta").unwrap()), Some(CaretLink::Wiki("Beta#Details".into())));
+        assert_eq!(link_at_caret(line, line.find("Quire").unwrap() + 5), Some(CaretLink::Url("https://example.com".into())));
+        assert_eq!(link_at_caret(line, line.find("a@b.c").unwrap()), Some(CaretLink::Url("mailto:a@b.c".into())));
+        assert_eq!(link_at_caret(line, line.find("rust-lang").unwrap()), Some(CaretLink::Url("https://www.rust-lang.org".into())));
+        assert_eq!(link_at_caret(line, line.find("skip.me").unwrap()), None);
+        assert_eq!(link_at_caret("![pic](attachments/a.png)", 4), None);
+        assert_eq!(link_at_caret("![[pic.png]]", 5), None);
     }
 }

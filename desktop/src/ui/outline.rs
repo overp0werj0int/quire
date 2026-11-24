@@ -4,7 +4,7 @@
 use rune::{El, Live, ScrollSpec, col, row, text};
 
 use super::{V, lists, panel, styles};
-use super::editor::{group, link_at_caret};
+use super::editor::{CaretLink, group, link_at_caret};
 use super::widgets::label;
 use crate::app::{App, Mode};
 use crate::keys::mod_click;
@@ -239,9 +239,15 @@ fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
         .border_layout()
         .clip_rounded(0.0)
         .child(label(at, style, c.faint).key("caret-pos"));
-    if let Some(t) = link_at_caret(doc, pos) {
-        let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
-        r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
+    match link_at_caret(doc, pos) {
+        Some(CaretLink::Wiki(t)) => {
+            let verb = if s.names.resolve(&t).is_some() { " to open “" } else { " to create “" };
+            r = r.child(text(format!("{}{verb}{t}”", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
+        }
+        Some(CaretLink::Url(u)) => {
+            r = r.child(text(format!("{} to open {u}", mod_click())).font(style).color(c.accent_text).truncate().shrink().min_w(0.0));
+        }
+        None => {}
     }
     Some(r)
 }

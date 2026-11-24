@@ -87,7 +87,7 @@ The editor handles editing keys itself. Window commands go through the keymap (d
 - **WR-43** [in] [verify: unit] Enter on a quote line, cursor after the quote marks, inserts a newline plus the same `>` prefix, nesting kept (`> > `). If the text after the marks is empty or whitespace, the line's content is removed instead and the cursor stays at the line start. Quire does not continue quotes today (`lib/editing.js:8`, `lib/editing.js:41-47`)
 - **WR-44** [in] [verify: unit] Enter with the cursor inside a list or quote prefix, or on any other line, is a plain newline (`lib/editing.js:31`, `lib/editing.js:42`, `lib/editing.js:48`, `components/Editor.qml:352-355`)
 - **WR-45** [in] [verify: script] Enter with a selection, or with Shift or Alt held, gets no list handling. It replaces the selection with a newline, and Shift+Enter inserts a newline (`components/Editor.qml:352`)
-- **WR-46** [quire] [verify: -] Ctrl+Enter follows the note link at the caret, as Quire does today. omarky raises an unhandled submit, so Ctrl+Enter does nothing in its writer (`components/Editor.qml:356-357`, `quire:desktop/src/ui/editor.rs:404-407`)
+- **WR-46** [quire] [verify: -] Ctrl+Enter and Ctrl+click follow a note link (`[[note]]`), Markdown inline link (`[text](url)`), autolink (`<https://...>`), or bare URL at the caret. omarky raises an unhandled submit, so Ctrl+Enter does nothing in its writer (`components/Editor.qml:356-357`, `quire:desktop/src/writer.rs`, `quire:desktop/src/ui/editor.rs`)
 
 ### Tab and Shift+Tab
 
