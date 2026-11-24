@@ -444,6 +444,7 @@ impl App {
             self.active = None;
         }
         self.rebuild_names_pub();
+        self.refresh_trash();
         self.persist_later();
     }
 
@@ -499,6 +500,7 @@ impl App {
         }
         self.expanded.extend(d.expanded);
         self.rebuild_names_pub();
+        self.refresh_trash();
         match d.active {
             Some(a) => self.open_file(&a, None, tx),
             None => self.persist_later(),

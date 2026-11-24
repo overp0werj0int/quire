@@ -227,7 +227,7 @@ runs it and no window opens.
 ### Layers
 
 Everything that opens over the page goes through one model, in `desktop/src/layer.rs`. That
-covers the palette and the quick switcher, Settings, the lock dialog, help, the edit sheet,
+covers the palette and the quick switcher, Settings, the lock dialog, the Trash recovery modal (`Layer::Trash`), help, the edit sheet,
 the sidebar and outline drawers, the map's image lightbox, the map's layout picker, and every menu: the folder's, the
 tree's, the editor's, the block menu and the map's node menu. `App.layers` holds the open ones, bottom first. Each `layer::Open` holds a
 `Layer` (which overlay, with its own state), the element focus goes back to, and what the page
@@ -370,7 +370,10 @@ on one background thread called `quire-writer`. The thread applies the ops in th
 were sent. A note is written to a temporary file and then renamed over the old one, so a note
 on disk is never half-written. `Op::Barrier` lets other code wait until the writes before it
 are done. A delete moves the note or folder to `.trash`, and the thread remembers where.
-`Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`).
+`Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`). `Op::ListTrash`,
+`Op::RestoreTrash` and `Op::EmptyTrash` serve the browseable Trash dialog (`ui/trash.rs`, opened
+from `foot-trash` in the sidebar footer or `"Open trash…"` in the command palette) off the UI
+thread, waking the UI when results arrive.
 
 ```mermaid
 flowchart LR

@@ -159,7 +159,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 
 ## Footer
 
-- **SB-78** [adapted: 0013] [verify: geometry] The footer holds the tags button on the left, an ambient sync status button centred in the middle when sync is configured (`side-sync`, opening Sync settings), and the settings button on the right, under a 1 pt divider. The buttons are 28 × 28 with radius 6, their icons in Text, the hover fill under the pointer. Their tooltips are "Tags", the sync status tooltip, and "Settings" with its key (spec: S1, sizes).
+- **SB-78** [adapted: 0013] [verify: geometry] The footer holds the tags button and browseable trash button (`foot-trash`, with count when `.trash/` is non-empty) on the left, an ambient sync status button centred in the middle when sync is configured (`side-sync`, opening Sync settings), and the settings button on the right, under a 1 pt divider. The buttons are at least 28 × 28 with radius 6, their icons in Text, the hover fill under the pointer. Their tooltips are "Tags", "Trash" (or "Trash (N)"), the sync status tooltip, and "Settings" with its key (spec: S1, sizes).
 - **SB-79** [adapted: 0013] [verify: script] The settings button and Ctrl+, open Settings (spec: interactions; kept: KEY-14).
 
 ## Keyboard and focus
@@ -167,7 +167,7 @@ is 264 pt wide; Quire keeps 248, so names cut 16 pt sooner.
 The spec is drawn for a pointer. These items follow Quire's focus rules (KEY-95, KEY-98, the
 focus model in `ARCHITECTURE.md`) wherever the spec says nothing.
 
-- **SB-80** [adapted: 0013] [verify: script] Tab goes through the docked sidebar in this order: the search field, its "×" while it shows, "+", the Open label, the shelf's list, the vault's label, the tree, the tags button, the sync button while sync is configured, the settings button, then the note. Shift+Tab goes back. A folded vault leaves its tree out. While search or tags show: the field, "×", "+", the results, tags, sync (when configured), settings (kept: one stop each, KEY-98).
+- **SB-80** [adapted: 0013] [verify: script] Tab goes through the docked sidebar in this order: the search field, its "×" while it shows, "+", the Open label, the shelf's list, the vault's label, the tree, the tags button, the trash button, the sync button while sync is configured, the settings button, then the note. Shift+Tab goes back. A folded vault leaves its tree out. While search or tags show: the field, "×", "+", the results, tags, trash, sync (when configured), settings (kept: one stop each, KEY-98).
 - **SB-81** [adapted: 0013] [verify: script] Each list is one Tab stop and enters at its current row: the shelf at the active tab, the tree at the active note's row while it shows, else its first row, the results at the filled row (kept: KEY-95).
 - **SB-82** [adapted: 0013] [verify: script] In the shelf, Up and Down move through the tabs and, while it is out, the active tab's outline entries in their place, stopping at the ends. Home and End go to the first and last row. A letter moves to the next row that starts with it (kept: KEY-95).
 - **SB-83** [adapted: 0013] [verify: script] Enter or Space on another tab switches to it and gives the note the keyboard. On the active tab it folds the outline out or back, and the keyboard stays on the tab. On an entry it jumps to the heading and gives the note the keyboard (kept: KEY-95's "Enter does what a click does").

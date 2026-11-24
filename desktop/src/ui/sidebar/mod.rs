@@ -17,7 +17,7 @@ use rune::{El, ScrollSpec, col, el, icon, row, text, text_input};
 use super::V;
 use super::panel;
 use super::styles::nav;
-use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG};
+use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG, TRASH};
 use super::widgets::Control;
 use crate::app::App;
 use crate::roles::Roles;
@@ -234,6 +234,32 @@ fn foot(v: V) -> El {
         let on = s.query.text.trim_start().starts_with('#');
         foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, tx| s.toggle_tags(tx)).role("switch").checked(on)
     });
+    let trash = (!s.note_mode()).then(|| {
+        let count = s.trash_entries.len();
+        let on = s.layer_is(crate::layer::Kind::Trash);
+        let tip = if count > 0 { format!("Trash ({count})") } else { "Trash".to_string() };
+        let mut btn = super::focus::stop(row())
+            .key("foot-trash")
+            .min_w(BUTTON)
+            .h(BUTTON)
+            .px(if count > 0 { 6.0 } else { 0.0 })
+            .gap(4.0)
+            .center()
+            .radius(6.0)
+            .fill(if on { c.selected } else { rune::Color::TRANSPARENT })
+            .hover(c.hover)
+            .role("button")
+            .label("Trash")
+            .help(tip)
+            .focus_ring(rw, rg, rc)
+            .keeps_text_selection()
+            .control(|s: &mut App, tx| s.open_trash(tx))
+            .child(icon(&TRASH, ICON).color(if on { c.text } else { c.dim }));
+        if count > 0 {
+            btn = btn.child(text(count.to_string()).font(nav(10.5, false)).color(if on { c.text } else { c.faint }));
+        }
+        btn
+    });
     let middle = match s.sync_label() {
         Some((lbl, busy, failed)) => {
             let dot = if failed { p.err } else if busy { p.acc } else { p.mute };
@@ -281,6 +307,7 @@ fn foot(v: V) -> El {
         .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
         .border_layout()
         .children(tags)
+        .children(trash)
         .child(middle)
         .child(settings)
 }

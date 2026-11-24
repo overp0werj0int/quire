@@ -21,6 +21,7 @@ mod settings_mcp;
 pub mod settings_sync;
 mod sidebar;
 pub(crate) mod titlebar;
+mod trash;
 mod welcome;
 pub mod widgets;
 

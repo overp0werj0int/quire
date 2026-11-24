@@ -24,12 +24,21 @@ pub enum LockDialog {
     ConfirmRemove,
 }
 
+/// State of the browseable Trash modal (`Layer::Trash`).
+#[derive(Default)]
+pub struct TrashModal {
+    /// First click on "Empty trash" arms permanent deletion; second click executes it.
+    pub armed_empty: bool,
+}
+
 pub enum Layer {
     /// The quick switcher or the command palette.
     Palette(Palette),
     Settings,
     /// The lock dialog: setting a password or confirming its removal.
     Lock(LockDialog),
+    /// Browseable `.trash` recovery dialog.
+    Trash(TrashModal),
     /// The keyboard help, with its search.
     Help(crate::help::Search),
     /// The edit sheet over the reader.
@@ -79,6 +88,7 @@ pub enum Kind {
     Palette,
     Settings,
     Lock,
+    Trash,
     Help,
     Sheet,
     Drawer(Drawer),
@@ -93,6 +103,7 @@ impl Layer {
             Layer::Palette(_) => Kind::Palette,
             Layer::Settings => Kind::Settings,
             Layer::Lock(_) => Kind::Lock,
+            Layer::Trash(_) => Kind::Trash,
             Layer::Help(_) => Kind::Help,
             Layer::Sheet(_) => Kind::Sheet,
             Layer::Drawer(d) => Kind::Drawer(*d),

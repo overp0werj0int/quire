@@ -219,6 +219,165 @@ pub fn count_notes(root: &Path) -> usize {
     n
 }
 
+/// A trashed note or folder inside `<vault>/.trash/`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrashEntry {
+    /// Entry filename inside `.trash/`.
+    pub name: String,
+    /// Relative path inside the vault where restoring places it (before deduplication).
+    pub original_rel: String,
+    /// Whether this entry is a trashed directory.
+    pub is_dir: bool,
+    /// Last modification time (nanoseconds since epoch), for newest-first order.
+    pub deleted_at: u128,
+}
+
+/// Completed trash scan or recovery event sent from the `Writer` thread back to `App`.
+#[derive(Clone, Debug)]
+pub enum TrashEvent {
+    Listed {
+        root: PathBuf,
+        entries: Vec<TrashEntry>,
+    },
+    Restored {
+        root: PathBuf,
+        label: String,
+        files: Vec<(String, String, u128)>,
+        folders: Vec<String>,
+        open_rel: Option<String>,
+        entries: Vec<TrashEntry>,
+    },
+    Emptied {
+        root: PathBuf,
+    },
+}
+
+/// Derives a safe vault-relative restore path from an encoded `.trash` entry name (`/` -> ` - `).
+pub fn original_rel_from_trash(name: &str) -> String {
+    let raw = name.replace(" - ", "/");
+    let parts: Vec<&str> = raw.split('/').filter(|p| !p.is_empty() && *p != "." && *p != "..").collect();
+    if parts.is_empty() {
+        "Restored.md".to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+/// Picks a non-colliding vault-relative destination path for restoring `candidate` into `root`.
+fn safe_restore_rel(root: &Path, candidate: &str, is_dir: bool) -> String {
+    let base = original_rel_from_trash(candidate);
+    if !root.join(&base).exists() {
+        return base;
+    }
+    let (stem, ext) = if is_dir {
+        (base.as_str(), None)
+    } else {
+        match base.rsplit_once('.') {
+            Some((s, e)) if !e.contains('/') => (s, Some(e)),
+            _ => (base.as_str(), None),
+        }
+    };
+    let mut n = 2u32;
+    loop {
+        let next = match ext {
+            Some(e) => format!("{stem} {n}.{e}"),
+            None => format!("{stem} {n}"),
+        };
+        if !root.join(&next).exists() {
+            return next;
+        }
+        n += 1;
+    }
+}
+
+/// Lists trashed files and folders inside `<root>/.trash/`, newest first.
+pub fn list_trash(root: &Path) -> Vec<TrashEntry> {
+    let dir = root.join(".trash");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let mut out = Vec::new();
+    for entry in rd.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(ft) = entry.file_type() else { continue };
+        let is_dir = ft.is_dir();
+        if !is_dir && !ft.is_file() {
+            continue;
+        }
+        let deleted_at = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().or_else(|_| m.created()).ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_nanos());
+        let original_rel = original_rel_from_trash(&name);
+        out.push(TrashEntry { name, original_rel, is_dir, deleted_at });
+    }
+    out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    out
+}
+
+/// Reads restored `.md` files and subfolders rooted at `root/dest_rel`.
+fn collect_restored(root: &Path, dest_rel: &str, is_dir: bool) -> (Vec<(String, String, u128)>, Vec<String>) {
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    let dst = root.join(dest_rel);
+    if !is_dir {
+        let mut d = crate::md::dir(dest_rel).to_string();
+        while !d.is_empty() {
+            folders.push(d.clone());
+            d = crate::md::dir(&d).to_string();
+        }
+        if dest_rel.to_lowercase().ends_with(".md")
+            && let Ok(t) = std::fs::read_to_string(&dst)
+        {
+            let ns = std::fs::metadata(&dst)
+                .ok()
+                .and_then(|m| m.created().or_else(|_| m.modified()).ok())
+                .and_then(|w| w.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_nanos());
+            files.push((dest_rel.to_string(), t.replace("\r\n", "\n"), ns));
+        }
+        return (files, folders);
+    }
+    let mut d = dest_rel.to_string();
+    while !d.is_empty() {
+        folders.push(d.clone());
+        d = crate::md::dir(&d).to_string();
+    }
+    let mut stack = vec![(dst, dest_rel.to_string())];
+    while let Some((dir, rel)) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if skip(&name) {
+                continue;
+            }
+            let Ok(ft) = entry.file_type() else { continue };
+            let child = format!("{rel}/{name}");
+            if ft.is_dir() {
+                folders.push(child.clone());
+                stack.push((entry.path(), child));
+            } else if ft.is_file() && name.to_lowercase().ends_with(".md") {
+                if let Ok(t) = std::fs::read_to_string(entry.path()) {
+                    let ns = entry
+                        .metadata()
+                        .ok()
+                        .and_then(|m| m.created().or_else(|_| m.modified()).ok())
+                        .and_then(|w| w.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0, |d| d.as_nanos());
+                    files.push((child, t.replace("\r\n", "\n"), ns));
+                }
+            }
+        }
+    }
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    folders.sort();
+    folders.dedup();
+    (files, folders)
+}
+
 #[derive(Debug)]
 pub enum Op {
     Write { root: PathBuf, rel: String, text: String },
@@ -232,6 +391,12 @@ pub enum Op {
     /// Moves the note or folder that the last `Delete` or `DeleteFolder` of `rel` put in
     /// `.trash` back to `rel`. It fails if something else is at `rel` by then.
     Restore { root: PathBuf, rel: String },
+    /// Scans `<root>/.trash/` off the UI thread and posts `TrashEvent::Listed`.
+    ListTrash { root: PathBuf },
+    /// Restores a named entry from `<root>/.trash/` back into the vault and posts `TrashEvent::Restored`.
+    RestoreTrash { root: PathBuf, trash_name: String },
+    /// Permanently removes every entry inside `<root>/.trash/` and posts `TrashEvent::Emptied`.
+    EmptyTrash { root: PathBuf },
     Mkdir { root: PathBuf, rel: String },
     SaveState(Box<crate::store::Persist>),
     /// Answers once every operation sent before it is done.
@@ -247,6 +412,8 @@ pub enum Op {
 pub struct Writer {
     tx: Sender<Op>,
     pub errors: Arc<Mutex<Vec<String>>>,
+    pub trash_events: Arc<Mutex<Vec<TrashEvent>>>,
+    waker: Arc<Mutex<Option<rune::Waker>>>,
     /// How many operations failed since the start. It only goes up.
     pub failed: Arc<std::sync::atomic::AtomicUsize>,
 }
@@ -256,8 +423,19 @@ impl Writer {
         let (tx, rx) = channel::<Op>();
         let errors: Arc<Mutex<Vec<String>>> = Arc::default();
         let errs = errors.clone();
+        let trash_events: Arc<Mutex<Vec<TrashEvent>>> = Arc::default();
+        let tev = trash_events.clone();
+        let waker_slot: Arc<Mutex<Option<rune::Waker>>> = Arc::new(Mutex::new(waker));
+        let waker_bg = waker_slot.clone();
         let failed: Arc<std::sync::atomic::AtomicUsize> = Arc::default();
         let failed2 = failed.clone();
+        let wake = move || {
+            if let Ok(guard) = waker_bg.lock()
+                && let Some(w) = guard.as_ref()
+            {
+                w();
+            }
+        };
         std::thread::Builder::new()
             .name("quire-writer".into())
             .spawn(move || {
@@ -278,6 +456,50 @@ impl Writer {
                         }
                         continue;
                     }
+                    if let Op::ListTrash { root } = &op {
+                        let entries = list_trash(root);
+                        if let Ok(mut q) = tev.lock() {
+                            q.push(TrashEvent::Listed { root: root.clone(), entries });
+                        }
+                        wake();
+                        continue;
+                    }
+                    if let Op::RestoreTrash { root, trash_name } = &op {
+                        match restore_from_trash(root, trash_name, &mut trash) {
+                            Ok(ev) => {
+                                if let Ok(mut q) = tev.lock() {
+                                    q.push(ev);
+                                }
+                                wake();
+                            }
+                            Err(e) => {
+                                failed2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                if let Ok(mut v) = errs.lock() {
+                                    v.push(format!("Could not restore {trash_name}: {e}"));
+                                }
+                                wake();
+                            }
+                        }
+                        continue;
+                    }
+                    if let Op::EmptyTrash { root } = &op {
+                        match empty_trash_dir(root, &mut trash) {
+                            Ok(()) => {
+                                if let Ok(mut q) = tev.lock() {
+                                    q.push(TrashEvent::Emptied { root: root.clone() });
+                                }
+                                wake();
+                            }
+                            Err(e) => {
+                                failed2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                if let Ok(mut v) = errs.lock() {
+                                    v.push(format!("Could not empty trash: {e}"));
+                                }
+                                wake();
+                            }
+                        }
+                        continue;
+                    }
                     if let Err(e) = apply(&op, &mut trash) {
                         failed2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         let what = match &op {
@@ -285,24 +507,72 @@ impl Writer {
                             Op::Restore { rel, .. } => format!("put back {rel}"),
                             Op::Rename { from, .. } => format!("save {from}"),
                             Op::SaveState(_) => "save settings".into(),
-                            Op::Barrier(_) | Op::SaveSyncBase { .. } => "save".into(),
+                            Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::EmptyTrash { .. } => "save".into(),
                         };
                         if let Ok(mut v) = errs.lock() {
                             v.push(format!("Could not {what}: {e}"));
                         }
-                        if let Some(w) = &waker {
-                            w();
-                        }
+                        wake();
                     }
                 }
             })
             .ok();
-        Writer { tx, errors, failed }
+        Writer { tx, errors, trash_events, waker: waker_slot, failed }
+    }
+
+    pub fn set_waker(&self, w: rune::Waker) {
+        if let Ok(mut slot) = self.waker.lock() {
+            *slot = Some(w);
+        }
     }
 
     pub fn send(&self, op: Op) {
         let _ = self.tx.send(op);
     }
+}
+
+fn restore_from_trash(root: &Path, trash_name: &str, trash: &mut Trash) -> std::io::Result<TrashEvent> {
+    if trash_name.is_empty() || trash_name.contains('/') || trash_name.contains('\\') || trash_name == "." || trash_name == ".." {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid trash entry"));
+    }
+    let src = root.join(".trash").join(trash_name);
+    if !src.exists() {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "it is no longer in .trash"));
+    }
+    let is_dir = src.is_dir();
+    let dest_rel = safe_restore_rel(root, trash_name, is_dir);
+    let dst = root.join(&dest_rel);
+    if let Some(d) = dst.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    std::fs::rename(&src, &dst)?;
+    trash.retain(|_, v| v != &src);
+    let (files, folders) = collect_restored(root, &dest_rel, is_dir);
+    let open_rel = files.first().map(|(p, _, _)| p.clone());
+    let label = if is_dir {
+        dest_rel.rsplit('/').next().unwrap_or(&dest_rel).to_string()
+    } else {
+        crate::md::base(&dest_rel).to_string()
+    };
+    let entries = list_trash(root);
+    Ok(TrashEvent::Restored { root: root.to_path_buf(), label, files, folders, open_rel, entries })
+}
+
+fn empty_trash_dir(root: &Path, trash: &mut Trash) -> std::io::Result<()> {
+    let dir = root.join(".trash");
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                std::fs::remove_dir_all(path)?;
+            } else {
+                std::fs::remove_file(path)?;
+            }
+        }
+    }
+    trash.retain(|_, v| !v.starts_with(&dir));
+    Ok(())
 }
 
 /// Writes a file through a temporary file next to it and a rename, so a reader never sees half.
@@ -394,7 +664,7 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
         }
         Op::Mkdir { root, rel } => std::fs::create_dir_all(root.join(rel)),
         Op::SaveState(p) => crate::store::save(p),
-        Op::Barrier(_) | Op::SaveSyncBase { .. } => Ok(()),
+        Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::EmptyTrash { .. } => Ok(()),
     }
 }
 
@@ -477,6 +747,41 @@ mod tests {
         assert!(run(Op::Restore { root: r.clone(), rel: rel.clone() }).is_err());
         assert_eq!(std::fs::read_to_string(root.join(&rel)).unwrap(), "new");
         assert!(run(Op::Restore { root: r.clone(), rel: rel.clone() }).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn trash_list_restore_and_empty_round_trip() {
+        let root = std::env::temp_dir().join(format!("quire-trash-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Drafts")).unwrap();
+        std::fs::write(root.join("Drafts/Idea.md"), "# Idea\n").unwrap();
+        let mut trash = Trash::new();
+        apply(&Op::Delete { root: root.clone(), rel: "Drafts/Idea.md".into() }, &mut trash).unwrap();
+        let entries = list_trash(&root);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Drafts - Idea.md");
+        assert_eq!(entries[0].original_rel, "Drafts/Idea.md");
+        assert!(!entries[0].is_dir);
+
+        // Restoring into an empty slot restores the original path; colliding path deduplicates.
+        std::fs::write(root.join("Drafts/Idea.md"), "# New\n").unwrap();
+        let ev = restore_from_trash(&root, "Drafts - Idea.md", &mut trash).unwrap();
+        match ev {
+            TrashEvent::Restored { files, entries, .. } => {
+                assert_eq!(files.len(), 1);
+                assert_eq!(files[0].0, "Drafts/Idea 2.md");
+                assert!(entries.is_empty());
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+        assert_eq!(std::fs::read_to_string(root.join("Drafts/Idea 2.md")).unwrap(), "# Idea\n");
+
+        // Deleting again and emptying trash clears `.trash`.
+        apply(&Op::Delete { root: root.clone(), rel: "Drafts/Idea 2.md".into() }, &mut trash).unwrap();
+        assert_eq!(list_trash(&root).len(), 1);
+        empty_trash_dir(&root, &mut trash).unwrap();
+        assert!(list_trash(&root).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

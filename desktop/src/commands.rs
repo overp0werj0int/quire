@@ -134,6 +134,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         Mode::Source => "app.help",
     };
     v.push(cmd("Keyboard shortcuts", help_action, |s, tx| s.toggle_help(tx)));
+    v.push(cmd("Open trash…", "", |s, tx| s.open_trash(tx)));
     v.push(cmd("Open settings", "app.settings", |s, tx| s.open_settings(tx)));
     if !cfg!(target_os = "macos") {
         v.push(cmd("Quit", "app.quit", |s, tx| s.quit(tx)));
@@ -142,7 +143,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     v.push(cmd("Restore sample notes", "", |s, tx| s.reset_sample(tx)));
     if s.note_mode() {
         // Note mode has no folder of notes to add to, search, rename or delete in.
-        const FOLDER_ONLY: [&str; 6] = ["New note", "New folder", "Open today's journal entry", "Search all notes", "Rename note", "Delete note"];
+        const FOLDER_ONLY: [&str; 7] = ["New note", "New folder", "Open today's journal entry", "Search all notes", "Rename note", "Delete note", "Open trash…"];
         v.retain(|c| !FOLDER_ONLY.contains(&c.label.as_str()));
         for c in &mut v {
             match c.label.as_str() {

@@ -265,6 +265,8 @@ pub struct App {
     pub keys_query: TextEdit,
     /// Recently closed tabs in this folder, for `app.reopen-tab` (`Ctrl+Shift+T`).
     pub closed_tabs: Vec<String>,
+    /// Trashed notes and folders inside `<vault>/.trash/`, scanned on the `Writer` thread.
+    pub trash_entries: Vec<crate::vault::TrashEntry>,
 }
 
 /// Recording state for one action row in Settings → Shortcuts.
@@ -443,6 +445,7 @@ pub fn init() -> App {
         key_edit: None,
         keys_query: TextEdit::new(""),
         closed_tabs: Vec::new(),
+        trash_entries: Vec::new(),
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -740,6 +743,7 @@ impl App {
         changed |= self.sync_mcp_http();
         changed |= self.check_link_click(tx);
         changed |= self.apply_outside_changes();
+        changed |= self.poll_trash(tx);
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
         changed |= self.expire_reader(t);
@@ -824,6 +828,7 @@ impl App {
     }
 
     pub fn set_waker(&mut self, w: rune::Waker) {
+        self.writer.set_waker(w.clone());
         self.images.start(w.clone());
         self.theme_changed = Some(crate::watch::watch_theme(w.clone()));
         self.waker = Some(w);
@@ -1272,9 +1277,11 @@ impl App {
         self.edits.clear();
         // An Undo offer puts a note back into the folder it left, so it ends with that folder.
         self.deleted = None;
+        self.trash_entries.clear();
         // Paths name notes only within one vault: a note unlocked in the last one locks again.
         self.unlocked.clear();
         self.rebuild_names();
+        self.refresh_trash();
         if self.waker.is_some() {
             self.watch_vault();
         }
@@ -1809,7 +1816,117 @@ impl App {
         self.close_tab(&p);
         self.focus = false;
         self.rebuild_names();
+        self.refresh_trash();
         self.sync_after_save();
+    }
+
+    /// Scans `<vault>/.trash/` on the `Writer` thread so the sidebar count and Trash modal stay fresh.
+    pub fn refresh_trash(&self) {
+        if let Some(v) = self.vault.as_ref().filter(|v| v.scope == Scope::Folder) {
+            self.writer.send(Op::ListTrash { root: v.path.clone() });
+        }
+    }
+
+    /// Opens the browseable Trash recovery modal (`Layer::Trash`) in folder mode.
+    pub fn open_trash(&mut self, tx: &mut Tx) {
+        if self.refuse_in_note_mode() || !self.folder_open() {
+            return;
+        }
+        self.refresh_trash();
+        self.open_layer(Layer::Trash(crate::layer::TrashModal::default()), tx);
+    }
+
+    /// Restores a trashed note or folder out of `.trash/` on the `Writer` thread.
+    pub fn restore_trash(&mut self, trash_name: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() {
+            return;
+        }
+        let Some(root) = self.vault.as_ref().map(|v| v.path.clone()) else { return };
+        self.writer.send(Op::RestoreTrash { root, trash_name: trash_name.to_string() });
+        if self.layer_is(crate::layer::Kind::Trash) {
+            self.close_layer(tx);
+        }
+    }
+
+    /// Armed two-step Empty Trash action inside `Layer::Trash`.
+    pub fn empty_trash_press(&mut self, tx: &mut Tx) {
+        if self.refuse_in_note_mode() || self.trash_entries.is_empty() {
+            return;
+        }
+        let armed = self.layers.iter_mut().find_map(|o| match &mut o.layer {
+            Layer::Trash(m) => {
+                if m.armed_empty {
+                    m.armed_empty = false;
+                    Some(true)
+                } else {
+                    m.armed_empty = true;
+                    Some(false)
+                }
+            }
+            _ => None,
+        });
+        if armed == Some(true)
+            && let Some(root) = self.vault.as_ref().map(|v| v.path.clone())
+        {
+            self.deleted = None;
+            self.writer.send(Op::EmptyTrash { root });
+            self.toast("Emptied trash", tx);
+        }
+    }
+
+    /// Drains completed trash scans/restores/empties from the `Writer` thread.
+    fn poll_trash(&mut self, tx: &mut Tx) -> bool {
+        let events: Vec<crate::vault::TrashEvent> = match self.writer.trash_events.lock() {
+            Ok(mut q) => std::mem::take(&mut *q),
+            Err(_) => return false,
+        };
+        if events.is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        for ev in events {
+            let cur_root = self.vault.as_ref().filter(|v| v.scope == Scope::Folder).map(|v| v.path.clone());
+            match ev {
+                crate::vault::TrashEvent::Listed { root, entries } => {
+                    if cur_root.as_ref() == Some(&root) && self.trash_entries != entries {
+                        self.trash_entries = entries;
+                        changed = true;
+                    }
+                }
+                crate::vault::TrashEvent::Restored { root, label, files, folders, open_rel, entries } => {
+                    if cur_root.as_ref() != Some(&root) {
+                        continue;
+                    }
+                    if let Some(v) = &mut self.vault {
+                        for f in folders {
+                            if !v.folders.contains(&f) {
+                                v.folders.push(f);
+                            }
+                        }
+                        v.folders.sort();
+                        for (rel, text, born) in files {
+                            v.born.insert(rel.clone(), born);
+                            v.put(rel, text);
+                        }
+                    }
+                    self.trash_entries = entries;
+                    self.rebuild_names();
+                    if let Some(rel) = open_rel {
+                        self.open_file(&rel, None, tx);
+                    }
+                    self.toast(&format!("Restored {label}"), tx);
+                    self.sync_after_save();
+                    changed = true;
+                }
+                crate::vault::TrashEvent::Emptied { root } => {
+                    if cur_root.as_ref() == Some(&root) {
+                        self.trash_entries.clear();
+                        changed = true;
+                    }
+                }
+            }
+        }
+        changed
     }
 
     pub fn open_today(&mut self, tx: &mut Tx) {
