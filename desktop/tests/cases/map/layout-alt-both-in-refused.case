@@ -1,0 +1,18 @@
+In Both sides, Alt+Left on the first left branch would go under a branch on the right: it stops and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:Left@0.8 key:Left+alt@1.2
+expect: text:toast: 'Drag to move a branch to the other side'
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

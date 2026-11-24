@@ -1,0 +1,18 @@
+In Both sides, Alt+Down on the last right branch would cross to the left side: it stops and says so.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down@1.0 key:Down+alt@1.4
+expect: text:toast: 'Drag to move a branch to the other side'
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West

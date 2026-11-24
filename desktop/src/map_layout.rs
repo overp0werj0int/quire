@@ -351,6 +351,11 @@ impl Laid {
         [own, other].into_iter().flatten()
     }
 
+    /// Nodes `a` and `b` grow the same way: neither is across Both's root from the other.
+    pub fn same_side(&self, a: usize, b: usize) -> bool {
+        self.at[a].zip(self.at[b]).is_none_or(|(p, q)| p.dir == q.dir)
+    }
+
     /// What arrow `a` means on node `i`. Both's root has children either side, so its Left and
     /// Right each go to the first child that way.
     pub fn toward(&self, t: &Tree, i: usize, a: Arrow) -> Option<Rel> {

@@ -1,0 +1,31 @@
+In Both sides, Alt+Down on the first right branch swaps it with the next one on its side.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 key:Down+alt@1.2 key:s+cmd@1.8
+--- before
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## North
+
+## East
+
+## South
+
+## West
+--- after
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## East
+
+## North
+
+## South
+
+## West

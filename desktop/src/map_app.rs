@@ -885,15 +885,20 @@ impl App {
     }
 
     /// `Alt` with an arrow (MAP-031): the move that takes the selected node where that arrow
-    /// would take the selection.
+    /// would take the selection. It stops at a sibling across Both's root, as the selection
+    /// does (MAP-088).
     pub fn map_move_arrow(&mut self, a: Arrow, tx: &mut Tx) {
-        let step = match self.map_laid().toward(&self.map_tree(), self.map_selected(), a) {
+        let (t, l, s) = (self.map_tree(), self.map_laid(), self.map_selected());
+        let step = match l.toward(&t, s, a) {
             Some(Rel::Parent) => map::Step::Out,
             Some(Rel::Child(_)) => map::Step::In,
             Some(Rel::Prev) => map::Step::Up,
             Some(Rel::Next) => map::Step::Down,
             None => return,
         };
+        if self.map_editable() && map::step(&t, s, step).is_ok_and(|at| !l.same_side(s, at.node())) {
+            return self.toast(OTHER_SIDE, tx);
+        }
         self.map_step(step, tx);
     }
 
@@ -1312,6 +1317,8 @@ fn shared(old: &str, new: &str) -> (usize, usize) {
     }
     (pre, post)
 }
+
+const OTHER_SIDE: &str = "Drag to move a branch to the other side";
 
 impl App {
     /// The map's gestures change only an open, unlocked note (MAP-015).
