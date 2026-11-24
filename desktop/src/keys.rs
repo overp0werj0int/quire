@@ -429,6 +429,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.cut" => |s, tx| s.map_cut(tx),
         "map.copy-node" => |s, tx| s.map_copy(false, tx),
         "map.copy-subtree" => |s, tx| s.map_copy(true, tx),
+        "map.paste" => |s, tx| s.map_paste_key(tx),
         "map.find" => |s, tx| s.open_find(tx),
         "map.find-next" => |s, tx| find_step_or_open(s, true, tx),
         "map.find-previous" => |s, tx| find_step_or_open(s, false, tx),

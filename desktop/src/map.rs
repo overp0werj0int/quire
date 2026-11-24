@@ -1803,3 +1803,218 @@ pub fn markdown(src: &str, t: &Tree, i: usize, branch: bool) -> String {
     };
     src.split('\n').skip(lines.start).take(lines.len()).collect::<Vec<_>>().join("\n")
 }
+
+/// Pastes single-line or multi-line Markdown (including a full copied or cut branch) at `at`
+/// (MAP-048, MAP-084): heading levels shift cleanly relative to the target, list indentation
+/// adapts to the target list/parent without double-prefixing, and plain single-line text uses
+/// the target place's default node kind.
+pub fn paste(src: &str, t: &Tree, at: Add, text: &str) -> Result<Splice, Refused> {
+    let i = at.node();
+    if matches!(t.nodes[i].kind, NodeKind::Footnotes | NodeKind::Footnote { .. }) {
+        return Err(Some(FOOTNOTES));
+    }
+    let norm = text.replace("\r\n", "\n").replace('\r', "\n");
+    let raw_lines: Vec<&str> = norm.split('\n').collect();
+    let first_nb = raw_lines.iter().position(|l| !blank(l)).ok_or(None)?;
+    let last_nb = raw_lines.iter().rposition(|l| !blank(l)).ok_or(None)?;
+    let pasted_lines: Vec<String> = raw_lines[first_nb..=last_nb].iter().map(|l| l.to_string()).collect();
+    let trimmed = pasted_lines.join("\n");
+
+    let pt = reparse(&pasted_lines);
+    let top_nodes: Vec<usize> = if pt.nodes[ROOT].kind == NodeKind::Root { pt.nodes[ROOT].children.clone() } else { vec![ROOT] };
+    if top_nodes.is_empty() {
+        return Err(None);
+    }
+
+    // Single-line plain paragraph text (no Markdown prefix) takes the target place's default kind.
+    if pasted_lines.len() == 1
+        && top_nodes.len() == 1
+        && matches!(pt.nodes[top_nodes[0]].kind, NodeKind::Block(BlockKind::Paragraph))
+    {
+        return default_kind(t, at).and_then(|kind| add(src, t, at, kind, trimmed.trim()));
+    }
+
+    let old: Vec<&str> = src.split('\n').collect();
+    let real = old.len() - usize::from(src.ends_with('\n'));
+    let has_heading = top_nodes.iter().any(|&k| matches!(pt.nodes[k].kind, NodeKind::Heading { .. }));
+    let all_items = top_nodes.iter().all(|&k| matches!(pt.nodes[k].kind, NodeKind::Item { .. }));
+
+    let (body, ins_at, apart): (Vec<String>, usize, bool) = if has_heading {
+        let min_h = top_nodes.iter().filter_map(|&k| match pt.nodes[k].kind {
+            NodeKind::Heading { level, .. } => Some(level),
+            _ => None,
+        }).min().unwrap_or(1);
+        let max_h = (0..pt.nodes.len())
+            .filter(|&k| matches!(pt.nodes[k].kind, NodeKind::Heading { .. }) && !pt.nodes[k].parent.is_some_and(|p| is_item(&pt, p)))
+            .map(|k| level(&pt, k))
+            .max()
+            .unwrap_or(min_h);
+        let to = match at {
+            Add::Child(j) if is_item(t, j) => return Err(Some(NOT_IN_ITEM)),
+            Add::Child(j) if !takes_children(t, j) => return Err(Some(LEAF_CHILD)),
+            Add::Child(ROOT) if t.nodes[ROOT].kind == NodeKind::Root => {
+                kids_but(t, ROOT, usize::MAX).into_iter().filter(|&c| section(t, c)).map(|c| level(t, c)).min().unwrap_or(min_h)
+            }
+            Add::Child(j) => level(t, j) + 1,
+            Add::Before(j) | Add::After(j) if !section(t, j) => return Err(Some(HEADINGS_ONLY)),
+            Add::Before(j) | Add::After(j) => level(t, j),
+        };
+        let delta = to as isize - min_h as isize;
+        if max_h as isize + delta > 6 {
+            return Err(Some(PAST_H6));
+        }
+        let heads: Vec<usize> = (0..pt.nodes.len())
+            .filter(|&k| matches!(pt.nodes[k].kind, NodeKind::Heading { .. }) && !pt.nodes[k].parent.is_some_and(|p| is_item(&pt, p)))
+            .collect();
+        let mut out = Vec::with_capacity(pasted_lines.len());
+        let mut l = 0;
+        while l < pasted_lines.len() {
+            let Some(&k) = heads.iter().find(|&&k| pt.nodes[k].own.start == l && delta != 0) else {
+                out.push(pasted_lines[l].clone());
+                l += 1;
+                continue;
+            };
+            let h = &pt.nodes[k];
+            let to_hashes = "#".repeat((level(&pt, k) as isize + delta).clamp(1, 6) as usize);
+            let first = &pasted_lines[l];
+            let line = match h.kind {
+                NodeKind::Heading { setext: false, .. } => {
+                    let (_, b) = lead(first);
+                    let hashes = first[b..].bytes().take_while(|&c| c == b'#').count();
+                    format!("{}{to_hashes}{}", &first[..b], &first[b + hashes..])
+                }
+                _ => format!("{to_hashes} {}", pasted_lines[l..h.own.end - 1].iter().map(|s| s.trim()).collect::<Vec<_>>().join(" ")),
+            };
+            out.push(line);
+            l = h.own.end;
+        }
+        let ins_at = match at {
+            Add::Child(j) => {
+                let kids = kids_but(t, j, usize::MAX);
+                let own = if t.nodes[j].own.is_empty() { front_end(&old) } else { t.nodes[j].own.end };
+                kids.last().map_or(own, |&c| t.nodes[c].span.end)
+            }
+            Add::Before(j) => t.nodes[j].own.start,
+            Add::After(j) => t.nodes[j].span.end,
+        };
+        (out, ins_at, true)
+    } else {
+        let min_col = pasted_lines.iter().filter(|l| !blank(l)).map(|l| lead(l).0).min().unwrap_or(0);
+        let (target_col, ins_at, apart) = match at {
+            Add::Child(j) if is_item(t, j) => {
+                let col = Head::read(old[t.nodes[j].own.start]).content_col();
+                (col, t.nodes[j].span.end, !all_items)
+            }
+            Add::Child(j) if !takes_children(t, j) => return Err(Some(LEAF_CHILD)),
+            Add::Child(j) => {
+                let kids = kids_but(t, j, usize::MAX);
+                let own = if t.nodes[j].own.is_empty() { front_end(&old) } else { t.nodes[j].own.end };
+                let text_end = kids
+                    .iter()
+                    .take_while(|&&c| level(t, c) == 0)
+                    .last()
+                    .copied()
+                    .map_or_else(|| kids.first().map_or(own, |&c| t.nodes[c].own.start), |c| t.nodes[c].span.end);
+                (0, text_end, true)
+            }
+            Add::Before(j) | Add::After(j) => {
+                let ins = if matches!(at, Add::Before(_)) { t.nodes[j].own.start } else { t.nodes[j].span.end };
+                if is_item(t, j) {
+                    let col = lead(old[t.nodes[j].own.start]).0;
+                    let apart = !all_items || loose(&old, t, &list_of(t, j));
+                    (col, ins, apart)
+                } else {
+                    let col = match t.nodes[j].parent {
+                        Some(p) if is_item(t, p) => Head::read(old[t.nodes[p].own.start]).content_col(),
+                        _ => 0,
+                    };
+                    (col, ins, true)
+                }
+            }
+        };
+        let by = target_col as isize - min_col as isize;
+        let out = pasted_lines.into_iter().map(|l| if blank(&l) { String::new() } else { shift(&l, by) }).collect();
+        (out, ins_at, apart)
+    };
+
+    let before = apart && ins_at > 0 && !blank(old[ins_at - 1]);
+    let after = apart && ins_at < real && !blank(old[ins_at]);
+    let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    let mut ins = Vec::with_capacity(body.len() + 2);
+    if before {
+        ins.push(String::new());
+    }
+    ins.extend(body);
+    if after {
+        ins.push(String::new());
+    }
+    new.splice(ins_at..ins_at, ins);
+    Ok(splice_of(&old, &new, Some(ins_at + usize::from(before))))
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    fn apply_paste(src: &str, at: Add, clip: &str) -> Result<String, Refused> {
+        let doc = blocks::build(src);
+        let t = build(&doc, src, "Note");
+        let s = paste(src, &t, at, clip)?;
+        let mut lines: Vec<String> = src.split('\n').map(str::to_string).collect();
+        lines.splice(s.lines.clone(), s.with.clone());
+        Ok(lines.join("\n"))
+    }
+
+    #[test]
+    fn paste_single_line_and_branch_headings_without_double_prefix() {
+        let src = "# Beta Note\n\n## Details\n\nDetails linked from Alpha.\n";
+        let doc = blocks::build(src);
+        let t = build(&doc, src, "Beta");
+        let details_idx = t.nodes.iter().position(|n| n.label == "Details").unwrap();
+        let branch = markdown(src, &t, details_idx, true);
+        assert_eq!(branch, "## Details\n\nDetails linked from Alpha.");
+
+        // Paste full branch onto root (# Beta Note) -> keeps ## Details without ## ##.
+        let out = apply_paste(src, Add::Child(ROOT), &branch).unwrap();
+        assert!(!out.contains("## ##"), "must never double-prefix headings: {out:?}");
+        assert_eq!(out.matches("Details linked from Alpha.").count(), 2);
+        assert_eq!(out.matches("## Details").count(), 2);
+
+        // Paste single-line heading onto ## Details -> shifts down to ### Details.
+        let single = markdown(src, &t, details_idx, false);
+        let nested = apply_paste(src, Add::Child(details_idx), &single).unwrap();
+        assert!(!nested.contains("## ##") && !nested.contains("### ##"), "{nested:?}");
+        assert!(nested.contains("### Details"), "{nested:?}");
+    }
+
+    #[test]
+    fn paste_list_branch_and_single_item_without_double_prefix() {
+        let src = "# Plan\n\n- first\n  - child\n- second\n";
+        let doc = blocks::build(src);
+        let t = build(&doc, src, "Plan");
+        let first_idx = t.nodes.iter().position(|n| n.label == "first").unwrap();
+        let second_idx = t.nodes.iter().position(|n| n.label == "second").unwrap();
+        let branch = markdown(src, &t, first_idx, true);
+
+        // Paste list branch under `- second` -> indents cleanly without `- - `.
+        let out = apply_paste(src, Add::Child(second_idx), &branch).unwrap();
+        assert!(!out.contains("- - "), "must never double-prefix list items: {out:?}");
+        assert!(out.contains("  - first\n    - child"), "expected indented branch in {out:?}");
+
+        // Paste single bullet under root -> stays single `- first`.
+        let single = markdown(src, &t, first_idx, false);
+        let flat = apply_paste(src, Add::Child(ROOT), &single).unwrap();
+        assert!(!flat.contains("- - "), "{flat:?}");
+        assert_eq!(flat.matches("- first").count(), 2);
+    }
+
+    #[test]
+    fn paste_refuses_headings_past_h6() {
+        let src = "# Root\n\n##### Five\n";
+        let doc = blocks::build(src);
+        let t = build(&doc, src, "Note");
+        let five = t.nodes.iter().position(|n| n.label == "Five").unwrap();
+        let res = paste(src, &t, Add::Child(five), "## Top\n\n### Deep");
+        assert_eq!(res.err(), Some(Some(PAST_H6)));
+    }
+}

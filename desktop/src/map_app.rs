@@ -145,6 +145,9 @@ pub struct MapState {
     pub canvas_focused: bool,
     /// Pan saved before nudging the selected node clear of an overlay drawer, keyed by note path.
     pub(crate) drawer_return_pan: Option<(String, [f32; 2])>,
+    /// Last Markdown copied or cut from the map, used when `map.paste` runs without an OS clipboard
+    /// paste event (e.g. headless replay or rebound key).
+    pub(crate) last_copied: Option<String>,
 }
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
@@ -224,6 +227,7 @@ impl Default for MapState {
             spare: TextEdit::new(""),
             canvas_focused: true,
             drawer_return_pan: None,
+            last_copied: None,
         }
     }
 }
@@ -1618,7 +1622,9 @@ impl App {
             return;
         }
         let t = self.map_tree();
-        tx.copy(map::markdown(self.active_text(), &t, self.map_selected(), branch));
+        let md = map::markdown(self.active_text(), &t, self.map_selected(), branch);
+        self.map.last_copied = Some(md.clone());
+        tx.copy(md);
         self.toast(if branch { "Copied the branch's Markdown" } else { "Copied" }, tx);
     }
 
@@ -1631,7 +1637,9 @@ impl App {
         let i = self.map_selected();
         match map::delete(self.active_text(), &t, i) {
             Ok((s, _)) => {
-                tx.copy(map::markdown(self.active_text(), &t, i, true));
+                let md = map::markdown(self.active_text(), &t, i, true);
+                self.map.last_copied = Some(md.clone());
+                tx.copy(md);
                 self.map_apply(&t, &s, tx);
                 let undo = self.keymap.label("map.undo");
                 self.toast(&format!("Cut · {undo} to undo"), tx);
@@ -1640,9 +1648,39 @@ impl App {
             Err(None) => {}
         }
     }
+
+    /// Map context-menu Paste: reads the OS clipboard asynchronously via Rune, falling back to
+    /// `last_copied` if empty.
+    pub fn map_paste_menu(&mut self, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        tx.read_clipboard(|s: &mut App, content, tx| {
+            if !s.paste_content(content, tx) {
+                let text = content.text();
+                if !text.trim().is_empty() {
+                    s.map_paste(text, tx);
+                } else if let Some(last) = s.map.last_copied.clone() {
+                    s.map_paste(&last, tx);
+                }
+            }
+        });
+    }
+
+    /// Keymap fallback for `map.paste` when `Ctrl+V` wasn't intercepted by the platform clipboard
+    /// paste hook (e.g. headless script replay or a rebound paste chord).
+    pub fn map_paste_key(&mut self, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        if let Some(last) = self.map.last_copied.clone() {
+            self.map_paste(&last, tx);
+        } else {
+            self.map_paste_menu(tx);
+        }
+    }
 }
 
-const MULTI_LINE: &str = "Paste multi-line Markdown in Source or the Edit Sheet";
 
 /// The inline field's key: a text field, so the note's caret keys stay out of it.
 pub const FIELD: &str = "map-inline-edit";
@@ -1906,25 +1944,20 @@ impl App {
         }
     }
 
-    /// Ctrl+V with no field focused (MAP-048): one line of text goes in as a new node, a child
-    /// of a container or a sibling after a leaf, with one trailing line break dropped.
+    /// Ctrl+V with no field focused (MAP-048, MAP-084): single-line text or multi-line Markdown
+    /// (including a full copied/cut branch) goes in under a container or after a leaf.
     pub fn map_paste(&mut self, text: &str, tx: &mut Tx) {
         if !self.map_editable() || self.map.inline.is_some() {
             return;
         }
-        let line = text.strip_suffix('\n').map_or(text, |l| l.strip_suffix('\r').unwrap_or(l));
-        if line.contains(['\n', '\r']) {
-            self.toast(MULTI_LINE, tx);
-            return;
-        }
-        if line.trim().is_empty() {
+        if text.trim().is_empty() {
             return;
         }
         let t = self.map_tree();
         let i = self.map_selected();
         let at = if map::takes_children(&t, i) { map::Add::Child(i) } else { map::Add::After(i) };
         let footnote = matches!(t.nodes[i].kind, NodeKind::Footnotes | NodeKind::Footnote { .. });
-        match map::default_kind(&t, at).and_then(|kind| map::add(self.active_text(), &t, at, kind, line.trim())) {
+        match map::paste(self.active_text(), &t, at, text) {
             Ok(s) => self.map_apply(&t, &s, tx),
             Err(why) => {
                 if let Some(why) = why.or(footnote.then_some(map::FOOTNOTES)) {

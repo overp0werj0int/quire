@@ -286,7 +286,7 @@ pub(super) fn canvas(v: V) -> El {
             Some(crate::map::Add::Child(j)) => l.child_mark_bottom(j).map(|y| cam.0[1] + y * cam.1),
             _ => None,
         };
-        Some(ghost(&cx, &t, m, g.at, s.map_size(), child_bottom))
+        Some(ghost(&cx, &t, m, g.at, s.map_size(), child_bottom, g.refused))
     });
     if nodes.contains(&ROOT)
         && let Some(p) = l.at[ROOT]
@@ -952,7 +952,7 @@ fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate:
 /// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it
 /// stays bounded (<= `GHOST_MAX_W`), crisp at any zoom, clear of the Child drop stub and never
 /// clipped behind docked chrome (MAP-026).
-fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], child_bottom: Option<f32>) -> El {
+fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], child_bottom: Option<f32>, refused: Option<&'static str>) -> El {
     let (c, b, mono) = (&cx.look.c, cx.look.b, cx.look.mono);
     let n = &t.nodes[i];
     let weight = match map_app::tier(t, i) {
@@ -965,8 +965,9 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
     let pill_h = small + 6.0;
     let pill_font = styles::note(mono, small, normal_lh(mono, small));
     let below = n.end - i - 1;
-    let surface = c.on_page(c.raised);
-    let branch = branch_color(c, n.branch);
+    let base_surface = c.on_page(c.raised);
+    let surface = if refused.is_some() { crate::roles::mix(base_surface, c.red, if cx.v.dark { 0.16 } else { 0.08 }) } else { base_surface };
+    let border_col = if refused.is_some() { c.red } else { branch_color(c, n.branch) };
     let shadow = rune::Shadow {
         x: 0.0,
         y: 4.0,
@@ -997,8 +998,10 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
     let label_nat = rune::text::measure(&label_text, &[], st, None).0.ceil() + 2.0;
     let max_label_w = (GHOST_MAX_W - 2.0 * pad_x - task_w - pill_w).max(40.0);
     let label_w = label_nat.min(max_label_w);
-    let ghost_w = (2.0 * pad_x + task_w + label_w + pill_w).ceil().min(GHOST_MAX_W);
-    let ghost_h = (st.line_height + 10.0).ceil().max(28.0);
+    let ref_font = styles::sans((b * 0.78).round().max(11.0), 500.0);
+    let ref_w = refused.map_or(0.0, |r| rune::text::measure(r, &[], ref_font, None).0.ceil() + 22.0);
+    let ghost_w = (2.0 * pad_x + task_w + label_w + pill_w).max(2.0 * pad_x + ref_w).ceil().min(GHOST_MAX_W);
+    let ghost_h = (st.line_height + 10.0 + if refused.is_some() { 20.0 } else { 0.0 }).ceil().max(28.0);
     let [cw, ch] = canvas_size;
     let mut x = pointer[0] + GHOST_DX;
     if x + ghost_w > cw - GHOST_EDGE {
@@ -1014,21 +1017,9 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
     }
     y = y.clamp(GHOST_EDGE, (ch - ghost_h - GHOST_EDGE).max(GHOST_EDGE));
     let label_el = text(label_text).font(st).color(c.text).truncate().w(label_w).min_w(0.0).clip_soft(0.0);
-    rune::row()
-        .key("map-ghost")
-        .pin(Some(x), Some(y), None, None)
-        .w(ghost_w)
-        .max_w(GHOST_MAX_W)
+    let main_row = rune::row()
         .center_y()
         .gap(gap)
-        .px(pad_x)
-        .py(5.0)
-        .min_h(28.0)
-        .radius(6.0)
-        .fill(surface)
-        .border(1.5, branch)
-        .box_shadow(shadow)
-        .opacity(0.92)
         .children(task_el)
         .child(label_el)
         .children(pill_text.map(|pt| {
@@ -1040,7 +1031,31 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
                 .radius(pill_h / 2.0)
                 .px(5.0)
                 .h(pill_h)
-        }))
+        }));
+    let ref_row = refused.map(|why| {
+        rune::row()
+            .key("map-ghost-refused")
+            .center_y()
+            .gap(4.0)
+            .child(rune::icon(&super::icons::WARNING, 12.0).color(c.readable_err()))
+            .child(text(why).font(ref_font).color(c.readable_err()).truncate().min_w(0.0))
+    });
+    rune::col()
+        .key("map-ghost")
+        .pin(Some(x), Some(y), None, None)
+        .w(ghost_w)
+        .max_w(GHOST_MAX_W)
+        .gap(3.0)
+        .px(pad_x)
+        .py(5.0)
+        .min_h(28.0)
+        .radius(6.0)
+        .fill(surface)
+        .border(1.5, border_col)
+        .box_shadow(shadow)
+        .opacity(0.94)
+        .child(main_row)
+        .children(ref_row)
         .inert()
 }
 

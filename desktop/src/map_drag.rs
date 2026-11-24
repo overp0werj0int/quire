@@ -30,6 +30,8 @@ pub struct NodeDrag {
     pub active: bool,
     /// Where a drop now would put the node.
     pub drop: Option<Add>,
+    /// Why a drop on the currently hovered node is disallowed, if any.
+    pub refused: Option<&'static str>,
     /// When the edge pan last stepped.
     tick: f64,
 }
@@ -85,7 +87,7 @@ impl App {
                 if fixed || !self.map_editable() {
                     return self.map_pan_drag(d, tx);
                 }
-                self.map.node_drag = Some(NodeDrag { node: t.nodes[i].id, start: here, at: here, active: false, drop: None, tick: 0.0 });
+                self.map.node_drag = Some(NodeDrag { node: t.nodes[i].id, start: here, at: here, active: false, drop: None, refused: None, tick: 0.0 });
                 tx.live_only();
             }
             Phase::Move => {
@@ -127,8 +129,11 @@ impl App {
                 }
                 let t = self.map_tree();
                 let Some(s) = t.find(g.node) else { return };
-                if let Some(at) = self.map_drop_at(s, self.map_world(here)) {
+                let (drop, refused) = self.map_drop_check(s, self.map_world(here));
+                if let Some(at) = drop {
                     self.map_move_node(s, at, tx);
+                } else if let Some(reason) = refused {
+                    self.toast(reason, tx);
                 }
             }
         }
@@ -138,37 +143,49 @@ impl App {
     fn map_aim(&mut self) {
         let Some(g) = &self.map.node_drag else { return };
         let t = self.map_tree();
-        let drop = t.find(g.node).and_then(|s| self.map_drop_at(s, self.map_world(g.at)));
+        let (drop, refused) = t.find(g.node).map_or((None, None), |s| self.map_drop_check(s, self.map_world(g.at)));
         if let Some(g) = &mut self.map.node_drag {
             g.drop = drop;
+            g.refused = refused;
         }
     }
 
-    /// Where a drop at world point `w` puts node `s` (MAP-026): the zone of the node under it,
-    /// among those the move rules allow. A container's box splits into Before, Child and
-    /// After (a quarter, a half, a quarter), a leaf's into Before and After; Before and After
-    /// reach half way to the siblings either side and are never under 8 screen points. A zone
-    /// the rules refuse gives its room to the ones they allow.
-    pub fn map_drop_at(&self, s: usize, w: [f32; 2]) -> Option<Add> {
+    /// Where a drop at world point `w` puts node `s` (MAP-026), returning both any allowed zone
+    /// and the refusal reason when every zone on the hovered target is disallowed by `map::zone`.
+    pub fn map_drop_check(&self, s: usize, w: [f32; 2]) -> (Option<Add>, Option<&'static str>) {
         let t = self.map_tree();
         let l = self.map_laid();
         let band = BAND / self.map_camera().1;
         let moved = s..t.nodes[s].end;
         for &j in l.shown.iter().filter(|j| !moved.contains(j)) {
             let Some(part) = l.part_at(&t, j, w, band) else { continue };
-            let ok = |a: Add| map::zone(&t, s, a).is_ok();
-            let (before, child, after) = (ok(Add::Before(j)), ok(Add::Child(j)), ok(Add::After(j)));
+            let z_before = map::zone(&t, s, Add::Before(j));
+            let z_child = map::zone(&t, s, Add::Child(j));
+            let z_after = map::zone(&t, s, Add::After(j));
+            let (before, child, after) = (z_before.is_ok(), z_child.is_ok(), z_after.is_ok());
             let at = match part {
-                Part::Lead if child && before => Add::Before(j),
-                Part::Trail if child && after => Add::After(j),
-                _ if child => Add::Child(j),
-                _ if before && (!part.late() || !after) => Add::Before(j),
-                _ if after => Add::After(j),
-                _ => return None,
+                Part::Lead if child && before => Some(Add::Before(j)),
+                Part::Trail if child && after => Some(Add::After(j)),
+                _ if child => Some(Add::Child(j)),
+                _ if before && (!part.late() || !after) => Some(Add::Before(j)),
+                _ if after => Some(Add::After(j)),
+                _ => None,
             };
-            return Some(at);
+            if at.is_some() {
+                return (at, None);
+            }
+            let primary = match part {
+                Part::Lead => z_before.err().flatten(),
+                Part::Trail => z_after.err().flatten(),
+                _ => z_child.err().flatten(),
+            };
+            let reason = primary
+                .or_else(|| z_child.err().flatten())
+                .or_else(|| z_before.err().flatten())
+                .or_else(|| z_after.err().flatten());
+            return (None, reason);
         }
-        None
+        (None, None)
     }
 
     /// The edge pan's velocity for the drag's pointer, in points a second.
