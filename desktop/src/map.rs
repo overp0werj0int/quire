@@ -9,7 +9,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use crate::blocks::{self, Block, Doc, Kind, Link, Run, Task};
-use crate::map_geom::Dir;
 
 pub type NodeId = u64;
 
@@ -135,16 +134,6 @@ impl Layout {
             Layout::Both => "Both sides",
             Layout::Down => "Down",
             Layout::Up => "Up",
-        }
-    }
-
-    /// The way the root's first branches grow.
-    pub fn dir(self) -> Dir {
-        match self {
-            Layout::Right | Layout::Both => Dir::Right,
-            Layout::Left => Dir::Left,
-            Layout::Down => Dir::Down,
-            Layout::Up => Dir::Up,
         }
     }
 }

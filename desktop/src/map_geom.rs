@@ -68,7 +68,7 @@ impl Dir {
     }
 
     /// One step this way.
-    pub fn unit(self) -> [f32; 2] {
+    fn unit(self) -> [f32; 2] {
         match self {
             Dir::Right => [1.0, 0.0],
             Dir::Left => [-1.0, 0.0],

@@ -290,7 +290,7 @@ pub(super) fn canvas(v: V) -> El {
     {
         let font = map_app::chip_font(b, mono);
         let badge = (t.props > 0).then(|| map_app::badge(t.props, &l, font)).flatten();
-        let badge_under = badge.as_ref().is_some_and(|(_, at)| at[1] > p.y);
+        let badge_under = badge.is_some() && l.badge_under();
         if let Some((badge, [x, y, _, h])) = badge {
             world = world.child(
                 rune::row()

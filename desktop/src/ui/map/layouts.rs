@@ -12,7 +12,6 @@ use crate::app::App;
 use crate::keymap;
 use crate::layer::tile_key;
 use crate::map::{Layout, NodeKind, ROOT, Tree};
-use crate::map_geom::{Branch, FOLD_DOT_GAP, FOLD_DOT_R};
 use crate::map_layout::{Metrics, layout};
 use crate::roles::Roles;
 use crate::ui::V;
@@ -161,11 +160,7 @@ fn schematic(c: &Roles, l: Layout) -> El {
         let mut shape = Shape::new();
         for &i in &laid.shown {
             let color = branch_color(&c, tree.nodes[i].branch);
-            if let Some(b) = laid.branch(&tree, i) {
-                // The sample draws no fold rings, so a branch leaves its parent's edge.
-                let [ux, uy] = b.dir.unit();
-                let back = FOLD_DOT_GAP + 2.0 * FOLD_DOT_R;
-                let b = Branch { from: [b.from[0] - ux * back, b.from[1] - uy * back], ..b };
+            if let Some(b) = laid.ringless_branch(&tree, i) {
                 shape = tapered_on(shape, b.curve().map(at), (b.lw * k * 1.6).max(1.0), color);
             }
         }

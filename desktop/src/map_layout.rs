@@ -30,7 +30,7 @@ pub struct Metrics {
 impl Metrics {
     /// The spacings at body size `b`, scaled by B / 14, with the note's own options.
     pub fn new(b: f32, o: &Options) -> Metrics {
-        let rows = o.layout.dir().vertical();
+        let rows = root_dir(o.layout).vertical();
         let max_w = match o.max_width {
             Some(w) if w <= 0.0 => 1200.0,
             Some(w) => w,
@@ -104,7 +104,7 @@ struct Seg {
 pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl FnMut(usize) -> [f32; 2], mut pill: impl FnMut(usize) -> [f32; 2]) -> Laid {
     let n = tree.nodes.len();
     let lay = tree.opts.layout;
-    let vertical = lay.dir().vertical();
+    let vertical = root_dir(lay).vertical();
     let mut shown = Vec::new();
     let mut i = ROOT;
     while i < n {
@@ -218,7 +218,7 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         let dir = match (from, split) {
             (Some((ROOT, _)), Some(k)) if tree.nodes[ROOT].children.iter().position(|&c| c == v).is_some_and(|nth| nth >= k) => Dir::Left,
             (Some((_, q)), _) => q.dir,
-            (None, _) => lay.dir(),
+            (None, _) => root_dir(lay),
         };
         local[v] = match from {
             Some((p, _)) => [local[p][0] + len(p) + m.sh, local[p][1] + dy[v]],
@@ -229,8 +229,18 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(pl.right()), bounds[3].max(pl.bottom())];
         at[v] = Some(pl);
     }
-    let root_dirs = [Some(lay.dir()), split.filter(|&k| k < tree.nodes[ROOT].children.len()).map(|_| Dir::Left)];
+    let root_dirs = [Some(root_dir(lay)), split.filter(|&k| k < tree.nodes[ROOT].children.len()).map(|_| Dir::Left)];
     Laid { cell: cells(&at, &shown, m.sh / 2.0), at, shown, bounds, metrics: m, layout: lay, root_dirs }
+}
+
+/// The way the root's first branches grow in layout `l`.
+fn root_dir(l: Layout) -> Dir {
+    match l {
+        Layout::Right | Layout::Both => Dir::Right,
+        Layout::Left => Dir::Left,
+        Layout::Down => Dir::Down,
+        Layout::Up => Dir::Up,
+    }
 }
 
 /// A node's corner in the world, from its corner `[main, cross]` in the local frame: `own` is
@@ -341,6 +351,13 @@ impl Laid {
         let p = self.at[i]?;
         let q = self.at[t.nodes[i].parent?]?;
         Some(Branch { from: q.branch_start(p.dir), to: p.entry(), end: p.underline_end(), dir: p.dir, lw: line_width(p.depth) })
+    }
+
+    /// The branch into node `i` where no fold ring is drawn: it leaves its parent's edge.
+    pub fn ringless_branch(&self, t: &Tree, i: usize) -> Option<Branch> {
+        let b = self.branch(t, i)?;
+        let q = self.at[t.nodes[i].parent?]?;
+        Some(Branch { from: q.side_mid(b.dir), ..b })
     }
 
     /// The sides node `i` has a fold ring on, or a `+N` pill when folded: the way its branches
@@ -465,7 +482,13 @@ impl Laid {
     /// of it.
     pub fn child_mark_bottom(&self, j: usize) -> Option<f32> {
         let p = self.at[j]?;
-        Some(p.bottom() + if p.dir == Dir::Down { STUB } else { 0.0 })
+        let [_, y, _, h] = p.child_stub(STUB, 0.0, 0.0);
+        Some(p.bottom().max(p.y + y + h))
+    }
+
+    /// The Properties badge is under the root, not over it.
+    pub fn badge_under(&self) -> bool {
+        self.layout != Layout::Down
     }
 
     /// The Properties badge of `size` by the root, `[x, y, w, h]`, clear of its fold rings:
@@ -474,13 +497,12 @@ impl Laid {
     pub fn badge_box(&self, [w, h]: [f32; 2], pad_x: f32) -> Option<[f32; 4]> {
         let p = self.at[ROOT]?;
         let inset = pad_x.max(FOLD_R + 2.0);
-        let under = p.bottom() + 6.0;
-        Some(match self.layout {
-            Layout::Right | Layout::Up => [p.right() - inset - w, under, w, h],
-            Layout::Left => [p.x + inset, under, w, h],
-            Layout::Both => [p.x + (p.w - w) / 2.0, under, w, h],
-            Layout::Down => [p.right() - inset - w, p.y - 6.0 - h, w, h],
-        })
+        let x = match self.layout {
+            Layout::Right | Layout::Up | Layout::Down => p.right() - inset - w,
+            Layout::Left => p.x + inset,
+            Layout::Both => p.x + (p.w - w) / 2.0,
+        };
+        Some([x, if self.badge_under() { p.bottom() + 6.0 } else { p.y - 6.0 - h }, w, h])
     }
 
     /// The pan that opens on node `i` at zoom `z` in the canvas's free part `free`: the node's
