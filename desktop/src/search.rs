@@ -164,6 +164,22 @@ impl Index {
     fn search(&mut self, q: &str, from: From) -> Results {
         let mut out = Results { query: q.to_string(), ..Results::default() };
         if let Some(rest) = q.strip_prefix('#') {
+            let tag_terms: Vec<String> = q
+                .split_whitespace()
+                .filter_map(|w| w.strip_prefix('#').map(|t| t.trim().to_lowercase()))
+                .filter(|t| !t.is_empty())
+                .collect();
+            if tag_terms.len() > 1 {
+                // Multi-tag AND search (`#design #roadmap`): require ALL listed tags to match.
+                out.tagged = self
+                    .notes
+                    .iter()
+                    .filter(|(_, e)| tag_terms.iter().all(|want| e.tags.iter().any(|t| t == want)))
+                    .map(|(p, _)| p.clone())
+                    .collect();
+                out.tagged.sort_by(|a, b| tree_cmp(a, b));
+                return out;
+            }
             // Tags only (SB-76): those that hold the rest, and the notes of a whole tag.
             let rest = rest.trim().to_lowercase();
             out.tags = self.tags.iter().filter(|(t, _)| t.contains(&rest)).cloned().collect();
@@ -174,16 +190,52 @@ impl Index {
             return out;
         }
         let ql = q.to_lowercase();
-        // A note's name holding the query makes it a title; else its text is searched.
+        let terms: Vec<&str> = ql.split_whitespace().collect();
+        let multi = terms.len() > 1;
+        // A note's name holding all query terms makes it a title (also recording body hit counts);
+        // else its text (combined with title for multi-word AND) is searched.
         let mut scanned = 0;
         let mut check = |p: &String, e: &Entry, out: &mut Results| {
-            if e.name.contains(&ql) {
+            let title_match = if multi { terms.iter().all(|t| e.name.contains(t)) } else { e.name.contains(&ql) };
+            if title_match {
                 out.titles.push(p.clone());
+                let body_count: usize = if multi {
+                    terms.iter().filter_map(|t| e.hits(t).map(|(c, _)| c)).sum()
+                } else {
+                    e.hits(&ql).map_or(0, |(c, _)| c)
+                };
+                if body_count > 0 {
+                    out.title_counts.insert(p.clone(), body_count);
+                }
                 return;
             }
             scanned += 1;
+            if !multi {
+                if let Some((count, first)) = e.hits(&ql) {
+                    out.text.push(TextHit { path: p.clone(), count, first, len: ql.len() });
+                }
+                return;
+            }
+            // Multi-word AND semantics: every term must match in either the note's title or body.
+            let mut total_count = 0usize;
+            let mut earliest: Option<(md::Hit, usize)> = None;
+            for &t in &terms {
+                let in_name = e.name.contains(t);
+                let in_body = e.hits(t);
+                if !in_name && in_body.is_none() {
+                    return;
+                }
+                if let Some((c, hit)) = in_body {
+                    total_count += c;
+                    if earliest.as_ref().is_none_or(|(best, _)| hit.pos < best.pos) {
+                        earliest = Some((hit, t.len()));
+                    }
+                }
+            }
             if let Some((count, first)) = e.hits(&ql) {
-                out.text.push(TextHit { path: p.clone(), count, first });
+                out.text.push(TextHit { path: p.clone(), count, first, len: ql.len() });
+            } else if let Some((first, len)) = earliest {
+                out.text.push(TextHit { path: p.clone(), count: total_count.max(1), first, len });
             }
         };
         match from {
@@ -202,6 +254,9 @@ impl Index {
                         check(p, e, &mut out);
                     } else if titles.contains(p.as_str()) {
                         out.titles.push(p.clone());
+                        if let Some(&c) = last.title_counts.get(p) {
+                            out.title_counts.insert(p.clone(), c);
+                        }
                     } else if let Some(h) = text.get(p.as_str()) {
                         out.text.push((*h).clone());
                     }
@@ -216,17 +271,18 @@ impl Index {
         self.scanned += scanned;
         out.titles.sort_by(|a, b| tree_cmp(a, b));
         out.text.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.path.cmp(&b.path)));
-        out.tags = self.tags.iter().filter(|(t, _)| t.contains(&ql)).cloned().collect();
+        out.tags = self.tags.iter().filter(|(t, _)| terms.iter().all(|w| t.contains(w))).cloned().collect();
         out
     }
 }
 
-/// A note whose text holds the query: how many times, and the first.
+/// A note whose text holds the query: how many times, the first hit, and the matched term length.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextHit {
     pub path: String,
     pub count: usize,
     pub first: md::Hit,
+    pub len: usize,
 }
 
 /// What a query finds, in the order the list shows it (SB-58 to SB-62, SB-76).
@@ -236,12 +292,14 @@ pub struct Results {
     pub query: String,
     /// The notes whose name holds the query, in the tree's order.
     pub titles: Vec<String>,
+    /// Body match counts for notes matched under `titles` (when > 0).
+    pub title_counts: BTreeMap<String, usize>,
     /// The notes whose text holds it, most matches first, then by path. A note in `titles`
     /// is not here (SB-60).
     pub text: Vec<TextHit>,
     /// The tags that hold it, with their note counts, most first.
     pub tags: Vec<(String, usize)>,
-    /// For "#" and a whole tag, the notes that carry the tag, in the tree's order.
+    /// For "#" and a whole tag (or multi-tag AND), the notes that carry the tag(s), in tree order.
     pub tagged: Vec<String>,
 }
 
@@ -417,6 +475,27 @@ mod tests {
         assert_eq!((r.text[0].first.line, r.text[0].first.col, r.text[0].first.pos), (0, 3, 3));
         let rows: Vec<String> = r.rows().map(|row| row.key()).collect();
         assert_eq!(rows, ["res-title:ideas.md", "res-text:b.md", "res-text:a.md"]);
+        assert_eq!(r.title_counts.get("ideas.md").copied(), Some(1), "title match also records body match count");
+    }
+
+    #[test]
+    fn multi_word_and_multi_tag_queries_require_all_terms() {
+        let v = vault(&[
+            ("Alpha.md", "---\ntags: [roadmap]\n---\nBody with #design and original notes.\n"),
+            ("Beta.md", "# Beta\n\nOriginal paragraph.\n\n## Details\n\nExtra details here.\n"),
+            ("Gamma.md", "# Gamma\n\nOnly original here, no #design.\n"),
+        ]);
+        let mut c = Cache::default();
+        let mw = c.results(&v, "original details");
+        assert_eq!(text(&mw).iter().map(|(p, _)| *p).collect::<Vec<_>>(), ["Beta.md"]);
+        // Cross title + body multi-word match ("beta details") matches Beta.md.
+        let cross = c.results(&v, "beta details");
+        assert_eq!(text(&cross).iter().map(|(p, _)| *p).collect::<Vec<_>>(), ["Beta.md"]);
+        // Multi-tag AND query requires ALL listed tags.
+        let mt = c.results(&v, "#design #roadmap");
+        assert_eq!(mt.tagged, vec!["Alpha.md".to_string()]);
+        let mt_none = c.results(&v, "#design #missing");
+        assert!(mt_none.tagged.is_empty());
     }
 
     /// SB-76: "#" alone lists every tag; "#" and letters the tags that hold them, and no

@@ -828,9 +828,23 @@ pub(super) fn crumb(v: V) -> El {
                                 .label("Note name")
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.renaming.get_or_insert_with(|| TextEdit::new("")))
-                                .on_submit(|s: &mut App, tx| s.commit_rename(tx))
                                 .on_input_key(|s: &mut App, ev: &KeyEvent, tx: &mut Tx| {
-                                    if ev.key == Key::Escape {
+                                    for a in s.keymap.lookup(Ctx::Field, ev) {
+                                        match a.id {
+                                            "field.submit" => {
+                                                s.commit_rename(tx);
+                                                return true;
+                                            }
+                                            "field.cancel" => {
+                                                if !s.esc_takes_notice() {
+                                                    s.cancel_rename(tx);
+                                                }
+                                                return true;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    if ev.key == Key::Escape && !ev.mods.logo && s.keymap.chords("field.cancel").contains(&"Esc") {
                                         if !s.esc_takes_notice() {
                                             s.cancel_rename(tx);
                                         }

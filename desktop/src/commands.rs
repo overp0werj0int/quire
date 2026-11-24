@@ -180,12 +180,17 @@ pub struct Item {
     pub segs: Vec<(String, bool)>,
     pub sub: String,
     pub action: Action,
+    pub locked: bool,
+    pub unlocked: bool,
+    pub conflict: bool,
 }
 
 pub struct PalData {
     pub mode: PalMode,
     pub items: Vec<Item>,
     pub idx: usize,
+    /// Full number of matched notes before capping at 50 (Quick Switcher).
+    pub total: usize,
 }
 
 /// Splits `s` into runs of matched and unmatched characters.
@@ -215,6 +220,7 @@ pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx
     }
     let q = q.trim();
     let mut items = Vec::new();
+    let total;
     if mode == PalMode::Files {
         let files = s.files();
         let list: Vec<(String, Vec<usize>)> = if q.is_empty() {
@@ -235,11 +241,29 @@ pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
             scored.into_iter().map(|(_, x, i)| (x, i)).collect()
         };
+        total = list.len();
         for (x, idx) in list.into_iter().take(50) {
-            items.push(Item { segs: segs(md::base(&x), &idx), sub: md::dir(&x).to_string(), action: Action::Open(x) });
+            let locked = s.note_locked(&x);
+            let unlocked = s.note_unlocked(&x);
+            let conflict = md::conflict_origin(&x).is_some();
+            items.push(Item {
+                segs: segs(md::base(&x), &idx),
+                sub: md::dir(&x).to_string(),
+                action: Action::Open(x),
+                locked,
+                unlocked,
+                conflict,
+            });
         }
         if !q.is_empty() && !files.keys().any(|x| md::base(x).to_lowercase() == q.to_lowercase()) {
-            items.push(Item { segs: vec![(format!("Create note “{q}”"), false)], sub: "new".into(), action: Action::Create(q.to_string()) });
+            items.push(Item {
+                segs: vec![(format!("Create note “{q}”"), false)],
+                sub: "new".into(),
+                action: Action::Create(q.to_string()),
+                locked: false,
+                unlocked: false,
+                conflict: false,
+            });
         }
     } else {
         let cmds = commands(s, dark);
@@ -251,13 +275,21 @@ pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx
         if !q.is_empty() {
             list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         }
+        total = list.len();
         for (_, c, idx) in list {
             let sub = s.keymap.label(c.action);
-            items.push(Item { segs: segs(&c.label, &idx), sub, action: Action::Cmd(c.run) });
+            items.push(Item {
+                segs: segs(&c.label, &idx),
+                sub,
+                action: Action::Cmd(c.run),
+                locked: false,
+                unlocked: false,
+                conflict: false,
+            });
         }
     }
     let idx = raw_idx.min(items.len().saturating_sub(1));
-    PalData { mode, items, idx }
+    PalData { mode, items, idx, total }
 }
 
 /// Runs a row: the palette closes first, so a command that opens a layer opens it in the

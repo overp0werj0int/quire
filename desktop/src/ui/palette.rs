@@ -1,13 +1,15 @@
 //! The quick switcher and command palette.
 
 use crate::roles::Roles;
-use rune::{Color, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, rich, row, text, text_input};
+use rune::{Color, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, icon, rich, row, text, text_input};
 
 use super::V;
+use super::icons::{LOCK, WARNING};
 use super::widgets::label;
 use super::layer::Card;
 use crate::app::{App, PalMode, Palette};
 use crate::commands::{self, pal_data};
+use crate::keymap::Ctx;
 use super::styles::{keys, sans};
 use crate::theme;
 
@@ -71,7 +73,13 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .on_input_key(on_pal_key),
         );
 
-    let mut list = col().key("pal-items").w_full().padding(LIST_PAD);
+    let mut list = col()
+        .key("pal-items")
+        .w_full()
+        .padding(LIST_PAD)
+        .role("listbox")
+        .label(if cmds { "Commands" } else { "Notes" });
+    let roles = Roles::new(p);
     for (i, it) in d.items.iter().enumerate() {
         let on = i == d.idx;
         let mut t = String::new();
@@ -84,17 +92,39 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
             }
         }
         let action = it.action.clone();
+        let mut row_label = t.clone();
+        if !it.sub.is_empty() {
+            row_label.push_str(" — ");
+            row_label.push_str(&it.sub);
+        }
+        if it.locked {
+            row_label.push_str(" (locked)");
+        } else if it.unlocked {
+            row_label.push_str(" (unlocked)");
+        }
+        if it.conflict {
+            row_label.push_str(" (sync conflict)");
+        }
+        let lock_badge = (it.locked || it.unlocked).then(|| {
+            let (col, tip) = if it.locked { (p.mute, "Locked note") } else { (p.acc, "Unlocked in this session") };
+            icon(&LOCK, 13.0).color(col).label(tip).help(tip)
+        });
+        let conflict_badge = it.conflict.then(|| {
+            icon(&WARNING, 13.0).color(roles.readable_err()).label("Sync conflict copy").help("Sync conflict copy")
+        });
         list = list.child(
             row()
                 .key(format!("pal-{i}"))
                 .h(ROW_H)
                 .w_full()
-                .gap(12.0)
+                .gap(8.0)
                 .px(12.0)
                 .center_y()
                 .radius(7.0)
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .role("option")
+                .checked(on)
+                .label(row_label)
                 .on_hover(move |s: &mut App| {
                     if let Some(p) = s.pal_mut()
                         && p.idx != i
@@ -103,6 +133,8 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                     }
                 })
                 .on_press_tx(move |s: &mut App, tx| commands::run(s, action.clone(), tx))
+                .children(lock_badge)
+                .children(conflict_badge)
                 .child(rich(t.clone(), spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(t))
                 // The note's folder, or the command's key cap (`widgets::kbd`, `SCROLLFADE`).
                 .children((!it.sub.is_empty()).then(|| {
@@ -140,6 +172,18 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
 
     // A key cap in the shared `<kbd>` style, then what it does (C14, SCROLLFADE).
     let hint = |k: String, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(p, k, true)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
+    let km = &v.s.keymap;
+    let prev_k = km.label("palette.previous");
+    let next_k = km.label("palette.next");
+    let nav_k = match (prev_k.as_str(), next_k.as_str()) {
+        ("", "") => String::new(),
+        (a, "") => a.to_string(),
+        ("", b) => b.to_string(),
+        (a, b) if a.chars().count() == 1 && b.chars().count() == 1 => format!("{a}{b}"),
+        (a, b) => format!("{a}/{b}"),
+    };
+    let run_k = km.label("palette.run");
+    let close_k = km.label("palette.close");
     let foot = row()
         .key("pal-foot")
         .h(FOOT_H)
@@ -150,12 +194,14 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
         .border_layout()
         .clip_rounded(0.0)
-        .child(hint("↑↓".into(), "select"))
-        .child(hint("↵".into(), if cmds { "run" } else { "open" }))
-        .child(hint("Esc".into(), "close"))
+        .children((!nav_k.is_empty()).then(|| hint(nav_k, "select")))
+        .children((!run_k.is_empty()).then(|| hint(run_k, if cmds { "run" } else { "open" })))
+        .children((!close_k.is_empty()).then(|| hint(close_k, "close")))
         .child(el().grow(1.0))
-        .child(if cmds {
-            hint(v.s.keymap.label("app.quick-switcher"), "for notes")
+        .child(if !cmds && d.total > 50 {
+            label(format!("Showing 50 of {}", d.total), sans(11.5, 400.0), p.mute)
+        } else if cmds {
+            hint(km.label("app.quick-switcher"), "for notes")
         } else {
             row()
                 .gap(5.0)
@@ -195,40 +241,86 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let dark = s.is_dark(dark);
     let Some(d) = pal_data(s, dark) else { return false };
     let n = d.items.len().max(1);
-    match ev.key {
-        Key::Down => {
-            if let Some(p) = s.pal_mut() {
-                p.idx = (d.idx + 1) % n;
-                tx.scroll_into_view(format!("pal-{}", p.idx));
-            }
-            true
-        }
-        Key::Up => {
-            if let Some(p) = s.pal_mut() {
-                p.idx = (d.idx + n - 1) % n;
-                tx.scroll_into_view(format!("pal-{}", p.idx));
-            }
-            true
-        }
-        Key::Enter => {
-            if let Some(it) = d.items.into_iter().nth(d.idx) {
-                commands::run(s, it.action, tx);
-            }
-            true
-        }
-        Key::Backspace => {
-            let Some(p) = s.pal_mut() else { return false };
-            if p.q.text.is_empty() && p.mode == PalMode::Commands {
-                p.mode = PalMode::Files;
-                p.idx = 0;
+    for a in s.keymap.lookup(Ctx::Palette, ev) {
+        match a.id {
+            "palette.next" => {
+                if let Some(p) = s.pal_mut() {
+                    p.idx = (d.idx + 1) % n;
+                    tx.scroll_into_view(format!("pal-{}", p.idx));
+                }
                 return true;
             }
-            false
+            "palette.previous" => {
+                if let Some(p) = s.pal_mut() {
+                    p.idx = (d.idx + n - 1) % n;
+                    tx.scroll_into_view(format!("pal-{}", p.idx));
+                }
+                return true;
+            }
+            "palette.run" => {
+                if let Some(it) = d.items.into_iter().nth(d.idx) {
+                    commands::run(s, it.action, tx);
+                }
+                return true;
+            }
+            "palette.back-to-notes" => {
+                let Some(p) = s.pal_mut() else { return false };
+                if p.q.text.is_empty() && p.mode == PalMode::Commands {
+                    p.mode = PalMode::Files;
+                    p.idx = 0;
+                    return true;
+                }
+                return false;
+            }
+            "palette.close" => {
+                s.dismiss(tx);
+                return true;
+            }
+            _ => {}
         }
-        Key::Escape => {
-            s.dismiss(tx);
-            true
-        }
-        _ => false,
+    }
+    // Esc with Shift/Ctrl/Alt still dismisses when palette.close is bound to Esc (MODESC2).
+    if matches!(ev.key, Key::Escape) && !ev.mods.logo && s.keymap.chords("palette.close").contains(&"Esc") {
+        s.dismiss(tx);
+        return true;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_dispatches_via_keymap_and_respects_modifiers() {
+        let dir = std::env::temp_dir().join(format!("quire-pal-km-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Alpha.md"), "# Alpha\n").unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.keymap.set("palette.next", vec!["Ctrl+N".into()]);
+            s.open_palette(PalMode::Files, tx);
+        });
+        assert_eq!(rt.state.pal().unwrap().idx, 0);
+
+        // Shift+Down must NOT advance when palette.next is rebound to Ctrl+N (nor on default Down).
+        rt.update(|s, tx| {
+            let shift_down = KeyEvent { key: Key::Down, mods: rune::Mods { shift: true, ..rune::Mods::default() } };
+            assert!(!on_pal_key(s, &shift_down, tx));
+        });
+        assert_eq!(rt.state.pal().unwrap().idx, 0);
+
+        // Custom Ctrl+N binding advances selection!
+        rt.update(|s, tx| {
+            let ctrl_n = KeyEvent { key: Key::Command('n'), mods: rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..rune::Mods::default() } };
+            assert!(on_pal_key(s, &ctrl_n, tx));
+        });
+        assert_eq!(rt.state.pal().unwrap().idx, 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

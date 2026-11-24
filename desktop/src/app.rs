@@ -565,6 +565,9 @@ impl App {
     /// Captures a chord while recording an action in Settings → Shortcuts.
     pub fn handle_key_edit(&mut self, ev: &rune::KeyEvent) -> bool {
         let Some(edit) = self.key_edit.clone() else { return false };
+        if matches!(ev.key, rune::Key::Tab) && !ev.mods.ctrl && !ev.mods.cmd && !ev.mods.alt && !ev.mods.logo {
+            return false;
+        }
         if matches!(ev.key, rune::Key::Escape) {
             self.key_edit = None;
             return true;
@@ -2344,15 +2347,33 @@ impl App {
     /// Esc clears the mark.
     pub fn open_result(&mut self, path: &str, at: Option<(usize, usize)>, tx: &mut Tx) {
         let Some((pos, line)) = at else { return self.open_file(path, None, tx) };
+        let q = self.query.text.trim().to_string();
+        let seed = {
+            let text_low = self.note_text(path).unwrap_or("").to_lowercase();
+            if text_low.contains(&q.to_lowercase()) {
+                q.clone()
+            } else {
+                q.split_whitespace().find(|t| text_low.contains(&t.to_lowercase())).unwrap_or(&q).to_string()
+            }
+        };
         if self.mode == Mode::Source {
-            return self.open_file(path, Some(Sel { start: pos, end: pos, line: Some(line), force_source: false }), tx);
+            self.open_file(path, Some(Sel { start: pos, end: pos, line: Some(line), force_source: false }), tx);
+            {
+                let f = &mut self.reader.find;
+                f.open = true;
+                f.q = TextEdit::new(seed.clone());
+                f.searched = seed;
+                f.due = None;
+            }
+            let m = self.source_matches();
+            self.reader.find.cur = m.iter().position(|r| r.start >= pos).unwrap_or(0);
+            return;
         }
         self.open_file(path, None, tx);
-        let q = self.query.text.trim().to_string();
         let f = &mut self.reader.find;
         f.open = true;
-        f.q = TextEdit::new(q.clone());
-        f.searched = q;
+        f.q = TextEdit::new(seed.clone());
+        f.searched = seed;
         f.due = None;
         f.cur = 0;
         self.show_match(false, tx);

@@ -281,15 +281,16 @@ pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
 pub(super) fn help_sheet(v: V) -> Card {
     let c = Roles::new(v.p);
     let km = &v.s.keymap;
-    let (row_h, row_gap, keys_w, col_w) = match v.s.mode {
+    let empty = crate::help::Search::for_mode(v.s.mode);
+    let search = v.s.help_search().unwrap_or(&empty);
+    let help_mode = search.mode;
+    let (row_h, row_gap, keys_w, col_w) = match help_mode {
         crate::app::Mode::Source => (26.0, 7.0, 210.0, 490.0),
         crate::app::Mode::Map => (24.0, 6.0, 220.0, 510.0),
         crate::app::Mode::Preview => (24.0, 2.0, 210.0, 520.0),
     };
-    let (all, left) = crate::help::groups(v.s.mode);
+    let (all, left) = crate::help::groups(help_mode);
     let (found, pick) = v.s.help_found();
-    let empty = crate::help::Search::default();
-    let search = v.s.help_search().unwrap_or(&empty);
     // The writer's and the map's sheets set their groups in two columns on a wide window
     // (WR-163): the first `left` groups on the left. A query keeps the columns of the groups
     // it keeps.
@@ -298,6 +299,42 @@ pub(super) fn help_sheet(v: V) -> Card {
     let w = (v.vw - 48.0).min(content + 48.0);
     let header_h = 44.0;
     let search_h = 40.0;
+    let mode_pill = |m: crate::app::Mode, key: &'static str, lbl: &'static str| {
+        let on = help_mode == m;
+        let (rw, rg, rc) = super::focus_ring(v.p);
+        row()
+            .key(key)
+            .h(24.0)
+            .px(8.0)
+            .center()
+            .radius(5.0)
+            .fill(if on { v.p.act } else { Color::TRANSPARENT })
+            .hover(if on { v.p.act } else { v.p.hover })
+            .border(1.0, if on { v.p.acc.alpha(0.45) } else { Color::TRANSPARENT })
+            .border_layout()
+            .role("radio")
+            .checked(on)
+            .label(format!("{lbl} shortcuts"))
+            .focus_ring(rw, rg, rc)
+            .control(move |s: &mut App, _| {
+                if let Some(h) = s.help_search_mut() {
+                    h.mode = m;
+                    h.idx = 0;
+                }
+            })
+            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(if on { v.p.acc } else { c.dim }))
+    };
+    let mode_pills = row()
+        .key("help-modes")
+        .gap(2.0)
+        .padding(2.0)
+        .radius(7.0)
+        .fill(v.p.soft)
+        .role("radiogroup")
+        .label("Shortcut mode")
+        .child(mode_pill(crate::app::Mode::Source, "help-mode-source", "Source"))
+        .child(mode_pill(crate::app::Mode::Preview, "help-mode-preview", "Preview"))
+        .child(mode_pill(crate::app::Mode::Map, "help-mode-map", "Map"));
     let header = row()
         .key("help-header")
         .w(w)
@@ -309,6 +346,7 @@ pub(super) fn help_sheet(v: V) -> Card {
         .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
         .border_layout()
         .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
+        .child(mode_pills)
         .child(
             text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
                 .key("help-version")
@@ -395,6 +433,13 @@ pub(super) fn help_sheet(v: V) -> Card {
                         keys = keys.child(cap(k.clone(), v.p));
                         shown.push(k);
                     }
+                }
+            }
+            for k in r.keys {
+                let lbl = keymap::label_of(k);
+                if !shown.contains(&lbl) {
+                    keys = keys.child(cap(lbl.clone(), v.p));
+                    shown.push(lbl);
                 }
             }
             let mut line = row().key(format!("r-{i}")).min_h(row_h).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));

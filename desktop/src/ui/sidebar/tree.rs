@@ -299,9 +299,23 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
                     .caret(p.ink, p.sel)
                     .label("New folder name")
                     .on_edit(|s: &mut App| &mut s.new_folder.get_or_insert_with(|| crate::folders::NewFolder { parent: String::new(), edit: rune::TextEdit::new("") }).edit)
-                    .on_submit(|s: &mut App, tx| s.end_new_folder(true, tx))
                     .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx| {
-                        if ev.key == rune::Key::Escape {
+                        for a in s.keymap.lookup(crate::keymap::Ctx::Field, ev) {
+                            match a.id {
+                                "field.submit" => {
+                                    s.end_new_folder(true, tx);
+                                    return true;
+                                }
+                                "field.cancel" => {
+                                    if !s.esc_takes_notice() {
+                                        s.end_new_folder(false, tx);
+                                    }
+                                    return true;
+                                }
+                                _ => {}
+                            }
+                        }
+                        if ev.key == rune::Key::Escape && !ev.mods.logo && s.keymap.chords("field.cancel").contains(&"Esc") {
                             if !s.esc_takes_notice() {
                                 s.end_new_folder(false, tx);
                             }
@@ -337,9 +351,23 @@ fn rename_folder_row(v: V, depth: usize, open: bool, edit: &rune::TextEdit) -> E
                     .caret(p.ink, p.sel)
                     .label("Rename folder")
                     .on_edit(|s: &mut App| &mut s.renaming_folder.get_or_insert_with(|| crate::folders::RenameFolder { path: String::new(), edit: rune::TextEdit::new("") }).edit)
-                    .on_submit(|s: &mut App, tx| s.end_rename_folder(true, tx))
                     .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx| {
-                        if ev.key == rune::Key::Escape {
+                        for a in s.keymap.lookup(crate::keymap::Ctx::Field, ev) {
+                            match a.id {
+                                "field.submit" => {
+                                    s.end_rename_folder(true, tx);
+                                    return true;
+                                }
+                                "field.cancel" => {
+                                    if !s.esc_takes_notice() {
+                                        s.end_rename_folder(false, tx);
+                                    }
+                                    return true;
+                                }
+                                _ => {}
+                            }
+                        }
+                        if ev.key == rune::Key::Escape && !ev.mods.logo && s.keymap.chords("field.cancel").contains(&"Esc") {
                             if !s.esc_takes_notice() {
                                 s.end_rename_folder(false, tx);
                             }

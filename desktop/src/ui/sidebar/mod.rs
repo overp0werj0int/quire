@@ -35,8 +35,8 @@ const BUTTON: f32 = 28.0;
 const BAR_PAD: f32 = 8.0;
 /// The sidebar's icons (SB-07).
 pub(super) const ICON: f32 = 14.0;
-/// The longest key hint the search field shows, in characters, as `Ctrl+/` (SB-10).
-const HINT_CHARS: usize = 6;
+/// The longest compacted key hint the search field shows, in characters (e.g. `Ctrl+⇧F`, `⌘⇧F`, `Ctrl+/`).
+const HINT_CHARS: usize = 8;
 
 pub fn sidebar(v: V) -> El {
     let p = v.p;
@@ -169,11 +169,11 @@ fn search_field(v: V) -> El {
             }
             true
         });
-    // The hint shows only when it is short enough to leave "Search notes" whole: Ctrl+/ fits
-    // (SB-100), Ctrl+Shift+G does not, and the field's tooltip names it instead.
-    let k = s.keymap.label("app.search-notes");
+    // Compact long modifier names (e.g. `Ctrl+Shift+F` -> `Ctrl+⇧F`) so the shortcut chip fits
+    // beside "Search notes" on Linux and Windows without crowding the input.
+    let k = s.keymap.label("app.search-notes").replace("Ctrl+Shift+", "Ctrl+⇧").replace("Shift+", "⇧");
     let end = if s.query.text.is_empty() {
-        (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k).mr(5.0))
+        (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k).key("search-hint").mr(5.0))
     } else {
         Some(
             super::focus::stop(row())

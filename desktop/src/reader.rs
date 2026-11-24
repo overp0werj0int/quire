@@ -1405,7 +1405,7 @@ impl App {
             self.close_layer(tx);
         } else {
             self.reader.help_scroll.set(HelpScroll::default());
-            self.open_layer(crate::layer::Layer::Help(crate::help::Search::default()), tx);
+            self.open_layer(crate::layer::Layer::Help(crate::help::Search::for_mode(self.mode)), tx);
             tx.focus(HELP_SEARCH, false);
         }
     }

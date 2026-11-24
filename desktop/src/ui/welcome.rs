@@ -80,9 +80,18 @@ pub fn welcome(v: V) -> El {
                             .placeholder("My notes", super::styles::placeholder_ink(p))
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.creating.get_or_insert_with(|| rune::TextEdit::new("")))
-                                .on_submit(|s: &mut App, tx| s.create_vault(tx))
                                 .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
-                                    if matches!(ev.key, rune::Key::Escape) && !ev.mods.logo {
+                                    for a in s.keymap.lookup(crate::keymap::Ctx::Field, ev) {
+                                        match a.id {
+                                            "field.submit" => {
+                                                s.create_vault(tx);
+                                                return true;
+                                            }
+                                            "field.cancel" => return s.escape(tx),
+                                            _ => {}
+                                        }
+                                    }
+                                    if matches!(ev.key, rune::Key::Escape) && !ev.mods.logo && s.keymap.chords("field.cancel").contains(&"Esc") {
                                         return s.escape(tx);
                                     }
                                     false

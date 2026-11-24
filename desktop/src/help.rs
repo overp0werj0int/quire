@@ -10,6 +10,9 @@ use crate::keymap::{self, Overrides};
 pub struct Row {
     pub what: &'static str,
     pub ids: &'static [&'static str],
+    /// Static chord labels for focus-scoped navigation hints (e.g. sidebar & Open shelf keys)
+    /// that are not top-level keymap table entries.
+    pub keys: &'static [&'static str],
     /// Whether Enter or a click runs the row's first action. A range ("Heading 1 to 6") or a
     /// key that only acts in a field shows its keys and runs nothing.
     pub runs: bool,
@@ -18,13 +21,30 @@ pub struct Row {
 pub type Group = (&'static str, &'static [Row]);
 
 const fn h(what: &'static str, ids: &'static [&'static str]) -> Row {
-    Row { what, ids, runs: true }
+    Row { what, ids, keys: &[], runs: true }
 }
 
 /// A row that lists keys and runs nothing.
 const fn k(what: &'static str, ids: &'static [&'static str]) -> Row {
-    Row { what, ids, runs: false }
+    Row { what, ids, keys: &[], runs: false }
 }
+
+/// A row that lists literal chord specs (e.g. sidebar/shelf list navigation) and runs nothing.
+const fn s(what: &'static str, keys: &'static [&'static str]) -> Row {
+    Row { what, ids: &[], keys, runs: false }
+}
+
+/// Sidebar tree & Open shelf list navigation keys (shown in every mode's help).
+const SIDEBAR: Group = (
+    "Sidebar & tabs",
+    &[
+        s("Rename selected note or folder", &["F2"]),
+        s("Move selected note or tab to trash", &["Delete"]),
+        s("Reorder open tab up / down", &["Alt+Up", "Alt+Down"]),
+        s("Fold / unfold folder in tree", &["Left", "Right"]),
+        s("Row context menu", &["Shift+F10"]),
+    ],
+);
 
 /// The window's own keys, the same in every mode.
 const APP: Group = (
@@ -94,6 +114,7 @@ const READER: &[Group] = &[
         ],
     ),
     APP,
+    SIDEBAR,
 ];
 
 /// The writer's groups (WR-166), then the window's.
@@ -144,6 +165,7 @@ const WRITER: &[Group] = &[
         ],
     ),
     APP,
+    SIDEBAR,
 ];
 
 /// The map's groups (MAP-063): its edits on the left, its views, files and the window's on the right.
@@ -226,6 +248,7 @@ const MAP: &[Group] = &[
         ],
     ),
     APP,
+    SIDEBAR,
 ];
 
 /// A mode's groups, and how many of them make the left column on a wide window (WR-163).
@@ -266,6 +289,7 @@ pub fn filter(km: &Overrides, mode: Mode, q: &str) -> Vec<(&'static str, Vec<&'s
                     let hay = std::iter::once(r.what.to_string())
                         .chain(std::iter::once(title.to_string()))
                         .chain(r.ids.iter().flat_map(|id| keymap::action(id).map(|a| a.name.to_string()).into_iter().chain(chords(km, id))))
+                        .chain(r.keys.iter().map(|k| keymap::label_of(k)))
                         .collect::<Vec<_>>()
                         .join(" ")
                         .to_lowercase();
@@ -283,11 +307,23 @@ pub fn picks(found: &[(&'static str, Vec<&'static Row>)]) -> Vec<&'static Row> {
     found.iter().flat_map(|(_, rows)| rows.iter().copied()).filter(|r| action(r).is_some()).collect()
 }
 
-/// The help sheet's search: its query and which runnable row is selected.
-#[derive(Default)]
+/// The help sheet's search: its query, which mode's sheet it displays, and which runnable row is selected.
 pub struct Search {
     pub q: TextEdit,
+    pub mode: Mode,
     pub idx: usize,
+}
+
+impl Default for Search {
+    fn default() -> Self {
+        Self::for_mode(Mode::Preview)
+    }
+}
+
+impl Search {
+    pub fn for_mode(mode: Mode) -> Self {
+        Self { q: TextEdit::default(), mode, idx: 0 }
+    }
 }
 
 impl App {
@@ -307,8 +343,8 @@ impl App {
 
     /// The rows the help's query keeps, and the selected one among those that run.
     pub fn help_found(&self) -> (Vec<(&'static str, Vec<&'static Row>)>, Option<&'static Row>) {
-        let (q, idx) = self.help_search().map_or(("", 0), |h| (h.q.text.as_str(), h.idx));
-        let found = filter(&self.keymap, self.mode, q);
+        let (q, mode, idx) = self.help_search().map_or(("", self.mode, 0), |h| (h.q.text.as_str(), h.mode, h.idx));
+        let found = filter(&self.keymap, mode, q);
         let pick = picks(&found).get(idx).copied();
         (found, pick)
     }

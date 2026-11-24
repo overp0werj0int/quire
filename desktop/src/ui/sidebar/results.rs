@@ -81,9 +81,9 @@ fn list(v: V, r: &Results) -> El {
         let keys = all_keys.clone();
         out = out.child(rune::memo(key, version, || {
             let el = match row {
-                Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, None, on),
+                Row::Title(p) => note_row(v, &k, p, marked(md::base(p), &ql, &c), None, r.title_counts.get(p).copied(), on),
                 Row::Tagged(p) => note_row(v, &k, p, (md::base(p).to_string(), Vec::new()), None, None, on),
-                Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, ql.len())), Some(h.count), on),
+                Row::Text(h) => note_row(v, &k, &h.path, (md::base(&h.path).to_string(), Vec::new()), Some(snip(v, h, h.len)), Some(h.count), on),
                 Row::Tag(t, n) => tag_row(v, &k, t, n, tag_q.as_deref().unwrap_or(&ql), on),
             };
             let el = if on && !matches!(row, Row::Tag(..)) { el.child(kbd(v, "Enter".into())) } else { el };
