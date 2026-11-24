@@ -160,6 +160,7 @@ pub const TABLE: &[Action] = &[
     a(60, "writer.follow-link", "Follow the link at the caret", &[Writer], Quire, &["Ctrl+Enter"]),
     a(61, "writer.follow-link-click", "Follow a [[link]]", &[Writer], Quire, &["Ctrl+click"]),
     a(62, "writer.find", "Find", &[Writer], In, &["Ctrl+F"]),
+    a(183, "writer.replace", "Find and replace", &[Writer], Quire, &["Ctrl+H"]),
     a(63, "writer.find-next", "Next match", &[Writer], In, &["Ctrl+G", "F3"]),
     a(64, "writer.find-previous", "Previous match", &[Writer], Adapted, &["Ctrl+Shift+G", "Shift+F3"]),
     a(65, "writer.recent-notes", "Recent notes", &[Writer], Dropped, &[]),

@@ -324,6 +324,12 @@ pub struct Cache {
 }
 
 impl Cache {
+    /// Every `#tag` in `vault` with its note count, most frequent first then by name.
+    pub fn all_tags(&mut self, vault: &Vault) -> Vec<(String, usize)> {
+        self.index.sync(vault);
+        self.index.tags.clone()
+    }
+
     /// The results for `q` in `vault`. The same query on unchanged notes gives the last
     /// results back with no scan.
     pub fn results(&mut self, vault: &Vault, q: &str) -> Rc<Results> {

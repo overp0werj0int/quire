@@ -176,8 +176,9 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
         && ((s.persist.right_open && vw >= crate::app::OUTLINE_DOCK_W)
             || (s.drawer() == Some(crate::app::Drawer::Outline) && vw < crate::app::OUTLINE_DOCK_W));
     map_page(s, outline_shown);
-    let caret = (s.writing() && s.foot_shows()).then(|| cx.caret("editor")).flatten();
-    let caret_view = (caret.is_some() && s.reader.reveal.awaiting_caret().is_some()).then(|| cx.layout(crate::reader::SCROLL)).flatten();
+    let ac = s.ac_active();
+    let caret = (s.writing() && (s.foot_shows() || ac)).then(|| cx.caret("editor")).flatten();
+    let caret_view = (caret.is_some() && (s.reader.reveal.awaiting_caret().is_some() || ac)).then(|| cx.layout(crate::reader::SCROLL)).flatten();
     // The map places its own matches (MAP-066): the page's reveal leaves them be.
     let find_at = (s.foot_shows() && s.find_query().is_some() && !mapping(s)).then(|| cx.layout(crate::reader::FIND_CUR)).flatten();
     let place_at = s.reader.reveal.place_n().and_then(|n| Some((n, cx.layout(&crate::reader::place_key(n))?, cx.layout(crate::reader::SCROLL)?)));

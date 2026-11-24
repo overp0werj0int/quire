@@ -1132,6 +1132,120 @@ pub fn link_at_caret(text: &str, caret: usize) -> Option<CaretLink> {
     None
 }
 
+/// Kind of inline autocomplete popover open in Source mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AcKind {
+    Wiki,
+    Tag,
+}
+
+/// Active `[[query` or `#tag` prefix directly preceding the caret in Source mode.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcTrigger {
+    pub kind: AcKind,
+    /// Byte offset where the trigger (`[[` or `#`) starts in the document.
+    pub start: usize,
+    /// Byte offset of the caret at the end of the typed prefix.
+    pub end: usize,
+    /// Query text after `[[` or `#`.
+    pub query: String,
+}
+
+/// Detects an unclosed `[[wiki` or `#tag` autocomplete trigger ending at `caret`.
+pub fn ac_trigger(text: &str, caret: usize) -> Option<AcTrigger> {
+    let (ls, le, st, first) = caret_line_state(text, caret);
+    if st.block != Block::None {
+        return None;
+    }
+    let ln = &text[ls..le];
+    if (first && ln == "---") || fence_open(ln).is_some() || ln.trim_start().starts_with("<!--") {
+        return None;
+    }
+    let col = caret.min(le).saturating_sub(ls);
+    let b = ln.as_bytes();
+
+    // Skip triggers inside inline code spans on this line.
+    let mut in_code = vec![false; ln.len() + 1];
+    let mut i = 0;
+    while i < ln.len() {
+        if b[i] == b'\\' && i + 1 < ln.len() {
+            i += 2;
+            continue;
+        }
+        if b[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let run = |at: usize| b[at..].iter().take_while(|&&c| c == b'`').count();
+        let n = run(i);
+        let mut j = i + n;
+        let mut close = None;
+        while j < ln.len() {
+            if b[j] == b'`' {
+                let m = run(j);
+                if m == n {
+                    close = Some(j);
+                    break;
+                }
+                j += m;
+            } else {
+                j += 1;
+            }
+        }
+        match close {
+            Some(j) => {
+                in_code[i + n..=j].fill(true);
+                i = j + n;
+            }
+            None => i += n,
+        }
+    }
+    if in_code[col] {
+        return None;
+    }
+
+    // 1. Unclosed `[[query` (excluding image embeds `![[` and heading/alias suffixes `#`/`|`).
+    if let Some(open) = ln[..col].rfind("[[") {
+        let embed = open > 0 && b[open - 1] == b'!';
+        let escaped = open > 0 && b[open - 1] == b'\\';
+        let query = &ln[open + 2..col];
+        if !embed && !escaped && !in_code[open] && !query.contains([']', '[', '|', '#']) {
+            return Some(AcTrigger {
+                kind: AcKind::Wiki,
+                start: ls + open,
+                end: ls + col,
+                query: query.to_string(),
+            });
+        }
+    }
+
+    // 2. `#tag` prefix (at least one ASCII letter after `#` so `# Heading` never triggers).
+    let mut tstart = col;
+    while tstart > 0 {
+        let ch = b[tstart - 1];
+        if ch.is_ascii_alphanumeric() || matches!(ch, b'_' | b'-' | b'/') {
+            tstart -= 1;
+        } else {
+            break;
+        }
+    }
+    if tstart > 0 && b[tstart - 1] == b'#' {
+        let hash = tstart - 1;
+        let ok_before = hash == 0 || ln[..hash].chars().next_back().is_some_and(|c| c.is_whitespace() || c == '(');
+        let query = &ln[tstart..col];
+        if ok_before && !in_code[hash] && !query.is_empty() && query.as_bytes()[0].is_ascii_alphabetic() {
+            return Some(AcTrigger {
+                kind: AcKind::Tag,
+                start: ls + hash,
+                end: ls + col,
+                query: query.to_string(),
+            });
+        }
+    }
+
+    None
+}
+
 // ---------- Word count (WR-188) ----------
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1909,5 +2023,27 @@ mod tests {
         assert_eq!(link_at_caret(line, line.find("skip.me").unwrap()), None);
         assert_eq!(link_at_caret("![pic](attachments/a.png)", 4), None);
         assert_eq!(link_at_caret("![[pic.png]]", 5), None);
+    }
+
+    #[test]
+    fn ac_trigger_detects_wiki_and_tag_prefixes() {
+        assert_eq!(
+            ac_trigger("See [[Be", 8),
+            Some(AcTrigger { kind: AcKind::Wiki, start: 4, end: 8, query: "Be".into() })
+        );
+        assert_eq!(
+            ac_trigger("See [[", 6),
+            Some(AcTrigger { kind: AcKind::Wiki, start: 4, end: 6, query: "".into() })
+        );
+        assert_eq!(ac_trigger("See [[Beta]] x", 14), None);
+        assert_eq!(ac_trigger("![[pic", 6), None);
+        assert_eq!(
+            ac_trigger("Hello #des", 10),
+            Some(AcTrigger { kind: AcKind::Tag, start: 6, end: 10, query: "des".into() })
+        );
+        assert_eq!(ac_trigger("# Heading", 2), None);
+        assert_eq!(ac_trigger("## Sub", 3), None);
+        assert_eq!(ac_trigger("`[[Be`", 5), None);
+        assert_eq!(ac_trigger("```\n[[Be\n```", 8), None);
     }
 }

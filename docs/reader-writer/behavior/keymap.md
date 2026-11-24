@@ -126,6 +126,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-60** [quire] [verify: -] writer.follow-link (writer): `Ctrl+Enter`. Follows the note link at the caret (WR-46, WR-220).
 - **KEY-61** [quire] [verify: -] writer.follow-link-click (writer): `Ctrl+click`. Mouse-only. Follows the clicked note link (WR-220).
 - **KEY-62** [in] [verify: unit, script] writer.find (writer): `Ctrl+F`. Opens the find bar, seeded with the selection (WR-70, WR-115).
+- **KEY-183** [quire] [verify: -] writer.replace (writer): `Ctrl+H`. Opens the find bar with the replace row expanded in Source mode.
 - **KEY-63** [in] [verify: unit, script] writer.find-next (writer): `Ctrl+G` or `F3`. Goes to the next match, even with the bar hidden (WR-70, WR-120).
 - **KEY-64** [adapted: 0003] [verify: unit, script] writer.find-previous (writer): `Ctrl+Shift+G` or `Shift+F3`. Goes to the previous match (WR-70, WR-120).
 - **KEY-65** [dropped] [verify: -] writer.recent-notes (writer): unbound. Replaced by `app.quick-switcher` (`Ctrl+Shift+O`); `Ctrl+R` reloads from disk globally (KEY-39).

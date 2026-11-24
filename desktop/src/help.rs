@@ -119,6 +119,7 @@ const WRITER: &[Group] = &[
         &[
             h("Source / preview / map", &["app.mode-source", "app.mode-preview", "app.mode-map"]),
             h("Find", &["writer.find"]),
+            h("Find and replace", &["writer.replace"]),
             h("Next / previous match", &["writer.find-next", "writer.find-previous"]),
             h("Close find, else show the preview", &["writer.escape", "app.escape"]),
             h("Paragraph focus", &["writer.paragraph-focus"]),

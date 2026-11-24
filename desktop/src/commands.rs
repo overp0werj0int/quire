@@ -88,6 +88,9 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
             Mode::Source => ("writer.find", |s, tx| s.writer_find(tx)),
         };
         v.push(cmd("Find in note", find_action, find_run));
+        if s.mode == Mode::Source {
+            v.push(cmd("Find and replace", "writer.replace", |s, tx| s.writer_replace(tx)));
+        }
     }
     if has {
         v.push(cmd(zen_name(s), "app.focus-mode", |s, tx| s.toggle_focus(tx)));

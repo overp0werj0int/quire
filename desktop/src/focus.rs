@@ -91,6 +91,9 @@ const NOTE_BUTTONS: &[&str] = &[
     "find-prev",
     "find-next",
     "find-close",
+    "find-replace-toggle",
+    "replace-one",
+    "replace-all",
     "conflict-open-orig",
     "conflict-keep-this",
     "conflict-discard",
@@ -102,7 +105,7 @@ const NOTE_BUTTONS: &[&str] = &[
 /// and a new folder's. While one has focus its own keys edit it, and the writer's chords at
 /// the caret (`at_caret`) do nothing; the window's shortcuts still act. The palette's,
 /// Settings' and the lock dialog's fields sit in layers, which take only the window's keys.
-pub const FIELDS: &[&str] = &["search", "find-input", "rename", "new-folder", crate::map_app::FIELD];
+pub const FIELDS: &[&str] = &["search", "find-input", "replace-input", "rename", "new-folder", crate::map_app::FIELD];
 
 /// Whether the element keyed `key` is one of the page's text fields.
 pub fn field(key: &str) -> bool {

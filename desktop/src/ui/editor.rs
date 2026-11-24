@@ -130,7 +130,7 @@ pub fn body(v: V) -> El {
         .children(has_find_slot.then(|| super::reader::find_backing(v)))
         .child(view);
     if reading || writer {
-        main_area = main_area.children(progress).child(super::reader::find_bar(v));
+        main_area = main_area.children(progress).child(super::reader::find_bar(v)).children(ac_popover(v));
     } else if mapping {
         // Over the canvas, which needs no slot: the map centres matches clear of the bar.
         main_area = main_area.child(super::reader::find_bar(v));
@@ -409,7 +409,10 @@ fn doc_scroll(v: V) -> El {
     if shows_toolbar(v) {
         // Text fades out at the top, so the toolbar, and the find bar on its own row under it,
         // float on a clear band. The caret stays below them while you type.
-        let below = if find_row(v) { find_top(v) + find_h(v) } else { toolbar_top(v) + toolbar_h(v) };
+        let mut below = if find_row(v) { find_top(v) + find_h(v) } else { toolbar_top(v) + toolbar_h(v) };
+        if v.s.show_replace_row() {
+            below = below.max(find_top(v) + find_h(v));
+        }
         scroll = scroll.scroll_fade(ScrollFade::strength(below + 8.0).with_end(ScrollFade::strength(0.0)));
         margin = top_band(v);
     }
@@ -431,7 +434,13 @@ pub(super) fn top_band(v: V) -> f32 {
     if !shows_toolbar(v) {
         return 0.0;
     }
-    if find_row(v) { find_top(v) + find_h(v) + FIND_FADE_OUT } else { toolbar_top(v) + toolbar_h(v) + 12.0 }
+    if find_row(v) {
+        find_top(v) + find_h(v) + FIND_FADE_OUT
+    } else if v.s.show_replace_row() {
+        (toolbar_top(v) + toolbar_h(v) + 12.0).max(find_top(v) + find_h(v) + 12.0)
+    } else {
+        toolbar_top(v) + toolbar_h(v) + 12.0
+    }
 }
 
 /// How far down the view a find match is covered from above: the toolbar's band while the
@@ -471,7 +480,8 @@ fn toolbar_h(v: V) -> f32 {
 }
 
 pub(super) fn find_h(v: V) -> f32 {
-    if narrow_find(v) { FIND_NARROW_H } else { super::reader::FIND_H }
+    let base = if narrow_find(v) { FIND_NARROW_H } else { super::reader::FIND_H };
+    base + if v.s.show_replace_row() { super::reader::FIND_REPLACE_H } else { 0.0 }
 }
 
 fn find_gap(v: V) -> f32 {
@@ -997,7 +1007,10 @@ fn build_source(v: V, width: f32, room: f32, preparing: bool) -> El {
         .strikes(strikes)
         .text_highlights(marks)
         .on_edit(|s: &mut App| s.cur_edit())
-        .on_input_change(|s: &mut App, _: &mut Tx| s.after_edit())
+        .on_input_change(|s: &mut App, _: &mut Tx| {
+            s.after_edit();
+            s.ac_after_edit();
+        })
         .on_input_paste(|s: &mut App, content, tx| s.paste_content(content, tx))
         .on_input_key(on_editor_key);
     // Each line is laid out on its own, so a keystroke reshapes only its line (WR-224), in the
@@ -1062,13 +1075,117 @@ fn is_editor_motion_or_edit_key(ev: &KeyEvent) -> bool {
     }
 }
 
+/// Floating inline autocomplete popover for `[[wiki]]` note links and `#tag` prefixes in Source.
+fn ac_popover(v: V) -> Option<El> {
+    let (trig, items, active_idx) = v.s.ac_state()?;
+    let p = v.p;
+    let c = Roles::new(p);
+    let quiet = Roles::panel(p);
+    const POP_W: f32 = 252.0;
+    const ROW_H: f32 = 28.0;
+    const HEAD_H: f32 = 22.0;
+    let pop_h = HEAD_H + items.len() as f32 * ROW_H + 10.0;
+    let doc_w = doc_width(v).max(POP_W + 24.0);
+    let (x, y) = match (v.caret, v.caret_view) {
+        (Some(cr), Some(vr)) if vr[2] > 0.0 && vr[3] > 0.0 => {
+            let rx = (cr[0] - vr[0]).clamp(12.0, (vr[2] - POP_W - 12.0).max(12.0));
+            let below = cr[1] + cr[3] + 6.0 - vr[1];
+            let ry = if below + pop_h <= vr[3] - 12.0 {
+                below.max(12.0)
+            } else {
+                (cr[1] - pop_h - 6.0 - vr[1]).max(12.0)
+            };
+            (rx, ry)
+        }
+        _ => (source_column(v).gutter.clamp(16.0, (doc_w - POP_W - 16.0).max(16.0)), (top_band(v) + 56.0).min((v.vh - pop_h - 48.0).max(24.0))),
+    };
+    let heading = match trig.kind {
+        crate::writer::AcKind::Wiki => "Link note",
+        crate::writer::AcKind::Tag => "Insert tag",
+    };
+    let mut list = col()
+        .w_full()
+        .gap(1.0)
+        .child(
+            row()
+                .w_full()
+                .h(HEAD_H)
+                .px(8.0)
+                .center_y()
+                .justify_between()
+                .child(text(heading.to_uppercase()).font(sans(10.0, 600.0).tracking(0.8)).color(quiet.faint))
+                .child(text("↵ insert · Esc").font(keys(10.0)).color(quiet.faint)),
+        );
+    for (i, item) in items.iter().enumerate() {
+        let on = i == active_idx;
+        let mut r = row()
+            .key(format!("ac-item:{i}"))
+            .w_full()
+            .h(ROW_H)
+            .px(8.0)
+            .gap(8.0)
+            .center_y()
+            .justify_between()
+            .radius(5.0)
+            .fill(if on { p.act } else { Color::TRANSPARENT })
+            .hover(if on { p.act } else { p.hover })
+            .cursor(rune::Cursor::Pointer)
+            .role("option")
+            .label(item.label.clone())
+            .on_hover(move |s: &mut App| {
+                s.wstate.ac_idx = i;
+            })
+            .on_press_tx(move |s: &mut App, tx| {
+                s.ac_accept(Some(i), tx);
+            })
+            .child(text(item.label.clone()).font(sans(13.0, if on { 500.0 } else { 400.0 })).color(if on { p.acc } else { p.ink }).truncate().shrink().min_w(0.0));
+        if !item.sub.is_empty() {
+            r = r.child(text(item.sub.clone()).font(sans(11.0, 400.0)).color(quiet.faint).truncate());
+        }
+        list = list.child(r);
+    }
+    Some(
+        super::reader::popup(&c)
+            .key("ac-pop")
+            .pin(Some(x), Some(y), None, None)
+            .w(POP_W)
+            .padding(4.0)
+            .paint_order(45)
+            .preserve_focus_on_press(true)
+            .keeps_text_selection()
+            .role("listbox")
+            .label(heading)
+            .child(list),
+    )
+}
+
 fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // A caret move that follows a key is not a click (see `App::check_link_click`).
     s.key_moved = true;
     // The field would keep Escape, so the writer's Esc order runs here (WR-77), for Esc with
     // a modifier too: the field gives up the keyboard on any Esc.
     if matches!(ev.key, Key::Escape) {
+        if s.ac_dismiss() {
+            return true;
+        }
         return s.writer_escape(tx);
+    }
+    if ev.mods == rune::Mods::default() && s.ac_active() {
+        match ev.key {
+            Key::Down => {
+                s.ac_step(true);
+                return true;
+            }
+            Key::Up => {
+                s.ac_step(false);
+                return true;
+            }
+            Key::Enter | Key::Tab => {
+                s.ac_accept(None, tx);
+                return true;
+            }
+            _ => {}
+        }
     }
     if is_editor_motion_or_edit_key(ev) {
         s.note_editor_key(tx);

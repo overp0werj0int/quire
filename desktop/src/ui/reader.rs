@@ -8,7 +8,7 @@ use super::layer::Card;
 use super::chip::Chip;
 use super::panel::BODY;
 use super::styles::{self, caption, keys, sans};
-use super::icons::{CHEVRON_DOWN, CHEVRON_UP, CLOSE, SEARCH};
+use super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CHEVRON_UP, CLOSE, SEARCH};
 use super::widgets::Control;
 use crate::app::App;
 use crate::keymap::{self, Ctx};
@@ -21,6 +21,7 @@ pub(super) fn popup(c: &Roles) -> El {
 
 /// The find bar's size, and its room from the note area's right edge.
 pub const FIND_H: f32 = 40.0;
+pub const FIND_REPLACE_H: f32 = 36.0;
 pub const FIND_W: f32 = 380.0;
 pub const FIND_RIGHT: f32 = 16.0;
 
@@ -46,12 +47,12 @@ pub(crate) fn find_slot_h_for_app(s: &App) -> f32 {
         let (left, right) = s.docked();
         s.view_w.get() - if left { super::sidebar::DOCKED_W } else { 0.0 } - if right { super::outline::PANEL_W } else { 0.0 }
     };
-    find_slot_h_for_width(doc_w)
+    find_slot_h_for_width(doc_w) + if s.show_replace_row() { FIND_REPLACE_H } else { 0.0 }
 }
 
 /// Total height of the top Find header slot when Find is open without a formatting toolbar.
 pub(super) fn find_backing_h(v: V) -> f32 {
-    find_slot_h_for_width(super::editor::doc_width(v))
+    find_slot_h_for_width(super::editor::doc_width(v)) + if v.s.show_replace_row() { FIND_REPLACE_H } else { 0.0 }
 }
 
 /// Full-width page-coloured top slot placed in flow above `doc-scroll` whenever Find is open
@@ -127,7 +128,11 @@ pub fn find_bar(v: V) -> El {
     let narrow = super::editor::narrow_find(v);
     let top = super::editor::find_top(v);
     let h = super::editor::find_h(v);
-    let mut bar = super::widgets::input_focus_ring_when(super::widgets::bar_edge(popup(&c), &c), v.p, f.q.focused)
+    let row_h = if narrow { super::editor::FIND_NARROW_H } else { FIND_H };
+    let is_source = s.mode == crate::app::Mode::Source && !s.active_locked();
+    let show_replace = s.show_replace_row();
+    let has_matches = matches!(state, crate::reader::FindState::Matches(_));
+    let mut bar = super::widgets::input_focus_ring_when(super::widgets::bar_edge(popup(&c), &c), v.p, f.q.focused || (show_replace && f.replace.focused))
         .key("find-bar")
         .paint_order(40)
         .on_key(|s: &mut App, ev: &KeyEvent, tx| {
@@ -144,27 +149,108 @@ pub fn find_bar(v: V) -> El {
     } else {
         bar.pin(None, Some(top), Some(FIND_RIGHT), None).size(FIND_W, h)
     };
-    bar.child(
-        row()
-            .w_full()
-            .h_full()
-            .pl(12.0)
-            .pr(6.0)
-            .gap(8.0)
-            .center_y()
-            .child(icon(&SEARCH, 14.0).color(quiet.faint))
-            .child(field)
-            .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
-            .child(
-                row()
-                    .gap(8.0)
-                    .center_y()
-                    .preserve_focus_on_press(true)
-                    .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), steppers_enabled, |s, tx| s.find_step(false, tx)))
-                    .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), steppers_enabled, |s, tx| s.find_step(true, tx)))
-                    .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), true, |s, tx| s.close_find(tx))),
-            ),
-    )
+    let mut top_row = row()
+        .w_full()
+        .h(row_h)
+        .pl(if is_source { 6.0 } else { 12.0 })
+        .pr(6.0)
+        .gap(8.0)
+        .center_y();
+    if is_source {
+        let glyph = if show_replace { &CHEVRON_DOWN } else { &CHEVRON_RIGHT };
+        top_row = top_row.child(button("find-replace-toggle", glyph, 11.0, tip("Find and replace", "writer.replace"), true, |s, tx| s.toggle_replace(tx)));
+    }
+    top_row = top_row
+        .child(icon(&SEARCH, 14.0).color(quiet.faint))
+        .child(field)
+        .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
+        .child(
+            row()
+                .gap(8.0)
+                .center_y()
+                .preserve_focus_on_press(true)
+                .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), steppers_enabled, |s, tx| s.find_step(false, tx)))
+                .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), steppers_enabled, |s, tx| s.find_step(true, tx)))
+                .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), true, |s, tx| s.close_find(tx))),
+        );
+    let mut stack = col().w_full().h_full().child(top_row);
+    if show_replace {
+        let rep_btn = |key: &'static str, lbl: &'static str, run: fn(&mut App, &mut Tx)| {
+            if !has_matches {
+                return row()
+                    .key(key)
+                    .h(24.0)
+                    .px(8.0)
+                    .center()
+                    .radius(4.0)
+                    .border(1.0, c.hairline_soft)
+                    .border_layout()
+                    .disabled(true)
+                    .label(lbl)
+                    .child(text(lbl).font(sans(11.5, 500.0)).color(quiet.faint.alpha(0.45)));
+            }
+            super::focus::stop(row())
+                .key(key)
+                .h(24.0)
+                .px(8.0)
+                .center()
+                .radius(4.0)
+                .border(1.0, c.hairline)
+                .border_layout()
+                .hover(v.p.hover)
+                .role("button")
+                .label(lbl)
+                .focus_ring(2.0, 1.0, rc)
+                .keeps_text_selection()
+                .control(run)
+                .child(text(lbl).font(sans(11.5, 500.0)).color(c.text))
+        };
+        let rep_field = text_input(&f.replace, sans(13.0, 400.0))
+            .key("replace-input")
+            .single_line()
+            .grow(1.0)
+            .min_w(0.0)
+            .color(c.text)
+            .placeholder("Replace with…", quiet.faint)
+            .label("Replace with")
+            .caret(c.text, c.selection)
+            .on_edit(|s: &mut App| &mut s.reader.find.replace)
+            .on_input_key(|s: &mut App, ev: &KeyEvent, tx| {
+                if matches!(ev.key, Key::Escape) {
+                    if s.notice.take().is_none() {
+                        s.close_find(tx);
+                    }
+                    return true;
+                }
+                if ev.key == Key::Enter && !ev.mods.ctrl && !ev.mods.cmd && !ev.mods.alt && !ev.mods.logo {
+                    s.replace_one(tx);
+                    return true;
+                }
+                false
+            });
+        stack = stack.child(
+            row()
+                .key("replace-row")
+                .w_full()
+                .h(FIND_REPLACE_H)
+                .pl(12.0)
+                .pr(6.0)
+                .gap(6.0)
+                .center_y()
+                .border_sides([1.0, 0.0, 0.0, 0.0], c.hairline_soft)
+                .border_layout()
+                .child(rep_field)
+                .child(
+                    row()
+                        .gap(4.0)
+                        .center_y()
+                        .preserve_focus_on_press(true)
+                        .child(rep_btn("replace-one", "Replace", |s, tx| s.replace_one(tx)))
+                        .child(rep_btn("replace-all", "Replace all", |s, tx| s.replace_all(tx))),
+                ),
+        );
+    }
+    bar.child(stack)
 }
 
 /// Keys in the find field: Enter, Shift+Enter, Esc and Ctrl+F (KEY items 77 to 80). Esc

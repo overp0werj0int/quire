@@ -78,7 +78,7 @@ impl Default for Reader {
     fn default() -> Self {
         Reader {
             wide: None,
-            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0 },
+            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0, replace_open: false, replace: TextEdit::new("") },
             toast: None,
             copied: None,
             reloaded: None,
@@ -560,6 +560,9 @@ pub struct Find {
     pub due: Option<f64>,
     /// The current match, an index into `blocks::find_all`.
     pub cur: usize,
+    /// Whether the Source-mode Replace row is expanded inside the find bar (`Ctrl+H`).
+    pub replace_open: bool,
+    pub replace: TextEdit,
 }
 
 /// Find bar result state, separating empty, debounced-pending, settled zero-match, and matched
@@ -1251,6 +1254,8 @@ impl App {
         let f = &mut self.reader.find;
         f.open = false;
         f.q.focused = false;
+        f.replace_open = false;
+        f.replace.focused = false;
         f.due = None;
         self.compensate_find_slot(false, tx);
         true
@@ -1264,7 +1269,14 @@ impl App {
         f.searched.clear();
         f.due = None;
         f.cur = 0;
+        f.replace_open = false;
+        f.replace = TextEdit::new("");
         self.reader.reveal.clear_find();
+    }
+
+    /// Whether the Find bar is currently showing its Source-mode Replace row.
+    pub fn show_replace_row(&self) -> bool {
+        self.reader.find.open && self.reader.find.replace_open && self.mode == Mode::Source && !self.active_locked()
     }
 
     pub fn find_query(&self) -> Option<&str> {

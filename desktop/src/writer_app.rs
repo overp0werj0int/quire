@@ -116,6 +116,18 @@ pub struct WriterState {
     lines_count: RefCell<Option<(TextKey, usize)>>,
     headings: RefCell<Option<CachedHeadings>>,
     backlinks: RefCell<Option<CachedBacklinks>>,
+    /// Highlighted row in the Source inline autocomplete popover (`[[` / `#`).
+    pub ac_idx: usize,
+    /// `(note_path, trigger_start)` dismissed with Esc until the caret leaves that trigger.
+    pub ac_dismissed: Option<(String, usize)>,
+}
+
+/// One suggestion in the Source inline `[[wiki]]` / `#tag` autocomplete popover.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcItem {
+    pub label: String,
+    pub sub: String,
+    pub insert: String,
 }
 
 #[inline]
@@ -744,6 +756,277 @@ impl App {
         self.reveal_match(glide);
     }
 
+    // ---------- Find & Replace in Source (`Ctrl+H`) ----------
+
+    /// `Ctrl+H` in Source mode: opens the Find bar with the Replace row expanded, focusing
+    /// `find-input` (so typing immediately searches) and seeding any single-line selection.
+    pub fn writer_replace(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Source || self.active.is_none() || self.active_locked() {
+            return;
+        }
+        let was_open = self.reader.find.open;
+        let had_replace = self.reader.find.replace_open;
+        self.reader.find.replace_open = true;
+        self.writer_find(tx);
+        if was_open && !had_replace {
+            self.adjust_find_slot(crate::ui::reader::FIND_REPLACE_H, tx);
+        }
+    }
+
+    /// Toggles the Source-mode Replace row inside an open Find bar.
+    pub fn toggle_replace(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Source || self.active.is_none() || self.active_locked() {
+            return;
+        }
+        let next = !self.reader.find.replace_open;
+        self.reader.find.replace_open = next;
+        let delta = if next { crate::ui::reader::FIND_REPLACE_H } else { -crate::ui::reader::FIND_REPLACE_H };
+        self.adjust_find_slot(delta, tx);
+        if next && !self.reader.find.q.text.is_empty() {
+            let n = self.reader.find.replace.text.len();
+            self.reader.find.replace.set_selection(0, n);
+            self.reader.find.replace.focused = true;
+            tx.focus("replace-input", false);
+        } else {
+            self.reader.find.replace.focused = false;
+            tx.focus("find-input", false);
+        }
+    }
+
+    fn adjust_find_slot(&mut self, delta: f32, tx: &mut Tx) {
+        let shows_toolbar = !self.focus && self.mode == Mode::Source && self.settings().toolbar;
+        if shows_toolbar {
+            return;
+        }
+        let offset = self.reader.scroll.get()[0];
+        if offset <= 0.5 {
+            return;
+        }
+        let to = (offset + delta).max(0.0);
+        tx.scroll_to_instant(crate::reader::SCROLL, 0.0, to);
+    }
+
+    /// Replaces the current Find match in Source mode as one undo step and advances to the next.
+    pub fn replace_one(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Source || self.active.is_none() || self.active_locked() {
+            return;
+        }
+        let m = self.source_matches();
+        if m.is_empty() {
+            return;
+        }
+        let cur = self.reader.find.cur.min(m.len() - 1);
+        let r = m[cur].clone();
+        let rep = self.reader.find.replace.text.clone();
+        if let Some(e) = self.cur_edit_opt() {
+            e.undo_group(|e| {
+                e.set_selection(r.start, r.end);
+                e.insert(&rep);
+                e.set_selection(r.start + rep.len(), r.start + rep.len());
+            });
+        }
+        self.after_edit();
+        let after = r.start + rep.len();
+        let m2 = self.source_matches();
+        if m2.is_empty() {
+            self.reader.find.cur = 0;
+        } else {
+            self.reader.find.cur = m2.iter().position(|x| x.start >= after).unwrap_or(0);
+            self.select_match(&m2, true);
+        }
+        let _ = tx;
+    }
+
+    /// Replaces every Find match in the active Source note in a single undo group.
+    pub fn replace_all(&mut self, tx: &mut Tx) {
+        if self.mode != Mode::Source || self.active.is_none() || self.active_locked() {
+            return;
+        }
+        let m = self.source_matches();
+        if m.is_empty() {
+            return;
+        }
+        let count = m.len();
+        let rep = self.reader.find.replace.text.clone();
+        if let Some(e) = self.cur_edit_opt() {
+            e.undo_group(|e| {
+                for r in m.iter().rev() {
+                    e.set_selection(r.start, r.end);
+                    e.insert(&rep);
+                }
+                if let Some(first) = m.first() {
+                    let at = first.start + rep.len();
+                    e.set_selection(at, at);
+                }
+            });
+        }
+        self.after_edit();
+        self.reader.find.cur = 0;
+        self.toast(&format!("Replaced {} {}", count, if count == 1 { "match" } else { "matches" }), tx);
+    }
+
+    // ---------- Inline Autocomplete (`[[wiki]]` and `#tag`) ----------
+
+    /// Active inline autocomplete state `(trigger, suggestions, selected_index)` in Source mode.
+    pub fn ac_state(&self) -> Option<(writer::AcTrigger, Vec<AcItem>, usize)> {
+        if self.mode != Mode::Source || self.sheet().is_some() || self.active_locked() || self.layer().is_some() || self.reader.find.open {
+            return None;
+        }
+        let active = self.active.as_deref()?;
+        let edit = self.edits.get(active)?;
+        if !edit.focused || edit.anchor != edit.focus {
+            return None;
+        }
+        let trig = writer::ac_trigger(&edit.text, edit.focus.min(edit.text.len()))?;
+        if self.wstate.ac_dismissed.as_ref().is_some_and(|(p, st)| p == active && *st == trig.start) {
+            return None;
+        }
+        let items = match trig.kind {
+            writer::AcKind::Wiki => self.ac_wiki_items(&trig.query),
+            writer::AcKind::Tag => self.ac_tag_items(&trig.query, &edit.text),
+        };
+        if items.is_empty() {
+            return None;
+        }
+        let idx = self.wstate.ac_idx.min(items.len() - 1);
+        Some((trig, items, idx))
+    }
+
+    pub fn ac_active(&self) -> bool {
+        self.ac_state().is_some()
+    }
+
+    fn ac_wiki_items(&self, q: &str) -> Vec<AcItem> {
+        let files = self.files();
+        let paths: Vec<String> = if q.is_empty() {
+            let rec: Vec<&String> = self.recent.iter().filter(|x| files.contains_key(*x)).collect();
+            let mut rest: Vec<&String> = files.keys().filter(|x| !rec.contains(x)).collect();
+            rest.sort();
+            rec.into_iter().chain(rest).take(8).cloned().collect()
+        } else {
+            let mut scored: Vec<(f32, String)> = files
+                .keys()
+                .filter_map(|x| {
+                    if let Some((sc, _)) = md::fuzzy(q, md::base(x)) {
+                        return Some((sc + 500.0, x.clone()));
+                    }
+                    md::fuzzy(q, md::strip_md(x)).map(|(sc, _)| (sc, x.clone()))
+                })
+                .collect();
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1)));
+            scored.into_iter().take(8).map(|(_, x)| x).collect()
+        };
+        paths
+            .into_iter()
+            .map(|p| {
+                let base = md::base(&p);
+                let target = if md::dir(&p).is_empty() || self.names.resolve(base) == Some(p.as_str()) {
+                    base.to_string()
+                } else {
+                    md::strip_md(&p).to_string()
+                };
+                AcItem {
+                    label: base.to_string(),
+                    sub: md::dir(&p).to_string(),
+                    insert: format!("[[{target}]]"),
+                }
+            })
+            .collect()
+    }
+
+    fn ac_tag_items(&self, q: &str, live_text: &str) -> Vec<AcItem> {
+        use std::collections::BTreeMap;
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        if let Some(v) = &self.vault {
+            for (t, n) in self.search.borrow_mut().all_tags(v) {
+                counts.insert(t, n);
+            }
+            for text in v.files().values() {
+                for t in frontmatter_tags(text) {
+                    counts.entry(t).or_insert(1);
+                }
+            }
+        }
+        for t in md::note_tags(live_text).into_iter().chain(frontmatter_tags(live_text)) {
+            counts.entry(t).or_insert(1);
+        }
+        let ql = q.to_lowercase();
+        let mut scored: Vec<(i32, usize, String)> = counts
+            .into_iter()
+            .filter_map(|(t, n)| {
+                if ql.is_empty() {
+                    Some((0, n, t))
+                } else if t.starts_with(&ql) {
+                    Some((200, n, t))
+                } else if t.contains(&ql) {
+                    Some((100, n, t))
+                } else {
+                    md::fuzzy(&ql, &t).map(|(sc, _)| (sc as i32, n, t))
+                }
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)).then_with(|| a.2.cmp(&b.2)));
+        scored
+            .into_iter()
+            .take(8)
+            .map(|(_, n, t)| AcItem {
+                label: format!("#{t}"),
+                sub: if n > 0 { n.to_string() } else { String::new() },
+                insert: format!("#{t}"),
+            })
+            .collect()
+    }
+
+    pub fn ac_after_edit(&mut self) {
+        self.wstate.ac_idx = 0;
+        let Some(active) = self.active.as_deref() else {
+            self.wstate.ac_dismissed = None;
+            return;
+        };
+        let keep = self.edits.get(active).and_then(|e| writer::ac_trigger(&e.text, e.focus.min(e.text.len()))).is_some_and(|trig| {
+            self.wstate.ac_dismissed.as_ref().is_some_and(|(p, st)| p == active && *st == trig.start)
+        });
+        if !keep {
+            self.wstate.ac_dismissed = None;
+        }
+    }
+
+    pub fn ac_step(&mut self, down: bool) -> bool {
+        let Some((_, items, cur)) = self.ac_state() else { return false };
+        let n = items.len();
+        self.wstate.ac_idx = if down { (cur + 1) % n } else { (cur + n - 1) % n };
+        true
+    }
+
+    pub fn ac_dismiss(&mut self) -> bool {
+        let Some((trig, _, _)) = self.ac_state() else { return false };
+        self.wstate.ac_dismissed = self.active.clone().map(|a| (a, trig.start));
+        true
+    }
+
+    pub fn ac_accept(&mut self, index: Option<usize>, tx: &mut Tx) -> bool {
+        let Some((trig, items, cur)) = self.ac_state() else { return false };
+        let item = &items[index.unwrap_or(cur).min(items.len() - 1)];
+        let mut end = trig.end;
+        if trig.kind == writer::AcKind::Wiki && self.active_text().get(end..).is_some_and(|rest| rest.starts_with("]]")) {
+            end += 2;
+        }
+        let insert = item.insert.clone();
+        let caret = trig.start + insert.len();
+        if let Some(e) = self.cur_edit_opt() {
+            e.undo_group(|e| {
+                e.set_selection(trig.start, end);
+                e.insert(&insert);
+                e.set_selection(caret, caret);
+            });
+        }
+        self.wstate.ac_idx = 0;
+        self.wstate.ac_dismissed = None;
+        self.after_edit();
+        self.focus_editor(tx);
+        true
+    }
+
     // ---------- Scrolling ----------
 
     /// Holds source line `line` at `min(top padding, view height / 3)` below the view's top
@@ -827,9 +1110,61 @@ impl App {
     }
 }
 
+/// Extracts lowercased tag names from YAML front matter `tags:` / `tag:` fields (inline `[a, b]`,
+/// comma-separated, or bulleted list).
+fn frontmatter_tags(text: &str) -> Vec<String> {
+    if !text.starts_with("---\n") && !text.starts_with("---\r\n") {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut in_list = false;
+    for ln in text.lines().skip(1) {
+        let t = ln.trim();
+        if t == "---" || t == "..." {
+            break;
+        }
+        if in_list {
+            if let Some(rest) = t.strip_prefix("- ") {
+                let tag = rest.trim().trim_matches(|c| c == '"' || c == '\'').trim_start_matches('#').to_lowercase();
+                if !tag.is_empty() && !out.contains(&tag) {
+                    out.push(tag);
+                }
+                continue;
+            }
+            if !t.is_empty() {
+                in_list = false;
+            }
+        }
+        if let Some((k, v)) = ln.split_once(':') {
+            if matches!(k.trim().to_ascii_lowercase().as_str(), "tags" | "tag") {
+                let v = v.trim();
+                if v.is_empty() {
+                    in_list = true;
+                } else {
+                    let inner = v.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(v);
+                    for part in inner.split(',') {
+                        let tag = part.trim().trim_matches(|c| c == '"' || c == '\'').trim_start_matches('#').to_lowercase();
+                        if !tag.is_empty() && !out.contains(&tag) {
+                            out.push(tag);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::find_in;
+    use super::{find_in, frontmatter_tags};
+
+    #[test]
+    fn frontmatter_tags_parses_inline_and_block_lists() {
+        assert_eq!(frontmatter_tags("---\ntags: [design, roadmap]\n---\nBody"), vec!["design", "roadmap"]);
+        assert_eq!(frontmatter_tags("---\ntags:\n  - alpha\n  - #beta\n---\n"), vec!["alpha", "beta"]);
+        assert!(frontmatter_tags("# No front matter\ntags: [x]").is_empty());
+    }
 
     #[test]
     fn wr_116_find_is_literal_and_case_blind() {

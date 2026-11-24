@@ -365,6 +365,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "writer.continue-block" => |s, tx| s.writer_enter(tx),
         "writer.follow-link" => |s, tx| crate::ui::editor::follow_link_at_caret(s, tx),
         "writer.find" => |s, tx| s.writer_find(tx),
+        "writer.replace" => |s, tx| s.writer_replace(tx),
         "writer.find-next" => |s, tx| s.source_step(true, tx),
         "writer.find-previous" => |s, tx| s.source_step(false, tx),
         "writer.paragraph-focus" => |s, tx| s.toggle_paragraph_focus(tx),
