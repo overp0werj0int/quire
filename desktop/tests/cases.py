@@ -206,7 +206,10 @@ def main():
     cases = [Case(p) for p in paths if not a.filters or any(w in p for w in a.filters)]
     failed = 0
     for case in cases:
-        problems = run(case, binary, a.keep)
+        try:
+            problems = run(case, binary, a.keep)
+        except SystemExit as e:
+            problems = [str(e)]
         print("%s  %s  (%s)" % ("FAIL" if problems else "ok  ", case.name, case.says))
         for p in problems:
             print("    " + p.replace("\n", "\n    "))
