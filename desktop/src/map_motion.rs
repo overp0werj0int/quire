@@ -1,7 +1,7 @@
 //! The map's nodes gliding from one layout to the next (MAP-043): after a fold, an edit or a
 //! move, each node goes from where it was drawn to its new place over 180 ms, ease-out cubic,
 //! so a moved branch travels from where it was. Nodes a fold shows grow out of their parent's
-//! right anchor and nodes it hides go back into it. Under reduced motion nothing glides.
+//! fold ring and nodes it hides go back into it. Under reduced motion nothing glides.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -154,7 +154,7 @@ fn pair(old: &Tree, new: &Tree, s: Option<&map::Splice>) -> HashMap<NodeId, usiz
 }
 
 /// The layout `e` of the way from the places in `from` to `laid`'s. A node with no place to
-/// come from grows out of its nearest ancestor's right anchor; a node the layout hides goes
+/// come from grows out of its nearest ancestor's fold ring; a node the layout hides goes
 /// into its nearest shown ancestor's.
 fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn {
     let mut at = laid.at.clone();
@@ -166,13 +166,13 @@ fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn 
             (Some(a), Some(b)) => at[i] = Some(mix(a, b, e)),
             (None, Some(b)) => {
                 if let Some(a) = up(i).find_map(|a| from.get(&t.nodes[a].id)) {
-                    at[i] = Some(mix(anchored(a, b), b, e));
+                    at[i] = Some(mix(b.landed_at(a.branch_start(b.dir)), b, e));
                     fade[i] = e;
                 }
             }
             (Some(a), None) => {
                 if let Some(b) = up(i).find_map(|a| laid.at[a]) {
-                    at[i] = Some(mix(a, anchored(&b, a), e));
+                    at[i] = Some(mix(a, a.landed_at(b.branch_start(a.dir)), e));
                     fade[i] = 1.0 - e;
                     shown.push(i);
                 }
@@ -181,16 +181,10 @@ fn blend(t: &Tree, laid: &Laid, from: &HashMap<NodeId, Place>, e: f32) -> Drawn 
         }
     }
     shown.sort_unstable();
-    Drawn { laid: Rc::new(Laid { at, clear: laid.clear.clone(), shown, bounds: laid.bounds, metrics: laid.metrics }), fade }
-}
-
-/// Place `p` moved so its underline starts where node `a`'s branches leave it: its fold ring.
-fn anchored(a: &Place, p: Place) -> Place {
-    let [x, y] = crate::map_app::branch_start(a);
-    Place { x, y: y - (p.line_y() - p.y), ..p }
+    Drawn { laid: Rc::new(Laid { at, cell: laid.cell.clone(), shown, bounds: laid.bounds, metrics: laid.metrics }), fade }
 }
 
 fn mix(a: Place, b: Place, e: f32) -> Place {
     let m = |x: f32, y: f32| x + (y - x) * e;
-    Place { x: m(a.x, b.x), y: m(a.y, b.y), w: m(a.w, b.w), h: m(a.h, b.h), depth: b.depth }
+    Place { x: m(a.x, b.x), y: m(a.y, b.y), w: m(a.w, b.w), h: m(a.h, b.h), depth: b.depth, dir: b.dir }
 }

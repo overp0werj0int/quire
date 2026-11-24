@@ -590,7 +590,7 @@ impl Cx<'_> {
         let hash_w = rune::text::advance("#", TextStyle::new(hs, 400.0).family(look.mono).lh(line(hs, 1.2))).ceil();
         let right = hash_w + r(look.b * 0.6) + r(look.b * 0.5);
         let font = crate::map_app::chip_font(look.b, look.mono);
-        let d = 2.0 * crate::map_app::FOLD_DOT_R;
+        let d = 2.0 * crate::map_geom::FOLD_DOT_R;
         let h = (font.size + 6.0).max(d);
         let fade = || rune::Curve::linear(0.12);
         let mark = if folded {

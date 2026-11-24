@@ -8,6 +8,7 @@ use rune::{Drag, Phase, Tx};
 
 use crate::app::App;
 use crate::map::{self, Add, NodeId, NodeKind};
+use crate::map_layout::Part;
 
 /// How far the pointer travels before a press on a node becomes a drag, in points.
 const THRESHOLD: f32 = 6.0;
@@ -15,7 +16,7 @@ const THRESHOLD: f32 = 6.0;
 const EDGE: f32 = 36.0;
 /// The fastest that band pans, in points a second.
 const EDGE_SPEED: f32 = 480.0;
-/// The least height of a Before or After band, in screen points.
+/// The least width of a Before or After band, in screen points.
 const BAND: f32 = 8.0;
 
 /// A press on a node, which turns into a move once the pointer travels.
@@ -151,37 +152,18 @@ impl App {
         let t = self.map_tree();
         let l = self.map_laid();
         let band = BAND / self.map_camera().1;
-        let half_gap = l.metrics.sv / 2.0;
         let moved = s..t.nodes[s].end;
-        for &j in &l.shown {
-            let Some(p) = l.at[j] else { continue };
-            if moved.contains(&j) || w[0] < p.x || w[0] > p.right() {
-                continue;
-            }
-            let sibs: Vec<_> = t.nodes[j].parent.map_or(Vec::new(), |q| t.nodes[q].children.iter().filter_map(|&c| l.at[c].map(|p| (c, p))).collect());
-            let k = sibs.iter().position(|&(c, _)| c == j);
-            let above = k.and_then(|k| k.checked_sub(1)).map_or(half_gap, |k| ((p.y - sibs[k].1.bottom()) / 2.0).max(0.0));
-            let below = k.and_then(|k| sibs.get(k + 1)).map_or(half_gap, |q| ((q.1.y - p.bottom()) / 2.0).max(0.0));
-            if w[1] < p.y - above || w[1] > p.bottom() + below {
-                continue;
-            }
+        for &j in l.shown.iter().filter(|j| !moved.contains(j)) {
+            let Some(part) = l.part_at(&t, j, w, band) else { continue };
             let ok = |a: Add| map::zone(&t, s, a).is_ok();
             let (before, child, after) = (ok(Add::Before(j)), ok(Add::Child(j)), ok(Add::After(j)));
-            let h = p.bottom() - p.y;
-            let edge = (h / 4.0).max(band).min(h / 2.0);
-            let mid = p.y + h / 2.0;
-            let at = if child {
-                match () {
-                    _ if before && w[1] < p.y + edge => Add::Before(j),
-                    _ if after && w[1] > p.bottom() - edge => Add::After(j),
-                    _ => Add::Child(j),
-                }
-            } else if before && (w[1] < mid || !after) {
-                Add::Before(j)
-            } else if after {
-                Add::After(j)
-            } else {
-                return None;
+            let at = match part {
+                Part::Lead if child && before => Add::Before(j),
+                Part::Trail if child && after => Add::After(j),
+                _ if child => Add::Child(j),
+                _ if before && (!part.late() || !after) => Add::Before(j),
+                _ if after => Add::After(j),
+                _ => return None,
             };
             return Some(at);
         }

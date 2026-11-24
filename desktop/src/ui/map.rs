@@ -16,8 +16,9 @@ use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Run;
 use crate::map::{Body, Node, NodeKind, ROOT, Tree};
-use crate::map_app::{self, FOLD_DOT_R, FOLD_R, Tier};
-use crate::map_layout::{Laid, Place, line_width};
+use crate::map_app::{self, Tier};
+use crate::map_geom::{Branch, FOLD_DOT_R, FOLD_R, Place, line_width};
+use crate::map_layout::{DropMark, Laid};
 use crate::page;
 use crate::roles::Roles;
 use crate::theme::normal_lh;
@@ -235,7 +236,10 @@ pub(super) fn canvas(v: V) -> El {
     for &i in &nodes {
         let found = query.map(|q| Found { q, cur: cur.filter(|h| h.node == i).map(|h| (h.pid, h.k)) });
         // Hover lights every element under the pointer, so a node under the add toolbar shows none.
-        let covered = bar.and_then(|(_, r, _)| Some((r, l.at[i]?))).is_some_and(|([x, y, w, h], p)| p.x < x + w && x < p.right() && p.y < y + h && y < p.bottom());
+        let covered = bar.and_then(|(_, r, _)| Some((r, l.at[i]?))).is_some_and(|([x, y, w, h], p)| {
+            let [x0, y0, x1, y1] = p.rect();
+            x0 < x + w && x < x1 && y0 < y + h && y < y1
+        });
         let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover: no_hover || covered, plain_label, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
@@ -283,8 +287,7 @@ pub(super) fn canvas(v: V) -> El {
         && let Some(p) = l.at[ROOT]
     {
         let font = map_app::chip_font(b, mono);
-        if t.props > 0 {
-            let (badge, [x, y, _, h]) = map_app::badge(t.props, p, l.metrics.pad_x, font);
+        if let Some((badge, [x, y, _, h])) = (t.props > 0).then(|| map_app::badge(t.props, &l, font)).flatten() {
             world = world.child(
                 rune::row()
                     .key("map-props")
@@ -359,42 +362,31 @@ pub(super) fn canvas(v: V) -> El {
 /// Batches all opaque links at extreme overview zoom (`< PLAIN_LABEL_ZOOM`) into one vector
 /// shape element, slashing hundreds of scene nodes and edges during 10% Fit fold/unfold frames.
 fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
-    let mut segs: Vec<(f32, f32, f32, f32, f32, Color)> = Vec::with_capacity(links.len());
-    let (mut bx0, mut by0, mut bx1, mut by1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-    for &i in links {
-        let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { continue };
-        let lw = line_width(p.depth);
-        let [x0, ya] = map_app::branch_start(&q);
-        let (x1, yb) = (p.x, p.line_y());
-        let color = branch_color(c, t.nodes[i].branch);
-        bx0 = bx0.min(x0.min(x1) - lw);
-        by0 = by0.min(ya.min(yb) - lw);
-        bx1 = bx1.max(x0.max(x1) + lw);
-        by1 = by1.max(ya.max(yb) + lw);
-        segs.push((x0, ya, x1, yb, lw, color));
-    }
+    let segs: Vec<(Branch, Color)> = links.iter().filter_map(|&i| Some((l.branch(t, i)?, branch_color(c, t.nodes[i].branch)))).collect();
     if segs.is_empty() {
         return None;
     }
+    let (mut bx0, mut by0, mut bx1, mut by1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for (b, _) in &segs {
+        bx0 = bx0.min(b.from[0].min(b.to[0]) - b.lw);
+        by0 = by0.min(b.from[1].min(b.to[1]) - b.lw);
+        bx1 = bx1.max(b.from[0].max(b.to[0]) + b.lw);
+        by1 = by1.max(b.from[1].max(b.to[1]) + b.lw);
+    }
     let w = (bx1 - bx0).max(1.0);
     let h = (by1 - by0).max(1.0);
+    let rel = move |[x, y]: [f32; 2]| [x - bx0, y - by0];
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (w.to_bits(), h.to_bits(), segs.len()).hash(&mut hash);
-    for &(x0, ya, x1, yb, lw, color) in &segs {
-        ((x0 - bx0).to_bits(), (ya - by0).to_bits(), (x1 - bx0).to_bits(), (yb - by0).to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
+    for (b, color) in &segs {
+        (b.dir, rel(b.from).map(f32::to_bits), rel(b.to).map(f32::to_bits), b.lw.to_bits(), color_bits(*color)).hash(&mut hash);
     }
     let shape_el = rune::memo("map-links-batch".to_string(), hash.finish(), move || {
         let mut shape = Shape::new();
-        for (x0, ya, x1, yb, lw, color) in segs {
-            let (lx0, ly0, lx1, ly1) = (x0 - bx0, ya - by0, x1 - bx0, yb - by0);
-            let path = if (ly0 - ly1).abs() < 0.5 {
-                let y = (ly0 + ly1) / 2.0;
-                Path::new().move_to([lx0, y]).line_to([lx1, y])
-            } else {
-                let mid = (lx0 + lx1) / 2.0;
-                Path::new().move_to([lx0, ly0]).cubic_to([mid, ly0], [mid, ly1], [lx1, ly1])
-            };
-            shape = shape.stroke_path(&path, lw, LineCap::Round, color);
+        for (b, color) in segs {
+            let [a, c1, c2, z] = b.curve().map(rel);
+            let path = if b.flat() { Path::new().move_to(a).line_to(z) } else { Path::new().move_to(a).cubic_to(c1, c2, z) };
+            shape = shape.stroke_path(&path, b.lw, LineCap::Round, color);
         }
         rune::canvas(shape).size(w, h).inert()
     });
@@ -404,32 +396,24 @@ fn links_batch(t: &Tree, l: &Laid, links: &[usize], c: &Roles) -> Option<El> {
 /// The branch into node `i` and, unless `plain` (where the node draws its own), the node's
 /// underline as its last stroke, so the curve runs on into the line with nothing to meet.
 fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32, plain: bool) -> El {
-    let (Some(p), Some(q)) = (l.at[i], t.nodes[i].parent.and_then(|q| l.at[q])) else { return el() };
-    let lw = line_width(p.depth);
-    let [x0, ya] = map_app::branch_start(&q);
-    let (x1, yb) = (p.x, p.line_y());
+    let Some(b) = l.branch(t, i) else { return el() };
+    let end = if plain { None } else { b.end };
+    let [x0, y0, x1, y1] = b.bbox(end);
+    let (w, h) = (x1 - x0, y1 - y0);
     let tail = key_tail(&node_key(t, i)).to_string();
-    let key = format!("map-link:{tail}");
     let color = branch_color(c, t.nodes[i].branch);
-    let under = if plain { 0.0 } else { p.w };
-    let w = (x1 - x0).max(1.0) + under;
-    let top = ya.min(yb) - lw;
-    let h = (ya.max(yb) - top + lw).max(1.0);
-    let (y0, y1) = (ya - top, yb - top);
-    // Memoize the stroked Bézier shape by relative geometry `(w, y0, y1, lw, color)` so rigid
-    // subtree translations during fold/unfold relayout glides never re-tessellate unchanged links.
-    let mut hash = std::collections::hash_map::DefaultHasher::new();
-    (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), under.to_bits(), color_bits(color)).hash(&mut hash);
-    let shape = rune::memo(format!("map-link-s:{tail}"), hash.finish(), move || {
-        let z = [w - under, y1];
-        let mut shape = tapered([0.0, y0], z, lw, color);
-        if under > 0.0 {
-            shape = shape.line(z, [w, y1], lw, LineCap::Butt, color);
+    // Memoize the stroked Bézier shape by its geometry from its own corner, so rigid subtree
+    // translations during fold/unfold relayout glides never re-tessellate unchanged links.
+    let shape = rune::memo(format!("map-link-s:{tail}"), b.hash(end, color_bits(color)), move || {
+        let rel = |[x, y]: [f32; 2]| [x - x0, y - y0];
+        let mut shape = tapered(b.curve().map(rel), b.lw, color);
+        if let Some(e) = end {
+            shape = shape.line(rel(b.to), rel(e), b.lw, LineCap::Butt, color);
         }
         rune::canvas(shape).size(w, h).inert()
     });
-    el().key(key)
-        .pin(Some(x0 + W), Some(top + W), None, None)
+    el().key(format!("map-link:{tail}"))
+        .pin(Some(x0 + W), Some(y0 + W), None, None)
         .size(w, h)
         .opacity(alpha)
         .inert()
@@ -463,41 +447,45 @@ fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
 /// chord straying from the curve by under a 400th of its length.
 const BRANCH_TURN: f32 = 2.0 * std::f32::consts::PI / 180.0;
 
-/// A branch from `a` (its parent's fold dot) to `z` (its node's underline): the link's Bézier,
-/// 1 point wide at the dot and widening to `lw` by halfway, so the branches fanning out of one
-/// dot don't merge into a blot. Drawn as strokes, shorter where it bends (`BRANCH_TURN`), each
+/// A branch along the cubic `[a, c1, c2, z]`, from its parent's fold ring to its node: 1 point
+/// wide at the ring and widening to `lw` by halfway, so the branches fanning out of one ring
+/// don't merge into a blot. Drawn as strokes, shorter where it bends (`BRANCH_TURN`), each
 /// widening from the curve's width where it starts to its width where it ends (`Shape::taper`)
 /// and starting where the last ended, so Rune joins them into one stroke with smooth edges: a
 /// filled outline cut into thin triangles is stepped along its edges.
-fn tapered(a: [f32; 2], z: [f32; 2], lw: f32, color: Color) -> Shape {
-    let mid = (a[0] + z[0]) / 2.0;
-    let (c1, c2) = ([mid, a[1]], [mid, z[1]]);
+fn tapered([a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
     let at = |t: f32| {
         let u = 1.0 - t;
         let f = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
         [f(0), f(1)]
     };
-    let heading = |t: f32| {
+    let tangent = |t: f32| {
         let u = 1.0 - t;
         let f = |i: usize| 3.0 * u * u * (c1[i] - a[i]) + 6.0 * u * t * (c2[i] - c1[i]) + 3.0 * t * t * (z[i] - c2[i]);
-        f(1).atan2(f(0))
+        [f(0), f(1)]
+    };
+    // The angle between two tangents, which a difference of headings gets wrong where they
+    // wrap, on a curve running left.
+    let turn = |t0: f32, t1: f32| {
+        let ([x0, y0], [x1, y1]) = (tangent(t0), tangent(t1));
+        (x0 * y1 - y0 * x1).atan2(x0 * x1 + y0 * y1).abs()
     };
     let width = |t: f32| {
         let e = (t / 0.5).min(1.0);
         1.0 + (lw - 1.0).max(0.0) * e * e * (3.0 - 2.0 * e)
     };
-    fn split(t0: f32, t1: f32, depth: u32, heading: &dyn Fn(f32) -> f32, out: &mut Vec<f32>) {
-        if depth < 6 && (heading(t1) - heading(t0)).abs() > BRANCH_TURN {
+    fn split(t0: f32, t1: f32, depth: u32, turn: &dyn Fn(f32, f32) -> f32, out: &mut Vec<f32>) {
+        if depth < 6 && turn(t0, t1) > BRANCH_TURN {
             let m = (t0 + t1) / 2.0;
-            split(t0, m, depth + 1, heading, out);
-            split(m, t1, depth + 1, heading, out);
+            split(t0, m, depth + 1, turn, out);
+            split(m, t1, depth + 1, turn, out);
         } else {
             out.push(t1);
         }
     }
     let mut ts = vec![0.0];
     for k in 0..16 {
-        split(k as f32 / 16.0, (k + 1) as f32 / 16.0, 0, &heading, &mut ts);
+        split(k as f32 / 16.0, (k + 1) as f32 / 16.0, 0, &turn, &mut ts);
     }
     ts.windows(2).fold(Shape::new(), |shape, t| shape.taper([at(t[0]), at(t[1])], width(t[0]), width(t[1]), LineCap::Round, color))
 }
@@ -625,8 +613,9 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
-    let clear = l.clear[i];
-    let sh = l.metrics.sh;
+    // The room the task box's target may take, from the node's own corner.
+    let cell = l.cell[i];
+    let room_at = [cell[0] - p.x, cell[1] - p.y, cell[2] - p.x, cell[3] - p.y];
     let lw = line_width(p.depth);
     let tail = key_tail(&key).to_string();
     // Below `PLAIN_LABEL_ZOOM` (0.20×, where rows are <= 5 px tall), mount text nodes as a
@@ -658,27 +647,26 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             e = e.expanded(!folded);
         }
         return e
-            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, true, true)))
+            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, room, target, room_at, c, true, true)))
             .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
             .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
             .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_node_drag(i, d, tx));
     }
     let copied = matches!(&n.body, Body::Card(bl) if super::preview::code::copied(cx, bl.lines.start));
-    let rel_clear = [clear[0] - p.y, clear[1] - p.y];
     // Memoize the node's inner body (task box, rich label / card, underline) independently of
     // `(p.x, p.y, alpha)` so rigid translations during fold/unfold relayout glides hit the cache
     // on every unchanged branch without rebuilding labels, cards or task controls.
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (i, n.src, n.depth, selected, editing, b.to_bits(), room.to_bits(), [p.w, p.h].map(f32::to_bits), color_bits(color), color_bits(branch)).hash(&mut h);
     let pics = if n.pictures() { cx.v.s.images.epoch.get() } else { 0 };
-    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
-    t.nodes[i].parent.and_then(|q| l.at[q]).is_none().hash(&mut h);
+    (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), room_at.map(f32::to_bits), found).hash(&mut h);
+    // A node whose branch runs on along its underline leaves the line to it (`link`).
+    let underlined = l.branch(t, i).is_none_or(|b| b.end.is_none());
+    (p.dir, underlined).hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
     let grow = if selected && !lite { glass_k(p.w, p.h) } else { 1.0 };
-    // A node with a branch into it has its underline drawn by the branch (`link`).
-    let root = t.nodes[i].parent.and_then(|q| l.at[q]).is_none();
     let body = rune::memo(body_key.clone(), h.finish(), move || {
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));
@@ -706,13 +694,13 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h)
             .scale(grow)
-            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, lite, plain_label)))
+            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, room, target, room_at, c, lite, plain_label)))
             .children(label_el);
         el().key(body_key)
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h + lw)
             .child(content)
-            .children(root.then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
+            .children(underlined.then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
     });
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)
@@ -739,19 +727,20 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
 }
 
 /// A task's box left of its label, centred on the first line, in a target `target` map points
-/// clamped to its non-overlapping row slot and clear of its label text (MAP-053, MAP-073).
+/// clamped to `cell`, its node's hit cell from the node's corner, and clear of its label text
+/// (MAP-053, MAP-073).
 #[allow(clippy::too_many_arguments)]
-fn task_box(n: &crate::map::Node, i: usize, p: Place, b: f32, pad_x: f32, room: f32, sh: f32, target: f32, clear: [f32; 2], c: &Roles, lite: bool, plain_label: bool) -> El {
+fn task_box(n: &crate::map::Node, i: usize, b: f32, pad_x: f32, room: f32, target: f32, cell: [f32; 4], c: &Roles, lite: bool, plain_label: bool) -> El {
     let done = matches!(n.kind, NodeKind::Item { task: crate::blocks::Task::Done, .. });
     let bx = crate::page::r(b * 0.9);
     let lh = crate::page::line(b, 1.45);
     let hit = target.max(bx);
     let (bx_x, bx_y) = (pad_x, (lh - bx) / 2.0);
     let (vcx, vcy) = (bx_x + bx / 2.0, lh / 2.0);
-    let x0 = (vcx - hit / 2.0).max(-sh / 2.0).min(bx_x);
+    let x0 = (vcx - hit / 2.0).max(cell[0]).min(bx_x);
     let x1 = (vcx + hit / 2.0).min(pad_x + room).max(bx_x + bx);
-    let y0 = (vcy - hit / 2.0).max(clear[0] - p.y).min(bx_y);
-    let y1 = (vcy + hit / 2.0).min(clear[1] - p.y).max(bx_y + bx);
+    let y0 = (vcy - hit / 2.0).max(cell[1]).min(bx_y);
+    let y1 = (vcy + hit / 2.0).min(cell[3]).max(bx_y + bx);
     let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
     let mut bx_el = el().size(bx, bx).pin(Some(bx_x - x0), Some(bx_y - y0), None, None);
     if !plain_label {
@@ -812,16 +801,11 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
     let branch = branch_color(c, n.branch);
-    // The ring sits beside the middle of the node's right side; a folded node's `+N` badge
+    // The ring sits beside the middle of the node's growing side; a folded node's `+N` badge
     // takes its place.
-    let [cx, cy] = map_app::fold_dot(&p);
-    let clear = l.clear[i];
-    // Never let the fold hit box reach far over the node's own label text, nor cross into
-    // adjacent rows, the next column's task boxes, or a folded node's `+N` pill.
-    let x0 = (cx - hit / 2.0).max(p.right() - FOLD_R);
-    let x1 = (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_DOT_R);
-    let y0 = (cy - hit / 2.0).max(clear[0]).min(cy - FOLD_DOT_R);
-    let y1 = (cy + hit / 2.0).min(clear[1]).max(cy + FOLD_DOT_R);
+    let Some(d) = l.rings(i).next() else { return Vec::new() };
+    let [cx, cy] = p.ring(d);
+    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return Vec::new() };
     let toggle = move |s: &mut App, tx: &mut Tx| {
         let all = tx.mods().cmd;
         s.map_toggle(i, all, tx);
@@ -853,7 +837,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
             let mut hash = std::collections::hash_map::DefaultHasher::new();
-            (fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch)).hash(&mut hash);
+            (d, fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch)).hash(&mut hash);
             let vis_key = format!("map-fold-v:{tail}");
             let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
                 let r = FOLD_DOT_R;
@@ -892,7 +876,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     if folded {
         let hidden = n.end - i - 1;
         let font = map_app::chip_font(b, mono);
-        let (pill, [x, y, w, h]) = map_app::pill(hidden, p, font);
+        let (pill, [x, y, w, h]) = map_app::pill(hidden, p, d, font);
         out.push(
             el().key(format!("map-pill:{tail}"))
                 .size(w, h)
@@ -1013,49 +997,26 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
 /// the zone and the target's key.
 fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> El {
     use crate::map::Add;
-    let j = at.node();
-    let Some(p) = l.at[j] else { return el() };
+    let Some(mark) = l.drop_mark(at, zoom.max(map_app::ZOOM_MIN)) else { return el() };
     let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
-    let z = zoom.max(map_app::ZOOM_MIN);
-    let (zone, e) = match at {
-        Add::Before(_) | Add::After(_) => {
-            let desired = (2.5 / z).clamp(3.0, 20.0);
-            let clear = l.clear[j];
-            let (name, bar_h, y) = if matches!(at, Add::Before(_)) {
-                if clear[0].is_finite() {
-                    let half_gap = (p.y - clear[0]).max(0.0);
-                    let bar_h = desired.min((2.0 * half_gap - 2.0).max(2.5));
-                    let cy = p.y - half_gap.min(bar_h / 2.0 + 3.0);
-                    ("Before", bar_h, cy - bar_h / 2.0)
-                } else {
-                    ("Before", desired, p.y - desired - 2.0)
-                }
-            } else if clear[1].is_finite() {
-                let half_gap = (clear[1] - p.bottom()).max(0.0);
-                let bar_h = desired.min((2.0 * half_gap - 2.0).max(2.5));
-                let cy = p.bottom() + half_gap.min(bar_h / 2.0 + 3.0);
-                ("After", bar_h, cy - bar_h / 2.0)
-            } else {
-                ("After", desired, p.bottom() + 2.0)
-            };
-            (name, el().pin(Some(p.x + W), Some(y + W), None, None).size(p.w, bar_h).radius(bar_h / 2.0).fill(accent))
-        }
-        Add::Child(_) => {
-            let bw = (2.0 / z).clamp(2.0, 16.0);
-            let pad = 3.0 + (bw - 2.0);
+    let e = match mark {
+        DropMark::Bar([x, y, w, h]) => el().pin(Some(x + W), Some(y + W), None, None).size(w, h).radius(w.min(h) / 2.0).fill(accent),
+        DropMark::Child { frame: [x, y, w, h], stub: [sx, sy, sw, sh], edge } => {
             let wash = accent.alpha(if c.bg.r < 0.2 { 0.18 } else { 0.14 });
-            let stub = el().pin(Some(p.w + 2.0 * pad), Some(p.line_y() - p.y + pad - bw / 2.0), None, None).size(24.0, bw).fill(accent);
-            let e = el()
-                .pin(Some(p.x - pad + W), Some(p.y - pad + W), None, None)
-                .size(p.w + 2.0 * pad, p.bottom() - p.y + 2.0 * pad)
-                .radius(4.0 + (bw - 2.0))
+            el().pin(Some(x + W), Some(y + W), None, None)
+                .size(w, h)
+                .radius(4.0 + (edge - 2.0))
                 .fill(wash)
-                .border(bw, accent)
-                .child(stub);
-            ("Child", e)
+                .border(edge, accent)
+                .child(el().pin(Some(sx), Some(sy), None, None).size(sw, sh).fill(accent))
         }
     };
-    e.key("map-drop").label(format!("{zone} {}", node_key(t, j))).inert()
+    let zone = match at {
+        Add::Before(_) => "Before",
+        Add::After(_) => "After",
+        Add::Child(_) => "Child",
+    };
+    e.key("map-drop").label(format!("{zone} {}", node_key(t, at.node()))).inert()
 }
 
 /// Quiet bottom-right canvas zoom pill (`map-zoom-hud`, MAP-064): `−`, clickable tabular-mono

@@ -23,6 +23,7 @@ mod map;
 mod map_app;
 mod map_drag;
 mod map_find;
+mod map_geom;
 mod map_layout;
 mod map_motion;
 mod map_throw;

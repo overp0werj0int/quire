@@ -16,6 +16,7 @@ use rune::{Family, Live, TextEdit, TextStyle, Tx};
 use crate::app::{App, Mode};
 use crate::blocks::Link;
 use crate::map::{self, Body, NodeId, NodeKind, ROOT, Tree};
+use crate::map_geom::{Dir, FOLD_DOT_R, FOLD_R};
 use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
@@ -52,27 +53,6 @@ pub fn chip_compact_side(z: f32) -> Option<f32> {
 const MARGIN: f32 = 40.0;
 /// Camera glides (MAP-043).
 const GLIDE: f64 = 0.2;
-/// Room right of a node for its fold circle and count pill, in world points.
-pub const FOLD_ROOM: f32 = 64.0;
-/// A fold circle's radius, at a branching node's right anchor (MAP-041).
-pub const FOLD_R: f32 = 6.0;
-/// An expanded node's fold dot: a ring beside the middle of the node's right side, just outside
-/// its outline, that its branches leave from (MAP-041). Its radius, and the gap between the
-/// node's right edge and the ring, wide enough to clear the selection outline.
-pub const FOLD_DOT_R: f32 = 7.0;
-const FOLD_DOT_GAP: f32 = 6.0;
-
-/// The centre of node `p`'s fold dot.
-pub fn fold_dot(p: &crate::map_layout::Place) -> [f32; 2] {
-    [p.right() + FOLD_DOT_GAP + FOLD_DOT_R, p.y + p.h / 2.0]
-}
-
-/// Where node `q`'s branches start: the right edge of its fold dot.
-pub fn branch_start(q: &crate::map_layout::Place) -> [f32; 2] {
-    let [x, y] = fold_dot(q);
-    [x + FOLD_DOT_R, y]
-}
-
 /// One tab's map: kept for the session, dropped with the tab (MAP-044).
 pub struct MapView {
     pub pan: [f32; 2],
@@ -276,25 +256,24 @@ pub fn chip_font(b: f32, mono: Family) -> TextStyle {
     crate::ui::styles::note(mono, size, crate::theme::normal_lh(mono, size))
 }
 
-/// The Properties badge under the root's box `p` (MAP-006): its text and `[x, y, w, h]`.
-/// Right-aligned under the root clear of its fold circle, with a 24 pt vertical hit target.
-pub fn badge(props: usize, p: map_layout::Place, pad_x: f32, font: TextStyle) -> (String, [f32; 4]) {
+/// The Properties badge by the root (MAP-006): its text and `[x, y, w, h]`, with a 24 pt
+/// vertical hit target. None while the root has no place.
+pub fn badge(props: usize, l: &Laid, font: TextStyle) -> Option<(String, [f32; 4])> {
     let text = format!("Properties · {props}");
     let w = rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * BADGE_PAD;
     let h = font.line_height.max(24.0);
-    (text, [p.right() - pad_x.max(FOLD_R + 2.0) - w, p.bottom() + 6.0, w, h])
+    let at = l.badge_box([w, h], l.metrics.pad_x)?;
+    Some((text, at))
 }
 
 /// Horizontal padding inside the Properties badge pill.
 pub const BADGE_PAD: f32 = 6.0;
 
-/// A folded node's `+N` badge in its fold ring's place, for box `p` (MAP-041): its text and
-/// `[x, y, w, h]`. It starts where the ring's left edge would be and is centred on the ring's
-/// height, at least as tall and as wide as the ring.
-pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f32; 4]) {
-    let (text, [w, h]) = pill_size(hidden, font);
-    let [_, cy] = fold_dot(&p);
-    (text, [p.right() + FOLD_DOT_GAP, cy - h / 2.0, w, h])
+/// A folded node's `+N` badge in its fold ring's place on side `d`, for box `p` (MAP-041): its
+/// text and `[x, y, w, h]`, at least as tall and as wide as the ring.
+pub fn pill(hidden: usize, p: map_layout::Place, d: Dir, font: TextStyle) -> (String, [f32; 4]) {
+    let (text, size) = pill_size(hidden, font);
+    (text, p.pill_box(d, size))
 }
 
 fn pill_size(hidden: usize, font: TextStyle) -> (String, [f32; 2]) {
@@ -480,10 +459,7 @@ impl App {
                 Some((fi, w, h)) if fi == i => [w, h],
                 _ => size(i),
             },
-            |i| {
-                let [w, h] = pill_size(t.nodes[i].end - i - 1, chip).1;
-                [FOLD_DOT_GAP + w + 4.0, h / 2.0]
-            },
+            |i| pill_size(t.nodes[i].end - i - 1, chip).1,
         ));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
         laid
@@ -539,18 +515,15 @@ impl App {
         let t = self.map_tree();
         let l = self.map_drawn().laid.clone();
         let [x0, y0, x1, y1] = self.map_region();
-        let meets = |a0: f32, b0: f32, a1: f32, b1: f32| a1 >= x0 && a0 <= x1 && b1 >= y0 && b0 <= y1;
+        let meets = |[a0, b0, a1, b1]: [f32; 4]| a1 >= x0 && a0 <= x1 && b1 >= y0 && b0 <= y1;
         let mut nodes = Vec::new();
         let mut links = Vec::new();
         for &i in &l.shown {
             let Some(p) = l.at[i] else { continue };
-            if meets(p.x, p.y, p.right() + FOLD_ROOM, p.bottom()) {
+            if meets(p.reach()) {
                 nodes.push(i);
             }
-            if let Some(q) = t.nodes[i].parent.and_then(|q| l.at[q])
-                && let [qx, qy] = branch_start(&q)
-                && meets(qx, p.line_y().min(qy), p.right(), p.line_y().max(qy))
-            {
+            if l.branch(&t, i).is_some_and(|b| meets(b.bbox(b.end))) {
                 links.push(i);
             }
         }
@@ -729,16 +702,16 @@ impl App {
         let mut boxes = Vec::new();
         for &i in l.shown.iter().filter(|&&i| !t.nodes[i].children.is_empty()) {
             let Some(p) = l.at[i] else { continue };
-            let [cx, cy] = fold_dot(&p);
-            boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
-            if folded(i) {
-                boxes.push(pill(t.nodes[i].end - i - 1, p, font).1);
+            for d in l.rings(i) {
+                let [cx, cy] = p.ring(d);
+                boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
+                if folded(i) {
+                    boxes.push(pill(t.nodes[i].end - i - 1, p, d, font).1);
+                }
             }
         }
-        if t.props > 0
-            && let Some(p) = l.at[ROOT]
-        {
-            boxes.push(badge(t.props, p, l.metrics.pad_x, font).1);
+        if t.props > 0 {
+            boxes.extend(badge(t.props, &l, font).map(|b| b.1));
         }
         boxes.into_iter().fold(l.bounds, |[x0, y0, x1, y1], [x, y, w, h]| [x0.min(x), y0.min(y), x1.max(x + w), y1.max(y + h)])
     }
@@ -840,15 +813,13 @@ impl App {
         ([(x0 + x1) / 2.0 - (p.x + p.w / 2.0) * z, (y0 + y1) / 2.0 - (p.y + p.h / 2.0) * z], z)
     }
 
-    /// The camera at zoom `z` with node `i` anchored near the left edge of the free canvas and
-    /// vertically centred, so left-to-right branches fill the viewport (MAP-065).
-    fn left_anchored_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
-        let l = self.map_laid();
-        let [fx0, fy0, fx1, fy1] = self.map_free();
-        let Some(p) = l.at[i] else { return self.map_camera() };
-        let (fw, fh) = (fx1 - fx0, fy1 - fy0);
-        let inset = (fw * 0.07).clamp(32.0, 56.0);
-        ([fx0 + inset - p.x * z, fy0 + fh / 2.0 - (p.y + p.h / 2.0) * z], z)
+    /// The camera at zoom `z` with node `i` near the edge of the free canvas its branches grow
+    /// away from, so they fill the viewport (MAP-065).
+    fn opening_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
+        match self.map_laid().opening_pan(i, self.map_free(), z) {
+            Some(pan) => (pan, z),
+            None => self.map_camera(),
+        }
     }
 
     /// `c`: the selected node to the middle at the current zoom (MAP-036).
@@ -946,7 +917,10 @@ impl App {
     fn finish_anchored_fold(&mut self, anchor: usize, old_p: Option<map_layout::Place>, reveal_clipped: bool, tx: &mut Tx) {
         let new_p = self.map_laid().at[anchor];
         let shift = match (old_p, new_p) {
-            (Some(a), Some(b)) => [b.right() - a.right(), b.line_y() - a.line_y()],
+            (Some(a), Some(b)) => {
+                let ([ax, ay], [bx, by]) = (a.ring(a.dir), b.ring(b.dir));
+                [bx - ax, by - ay]
+            }
             _ => [0.0, 0.0],
         };
         if shift[0] != 0.0 || shift[1] != 0.0 {
@@ -1136,8 +1110,8 @@ impl App {
         due
     }
 
-    /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 left-anchored
-    /// on the selected node when it has children so left-to-right branches stay in view, or
+    /// A tab's first camera: the whole map when it fits at 0.7 or more, else 1.0 with the
+    /// selected node at the edge its branches grow away from when it has children, or
     /// centred for a lone root or leaf target (MAP-065, MAP-071).
     fn place_camera(&mut self) {
         let fit = self.fit_camera();
@@ -1151,7 +1125,7 @@ impl App {
         } else if alone || leaf {
             self.centred_on(sel, 1.0)
         } else {
-            self.left_anchored_on(sel, 1.0)
+            self.opening_on(sel, 1.0)
         };
         self.set_camera(cam.0, cam.1);
         if let Some(v) = self.map_view_mut() {
