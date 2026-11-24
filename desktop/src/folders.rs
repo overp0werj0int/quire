@@ -29,7 +29,7 @@ pub struct Deleted {
     pub name: String,
     /// When it went.
     pub at: f64,
-    rel: String,
+    pub(crate) rel: String,
     folder: bool,
     notes: Vec<(String, String, Option<u128>)>,
     folders: Vec<String>,

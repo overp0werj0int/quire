@@ -241,6 +241,7 @@ pub enum TrashEvent {
     },
     Restored {
         root: PathBuf,
+        original_rel: String,
         label: String,
         files: Vec<(String, String, u128)>,
         folders: Vec<String>,
@@ -252,10 +253,15 @@ pub enum TrashEvent {
     },
 }
 
-/// Derives a safe vault-relative restore path from an encoded `.trash` entry name (`/` -> ` - `).
-pub fn original_rel_from_trash(name: &str) -> String {
-    let raw = name.replace(" - ", "/");
-    let parts: Vec<&str> = raw.split('/').filter(|p| !p.is_empty() && *p != "." && *p != "..").collect();
+const TRASH_META: &str = ".meta.json";
+
+/// Sanitizes a vault-relative path so restore never escapes the vault root.
+fn sanitize_rel(raw: &str) -> String {
+    let norm = raw.replace('\\', "/");
+    let parts: Vec<&str> = norm
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != "." && *p != "..")
+        .collect();
     if parts.is_empty() {
         "Restored.md".to_string()
     } else {
@@ -263,9 +269,58 @@ pub fn original_rel_from_trash(name: &str) -> String {
     }
 }
 
-/// Picks a non-colliding vault-relative destination path for restoring `candidate` into `root`.
-fn safe_restore_rel(root: &Path, candidate: &str, is_dir: bool) -> String {
-    let base = original_rel_from_trash(candidate);
+fn read_trash_meta(root: &Path) -> BTreeMap<String, String> {
+    let path = root.join(".trash").join(TRASH_META);
+    let Ok(bytes) = std::fs::read(&path) else { return BTreeMap::new() };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+fn write_trash_meta(root: &Path, meta: &BTreeMap<String, String>) {
+    let path = root.join(".trash").join(TRASH_META);
+    if meta.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return;
+    }
+    if let Ok(bytes) = serde_json::to_vec(meta) {
+        let _ = write_atomic(&path, &bytes);
+    }
+}
+
+fn record_trash_meta(root: &Path, trash_name: &str, original_rel: &str) {
+    let mut meta = read_trash_meta(root);
+    meta.insert(trash_name.to_string(), sanitize_rel(original_rel));
+    write_trash_meta(root, &meta);
+}
+
+fn remove_trash_meta(root: &Path, trash_name: &str) {
+    let mut meta = read_trash_meta(root);
+    if meta.remove(trash_name).is_some() {
+        write_trash_meta(root, &meta);
+    }
+}
+
+/// Resolves the vault-relative restore path for a `.trash` entry: exact manifest lookup first,
+/// else legacy fallback that only splits `" - "` prefixes matching an existing vault folder.
+pub fn original_rel_from_trash(root: &Path, meta: &BTreeMap<String, String>, name: &str) -> String {
+    if let Some(rel) = meta.get(name) {
+        return sanitize_rel(rel);
+    }
+    let parts: Vec<&str> = name.split(" - ").collect();
+    if parts.len() > 1 {
+        for split_at in (1..parts.len()).rev() {
+            let dir_rel = sanitize_rel(&parts[..split_at].join("/"));
+            if !dir_rel.is_empty() && root.join(&dir_rel).is_dir() {
+                let tail = parts[split_at..].join(" - ");
+                return sanitize_rel(&format!("{dir_rel}/{tail}"));
+            }
+        }
+    }
+    sanitize_rel(name)
+}
+
+/// Picks a non-colliding vault-relative destination path for restoring `original_rel` into `root`.
+fn safe_restore_rel(root: &Path, original_rel: &str, is_dir: bool) -> String {
+    let base = sanitize_rel(original_rel);
     if !root.join(&base).exists() {
         return base;
     }
@@ -294,6 +349,7 @@ fn safe_restore_rel(root: &Path, candidate: &str, is_dir: bool) -> String {
 pub fn list_trash(root: &Path) -> Vec<TrashEntry> {
     let dir = root.join(".trash");
     let Ok(rd) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let meta = read_trash_meta(root);
     let mut out = Vec::new();
     for entry in rd.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -311,7 +367,7 @@ pub fn list_trash(root: &Path) -> Vec<TrashEntry> {
             .and_then(|m| m.modified().or_else(|_| m.created()).ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map_or(0, |d| d.as_nanos());
-        let original_rel = original_rel_from_trash(&name);
+        let original_rel = original_rel_from_trash(root, &meta, &name);
         out.push(TrashEntry { name, original_rel, is_dir, deleted_at });
     }
     out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
@@ -540,12 +596,15 @@ fn restore_from_trash(root: &Path, trash_name: &str, trash: &mut Trash) -> std::
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "it is no longer in .trash"));
     }
     let is_dir = src.is_dir();
-    let dest_rel = safe_restore_rel(root, trash_name, is_dir);
+    let meta = read_trash_meta(root);
+    let original_rel = original_rel_from_trash(root, &meta, trash_name);
+    let dest_rel = safe_restore_rel(root, &original_rel, is_dir);
     let dst = root.join(&dest_rel);
     if let Some(d) = dst.parent() {
         std::fs::create_dir_all(d)?;
     }
     std::fs::rename(&src, &dst)?;
+    remove_trash_meta(root, trash_name);
     trash.retain(|_, v| v != &src);
     let (files, folders) = collect_restored(root, &dest_rel, is_dir);
     let open_rel = files.first().map(|(p, _, _)| p.clone());
@@ -555,7 +614,7 @@ fn restore_from_trash(root: &Path, trash_name: &str, trash: &mut Trash) -> std::
         crate::md::base(&dest_rel).to_string()
     };
     let entries = list_trash(root);
-    Ok(TrashEvent::Restored { root: root.to_path_buf(), label, files, folders, open_rel, entries })
+    Ok(TrashEvent::Restored { root: root.to_path_buf(), original_rel, label, files, folders, open_rel, entries })
 }
 
 fn empty_trash_dir(root: &Path, trash: &mut Trash) -> std::io::Result<()> {
@@ -635,6 +694,9 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
             let (stem, ext) = name.rsplit_once('.').map_or((name.as_str(), "md"), |(s, e)| (s, e));
             let dst = free(&root.join(".trash"), &name, |n| format!("{stem} {n}.{ext}"))?;
             std::fs::rename(&src, &dst)?;
+            if let Some(tn) = dst.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                record_trash_meta(root, &tn, rel);
+            }
             trash.insert(src, dst);
             Ok(())
         }
@@ -646,6 +708,9 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
             let name = rel.replace('/', " - ");
             let dst = free(&root.join(".trash"), &name, |n| format!("{name} {n}"))?;
             std::fs::rename(&src, &dst)?;
+            if let Some(tn) = dst.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                record_trash_meta(root, &tn, rel);
+            }
             trash.insert(src, dst);
             Ok(())
         }
@@ -660,7 +725,11 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
             if let Some(d) = dst.parent() {
                 std::fs::create_dir_all(d)?;
             }
-            std::fs::rename(src, dst)
+            std::fs::rename(&src, dst)?;
+            if let Some(tn) = src.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                remove_trash_meta(root, &tn);
+            }
+            Ok(())
         }
         Op::Mkdir { root, rel } => std::fs::create_dir_all(root.join(rel)),
         Op::SaveState(p) => crate::store::save(p),
@@ -782,6 +851,90 @@ mod tests {
         assert_eq!(list_trash(&root).len(), 1);
         empty_trash_dir(&root, &mut trash).unwrap();
         assert!(list_trash(&root).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn trash_preserves_dash_filenames_and_nested_paths() {
+        let root = std::env::temp_dir().join(format!("quire-trash-dash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Sub")).unwrap();
+        std::fs::create_dir_all(root.join("Folder/Sub")).unwrap();
+        std::fs::write(root.join("2026 - Plan.md"), "# Root Plan\n").unwrap();
+        std::fs::write(root.join("Sub/2026 - Plan.md"), "# Sub Plan\n").unwrap();
+        std::fs::write(root.join("Folder/Sub/Note.md"), "# Deep Note\n").unwrap();
+
+        let mut trash = Trash::new();
+        apply(&Op::Delete { root: root.clone(), rel: "2026 - Plan.md".into() }, &mut trash).unwrap();
+        apply(&Op::Delete { root: root.clone(), rel: "Sub/2026 - Plan.md".into() }, &mut trash).unwrap();
+        apply(&Op::Delete { root: root.clone(), rel: "Folder/Sub/Note.md".into() }, &mut trash).unwrap();
+
+        let entries = list_trash(&root);
+        assert_eq!(entries.len(), 3, ".meta.json must stay hidden from trash listing");
+        let root_e = entries.iter().find(|e| e.original_rel == "2026 - Plan.md").expect("root dash entry");
+        let sub_e = entries.iter().find(|e| e.original_rel == "Sub/2026 - Plan.md").expect("nested dash entry");
+        let deep_e = entries.iter().find(|e| e.original_rel == "Folder/Sub/Note.md").expect("deep nested entry");
+
+        // Restore root dash note -> stays at root, never creates `2026/Plan.md`.
+        let ev1 = restore_from_trash(&root, &root_e.name, &mut trash).unwrap();
+        assert!(matches!(ev1, TrashEvent::Restored { ref original_rel, .. } if original_rel == "2026 - Plan.md"));
+        assert!(root.join("2026 - Plan.md").is_file());
+        assert!(!root.join("2026/Plan.md").exists());
+
+        // Restore nested dash note with collision -> `Sub/2026 - Plan 2.md`.
+        std::fs::write(root.join("Sub/2026 - Plan.md"), "# Occupied\n").unwrap();
+        let ev2 = restore_from_trash(&root, &sub_e.name, &mut trash).unwrap();
+        match ev2 {
+            TrashEvent::Restored { original_rel, files, .. } => {
+                assert_eq!(original_rel, "Sub/2026 - Plan.md");
+                assert_eq!(files[0].0, "Sub/2026 - Plan 2.md");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+        assert_eq!(std::fs::read_to_string(root.join("Sub/2026 - Plan 2.md")).unwrap(), "# Sub Plan\n");
+
+        // Restore deep nested note even after its parent folder was removed.
+        std::fs::remove_dir_all(root.join("Folder")).unwrap();
+        restore_from_trash(&root, &deep_e.name, &mut trash).unwrap();
+        assert_eq!(std::fs::read_to_string(root.join("Folder/Sub/Note.md")).unwrap(), "# Deep Note\n");
+        assert!(!root.join(".trash/.meta.json").exists(), "empty manifest is removed");
+
+        // Legacy entry without manifest: keep root ' - ' intact if prefix folder does not exist.
+        std::fs::write(root.join(".trash/2026 - Legacy.md"), "# Legacy\n").unwrap();
+        let legacy = list_trash(&root);
+        assert_eq!(legacy[0].original_rel, "2026 - Legacy.md");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn trash_restore_clears_stale_undo_toast() {
+        let root = std::env::temp_dir().join(format!("quire-trash-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("2026 - Plan.md"), "# Plan\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(root.clone(), tx);
+            s.open_file("2026 - Plan.md", None, tx);
+            s.delete_note();
+            assert!(s.deleted.is_some(), "delete sets 6s Undo toast");
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        rt.update(|s, tx| {
+            s.poll(1.0, tx);
+            let trash_name = s.trash_entries.first().expect("entry in trash").name.clone();
+            s.restore_trash(&trash_name, tx);
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        rt.update(|s, tx| {
+            s.poll(1.5, tx);
+            assert!(s.deleted.is_none(), "Trash restore must clear stale Undo toast");
+            assert!(s.files().contains_key("2026 - Plan.md"));
+        });
+        assert!(root.join("2026 - Plan.md").is_file());
+        assert!(!root.join("2026/Plan.md").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

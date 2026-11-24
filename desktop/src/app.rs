@@ -1978,9 +1978,16 @@ impl App {
                         changed = true;
                     }
                 }
-                crate::vault::TrashEvent::Restored { root, label, files, folders, open_rel, entries } => {
+                crate::vault::TrashEvent::Restored { root, original_rel, label, files, folders, open_rel, entries } => {
                     if cur_root.as_ref() != Some(&root) {
                         continue;
+                    }
+                    if self.deleted.as_ref().is_some_and(|d| {
+                        d.rel == original_rel
+                            || files.iter().any(|(p, _, _)| p == &d.rel)
+                            || folders.iter().any(|f| f == &d.rel)
+                    }) {
+                        self.deleted = None;
                     }
                     if let Some(v) = &mut self.vault {
                         for f in folders {
