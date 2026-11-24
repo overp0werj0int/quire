@@ -49,6 +49,18 @@ impl App {
         self.reveal.remove("lock-repeat");
     }
 
+    /// Aborts any in-flight `LockJobKind::Unlocking` PBKDF2 job and clears the inline unlock
+    /// prompt state when switching away to another note.
+    pub(crate) fn cancel_unlock_job(&mut self) {
+        if self.lock_job.as_ref().is_some_and(|j| j.kind == LockJobKind::Unlocking) {
+            self.lock_job = None;
+            self.lock_job_seq = self.lock_job_seq.wrapping_add(1);
+        }
+        self.unlock_error = None;
+        self.fields.remove("unlock-pass");
+        self.reveal.remove("unlock-pass");
+    }
+
     /// Cancels the lock dialog (including any in-flight PBKDF2 job) and closes it.
     pub fn cancel_lock(&mut self, tx: &mut Tx) {
         self.cancel_lock_job();
@@ -117,6 +129,7 @@ impl App {
         let Some(a) = self.active.clone() else { return };
         if self.note_unlocked(&a) {
             self.relock();
+            tx.focus(crate::ui::lock::PASS, false);
             return;
         }
         if self.note_locked(&a) {
@@ -293,25 +306,32 @@ impl App {
                 if id != self.lock_job_seq {
                     return;
                 }
+                let is_active = self.active.as_deref() == Some(rel.as_str());
                 match res {
                     Ok((plain, key)) => {
-                        self.unlock_error = None;
-                        self.fields.remove("unlock-pass");
-                        self.reveal.remove("unlock-pass");
+                        if is_active {
+                            self.unlock_error = None;
+                            self.fields.remove("unlock-pass");
+                            self.reveal.remove("unlock-pass");
+                        }
                         self.edits.remove(&rel);
                         self.unlocked.insert(rel, Unlocked::new(key, plain));
                         self.rebuild_names_pub();
                         self.touch_activity();
-                        if self.mode == Mode::Map {
-                            self.keys_to_note(tx);
-                        } else {
-                            self.focus_editor(tx);
+                        if is_active {
+                            if self.mode == Mode::Map {
+                                self.keys_to_note(tx);
+                            } else {
+                                self.focus_editor(tx);
+                            }
                         }
                     }
                     Err(e) => {
-                        self.unlock_error = Some(e);
-                        // After a press on Unlock, the field takes the keyboard back for another try.
-                        tx.focus(crate::ui::lock::PASS, false);
+                        if is_active {
+                            self.unlock_error = Some(e);
+                            // After a press on Unlock, the field takes the keyboard back for another try.
+                            tx.focus(crate::ui::lock::PASS, false);
+                        }
                     }
                 }
             }

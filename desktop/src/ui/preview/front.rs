@@ -79,19 +79,36 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
         let clickable_tags = is_tags && !cx.v.s.note_mode();
         let value: El = match f.kind {
             FieldKind::Pill if is_tags => {
-                let raw = f.value.trim().trim_start_matches('#').to_string();
-                let mut tag_pill = pill(cx, &f.value, Some(c.accent), None).key(format!("fm-tag:{raw}"));
-                if clickable_tags {
-                    let click_tag = raw.clone();
-                    tag_pill = tag_pill
-                        .hover(c.hover)
-                        .cursor(rune::Cursor::Pointer)
-                        .role("button")
-                        .label(format!("Search #{raw}"))
-                        .help(format!("Search #{raw}"))
-                        .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                let parts: Vec<String> = f
+                    .value
+                    .split(',')
+                    .map(|p| p.trim().trim_matches('"').trim_matches('\'').trim().trim_start_matches('#').to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                let make_tag = |raw: String| {
+                    let mut tag_pill = pill(cx, &raw, Some(c.accent), None).key(format!("fm-tag:{raw}"));
+                    if clickable_tags {
+                        let click_tag = raw.clone();
+                        tag_pill = tag_pill
+                            .hover(c.hover)
+                            .cursor(rune::Cursor::Pointer)
+                            .role("button")
+                            .label(format!("Search #{raw}"))
+                            .help(format!("Search #{raw}"))
+                            .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                    }
+                    tag_pill
+                };
+                if parts.len() > 1 {
+                    let mut r_ = row().w_full().flex_wrap().gap(r(b * 0.35)).pt(((b * 1.55 - b * 0.76 * 2.0) / 2.0).round());
+                    for raw in parts {
+                        r_ = r_.child(make_tag(raw));
+                    }
+                    r_
+                } else {
+                    let raw = parts.into_iter().next().unwrap_or_else(|| f.value.trim().trim_start_matches('#').to_string());
+                    one_line(make_tag(raw))
                 }
-                one_line(tag_pill)
             }
             FieldKind::Pill => {
                 let glyph = is_date(&f.value).then_some(&icons::CALENDAR);

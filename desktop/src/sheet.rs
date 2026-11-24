@@ -117,8 +117,8 @@ pub struct Sheet {
     pub edit: TextEdit,
     /// Why the last save was refused, shown in place of the key row (SHEET-047).
     pub problem: Option<&'static str>,
-    /// When Esc armed a discard (SHEET-038).
-    pub armed: Option<f64>,
+    /// When Esc armed a discard, paired with the text snapshot at arm time (SHEET-038).
+    pub armed: Option<(f64, String)>,
 }
 
 impl App {
@@ -215,12 +215,12 @@ impl App {
     pub fn sheet_escape(&mut self, tx: &mut Tx) {
         let now = self.now.get();
         let Some(sh) = self.sheet_mut() else { return };
-        let armed = sh.armed.is_some_and(|at| now - at < DISCARD);
+        let armed = sh.armed.as_ref().is_some_and(|(at, txt)| now - *at < DISCARD && *txt == sh.edit.text);
         if sh.edit.text == sh.orig || armed {
             self.close_layer(tx);
             tx.blur();
         } else {
-            sh.armed = Some(now);
+            sh.armed = Some((now, sh.edit.text.clone()));
             tx.wake_after(std::time::Duration::from_secs_f64(DISCARD + 0.05));
         }
     }
@@ -228,7 +228,7 @@ impl App {
     /// The armed discard lapses (SHEET-038). True when it did.
     pub(crate) fn expire_sheet(&mut self, t: f64) -> bool {
         match self.sheet_mut() {
-            Some(sh) if sh.armed.is_some_and(|at| t - at >= DISCARD) => {
+            Some(sh) if sh.armed.as_ref().is_some_and(|(at, _)| t - *at >= DISCARD) => {
                 sh.armed = None;
                 true
             }

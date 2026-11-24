@@ -881,7 +881,10 @@ pub(super) fn crumb(v: V) -> El {
                 .help("Unlocked · Click to lock now")
                 .focus_ring(rw, rg, rc)
                 .keeps_text_selection()
-                .control(super::titlebar::act(|s, _| s.relock()))
+                .control(super::titlebar::act(|s, tx| {
+                    s.relock();
+                    tx.focus(crate::ui::lock::PASS, false);
+                }))
                 .child(icon(&super::icons::LOCK, 13.0).color(p.acc))
         } else {
             row()

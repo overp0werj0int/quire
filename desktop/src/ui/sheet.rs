@@ -95,7 +95,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
 
     // SHEET-030, SHEET-038, SHEET-047: the key row with clickable actions, or the problem with a close button.
     let key_of = |id: &str| s.keymap.label(id);
-    let armed = sh.armed.is_some();
+    let armed = sh.armed.as_ref().is_some_and(|(_, txt)| *txt == sh.edit.text);
     let foot = match sh.problem {
         Some(p) => {
             let cancel_lbl = if armed { "Discard" } else { "Close" };

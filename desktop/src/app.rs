@@ -1657,6 +1657,7 @@ impl App {
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
         if changed {
+            self.cancel_unlock_job();
             let dir = match (old_idx, new_idx) {
                 (Some(a), Some(b)) if b < a => -1,
                 (Some(_), _) => 1,

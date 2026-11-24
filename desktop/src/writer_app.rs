@@ -962,6 +962,9 @@ impl App {
             })
             .collect();
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)).then_with(|| a.2.cmp(&b.2)));
+        if !ql.is_empty() && scored.len() == 1 && scored[0].2 == ql {
+            return Vec::new();
+        }
         scored
             .into_iter()
             .take(8)
@@ -1017,7 +1020,11 @@ impl App {
             });
         }
         self.wstate.ac_idx = 0;
-        self.wstate.ac_dismissed = None;
+        self.wstate.ac_dismissed = if trig.kind == writer::AcKind::Tag {
+            self.active.clone().map(|a| (a, trig.start))
+        } else {
+            None
+        };
         self.after_edit();
         self.focus_editor(tx);
         true
