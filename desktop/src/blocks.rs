@@ -1380,16 +1380,26 @@ pub fn find_all(doc: &Doc, q: &str) -> Vec<Match> {
     out
 }
 
+/// Byte range and replacement character to tick (`done`) or clear the task box on 0-based `line`.
+pub fn toggle_task_splice(src: &str, line: usize, done: bool) -> Option<(std::ops::Range<usize>, &'static str)> {
+    let mut start = 0;
+    for (i, l) in src.split('\n').enumerate() {
+        if i == line {
+            let at = task_box(l)?;
+            return Some((start + at..start + at + 1, if done { "x" } else { " " }));
+        }
+        start += l.len() + 1;
+    }
+    None
+}
+
 /// `src` with the task box on 0-based `line` ticked or cleared, or `None` when that line is
 /// not a task item. Only the one character changes.
 pub fn toggle_task(src: &str, line: usize, done: bool) -> Option<String> {
-    let mut lines: Vec<String> = src.split('\n').map(str::to_string).collect();
-    let l = lines.get(line)?;
-    let at = task_box(l)?;
-    let mut s = l.clone();
-    s.replace_range(at..at + 1, if done { "x" } else { " " });
-    lines[line] = s;
-    Some(lines.join("\n"))
+    let (r, with) = toggle_task_splice(src, line, done)?;
+    let mut out = src.to_string();
+    out.replace_range(r, with);
+    Some(out)
 }
 
 /// The byte of the task box's mark on a line: quote marks, indent, a bullet or number, then `[`.

@@ -1863,11 +1863,11 @@ impl App {
         }
     }
 
-    /// Ticks (`done`) or clears the task box on 0-based `line`.
+    /// Ticks (`done`) or clears the task box on 0-based `line` as one undo step.
     pub fn toggle_task(&mut self, line: usize, done: bool) {
         let Some(a) = self.active.clone() else { return };
-        if let Some(t) = crate::blocks::toggle_task(self.active_text(), line, done) {
-            self.set_text(&a, t);
+        if let Some((r, with)) = crate::blocks::toggle_task_splice(self.active_text(), line, done) {
+            self.splice_note(&a, r, with);
         }
     }
 

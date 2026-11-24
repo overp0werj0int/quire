@@ -349,11 +349,14 @@ pub fn preview(v: V) -> El {
                     let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: false, quote_depth: 0 };
                     // A right-click on the row, its gap above included, opens its block's menu (RD-68).
                     let line = bl.lines.start;
+                    let fade = || rune::Curve::linear(0.12);
                     el().w_full()
                         .hover_group()
+                        .hover_motion(fade(), fade())
                         .pt(gap)
                         .child(cx.top_block(bl, tone))
                         .children(fold.map(|f| cx.fold_mark(bl, gap, f)))
+                        .children((!v.s.active_locked()).then(|| cx.edit_mark(bl, gap, col_geom.gutter)))
                         .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
                         .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Block(line), (at.x, at.y), tx))
                 })
@@ -526,7 +529,7 @@ impl Cx<'_> {
             Kind::Quote { blocks } => self.quote(blocks, tone),
             Kind::Alert { kind, blocks } => self.alert(*kind, blocks, tone),
             Kind::Code { lang, text: t } => code::code(self, lang, t, bl.pid, bl.lines.start),
-            Kind::Diff { lang, lines, added, removed, .. } => code::diff(self, lang, lines, *added, *removed, bl.pid),
+            Kind::Diff { lang, text: t, lines, added, removed } => code::diff(self, lang, t, lines, *added, *removed, bl.pid, bl.lines.start),
             Kind::Table(t) => table::table(self, t, tone),
             Kind::Rule => self.rule(),
             Kind::Image { img, .. } => self.image(img),
@@ -591,7 +594,8 @@ impl Cx<'_> {
         let right = hash_w + r(look.b * 0.6) + r(look.b * 0.5);
         let font = crate::map_app::chip_font(look.b, look.mono);
         let d = 2.0 * crate::map_geom::FOLD_DOT_R;
-        let h = (font.size + 6.0).max(d);
+        let hit = 24.0f32.max(d);
+        let h = (font.size + 6.0).max(hit);
         let fade = || rune::Curve::linear(0.12);
         let mark = if folded {
             el().h(h)
@@ -606,23 +610,62 @@ impl Cx<'_> {
                 .label(format!("Unfold, {hidden} hidden"))
                 .child(text(format!("+{hidden}")).font(font).color(c.readable_dim()).inert())
         } else {
-            el().size(d, d)
-                .radius(d / 2.0)
-                .border(1.5, c.faint)
-                .fill(c.bg)
+            let ring = el().size(d, d).radius(d / 2.0).border(1.5, c.faint).fill(c.bg).inert();
+            row()
+                .size(hit, hit)
+                .center()
+                .radius(hit / 2.0)
                 .group_opacity(0.0, 1.0)
                 .hover(mix(c.bg, c.accent, 0.18))
                 .hover_motion(fade(), fade())
                 .label("Fold")
+                .child(ring)
         };
         let y = top + ((line(size, lead) - h) / 2.0).max(0.0);
-        let room = r(look.b * 4.0);
+        let room = r(look.b * 4.0).max(hit);
+        let right = if folded { right } else { (right - (hit - d) / 2.0).max(0.0) };
         row().key("fold")
             .pin(Some(-(right + room)), Some(y), None, None)
             .size(room, h)
             .justify_end()
             .center_y()
             .child(mark.role("button").cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, _| s.toggle_page_fold(n)))
+    }
+
+    /// Subtle hover-revealed Edit chip in the right margin (or top-right on narrow windows)
+    /// opening the Edit Sheet on this block (`hover_group()` + `group_opacity` so scrolling runs
+    /// zero extra views).
+    fn edit_mark(&self, bl: &Block, top: f32, gutter: f32) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let line = bl.lines.start;
+        let size = code::chip_size(look.b);
+        let icon_sz = r(size * 1.05);
+        let key = format!("block-edit:{line}");
+        let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
+        let chip_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Edit", look.mono_at(size, 2.0)).ceil();
+        let in_margin = gutter >= chip_w + 16.0;
+        let chip = super::chip::Chip {
+            key: &key,
+            glyph: &icons::PENCIL,
+            size,
+            icon: icon_sz,
+            label: "Edit",
+            mono: look.mono,
+            tint: c.readable_dim(),
+            active: false,
+            fill: (!in_margin).then_some(c.panel),
+        }
+        .el(c)
+        .label(tip.clone())
+        .help(tip)
+        .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        if in_margin {
+            let bridge = 10.0;
+            el().pin(None, Some(top), Some(-(chip_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(chip)
+        } else {
+            el().pin(None, Some(top), Some(4.0), None).group_opacity(0.0, 1.0).child(chip)
+        }
     }
 
     /// Three faint dots (BLK-17).
