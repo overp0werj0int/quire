@@ -349,6 +349,7 @@ pub(super) fn canvas(v: V) -> El {
         .children(ghost_el)
         .on_layout_tx(|s: &mut App, r, tx| s.map_laid_out(r, tx))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
+            s.touch_activity();
             // The window sends Ctrl + wheel as a pinch (`on_magnify`); a wheel that still holds
             // Ctrl zooms the same way.
             if e.mods.cmd {
@@ -359,11 +360,17 @@ pub(super) fn canvas(v: V) -> El {
             true
         })
         .on_magnify(|s: &mut App, e: MagnifyEvent, tx: &mut Tx| {
+            s.touch_activity();
             s.map_zoom_about(e.x, e.y, 1.0 + e.delta, tx);
             true
         })
         .pointer_buttons([PointerButton::Middle])
-        .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| s.map_pan_drag(d, tx))
+        .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| {
+            if matches!(d.phase, rune::Phase::Down | rune::Phase::Up) {
+                s.touch_activity();
+            }
+            s.map_pan_drag(d, tx);
+        })
 }
 
 /// Batches all opaque links at extreme overview zoom (`< PLAIN_LABEL_ZOOM`) into one vector

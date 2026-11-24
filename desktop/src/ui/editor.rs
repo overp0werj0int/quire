@@ -318,6 +318,7 @@ fn doc_scroll(v: V) -> El {
             .pb(pad_b)
             .px(if reader || writer { 0.0 } else { pad_x })
             .on_press_tx(|s: &mut App, tx| {
+                s.touch_activity();
                 // A click below the text puts the caret at the end, as the design's column does.
                 if s.mode == Mode::Source {
                     let e = s.cur_edit();
@@ -365,6 +366,7 @@ fn doc_scroll(v: V) -> El {
     let signal = s.reader.reveal.signal.clone();
     let bar = s.reader.bar.clone();
     let map = s.reader.map.clone();
+    let activity = s.last_activity.clone();
     let (thumb, shown) = (s.reader.thumb.clone(), s.reader.thumb_shown.clone());
     let mut scroll = col()
         .key("doc-scroll")
@@ -384,6 +386,9 @@ fn doc_scroll(v: V) -> El {
             let mut sig = signal.get();
             let hand = sig.on_scroll_offset(moved, by_hand, t);
             signal.set(sig);
+            if moved && (hand || by_hand) && t > activity.get() {
+                activity.set(t);
+            }
             // The progress line (RD-38, WR-178) and live outline mark. A scroll that follows the
             // caret leaves the mark on the caret's heading.
             map.borrow_mut().follow(now, hand, &bar);

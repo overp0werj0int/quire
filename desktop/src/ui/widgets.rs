@@ -172,7 +172,10 @@ impl Control for El {
     fn control(self, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
         let run = std::rc::Rc::new(run);
         let on_return = run.clone();
-        self.focusable(true).on_press_tx(move |s: &mut App, tx| run(s, tx)).on_key(move |s: &mut App, ev: &KeyEvent, tx| {
+        self.focusable(true).on_press_tx(move |s: &mut App, tx| {
+            s.touch_activity();
+            run(s, tx);
+        }).on_key(move |s: &mut App, ev: &KeyEvent, tx| {
             // Rune presses a focused control on Space. Return would go to a default button, so
             // it is taken here.
             let enter = ev.key == Key::Enter && ev.mods == Mods::default();

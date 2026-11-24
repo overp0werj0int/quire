@@ -194,7 +194,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };
-    let mut root = col().key("root").w_full().h_full().fill(win_bg);
+    let mut root = col().key("root").w_full().h_full().fill(win_bg).on_background_press(|s: &mut App| s.touch_activity());
     if s.map_editable() {
         // A copied image or image file goes in as an image node (MAP-048), text as a node.
         root = root.on_paste_content(|s: &mut App, content: &rune::ClipboardContent, tx: &mut rune::Tx| {

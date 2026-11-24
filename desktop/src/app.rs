@@ -231,7 +231,9 @@ pub struct App {
     /// In-flight background PBKDF2 key-derivation job (`lock_app::LockJob`).
     pub lock_job: Option<crate::lock_app::LockJob>,
     /// App-clock time of the most recent user interaction, for idle auto-lock.
-    pub last_activity: f64,
+    pub last_activity: std::rc::Rc<std::cell::Cell<f64>>,
+    /// Monotonic sequence number for `lock_job`, bumped on spawn and cancel so late results are ignored.
+    pub(crate) lock_job_seq: u64,
     /// Why the last unlock failed.
     pub unlock_error: Option<String>,
     /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
@@ -439,7 +441,8 @@ pub fn init() -> App {
         hover_switch: None,
         unlocked: HashMap::new(),
         lock_job: None,
-        last_activity: 0.0,
+        last_activity: std::rc::Rc::new(std::cell::Cell::new(0.0)),
+        lock_job_seq: 0,
         notes: Vec::new(),
         parked: HashMap::new(),
         laid_out: std::cell::Cell::new(false),
@@ -1533,8 +1536,8 @@ impl App {
 
     /// The editor's text changed: keep the folder copy in step and save soon.
     /// Records user interaction on the app clock so idle auto-lock resets its timer.
-    pub fn touch_activity(&mut self) {
-        self.last_activity = self.now.get();
+    pub fn touch_activity(&self) {
+        self.last_activity.set(self.now.get());
     }
 
     pub fn after_edit(&mut self) {

@@ -221,7 +221,7 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
             .gap(8.0)
             .mt(4.0)
             .child(el().grow(1.0))
-            .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)))
+            .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.cancel_lock(tx)))
             .child(lock_btn),
     );
     Card { el: panel, plane: Some(col().center().px(16.0)) }

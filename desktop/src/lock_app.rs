@@ -18,8 +18,8 @@ pub enum LockJobKind {
 }
 
 enum LockResult {
-    Locked { rel: String, text: String, key: lock::Key },
-    Unlocked { rel: String, res: Result<(String, lock::Key), String> },
+    Locked { id: u64, rel: String, text: String, key: lock::Key },
+    Unlocked { id: u64, rel: String, res: Result<(String, lock::Key), String> },
 }
 
 /// Off-UI-thread PBKDF2 key-derivation job (`quire-kdf`).
@@ -34,6 +34,25 @@ impl App {
     /// Non-`None` while PBKDF2 key derivation is running on the worker thread.
     pub fn lock_busy(&self) -> Option<LockJobKind> {
         self.lock_job.as_ref().map(|j| j.kind)
+    }
+
+    /// Aborts any in-flight `LockJobKind::Locking` PBKDF2 job and clears temporary lock-dialog
+    /// password fields so a cancelled or dismissed lock dialog never seals the note later.
+    pub(crate) fn cancel_lock_job(&mut self) {
+        if self.lock_job.as_ref().is_some_and(|j| j.kind == LockJobKind::Locking) {
+            self.lock_job = None;
+            self.lock_job_seq = self.lock_job_seq.wrapping_add(1);
+        }
+        self.fields.remove("lock-pass");
+        self.fields.remove("lock-repeat");
+        self.reveal.remove("lock-pass");
+        self.reveal.remove("lock-repeat");
+    }
+
+    /// Cancels the lock dialog (including any in-flight PBKDF2 job) and closes it.
+    pub fn cancel_lock(&mut self, tx: &mut Tx) {
+        self.cancel_lock_job();
+        self.close_layer(tx);
     }
 
     /// Seals an unlocked note's new text into the folder copy, to save soon.
@@ -134,9 +153,11 @@ impl App {
         let (tx_res, rx) = mpsc::channel();
         let waker = self.waker.clone();
         let rel_w = rel.clone();
+        self.lock_job_seq = self.lock_job_seq.wrapping_add(1);
+        let id = self.lock_job_seq;
         let _ = std::thread::Builder::new().name("quire-kdf".into()).spawn(move || {
             let key = lock::new_key(&pass);
-            let _ = tx_res.send(LockResult::Locked { rel: rel_w, text, key });
+            let _ = tx_res.send(LockResult::Locked { id, rel: rel_w, text, key });
             if let Some(w) = waker {
                 w();
             }
@@ -190,9 +211,11 @@ impl App {
         let (tx_res, rx) = mpsc::channel();
         let waker = self.waker.clone();
         let rel_w = rel.clone();
+        self.lock_job_seq = self.lock_job_seq.wrapping_add(1);
+        let id = self.lock_job_seq;
         let _ = std::thread::Builder::new().name("quire-kdf".into()).spawn(move || {
             let res = lock::open(&text, &pass);
-            let _ = tx_res.send(LockResult::Unlocked { rel: rel_w, res });
+            let _ = tx_res.send(LockResult::Unlocked { id, rel: rel_w, res });
             if let Some(w) = waker {
                 w();
             }
@@ -247,7 +270,10 @@ impl App {
 
     fn finish_lock_job(&mut self, res: LockResult, tx: &mut Tx) {
         match res {
-            LockResult::Locked { rel, text, key } => {
+            LockResult::Locked { id, rel, text, key } => {
+                if id != self.lock_job_seq || !self.files().contains_key(&rel) {
+                    return;
+                }
                 if matches!(self.layer(), Some(Layer::Lock(LockDialog::Set(_)))) {
                     self.close_layer(tx);
                 }
@@ -263,27 +289,32 @@ impl App {
                 self.touch_activity();
                 self.focus_editor(tx);
             }
-            LockResult::Unlocked { rel, res } => match res {
-                Ok((plain, key)) => {
-                    self.unlock_error = None;
-                    self.fields.remove("unlock-pass");
-                    self.reveal.remove("unlock-pass");
-                    self.edits.remove(&rel);
-                    self.unlocked.insert(rel, Unlocked::new(key, plain));
-                    self.rebuild_names_pub();
-                    self.touch_activity();
-                    if self.mode == Mode::Map {
-                        self.keys_to_note(tx);
-                    } else {
-                        self.focus_editor(tx);
+            LockResult::Unlocked { id, rel, res } => {
+                if id != self.lock_job_seq {
+                    return;
+                }
+                match res {
+                    Ok((plain, key)) => {
+                        self.unlock_error = None;
+                        self.fields.remove("unlock-pass");
+                        self.reveal.remove("unlock-pass");
+                        self.edits.remove(&rel);
+                        self.unlocked.insert(rel, Unlocked::new(key, plain));
+                        self.rebuild_names_pub();
+                        self.touch_activity();
+                        if self.mode == Mode::Map {
+                            self.keys_to_note(tx);
+                        } else {
+                            self.focus_editor(tx);
+                        }
+                    }
+                    Err(e) => {
+                        self.unlock_error = Some(e);
+                        // After a press on Unlock, the field takes the keyboard back for another try.
+                        tx.focus(crate::ui::lock::PASS, false);
                     }
                 }
-                Err(e) => {
-                    self.unlock_error = Some(e);
-                    // After a press on Unlock, the field takes the keyboard back for another try.
-                    tx.focus(crate::ui::lock::PASS, false);
-                }
-            },
+            }
         }
     }
 
@@ -294,7 +325,7 @@ impl App {
             return false;
         }
         let limit = (mins as f64) * 60.0;
-        let elapsed = (t - self.last_activity).max(0.0);
+        let elapsed = (t - self.last_activity.get()).max(0.0);
         if elapsed >= limit {
             self.lock_all_notes();
             self.toast("Locked notes after inactivity", tx);
@@ -366,6 +397,81 @@ mod tests {
             assert!(s.note_locked("secret.md"));
             assert!(s.reader.toast.as_ref().is_some_and(|(m, _)| m.contains("inactivity")));
         });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cancelling_in_flight_lock_aborts_encryption() {
+        let dir = std::env::temp_dir().join(format!("quire-lock-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = "# Secret\n\nKeep me plain.\n";
+        std::fs::write(dir.join("secret.md"), plain).unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("secret.md", None, tx);
+            s.ask_lock(tx);
+            s.field("lock-pass", String::new).replace_text("tiger lily");
+            s.field("lock-repeat", String::new).replace_text("tiger lily");
+            s.lock_note(tx);
+            assert_eq!(s.lock_busy(), Some(super::LockJobKind::Locking));
+            s.cancel_lock(tx);
+            assert_eq!(s.lock_busy(), None, "cancelling must clear lock_job immediately");
+            assert!(s.layer().is_none(), "lock dialog should close");
+        });
+        // Give the detached worker time to finish and ensure polling ignores any late work.
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        rt.update(|s, tx| {
+            assert!(!s.poll_lock(10.0, tx));
+            s.flush_all();
+            assert!(!s.is_locked("secret.md"), "cancelled lock must not mark note locked");
+            assert!(!s.note_unlocked("secret.md"), "cancelled lock must not register unlocked key");
+        });
+        let on_disk = std::fs::read_to_string(dir.join("secret.md")).unwrap();
+        assert_eq!(on_disk, plain, "cancelled lock must leave note plain text on disk");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pointer_press_and_scroll_update_last_activity() {
+        let dir = std::env::temp_dir().join(format!("quire-activity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut body = String::from("# Long Note\n\n");
+        for i in 0..80 {
+            body.push_str(&format!("Paragraph {i} with enough lines to scroll comfortably.\n\n"));
+        }
+        std::fs::write(dir.join("long.md"), &body).unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("long.md", None, tx);
+            s.mode = crate::app::Mode::Preview;
+        });
+        rt.frame(0.0);
+        // Advance clock to 50s and click inside Preview document -> last_activity updates.
+        rt.frame(50.0);
+        rt.update(|s, _| s.now.set(50.0));
+        rt.pointer_move(500.0, 400.0);
+        rt.pointer_down(500.0, 400.0);
+        rt.pointer_up(500.0, 400.0);
+        rt.frame(0.016);
+        let after_click = rt.state.last_activity.get();
+        assert!(after_click >= 50.0, "pointer press should update last_activity (got {after_click})");
+
+        // Advance clock to 120s and wheel-scroll document -> last_activity updates without keyboard input.
+        rt.frame(70.0);
+        rt.update(|s, _| s.now.set(120.0));
+        rt.pointer_move(640.0, 400.0);
+        rt.wheel(640.0, 400.0, -240.0);
+        rt.frame(0.016);
+        let after_scroll = rt.state.last_activity.get();
+        assert!(after_scroll > after_click, "wheel scroll should advance last_activity (before={after_click}, after={after_scroll})");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

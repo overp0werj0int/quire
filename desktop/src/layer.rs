@@ -290,6 +290,9 @@ impl App {
             Layer::Menu(_) => self.layers.pop_if(|o| matches!(o.layer, Layer::Menu(_))).into_iter().collect(),
             _ => std::mem::take(&mut self.layers),
         };
+        if replaced.iter().any(|o| matches!(o.layer, Layer::Lock(_))) {
+            self.cancel_lock_job();
+        }
         // One that gives way to this one, now or earlier in this change, leaves at once rather
         // than fading out under it.
         self.layer_swap = !replaced.is_empty() || self.handed.is_some();
@@ -357,6 +360,9 @@ impl App {
     /// Opens a layer outside any event (a scene, a test): focus goes back where Rune's modal
     /// found it.
     pub fn show_layer(&mut self, layer: Layer) {
+        if self.layers.iter().any(|o| matches!(o.layer, Layer::Lock(_))) {
+            self.cancel_lock_job();
+        }
         self.layers.clear();
         self.layers.push(Open { layer, back: None, over: self.context(), size: self.window_size() });
     }
@@ -396,6 +402,9 @@ impl App {
                 self.key_edit = None;
                 self.keys_query = rune::TextEdit::new("");
             }
+            if matches!(open.layer, Layer::Lock(_)) {
+                self.cancel_lock_job();
+            }
             if matches!(open.layer, Layer::Drawer(_)) {
                 self.map_drawer_closed(tx);
             }
@@ -416,6 +425,9 @@ impl App {
     /// than a stop in the drawer.
     pub(crate) fn field_opened(&mut self, field: Field) {
         if !self.layers.is_empty() && field.drawer() != self.drawer() {
+            if self.layers.iter().any(|o| matches!(o.layer, Layer::Lock(_))) {
+                self.cancel_lock_job();
+            }
             self.layers.clear();
             self.handed = None;
         }
@@ -442,6 +454,9 @@ impl App {
         if !self.layers.is_empty() {
             self.key_edit = None;
             self.keys_query = rune::TextEdit::new("");
+            if self.layers.iter().any(|o| matches!(o.layer, Layer::Lock(_))) {
+                self.cancel_lock_job();
+            }
             let had_drawer = self.drawer().is_some();
             let back = self.layers.swap_remove(0).back;
             self.layers.clear();
@@ -491,6 +506,9 @@ impl App {
         };
         let stale = |o: &Open| o.over.screen != now.screen || o.over.folder != now.folder || (o.layer.kind().light() && o.over != now) || gone(o);
         let Some(i) = self.layers.iter().position(stale) else { return false };
+        if self.layers[i..].iter().any(|o| matches!(o.layer, Layer::Lock(_))) {
+            self.cancel_lock_job();
+        }
         let had_drawer = self.layers[i..].iter().any(|o| matches!(o.layer, Layer::Drawer(_)));
         let back = self.layers[i].back.clone();
         self.layers.truncate(i);
