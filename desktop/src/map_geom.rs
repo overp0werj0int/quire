@@ -194,30 +194,27 @@ impl Place {
         Place { x: pt[0] - (ex - self.x), y: pt[1] - (ey - self.y), ..self }
     }
 
+    /// A task's box sits at the end of its label away from the fold ring (MAP-053): the far
+    /// end where branches grow left, the near end in every other layout.
+    fn task_far(&self) -> bool {
+        self.dir == Dir::Left
+    }
+
     /// Where a task's box `bx` wide sits in a node `room` wider for it, from the node's corner:
-    /// its left edge, and the least and most x its hit target may take. The box is at the end
-    /// of the label away from the fold ring, and its target stays off the label.
+    /// its left edge, and the least and most x its hit target may take, which stays off the
+    /// label.
     pub fn task_slot(&self, pad_x: f32, room: f32, bx: f32) -> (f32, [f32; 2]) {
-        match self.dir {
-            Dir::Left => (self.w - pad_x - bx, [self.w - pad_x - room, f32::INFINITY]),
-            Dir::Right | Dir::Down | Dir::Up => (pad_x, [f32::NEG_INFINITY, pad_x + room]),
-        }
+        if self.task_far() { (self.w - pad_x - bx, [self.w - pad_x - room, f32::INFINITY]) } else { (pad_x, [f32::NEG_INFINITY, pad_x + room]) }
     }
 
     /// The world x span of the `room` a task's box takes beside the label.
     pub fn task_span(&self, pad_x: f32, room: f32) -> [f32; 2] {
-        match self.dir {
-            Dir::Left => [self.right() - pad_x - room, self.right() - pad_x],
-            Dir::Right | Dir::Down | Dir::Up => [self.x + pad_x, self.x + pad_x + room],
-        }
+        if self.task_far() { [self.right() - pad_x - room, self.right() - pad_x] } else { [self.x + pad_x, self.x + pad_x + room] }
     }
 
     /// The room left and right of the label in a node `room` wider for a task's box.
     pub fn label_pads(&self, pad_x: f32, room: f32) -> [f32; 2] {
-        match self.dir {
-            Dir::Left => [pad_x, pad_x + room],
-            Dir::Right | Dir::Down | Dir::Up => [pad_x + room, pad_x],
-        }
+        if self.task_far() { [pad_x, pad_x + room] } else { [pad_x + room, pad_x] }
     }
 
     /// Where a menu opened on the node from the keyboard hangs: under it, and under its fold
