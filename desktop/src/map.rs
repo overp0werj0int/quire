@@ -9,6 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use crate::blocks::{self, Block, Doc, Kind, Link, Run, Task};
+use crate::map_geom::Dir;
 
 pub type NodeId = u64;
 
@@ -97,6 +98,58 @@ impl Node {
     }
 }
 
+/// The way a map's branches grow from its root (MAP-079): the `layout` option's value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Layout {
+    #[default]
+    Right,
+    Left,
+    /// The root's children split between the right and the left.
+    Both,
+    Down,
+    Up,
+}
+
+impl Layout {
+    pub const ALL: [Layout; 5] = [Layout::Right, Layout::Left, Layout::Both, Layout::Down, Layout::Up];
+
+    /// The front matter value.
+    pub fn word(self) -> &'static str {
+        match self {
+            Layout::Right => "right",
+            Layout::Left => "left",
+            Layout::Both => "both",
+            Layout::Down => "down",
+            Layout::Up => "up",
+        }
+    }
+
+    pub fn from_word(w: &str) -> Option<Layout> {
+        Layout::ALL.into_iter().find(|l| l.word().eq_ignore_ascii_case(w))
+    }
+
+    #[expect(dead_code, reason = "the layout picker names them")]
+    pub fn name(self) -> &'static str {
+        match self {
+            Layout::Right => "Right",
+            Layout::Left => "Left",
+            Layout::Both => "Both sides",
+            Layout::Down => "Down",
+            Layout::Up => "Up",
+        }
+    }
+
+    /// The way the root's first branches grow.
+    pub fn dir(self) -> Dir {
+        match self {
+            Layout::Right | Layout::Both => Dir::Right,
+            Layout::Left => Dir::Left,
+            Layout::Down => Dir::Down,
+            Layout::Up => Dir::Up,
+        }
+    }
+}
+
 /// The `markmap:` options in fenced front matter that Quire honours (MAP-011), clamped.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Options {
@@ -106,6 +159,8 @@ pub struct Options {
     pub color_freeze_level: Option<usize>,
     pub spacing_horizontal: Option<f32>,
     pub spacing_vertical: Option<f32>,
+    /// Right when the note names none, or one Quire does not know.
+    pub layout: Layout,
 }
 
 #[derive(Clone, Debug)]
@@ -389,6 +444,10 @@ fn options(lines: &[&str]) -> Options {
     for l in body[at + 1..].iter().take_while(|l| l.starts_with([' ', '\t']) || l.trim().is_empty()) {
         let Some((k, v)) = l.trim().split_once(':') else { continue };
         let v = v.trim().trim_matches(['"', '\'']);
+        if k.trim() == "layout" {
+            o.layout = Layout::from_word(v).unwrap_or_default();
+            continue;
+        }
         let Ok(n) = v.parse::<f64>() else { continue };
         if !n.is_finite() {
             continue;

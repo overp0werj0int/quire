@@ -278,7 +278,7 @@ pub(super) fn canvas(v: V) -> El {
     let ghost_el = drag.and_then(|g| {
         let m = t.find(g.node)?;
         let child_bottom = match g.drop {
-            Some(crate::map::Add::Child(j)) => l.at[j].map(|p| cam.0[1] + p.bottom() * cam.1),
+            Some(crate::map::Add::Child(j)) => l.child_mark_bottom(j).map(|y| cam.0[1] + y * cam.1),
             _ => None,
         };
         Some(ghost(&cx, &t, m, g.at, s.map_size(), child_bottom))
@@ -287,7 +287,9 @@ pub(super) fn canvas(v: V) -> El {
         && let Some(p) = l.at[ROOT]
     {
         let font = map_app::chip_font(b, mono);
-        if let Some((badge, [x, y, _, h])) = (t.props > 0).then(|| map_app::badge(t.props, &l, font)).flatten() {
+        let badge = (t.props > 0).then(|| map_app::badge(t.props, &l, font)).flatten();
+        let badge_under = badge.as_ref().is_some_and(|(_, at)| at[1] > p.y);
+        if let Some((badge, [x, y, _, h])) = badge {
             world = world.child(
                 rune::row()
                     .key("map-props")
@@ -306,7 +308,7 @@ pub(super) fn canvas(v: V) -> El {
             );
         }
         if t.nodes.len() == 1 {
-            let y = p.bottom() + 6.0 + if t.props > 0 { 28.0 } else { 0.0 };
+            let y = p.bottom() + 6.0 + if badge_under { 28.0 } else { 0.0 };
             let hint_text = "Press Tab to add a branch, or F2 to name the root";
             let hint_font = styles::sans((b * 0.86).round(), 400.0);
             let hint_w = rune::text::measure(hint_text, &[], hint_font, None).0.ceil();
@@ -505,7 +507,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, pad_x: f32) -> 
             None => &mut s.map.spare,
         })
         .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
-        .pin(Some(p.x + pad_x + room + W), Some(p.y + W), None, None)
+        .pin(Some(p.x + p.label_pads(pad_x, room)[0] + W), Some(p.y + W), None, None)
         .w(w)
         .radius(3.0)
         .fill(surface)
@@ -613,9 +615,12 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     let key = node_key(t, i);
     let room = map_app::task_room(n, b);
     let (pad_x, pad_b) = (l.metrics.pad_x, l.metrics.pad_b);
-    // The room the task box's target may take, from the node's own corner.
+    let [label_x, label_end] = p.label_pads(pad_x, room);
+    // The room the task box's target may take, from the node's own corner: its cell, off the
+    // label.
     let cell = l.cell[i];
-    let room_at = [cell[0] - p.x, cell[1] - p.y, cell[2] - p.x, cell[3] - p.y];
+    let (box_x, [lo, hi]) = p.task_slot(pad_x, room, crate::page::r(b * 0.9));
+    let room_at = [(cell[0] - p.x).max(lo), cell[1] - p.y, (cell[2] - p.x).min(hi), cell[3] - p.y];
     let lw = line_width(p.depth);
     let tail = key_tail(&key).to_string();
     // Below `PLAIN_LABEL_ZOOM` (0.20×, where rows are <= 5 px tall), mount text nodes as a
@@ -630,8 +635,8 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .font(style)
             .color(color)
             .wrap_anywhere()
-            .pl(pad_x + room)
-            .pr(pad_x)
+            .pl(label_x)
+            .pr(label_end)
             .pin(Some(p.x + W), Some(p.y + W), None, None)
             .size(p.w, p.h + lw)
             .border_sides([0.0, 0.0, lw, 0.0], branch)
@@ -647,7 +652,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             e = e.expanded(!folded);
         }
         return e
-            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, room, target, room_at, c, true, true)))
+            .children((room > 0.0).then(|| task_box(n, i, b, box_x, target, room_at, c, true, true)))
             .on_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, false, tx))
             .on_double_press_tx(move |s: &mut App, tx: &mut Tx| s.map_click(i, true, tx))
             .on_secondary_press(move |s: &mut App, at, tx| s.map_node_menu(i, Some((at.x, at.y)), tx))
@@ -686,7 +691,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
                 }
                 r.el(st, color, None).wrap_anywhere().w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
             };
-            shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
+            shown.unwrap_or_else(text).pin(Some(label_x), Some(0.0), None, None)
         });
         // The node's content, its task box with its label or card, grows as one piece under the
         // selection glass (MAP-055); the underline below it stays put.
@@ -694,7 +699,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h)
             .scale(grow)
-            .children((room > 0.0).then(|| task_box(n, i, b, pad_x, room, target, room_at, c, lite, plain_label)))
+            .children((room > 0.0).then(|| task_box(n, i, b, box_x, target, room_at, c, lite, plain_label)))
             .children(label_el);
         el().key(body_key)
             .pin(Some(0.0), Some(0.0), None, None)
@@ -726,19 +731,19 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
         .child(body)
 }
 
-/// A task's box left of its label, centred on the first line, in a target `target` map points
-/// clamped to `cell`, its node's hit cell from the node's corner, and clear of its label text
-/// (MAP-053, MAP-073).
+/// A task's box beside its label, its left edge at `bx_x`, centred on the first line, in a
+/// target `target` map points clamped to `cell`: its node's hit cell from the node's corner,
+/// clear of its label text (MAP-053, MAP-073).
 #[allow(clippy::too_many_arguments)]
-fn task_box(n: &crate::map::Node, i: usize, b: f32, pad_x: f32, room: f32, target: f32, cell: [f32; 4], c: &Roles, lite: bool, plain_label: bool) -> El {
+fn task_box(n: &crate::map::Node, i: usize, b: f32, bx_x: f32, target: f32, cell: [f32; 4], c: &Roles, lite: bool, plain_label: bool) -> El {
     let done = matches!(n.kind, NodeKind::Item { task: crate::blocks::Task::Done, .. });
     let bx = crate::page::r(b * 0.9);
     let lh = crate::page::line(b, 1.45);
     let hit = target.max(bx);
-    let (bx_x, bx_y) = (pad_x, (lh - bx) / 2.0);
+    let bx_y = (lh - bx) / 2.0;
     let (vcx, vcy) = (bx_x + bx / 2.0, lh / 2.0);
     let x0 = (vcx - hit / 2.0).max(cell[0]).min(bx_x);
-    let x1 = (vcx + hit / 2.0).min(pad_x + room).max(bx_x + bx);
+    let x1 = (vcx + hit / 2.0).min(cell[2]).max(bx_x + bx);
     let y0 = (vcy - hit / 2.0).max(cell[1]).min(bx_y);
     let y1 = (vcy + hit / 2.0).min(cell[3]).max(bx_y + bx);
     let (rad, edge) = (2f32.max(crate::page::r(bx * 0.24)), 1f32.max(crate::page::r(b / 12.0)));
@@ -803,19 +808,64 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     let branch = branch_color(c, n.branch);
     // The ring sits beside the middle of the node's growing side; a folded node's `+N` badge
     // takes its place.
-    let Some(d) = l.rings(i).next() else { return Vec::new() };
-    let [cx, cy] = p.ring(d);
-    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return Vec::new() };
     let toggle = move |s: &mut App, tx: &mut Tx| {
         let all = tx.mods().cmd;
         s.map_toggle(i, all, tx);
         s.keys_to_note(tx);
     };
     let mut out = Vec::new();
+    for (nth, d) in l.rings(t, i).enumerate() {
+        fold_ring(&mut out, l, i, p, d, (&tail, nth), toggle, branch, folded, editing, lite, hit, c);
+        if folded {
+            let hidden = n.end - i - 1;
+            let font = map_app::chip_font(b, mono);
+            let (pill, [x, y, w, h]) = map_app::pill(hidden, p, d, font);
+            out.push(
+                el().key(format!("map-pill:{tail}"))
+                    .size(w, h)
+                    .center()
+                    .fill(c.bg)
+                    .hover(crate::roles::mix(c.bg, branch, 0.18))
+                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                    .border(1.5, branch)
+                    .radius(h / 2.0)
+                    .role("button")
+                    .label(format!("Unfold, {hidden} hidden"))
+                    .cursor(rune::Cursor::Pointer)
+                    .pin(Some(x + W), Some(y + W), None, None)
+                    .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
+                    .on_press_tx(toggle),
+            );
+        }
+    }
+    out
+}
+
+/// One fold ring of node `i`, on side `d` of its box `p`, and its hit target.
+#[allow(clippy::too_many_arguments)]
+fn fold_ring(
+    out: &mut Vec<El>,
+    l: &Laid,
+    i: usize,
+    p: Place,
+    d: crate::map_geom::Dir,
+    (tail, nth): (&str, usize),
+    toggle: impl Fn(&mut App, &mut Tx) + 'static,
+    branch: Color,
+    folded: bool,
+    editing: bool,
+    lite: bool,
+    hit: f32,
+    c: &Roles,
+) {
+    let [cx, cy] = p.ring(d);
+    let Some([x0, y0, x1, y1]) = l.ring_hit(i, d, hit) else { return };
+    // A node with a ring on each side keys the second by its number.
+    let key = |name: &str| if nth == 0 { format!("{name}:{tail}") } else { format!("{name}:{tail}:{}", nth + 1) };
     // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
     if !folded {
         out.push(
-            el().key(format!("map-dot:{tail}"))
+            el().key(key("map-dot"))
                 .pin(Some(cx - FOLD_DOT_R + W), Some(cy - FOLD_DOT_R + W), None, None)
                 .size(2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R)
                 .radius(FOLD_DOT_R)
@@ -826,7 +876,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     }
     if !editing {
         let mut hit_el = el()
-            .key(format!("map-fold:{tail}"))
+            .key(key("map-fold"))
             .pin(Some(x0 + W), Some(y0 + W), None, None)
             .size(x1 - x0, y1 - y0)
             .role("button")
@@ -838,7 +888,7 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
             let (rcx, rcy) = (cx - x0, cy - y0);
             let mut hash = std::collections::hash_map::DefaultHasher::new();
             (d, fw.to_bits(), fh.to_bits(), rcx.to_bits(), rcy.to_bits(), color_bits(branch)).hash(&mut hash);
-            let vis_key = format!("map-fold-v:{tail}");
+            let vis_key = key("map-fold-v");
             let visuals = rune::memo(vis_key.clone(), hash.finish(), move || {
                 let r = FOLD_DOT_R;
                 let halo_r = r + 3.0;
@@ -873,28 +923,6 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
         }
         out.push(hit_el);
     }
-    if folded {
-        let hidden = n.end - i - 1;
-        let font = map_app::chip_font(b, mono);
-        let (pill, [x, y, w, h]) = map_app::pill(hidden, p, d, font);
-        out.push(
-            el().key(format!("map-pill:{tail}"))
-                .size(w, h)
-                .center()
-                .fill(c.bg)
-                .hover(crate::roles::mix(c.bg, branch, 0.18))
-                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                .border(1.5, branch)
-                .radius(h / 2.0)
-                .role("button")
-                .label(format!("Unfold, {hidden} hidden"))
-                .cursor(rune::Cursor::Pointer)
-                .pin(Some(x + W), Some(y + W), None, None)
-                .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
-                .on_press_tx(toggle),
-        );
-    }
-    out
 }
 
 /// The node a drag carries, drawn as a screen-space overlay clamped inside `canvas_size` so it

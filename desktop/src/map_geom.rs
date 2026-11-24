@@ -25,7 +25,6 @@ pub fn line_width(depth: usize) -> f32 {
 
 /// The way a node's branches grow: away from its parent, towards its children.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[expect(dead_code, reason = "every map is laid out Right until the other layouts land")]
 pub enum Dir {
     Right,
     Left,
@@ -175,6 +174,39 @@ impl Place {
     pub fn landed_at(self, pt: [f32; 2]) -> Place {
         let [ex, ey] = self.entry();
         Place { x: pt[0] - (ex - self.x), y: pt[1] - (ey - self.y), ..self }
+    }
+
+    /// Where a task's box `bx` wide sits in a node `room` wider for it, from the node's corner:
+    /// its left edge, and the least and most x its hit target may take. The box is at the end
+    /// of the label away from the fold ring, and its target stays off the label.
+    pub fn task_slot(&self, pad_x: f32, room: f32, bx: f32) -> (f32, [f32; 2]) {
+        match self.dir {
+            Dir::Left => (self.w - pad_x - bx, [self.w - pad_x - room, f32::INFINITY]),
+            Dir::Right | Dir::Down | Dir::Up => (pad_x, [f32::NEG_INFINITY, pad_x + room]),
+        }
+    }
+
+    /// The world x span of the `room` a task's box takes beside the label.
+    pub fn task_span(&self, pad_x: f32, room: f32) -> [f32; 2] {
+        match self.dir {
+            Dir::Left => [self.right() - pad_x - room, self.right() - pad_x],
+            Dir::Right | Dir::Down | Dir::Up => [self.x + pad_x, self.x + pad_x + room],
+        }
+    }
+
+    /// The room left and right of the label in a node `room` wider for a task's box.
+    pub fn label_pads(&self, pad_x: f32, room: f32) -> [f32; 2] {
+        match self.dir {
+            Dir::Left => [pad_x, pad_x + room],
+            Dir::Right | Dir::Down | Dir::Up => [pad_x + room, pad_x],
+        }
+    }
+
+    /// Where a menu opened on the node from the keyboard hangs: under it, and under its fold
+    /// ring where that is below it.
+    pub fn menu_at(&self) -> [f32; 2] {
+        let clear = if self.dir == Dir::Down { FOLD_DOT_GAP + 2.0 * FOLD_DOT_R } else { FOLD_R };
+        [self.x, self.bottom() + clear + 4.0]
     }
 
     /// The node's span along the axis its siblings stack on, underline included: top to bottom

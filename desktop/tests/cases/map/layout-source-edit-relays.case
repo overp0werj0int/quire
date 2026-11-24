@@ -1,0 +1,37 @@
+Changing `layout: right` to `left` in Source lays the map out again: back on the map, the heading is left of the root and the root's fold ring is on its left.
+note: Plan.md
+events: key:m+cmd@0.3 key:m+cmd@0.9 tap:editor@1.3 key:Home+cmd@1.5 key:Down@1.6 key:Down@1.7 key:End@1.8 key:Backspace@1.90 key:Backspace@1.95 key:Backspace@2.00 key:Backspace@2.05 key:Backspace@2.10 type:left@2.4 key:m+cmd@3.2 key:s+cmd@3.8
+expect: rect:map-node:5: [706.0, 390.5, 116.0, 68.0]
+expect: rect:map-node:7: [388.0, 323.88, 158.0, 59.0]
+expect: rect:map-link:7: [388.0, 375.38, 278.0, 50.13]
+expect: rect:map-dot:5: [666.0, 406.5, 28.0, 28.0]
+--- before
+---
+markmap:
+  layout: right
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

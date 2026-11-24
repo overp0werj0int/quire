@@ -16,7 +16,7 @@ use rune::{Family, Live, TextEdit, TextStyle, Tx};
 use crate::app::{App, Mode};
 use crate::blocks::Link;
 use crate::map::{self, Body, NodeId, NodeKind, ROOT, Tree};
-use crate::map_geom::{Arrow, Dir, FOLD_DOT_R, FOLD_R, Rel};
+use crate::map_geom::{Arrow, Dir, FOLD_DOT_R, Rel};
 use crate::map_layout::{self, Laid, Metrics};
 use crate::page;
 
@@ -702,7 +702,7 @@ impl App {
         let mut boxes = Vec::new();
         for &i in l.shown.iter().filter(|&&i| !t.nodes[i].children.is_empty()) {
             let Some(p) = l.at[i] else { continue };
-            for d in l.rings(i) {
+            for d in l.rings(&t, i) {
                 let [cx, cy] = p.ring(d);
                 boxes.push([cx - FOLD_DOT_R, cy - FOLD_DOT_R, 2.0 * FOLD_DOT_R, 2.0 * FOLD_DOT_R]);
                 if folded(i) {
@@ -875,7 +875,7 @@ impl App {
     /// Arrow and vi keys (MAP-056): the arrow along the selected node's branches goes to its
     /// first child, the one against them to its parent, and the two across to its siblings.
     pub fn map_arrow(&mut self, a: Arrow, tx: &mut Tx) {
-        match self.map_laid().toward(self.map_selected(), a) {
+        match self.map_laid().toward(&self.map_tree(), self.map_selected(), a) {
             Some(Rel::Parent) => self.map_parent(tx),
             Some(Rel::Child(d)) => self.map_child(d, tx),
             Some(Rel::Prev) => self.map_sibling(false, tx),
@@ -887,7 +887,7 @@ impl App {
     /// `Alt` with an arrow (MAP-031): the move that takes the selected node where that arrow
     /// would take the selection.
     pub fn map_move_arrow(&mut self, a: Arrow, tx: &mut Tx) {
-        let step = match self.map_laid().toward(self.map_selected(), a) {
+        let step = match self.map_laid().toward(&self.map_tree(), self.map_selected(), a) {
             Some(Rel::Parent) => map::Step::Out,
             Some(Rel::Child(_)) => map::Step::In,
             Some(Rel::Prev) => map::Step::Up,
@@ -1334,7 +1334,8 @@ impl App {
                     let room = task_room(&t.nodes[i], b);
                     let (x_lo, x_hi, y_lo, y_hi) = if room > 0.0 {
                         let lh = page::line(b, 1.45);
-                        (p.x + l.metrics.pad_x, p.x + l.metrics.pad_x + room, p.y, p.y + lh.min(p.h))
+                        let [x_lo, x_hi] = p.task_span(l.metrics.pad_x, room);
+                        (x_lo, x_hi, p.y, p.y + lh.min(p.h))
                     } else {
                         (p.x, p.right(), p.y, p.bottom())
                     };
@@ -1355,7 +1356,8 @@ impl App {
         let Some(p) = self.map_laid().at[i] else { return };
         let ([px, py], z) = self.map_camera();
         let [ox, oy] = self.map.origin.get();
-        let under = (ox + px + p.x * z, oy + py + (p.bottom() + FOLD_R + 4.0) * z);
+        let [mx, my] = p.menu_at();
+        let under = (ox + px + mx * z, oy + py + my * z);
         self.open_menu(crate::layer::MenuOf::Node(self.map_tree().nodes[i].id), at.unwrap_or(under), tx);
         if at.is_none() {
             tx.focus("node-menu", true);
