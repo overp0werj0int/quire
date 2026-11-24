@@ -76,18 +76,21 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
     let mut rows = col().key("rows").w_full().gap(gap);
     for (i, f) in fields.iter().enumerate() {
         let is_tags = matches!(f.key.to_ascii_lowercase().as_str(), "tags" | "tag") && cx.doc.is_some();
+        let clickable_tags = is_tags && !cx.v.s.note_mode();
         let value: El = match f.kind {
             FieldKind::Pill if is_tags => {
                 let raw = f.value.trim().trim_start_matches('#').to_string();
-                let click_tag = raw.clone();
-                let tag_pill = pill(cx, &f.value, Some(c.accent), None)
-                    .key(format!("fm-tag:{raw}"))
-                    .hover(c.hover)
-                    .cursor(rune::Cursor::Pointer)
-                    .role("button")
-                    .label(format!("Search #{raw}"))
-                    .help(format!("Search #{raw}"))
-                    .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                let mut tag_pill = pill(cx, &f.value, Some(c.accent), None).key(format!("fm-tag:{raw}"));
+                if clickable_tags {
+                    let click_tag = raw.clone();
+                    tag_pill = tag_pill
+                        .hover(c.hover)
+                        .cursor(rune::Cursor::Pointer)
+                        .role("button")
+                        .label(format!("Search #{raw}"))
+                        .help(format!("Search #{raw}"))
+                        .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                }
                 one_line(tag_pill)
             }
             FieldKind::Pill => {
@@ -99,15 +102,17 @@ pub(super) fn card(cx: &Cx, title: &str, fields: &[Field]) -> El {
                 for (j, it) in f.items.iter().enumerate() {
                     if is_tags {
                         let raw = it.trim().trim_start_matches('#').to_string();
-                        let click_tag = raw.clone();
-                        let p_el = pill(cx, it, Some(c.accent), None)
-                            .key(format!("fm-tag:{raw}"))
-                            .hover(c.hover)
-                            .cursor(rune::Cursor::Pointer)
-                            .role("button")
-                            .label(format!("Search #{raw}"))
-                            .help(format!("Search #{raw}"))
-                            .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                        let mut p_el = pill(cx, it, Some(c.accent), None).key(format!("fm-tag:{raw}"));
+                        if clickable_tags {
+                            let click_tag = raw.clone();
+                            p_el = p_el
+                                .hover(c.hover)
+                                .cursor(rune::Cursor::Pointer)
+                                .role("button")
+                                .label(format!("Search #{raw}"))
+                                .help(format!("Search #{raw}"))
+                                .on_press_tx(move |s: &mut crate::app::App, tx| s.search_tag(&click_tag, tx));
+                        }
                         r_ = r_.child(p_el);
                     } else {
                         r_ = r_.child(pill(cx, it, None, None).key(format!("v-{j}")));

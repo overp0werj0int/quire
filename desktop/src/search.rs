@@ -43,7 +43,7 @@ impl Entry {
             ver,
             name: md::base(path).to_lowercase(),
             text: if sealed { Lowered::Sealed } else { lower(text) },
-            tags: if sealed { Vec::new() } else { md::note_tags(text) },
+            tags: if sealed { Vec::new() } else { md::all_tags(text) },
         }
     }
 
@@ -447,6 +447,30 @@ mod tests {
         assert_eq!(r.tagged, ["Box/a.md", "z.md"]);
         let rows: Vec<String> = r.rows().map(|row| row.key()).collect();
         assert_eq!(rows, ["res-tag:plan", "res-tag:plant", "res-tagged:Box|a.md", "res-tagged:z.md"]);
+    }
+
+    /// SB-76: YAML frontmatter `tags:` and `tag:` values are indexed alongside inline `#tags`,
+    /// lowercased and deduplicated without a leading `#`.
+    #[test]
+    fn frontmatter_tags_are_indexed() {
+        let v = vault(&[
+            ("Alpha.md", "---\ntags: [design, Roadmap]\n---\n\n# Alpha\n\nBody #design text.\n"),
+            ("Solo.md", "---\ntag: #Solo\n---\n\n# Solo\n"),
+            ("Block.md", "---\ntags:\n  - alpha\n  - #beta\n---\n\nBody\n"),
+        ]);
+        let mut c = Cache::default();
+        let roadmap = c.results(&v, "#roadmap");
+        assert_eq!(roadmap.tags, [("roadmap".to_string(), 1)]);
+        assert_eq!(roadmap.tagged, ["Alpha.md"]);
+        let design = c.results(&v, "#design");
+        assert_eq!(design.tags, [("design".to_string(), 1)], "inline + frontmatter #design counts once per note");
+        assert_eq!(design.tagged, ["Alpha.md"]);
+        let solo = c.results(&v, "#solo");
+        assert_eq!(solo.tags, [("solo".to_string(), 1)]);
+        assert_eq!(solo.tagged, ["Solo.md"]);
+        let beta = c.results(&v, "#beta");
+        assert_eq!(beta.tags, [("beta".to_string(), 1)]);
+        assert_eq!(beta.tagged, ["Block.md"]);
     }
 
     /// SB-59 and SB-133: a locked note is found by its name and never by its text or tags.

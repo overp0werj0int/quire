@@ -311,7 +311,7 @@ pub fn preview(v: V) -> El {
             s.names_gen,
             s.images.epoch.get(),
             s.reader.copied.map(|(l, _)| l),
-            folds.sig,
+            (folds.sig, s.note_mode()),
         )
             .hash(&mut h);
         h.finish()

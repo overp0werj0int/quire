@@ -379,6 +379,48 @@ pub fn note_tags(text: &str) -> Vec<String> {
     seen
 }
 
+/// Lowercased, deduplicated tag names from YAML front matter `tags:` / `tag:` fields
+/// (inline `[a, b]`, comma-separated, single value, or bulleted list; leading `#` stripped).
+pub fn frontmatter_tags(text: &str) -> Vec<String> {
+    let Some(split) = crate::blocks::front_matter::split(text) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for f in crate::blocks::front_matter::parse(&split.raw) {
+        if !matches!(f.key.to_ascii_lowercase().as_str(), "tags" | "tag") {
+            continue;
+        }
+        let mut push = |s: &str| {
+            let tag = s.trim().trim_start_matches('#').to_lowercase();
+            if !tag.is_empty() && !out.contains(&tag) {
+                out.push(tag);
+            }
+        };
+        if let Some(items) = f.items {
+            for it in items {
+                push(&it);
+            }
+        } else {
+            for part in f.value.split(',') {
+                push(part);
+            }
+        }
+    }
+    out
+}
+
+/// Every tag carried by a note: inline `#tags` plus YAML front matter `tags:` / `tag:` values,
+/// lowercased and deduplicated without a leading `#`.
+pub fn all_tags(text: &str) -> Vec<String> {
+    let mut out = note_tags(text);
+    for t in frontmatter_tags(text) {
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
 /// The `[[...]]` links in a text, as inner text.
 pub fn wiki_links(text: &str) -> Vec<&str> {
     let mut out = Vec::new();

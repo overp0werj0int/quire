@@ -935,24 +935,15 @@ impl App {
     }
 
     fn ac_tag_items(&self, q: &str, active: &str, live_text: &str, active_span: std::ops::Range<usize>) -> Vec<AcItem> {
-        use std::collections::{BTreeMap, BTreeSet};
+        use std::collections::BTreeMap;
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         if let Some(v) = &self.vault {
             for (t, n) in self.search.borrow_mut().all_tags_excluding(v, active) {
                 counts.insert(t, n);
             }
-            for (p, text) in v.files() {
-                if p == active {
-                    continue;
-                }
-                for t in frontmatter_tags(text) {
-                    counts.entry(t).or_insert(1);
-                }
-            }
         }
         let without_active = omit_span(live_text, active_span);
-        let active_tags: BTreeSet<String> = md::note_tags(&without_active).into_iter().chain(frontmatter_tags(&without_active)).collect();
-        for t in active_tags {
+        for t in md::all_tags(&without_active) {
             *counts.entry(t).or_insert(0) += 1;
         }
         let ql = q.to_lowercase();
@@ -1134,60 +1125,15 @@ fn omit_span(text: &str, span: std::ops::Range<usize>) -> String {
     out
 }
 
-/// Extracts lowercased tag names from YAML front matter `tags:` / `tag:` fields (inline `[a, b]`,
-/// comma-separated, or bulleted list).
-fn frontmatter_tags(text: &str) -> Vec<String> {
-    if !text.starts_with("---\n") && !text.starts_with("---\r\n") {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let mut in_list = false;
-    for ln in text.lines().skip(1) {
-        let t = ln.trim();
-        if t == "---" || t == "..." {
-            break;
-        }
-        if in_list {
-            if let Some(rest) = t.strip_prefix("- ") {
-                let tag = rest.trim().trim_matches(|c| c == '"' || c == '\'').trim_start_matches('#').to_lowercase();
-                if !tag.is_empty() && !out.contains(&tag) {
-                    out.push(tag);
-                }
-                continue;
-            }
-            if !t.is_empty() {
-                in_list = false;
-            }
-        }
-        if let Some((k, v)) = ln.split_once(':') {
-            if matches!(k.trim().to_ascii_lowercase().as_str(), "tags" | "tag") {
-                let v = v.trim();
-                if v.is_empty() {
-                    in_list = true;
-                } else {
-                    let inner = v.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(v);
-                    for part in inner.split(',') {
-                        let tag = part.trim().trim_matches(|c| c == '"' || c == '\'').trim_start_matches('#').to_lowercase();
-                        if !tag.is_empty() && !out.contains(&tag) {
-                            out.push(tag);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{find_in, frontmatter_tags};
+    use super::find_in;
 
     #[test]
     fn frontmatter_tags_parses_inline_and_block_lists() {
-        assert_eq!(frontmatter_tags("---\ntags: [design, roadmap]\n---\nBody"), vec!["design", "roadmap"]);
-        assert_eq!(frontmatter_tags("---\ntags:\n  - alpha\n  - #beta\n---\n"), vec!["alpha", "beta"]);
-        assert!(frontmatter_tags("# No front matter\ntags: [x]").is_empty());
+        assert_eq!(crate::md::frontmatter_tags("---\ntags: [design, roadmap]\n---\nBody"), vec!["design", "roadmap"]);
+        assert_eq!(crate::md::frontmatter_tags("---\ntags:\n  - alpha\n  - #beta\n---\n"), vec!["alpha", "beta"]);
+        assert!(crate::md::frontmatter_tags("# No front matter\ntags: [x]").is_empty());
     }
 
     #[test]
