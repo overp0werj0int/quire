@@ -372,6 +372,7 @@ impl App {
                 if conflicts.len() == 1 { "A note" } else { "Some notes" },
                 conflicts.join(", ")
             ));
+            self.notice_open = conflicts.iter().find(|c| c.to_lowercase().ends_with(".md")).cloned();
             // The copies go up on the next sync.
             self.sync_auto(1.0);
         }

@@ -22,6 +22,22 @@ pub fn strip_md(p: &str) -> &str {
     if p.len() >= 3 && p[p.len() - 3..].eq_ignore_ascii_case(".md") { &p[..p.len() - 3] } else { p }
 }
 
+/// If `rel` is a sync conflict copy (`<stem> (conflict <device>).md`, including numbered copies
+/// `<stem> (conflict <device> 2).md`), returns `(original_rel, device)`.
+pub fn conflict_origin(rel: &str) -> Option<(String, String)> {
+    let d = dir(rel);
+    let file = rel.rsplit('/').next().unwrap_or(rel);
+    let (stem, ext) = file.rsplit_once('.')?;
+    let without_close = stem.strip_suffix(')')?;
+    let idx = without_close.rfind(" (conflict ")?;
+    let orig_stem = &without_close[..idx];
+    let device = without_close[idx + " (conflict ".len()..].trim();
+    if orig_stem.is_empty() || device.is_empty() {
+        return None;
+    }
+    Some((join(d, &format!("{orig_stem}.{ext}")), device.to_string()))
+}
+
 /// Makes a name safe as a file name: path separators and colons become dashes.
 pub fn clean_name(s: &str) -> String {
     s.chars().map(|c| if matches!(c, '\\' | '/' | ':') { '-' } else { c }).collect::<String>().trim().to_string()
@@ -853,6 +869,15 @@ mod tests {
         files.insert("Beta.md".into(), "# Beta\n\n## Details\n".into());
         assert_eq!(backlinks(&files, "Beta.md"), vec![("Alpha.md".into(), 2)]);
         assert!(backlinks(&files, "Alpha.md").is_empty());
+    }
+
+    #[test]
+    fn conflict_origin_parses_sync_conflict_copies() {
+        assert_eq!(conflict_origin("Beta (conflict Laptop).md"), Some(("Beta.md".into(), "Laptop".into())));
+        assert_eq!(conflict_origin("Docs/Spec (conflict MacBook 2).md"), Some(("Docs/Spec.md".into(), "MacBook 2".into())));
+        assert_eq!(conflict_origin("Beta.md"), None);
+        assert_eq!(conflict_origin(" (conflict Laptop).md"), None);
+        assert_eq!(conflict_origin("Beta (conflict ).md"), None);
     }
 }
 

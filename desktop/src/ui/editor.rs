@@ -120,34 +120,42 @@ pub fn body(v: V) -> El {
     }
     // In zen mode the progress bar runs along the window's top edge (`ui::view`).
     let progress = if focus { None } else { progress(v) };
-    let mut area = col()
-        .key("doc-area")
+    let mut main_area = col()
+        .key("doc-main")
         .grow(1.0)
         .min_w(0.0)
         .min_h(0.0)
-        .h_full()
+        .w_full()
         .children((!writer).then(super::focus::note_anchor))
         .children(has_find_slot.then(|| super::reader::find_backing(v)))
         .child(view);
     if reading || writer {
-        area = area.children(progress).child(super::reader::find_bar(v));
+        main_area = main_area.children(progress).child(super::reader::find_bar(v));
     } else if mapping {
         // Over the canvas, which needs no slot: the map centres matches clear of the bar.
-        area = area.child(super::reader::find_bar(v));
+        main_area = main_area.child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
         Some(super::reader::undo_toast(v, &d.name))
     } else {
         v.s.reader.toast.as_ref().map(|(msg, _)| super::reader::toast(v, msg))
     };
-    area = area.children(super::reader::toast_band(v));
+    main_area = main_area.children(super::reader::toast_band(v));
     if mapping {
-        area = area.children(super::map::zoom_hud(v));
+        main_area = main_area.children(super::map::zoom_hud(v));
     }
-    area = area.children(toast);
+    main_area = main_area.children(toast);
     if let Some(n) = &v.s.notice {
-        area = area.child(super::reader::notice(v, n));
+        main_area = main_area.child(super::reader::notice(v, n));
     }
+    let area = col()
+        .key("doc-area")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .h_full()
+        .children(conflict_banner(v))
+        .child(main_area);
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     // The outline slides in from the right and out to it over 160 ms (WR-99).
     let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
@@ -158,6 +166,93 @@ pub fn body(v: V) -> El {
     }
     sheet = sheet.child(inner);
     row().key("body").grow(1.0).min_h(0.0).w_full().child(sheet)
+}
+
+/// Inline resolution banner shown above Source, Preview, and Map content whenever the active
+/// note is a sync conflict copy (`<stem> (conflict <device>).md`).
+fn conflict_banner(v: V) -> Option<El> {
+    if !v.has_doc() || v.focus() {
+        return None;
+    }
+    let active = v.s.active.as_deref()?;
+    let (orig, device) = md::conflict_origin(active)?;
+    let p = v.p;
+    let c = Roles::new(p);
+    let (rw, rg, rc) = super::focus_ring(p);
+    let bg = crate::roles::mix(p.bg, p.err, if p.dark { 0.14 } else { 0.08 });
+    let edge = p.err.alpha(if p.dark { 0.35 } else { 0.28 });
+    let act_btn = |key: &'static str, text_: &'static str, color: Color, border_color: Color, run: Box<dyn Fn(&mut App, &mut Tx)>| {
+        super::focus::stop(row())
+            .key(key)
+            .h(26.0)
+            .px(10.0)
+            .center()
+            .radius(6.0)
+            .fill(p.bg)
+            .border(1.0, border_color)
+            .border_layout()
+            .hover(p.hover)
+            .role("button")
+            .label(text_)
+            .focus_ring(rw, rg, rc)
+            .keeps_text_selection()
+            .control(move |s: &mut App, tx| run(s, tx))
+            .child(label(text_, sans(12.0, 500.0), color))
+    };
+    let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
+    let (conf1, conf2) = (active.to_string(), active.to_string());
+    let msg = format!("Sync conflict copy from {device} · Original: {orig}");
+    Some(
+        row()
+            .key("conflict-banner")
+            .w_full()
+            .px(16.0)
+            .py(8.0)
+            .gap(10.0)
+            .center_y()
+            .flex_wrap()
+            .fill(bg)
+            .border_sides([0.0, 0.0, 1.0, 0.0], edge)
+            .border_layout()
+            .role("region")
+            .label("Sync conflict")
+            .child(
+                row()
+                    .grow(1.0)
+                    .shrink()
+                    .min_w(180.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(icon(&super::icons::WARNING, 15.0).color(c.readable_err()))
+                    .child(text(msg).font(sans(12.5, 500.0)).color(p.ink).truncate().shrink().min_w(0.0)),
+            )
+            .child(
+                row()
+                    .gap(6.0)
+                    .center_y()
+                    .child(act_btn(
+                        "conflict-open-orig",
+                        "Open original",
+                        p.ink,
+                        p.line,
+                        Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
+                    ))
+                    .child(act_btn(
+                        "conflict-keep-this",
+                        "Keep this version",
+                        p.acc,
+                        p.acc.alpha(0.55),
+                        Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
+                    ))
+                    .child(act_btn(
+                        "conflict-discard",
+                        "Discard conflict",
+                        c.readable_err(),
+                        p.err.alpha(0.55),
+                        Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
+                    )),
+            ),
+    )
 }
 
 /// The progress bar: in both modes the share of the note's lines above the view, full at its

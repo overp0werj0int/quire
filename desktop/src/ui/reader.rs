@@ -494,7 +494,8 @@ fn foot_pill_w(v: V) -> f32 {
     };
     let notice_w = v.s.notice.as_deref().map_or(0.0, |m| {
         let (w, _) = notice_fit(v, m);
-        (14.0 + w + 6.0 + 20.0 + width("Dismiss", body) + 4.0).ceil().min(room)
+        let open_w = if notice_open_target(v).is_some() { 6.0 + 20.0 + width("Open", body) } else { 0.0 };
+        (14.0 + w + open_w + 6.0 + 20.0 + width("Dismiss", body) + 4.0).ceil().min(room)
     });
     toast_w.max(notice_w)
 }
@@ -614,11 +615,17 @@ pub fn undo_toast(v: V, name: &str) -> El {
     foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
+fn notice_open_target(v: V) -> Option<String> {
+    let p = v.s.notice_open.as_deref()?;
+    v.s.files().contains_key(p).then(|| p.to_string())
+}
+
 /// The notice's text width and its pill's height in its room: on one line the toast's 30 px,
 /// else wrapped at the widest the room allows, and as wide as its longest line (HUG).
 fn notice_fit(v: V, msg: &str) -> (f32, f32) {
     let body = styles::popup();
-    let room = foot_room(v) - 24.0 - 20.0 - width("Dismiss", body);
+    let open_w = if notice_open_target(v).is_some() { 6.0 + 20.0 + width("Open", body) } else { 0.0 };
+    let room = foot_room(v) - 24.0 - 20.0 - width("Dismiss", body) - open_w;
     let whole = width(msg, body);
     if whole <= room {
         return (whole, PILL_H);
@@ -640,7 +647,23 @@ pub(super) fn notice(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
     let body = styles::popup();
     let (w, h) = notice_fit(v, msg);
-    let dismiss = pill_button(&c, "notice-x").label("Dismiss").on_press(|s: &mut App| s.notice = None).child(text("Dismiss").font(body).color(v.p.mute));
+    let open_btn = notice_open_target(v).map(|path| {
+        pill_button(&c, "notice-open")
+            .label(format!("Open {}", crate::md::base(&path)))
+            .on_press_tx(move |s: &mut App, tx| {
+                s.notice = None;
+                s.notice_open = None;
+                s.open_file(&path, None, tx);
+            })
+            .child(text("Open").font(body).color(c.accent))
+    });
+    let dismiss = pill_button(&c, "notice-x")
+        .label("Dismiss")
+        .on_press(|s: &mut App| {
+            s.notice = None;
+            s.notice_open = None;
+        })
+        .child(text("Dismiss").font(body).color(v.p.mute));
     // The text's first line centres on the button's 24 px.
     let words = row().py(4.0).child(text(msg.to_string()).font(body).color(c.readable_err()).wrap().w(w));
     let pill = super::widgets::floating(row(), &c)
@@ -652,6 +675,7 @@ pub(super) fn notice(v: V, msg: &str) -> El {
         .gap(6.0)
         .items_start()
         .child(words)
+        .children(open_btn)
         .child(dismiss);
     foot_row(v, "notice-row", notice_lift(v), pill)
 }

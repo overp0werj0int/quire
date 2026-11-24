@@ -91,6 +91,9 @@ const NOTE_BUTTONS: &[&str] = &[
     "find-prev",
     "find-next",
     "find-close",
+    "conflict-open-orig",
+    "conflict-keep-this",
+    "conflict-discard",
     "first-note",
     "marker",
 ];

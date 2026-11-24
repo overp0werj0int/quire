@@ -499,7 +499,10 @@ edit from a delete:
 
 - Only one side changed: that side wins.
 - Both sides changed: the local text stays, and the remote text comes down beside it as
-  `<name> (conflict <device>).md`.
+  `<name> (conflict <device>).md`. Conflict copies carry a warning badge in the file tree and Open
+  shelf (`md::conflict_origin`), a clickable `"Open"` action in the conflict notice, and an inline
+  resolution banner (`conflict-banner` in `ui/editor.rs`) with `"Open original"`,
+  `"Keep this version"` (undoable replacement + move conflict to `.trash`), and `"Discard conflict"`.
 - A deleted note moves to `.trash` on the other devices.
 
 The base is saved only after all disk writes of a sync succeed. If a write fails, the base is

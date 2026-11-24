@@ -163,6 +163,8 @@ pub struct App {
     pub sync_status: SyncStatus,
     pub mcp_copied: bool,
     pub notice: Option<String>,
+    /// Optional note path to open directly from the active notice (e.g. a sync conflict copy).
+    pub notice_open: Option<String>,
     /// The last delete, while its toast offers Undo.
     pub deleted: Option<crate::folders::Deleted>,
     pub writer: Writer,
@@ -393,6 +395,7 @@ pub fn init() -> App {
         sync_status: SyncStatus::Idle,
         mcp_copied: false,
         notice: None,
+        notice_open: None,
         deleted: None,
         writer,
         dirty: BTreeSet::new(),
@@ -1277,6 +1280,7 @@ impl App {
         self.edits.clear();
         // An Undo offer puts a note back into the folder it left, so it ends with that folder.
         self.deleted = None;
+        self.notice_open = None;
         self.trash_entries.clear();
         // Paths name notes only within one vault: a note unlocked in the last one locks again.
         self.unlocked.clear();
@@ -2339,7 +2343,11 @@ impl App {
     /// lock dialog, the edit sheet, a menu, a menu over a drawer) takes Esc before the notice,
     /// so under one this does nothing.
     pub(crate) fn esc_takes_notice(&mut self) -> bool {
-        matches!(self.layer().map(Layer::kind), None | Some(crate::layer::Kind::Drawer(_))) && self.notice.take().is_some()
+        if matches!(self.layer().map(Layer::kind), None | Some(crate::layer::Kind::Drawer(_))) && self.notice.take().is_some() {
+            self.notice_open = None;
+            return true;
+        }
+        false
     }
 
     /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
@@ -2347,6 +2355,7 @@ impl App {
     /// The keyboard stays where it was.
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
         if self.notice.take().is_some() {
+            self.notice_open = None;
             return true;
         }
         if self.new_folder.is_some() {
@@ -2362,6 +2371,65 @@ impl App {
             return false;
         }
         true
+    }
+
+    /// Opens the original note for a sync conflict copy, or shows a notice if it was deleted.
+    pub fn open_conflict_original(&mut self, orig: &str, tx: &mut Tx) {
+        if self.files().contains_key(orig) {
+            self.open_file(orig, None, tx);
+        } else {
+            self.notice = Some(format!("Original note {orig} does not exist."));
+            self.notice_open = None;
+        }
+    }
+
+    /// Replaces `orig` with the active conflict copy's content (as an undoable edit when open),
+    /// writes atomically to disk, opens `orig`, and moves `conflict_rel` to `.trash`.
+    pub fn keep_conflict_version(&mut self, conflict_rel: &str, orig: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() {
+            return;
+        }
+        if self.note_locked(conflict_rel) || self.note_locked(orig) {
+            self.notice = Some("Unlock both notes before resolving this conflict.".into());
+            self.notice_open = None;
+            return;
+        }
+        let Some(text) = self.note_text(conflict_rel).map(str::to_string) else { return };
+        if self.files().contains_key(orig) {
+            let old_len = self.note_text(orig).map_or(0, str::len);
+            self.splice_note(orig, 0..old_len, &text);
+        } else {
+            if let Some(v) = &mut self.vault {
+                v.put(orig.to_string(), text);
+                v.born.insert(orig.to_string(), now_ns());
+                let mut d = md::dir(orig).to_string();
+                while !d.is_empty() {
+                    if !v.folders.contains(&d) {
+                        v.folders.push(d.clone());
+                    }
+                    d = md::dir(&d).to_string();
+                }
+                v.folders.sort();
+            }
+            self.mark_dirty(orig);
+            self.rebuild_names();
+        }
+        self.flush_notes();
+        self.open_file(orig, None, tx);
+        self.delete_path(conflict_rel);
+        self.deleted = None;
+        self.toast(&format!("Kept version in {}", md::base(orig)), tx);
+    }
+
+    /// Moves a sync conflict copy to `.trash` and switches to `orig` if it exists.
+    pub fn discard_conflict_version(&mut self, conflict_rel: &str, orig: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() {
+            return;
+        }
+        if self.files().contains_key(orig) {
+            self.open_file(orig, None, tx);
+        }
+        self.delete_path(conflict_rel);
     }
 
     /// Moves the caret, the preview or the map to line `line`. On the map its node is selected

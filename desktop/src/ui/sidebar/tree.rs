@@ -7,7 +7,7 @@ use super::super::V;
 use super::super::lists::{self, Branch};
 use super::super::panel;
 use super::super::styles::{medium, nav};
-use super::super::icons::{FOLDER, FOLDER_OPEN, LOCK, PLUS};
+use super::super::icons::{FOLDER, FOLDER_OPEN, LOCK, PLUS, WARNING};
 use super::super::widgets::{floating, label, name_tip};
 use super::parts::{COUNT_TEXT, GAP, INNER_RADIUS, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
 use super::{BUTTON_END, ICON};
@@ -232,6 +232,7 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
     }
     let locked = v.s.is_locked(path);
     let unlocked = v.s.note_unlocked(path);
+    let conflict = md::conflict_origin(path).is_some();
     let head = row()
         .grow(1.0)
         .shrink()
@@ -241,10 +242,21 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
         .clip_rounded(0.0)
         .child(el().w(lead(depth) - INSET))
         .child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }));
-    if locked {
-        r.gap(6.0)
-            .child(head)
-            .child(icon(&LOCK, 12.0).key(format!("lock-tree:{path}")).color(if unlocked { v.p.acc } else { v.p.mute }))
+    if locked || conflict {
+        let mut r = r.gap(6.0).child(head);
+        if conflict {
+            r = r.child(
+                icon(&WARNING, 12.0)
+                    .key(format!("conflict-tree:{path}"))
+                    .color(v.p.err)
+                    .label("Sync conflict copy")
+                    .help("Sync conflict copy"),
+            );
+        }
+        if locked {
+            r = r.child(icon(&LOCK, 12.0).key(format!("lock-tree:{path}")).color(if unlocked { v.p.acc } else { v.p.mute }));
+        }
+        r
     } else {
         r.child(head)
     }
