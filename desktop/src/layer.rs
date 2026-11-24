@@ -32,6 +32,8 @@ pub enum Layer {
     Menu(Menu),
     /// An image on the map, large (MAP-047).
     Lightbox(Lightbox),
+    /// The map's layout picker, under its button in the title bar (MAP-089).
+    Layouts,
 }
 
 /// The lightbox's image, and the source lines its Edit Markdown button opens.
@@ -75,6 +77,7 @@ pub enum Kind {
     Drawer(Drawer),
     Menu,
     Lightbox,
+    Layouts,
 }
 
 impl Layer {
@@ -88,16 +91,22 @@ impl Layer {
             Layer::Drawer(d) => Kind::Drawer(*d),
             Layer::Menu(_) => Kind::Menu,
             Layer::Lightbox(_) => Kind::Lightbox,
+            Layer::Layouts => Kind::Layouts,
         }
     }
 }
 
 impl Kind {
-    /// A menu or a drawer: the page around it stays in view, so a window shortcut closes it and
-    /// acts as if it had not been there, and a change to the page closes it.
+    /// A menu, a drawer or the layout picker: the page around it stays in view, so a window
+    /// shortcut closes it and acts as if it had not been there, and a change to the page closes it.
     pub fn light(self) -> bool {
-        matches!(self, Kind::Drawer(_) | Kind::Menu)
+        matches!(self, Kind::Drawer(_) | Kind::Menu | Kind::Layouts)
     }
+}
+
+/// The key of the layout picker's tile for `l`.
+pub fn tile_key(l: crate::map::Layout) -> String {
+    format!("layout-{}", l.word())
 }
 
 /// A field the page opens for a name.
@@ -289,6 +298,18 @@ impl App {
         if self.drawer().is_some() {
             self.map_drawer_opened(tx);
         }
+    }
+
+    /// Opens the map's layout picker and puts the keyboard on the tile of the layout the note
+    /// has, ringed when it came by keys (MAP-089).
+    pub fn open_layouts(&mut self, tx: &mut Tx) {
+        if !self.map_editable() {
+            return;
+        }
+        self.map_commit(tx);
+        let now = self.map_tree().opts.layout;
+        self.open_layer(Layer::Layouts, tx);
+        tx.focus(tile_key(now), tx.by_keys());
     }
 
     /// Opens a menu of `of` at `at`. Single-action pointer menus that arm Enter immediately

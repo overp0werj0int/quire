@@ -189,6 +189,7 @@ const MAP: &[Group] = &[
         "Canvas",
         &[
             h("Fit the map", &["map.fit"]),
+            h("Choose the layout", &["map.layout"]),
             h("Zoom in / out", &["map.zoom-in", "map.zoom-out"]),
             h("Zoom 100%", &["map.zoom-reset"]),
             h("Centre the node", &["map.center"]),

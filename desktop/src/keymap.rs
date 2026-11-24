@@ -239,6 +239,7 @@ pub const TABLE: &[Action] = &[
     same(125, "map.move-down", "Move down", M, Adapted, &["Alt+Down"]),
     same(126, "map.outdent", "Outdent", M, Adapted, &["Shift+Tab"]),
     same(127, "map.move-right", "Move right", M, Adapted, &["Alt+Right"]),
+    same(159, "map.layout", "Map layout", M, Quire, &["L"]),
     same(158, "map.move-left", "Move left", M, Adapted, &["Alt+Left"]),
     same(128, "map.heading-1", "Heading 1", M, Adapted, &["Ctrl+Alt+1"]),
     same(128, "map.heading-2", "Heading 2", M, Adapted, &["Ctrl+Alt+2"]),
@@ -649,7 +650,7 @@ mod tests {
             };
             assert_eq!(status, want, "KEY-{item} status");
         }
-        assert_eq!(seen, 149, "every KEY item with chords was read");
+        assert_eq!(seen, 150, "every KEY item with chords was read");
         let items: std::collections::HashSet<u16> = TABLE.iter().map(|a| a.item).collect();
         assert_eq!(items.len(), seen, "the table has no item the spec lacks");
     }

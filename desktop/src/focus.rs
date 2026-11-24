@@ -83,6 +83,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "mode-preview",
     "mode-map",
     "map-fit",
+    "map-layout",
     "focus",
     "toggle-right",
     "find-prev",

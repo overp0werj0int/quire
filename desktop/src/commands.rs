@@ -100,6 +100,9 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     if s.sync_ready() {
         v.push(cmd("Sync now", "", |s, _| s.sync_now()));
     }
+    if has && s.mode == Mode::Map && !s.active_locked() {
+        v.push(cmd("Choose map layout…", "map.layout", |s, tx| s.open_layouts(tx)));
+    }
     if s.active.is_some() {
         v.push(cmd(INSERT_IMAGE, "app.insert-image", |s, tx| s.pick_image(tx)));
     }

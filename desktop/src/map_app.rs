@@ -1330,7 +1330,7 @@ impl App {
         let base = self.active_text().to_string();
         self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
-        let i = s.focus.map_or(ROOT, |l| t.at_line(l));
+        let i = if reveal == Reveal::Keep { self.map_selected() } else { s.focus.map_or(ROOT, |l| t.at_line(l)) };
         if self.map_open_to(i).is_some() && reveal != Reveal::Keep {
             if reveal == Reveal::Always {
                 self.ensure_visible(i, tx);

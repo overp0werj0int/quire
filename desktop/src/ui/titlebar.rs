@@ -4,10 +4,11 @@
 use rune::{El, Tx, el, row};
 
 use super::V;
-use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN};
+use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, LAYOUT_RIGHT, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, icon_of};
 use super::widgets::{Control, dots, icon_button, label, toggle_button};
 use crate::app::{App, Mode};
 use crate::keymap::tip;
+use crate::layer::Kind;
 use super::styles::sans;
 
 /// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
@@ -155,12 +156,16 @@ fn actions(v: V, mut r: El) -> El {
         let help = tip("Show shortcuts", "reader.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() && s.mode == Mode::Map {
-        // Find, Fit and Help (MAP-064).
+        // Find, Layout, Fit and Help (MAP-064, MAP-089).
         if s.active_locked() {
             r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
+            r = r.child(bar_button_disabled(p, "map-layout", &LAYOUT_RIGHT, "Unlock the note to change its layout"));
         } else {
             let find = tip("Find in note", "map.find");
             r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
+            let lay = s.map_tree().opts.layout;
+            let help = tip("Layout", "map.layout");
+            r = r.child(bar_toggle(p, "map-layout", icon_of(lay), &help, s.layer_is(Kind::Layouts), act(|s, tx| s.open_layouts(tx))));
             let help = tip("Fit the map", "map.fit");
             r = r.child(bar_button(p, "map-fit", &FIT, &help, act(|s, tx| s.map_fit(tx))));
         }
@@ -196,6 +201,17 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
     }
     r
+}
+
+/// How far the layout button's right edge stands from the window's right edge, for the picker
+/// that hangs under it (MAP-089): what the bar holds right of the button, its gaps and its
+/// padding. Zen mode's pill has no outline toggle and a margin of its own.
+pub fn layout_button_inset(v: V) -> f32 {
+    let (modes, help, fit) = (3.0 * BUTTON + 2.0 * 4.0, BUTTON, BUTTON);
+    let (sep, focus) = (1.0, BUTTON);
+    let outline = if v.focus() { 0.0 } else { BUTTON + 4.0 };
+    let edge = if v.focus() { 20.0 } else { 8.0 };
+    v.trailing + edge + outline + focus + 4.0 + modes + 4.0 + sep + 4.0 + help + 4.0 + fit + 4.0
 }
 
 /// The width of zen mode's pill in preview, the widest: eight buttons (`actions`), the rule

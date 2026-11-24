@@ -4,6 +4,7 @@
 //! its overscan is built.
 
 mod card;
+mod layouts;
 mod lightbox;
 
 use std::hash::{Hash, Hasher};
@@ -11,6 +12,7 @@ use std::hash::{Hash, Hasher};
 use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, TextHighlight, TextStyle, Tx, WheelEvent, el, text};
 
 use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
+pub(super) use layouts::layouts;
 pub(super) use lightbox::lightbox;
 use super::{V, styles};
 use crate::app::App;
@@ -455,7 +457,12 @@ const BRANCH_TURN: f32 = 2.0 * std::f32::consts::PI / 180.0;
 /// widening from the curve's width where it starts to its width where it ends (`Shape::taper`)
 /// and starting where the last ended, so Rune joins them into one stroke with smooth edges: a
 /// filled outline cut into thin triangles is stepped along its edges.
-fn tapered([a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
+fn tapered(curve: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
+    tapered_on(Shape::new(), curve, lw, color)
+}
+
+/// `tapered`, drawn after what `shape` already holds.
+fn tapered_on(shape: Shape, [a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
     let at = |t: f32| {
         let u = 1.0 - t;
         let f = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
@@ -489,7 +496,7 @@ fn tapered([a, c1, c2, z]: [[f32; 2]; 4], lw: f32, color: Color) -> Shape {
     for k in 0..16 {
         split(k as f32 / 16.0, (k + 1) as f32 / 16.0, 0, &turn, &mut ts);
     }
-    ts.windows(2).fold(Shape::new(), |shape, t| shape.taper([at(t[0]), at(t[1])], width(t[0]), width(t[1]), LineCap::Round, color))
+    ts.windows(2).fold(shape, |shape, t| shape.taper([at(t[0]), at(t[1])], width(t[0]), width(t[1]), LineCap::Round, color))
 }
 
 /// The inline field over the node being edited, in the label's place and style (MAP-016).

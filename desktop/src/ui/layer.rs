@@ -41,6 +41,7 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
         Layer::Drawer(_) => super::drawer(v),
         Layer::Menu(m) => Some(super::menu::menu(v, m)),
         Layer::Lightbox(lb) => Some(super::map::lightbox(v, lb)),
+        Layer::Layouts => Some(super::map::layouts(v)),
     };
     let Some(card) = card else { return };
     // A press outside the edit sheet does nothing: only Esc and its keys close it (SHEET-015).
@@ -100,6 +101,7 @@ fn plane(kind: Kind) -> (&'static str, i16) {
         Kind::Drawer(_) => ("", 35),
         Kind::Menu => ("", 80),
         Kind::Lightbox => ("lightbox-scrim", 50),
+        Kind::Layouts => ("", 80),
     }
 }
 

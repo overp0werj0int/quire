@@ -351,6 +351,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.expand-all" => |s, tx| s.map_expand_all(tx),
         "map.collapse-to-level" => |s, tx| s.map_collapse_to_level(tx),
         "map.fit" => |s, tx| s.map_fit(tx),
+        "map.layout" => |s, tx| s.open_layouts(tx),
         "map.zoom-reset" => |s, tx| s.map_zoom_reset(tx),
         "map.center" => |s, tx| s.map_center(tx),
         "map.zoom-in" => |s, tx| s.map_zoom_step(1.25, tx),

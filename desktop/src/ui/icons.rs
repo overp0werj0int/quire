@@ -105,6 +105,46 @@ phosphor!(PENCIL, "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.8
 // arrows-out-simple (regular)
 phosphor!(EXPAND, "M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32Z");
 
+// Layout icons: the root a block, its branches blocks at the ends of the curves that join them,
+// drawn to Phosphor's regular weight (14 units of stroke on 256). One per map layout (MAP-089).
+pub static LAYOUT_RIGHT: Icon = Icon {
+    name: "LAYOUT_RIGHT",
+    view: 256.0,
+    body: r#"<g fill="currentColor"><rect x="16" y="104" width="56" height="48" rx="12"/><rect x="160" y="32" width="80" height="32" rx="10"/><rect x="160" y="112" width="80" height="32" rx="10"/><rect x="160" y="192" width="80" height="32" rx="10"/></g><path d="M72 128C116 128 116 48 160 48M72 128C116 128 116 128 160 128M72 128C116 128 116 208 160 208" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>"#,
+};
+pub static LAYOUT_LEFT: Icon = Icon {
+    name: "LAYOUT_LEFT",
+    view: 256.0,
+    body: r#"<g fill="currentColor"><rect x="184" y="104" width="56" height="48" rx="12"/><rect x="16" y="32" width="80" height="32" rx="10"/><rect x="16" y="112" width="80" height="32" rx="10"/><rect x="16" y="192" width="80" height="32" rx="10"/></g><path d="M184 128C140 128 140 48 96 48M184 128C140 128 140 128 96 128M184 128C140 128 140 208 96 208" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>"#,
+};
+pub static LAYOUT_BOTH: Icon = Icon {
+    name: "LAYOUT_BOTH",
+    view: 256.0,
+    body: r#"<g fill="currentColor"><rect x="96" y="104" width="64" height="48" rx="12"/><rect x="176" y="36" width="64" height="32" rx="10"/><rect x="176" y="188" width="64" height="32" rx="10"/><rect x="16" y="36" width="64" height="32" rx="10"/><rect x="16" y="188" width="64" height="32" rx="10"/></g><path d="M160 128C172 128 168 52 176 52M160 128C172 128 168 204 176 204M96 128C84 128 88 52 80 52M96 128C84 128 88 204 80 204" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>"#,
+};
+pub static LAYOUT_DOWN: Icon = Icon {
+    name: "LAYOUT_DOWN",
+    view: 256.0,
+    body: r#"<g fill="currentColor"><rect x="88" y="24" width="80" height="48" rx="12"/><rect x="16" y="192" width="64" height="32" rx="10"/><rect x="96" y="192" width="64" height="32" rx="10"/><rect x="176" y="192" width="64" height="32" rx="10"/></g><path d="M128 72C128 132 48 132 48 192M128 72C128 132 128 132 128 192M128 72C128 132 208 132 208 192" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>"#,
+};
+pub static LAYOUT_UP: Icon = Icon {
+    name: "LAYOUT_UP",
+    view: 256.0,
+    body: r#"<g fill="currentColor"><rect x="88" y="184" width="80" height="48" rx="12"/><rect x="16" y="32" width="64" height="32" rx="10"/><rect x="96" y="32" width="64" height="32" rx="10"/><rect x="176" y="32" width="64" height="32" rx="10"/></g><path d="M128 184C128 124 48 124 48 64M128 184C128 124 128 124 128 64M128 184C128 124 208 124 208 64" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>"#,
+};
+
+/// The icon for a layout, which the title bar's button shows for the note's own.
+pub fn icon_of(layout: crate::map::Layout) -> &'static Icon {
+    use crate::map::Layout;
+    match layout {
+        Layout::Right => &LAYOUT_RIGHT,
+        Layout::Left => &LAYOUT_LEFT,
+        Layout::Both => &LAYOUT_BOTH,
+        Layout::Down => &LAYOUT_DOWN,
+        Layout::Up => &LAYOUT_UP,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,7 +152,7 @@ mod tests {
     #[test]
     fn every_phosphor_icon_rasterizes() {
         let all: &[&Icon] = &[
-            &SIDEBAR_LEFT, &SIDEBAR_RIGHT, &SEARCH, &PLUS, &MINUS, &CLOSE, &CHEVRON_DOWN, &CHEVRON_UP, &FOLDER, &FOLDER_OPEN, &TAG, &GEAR, &EYE, &CODE, &FOCUS, &WIDEN, &NARROW, &HELP, &COPY, &PARAGRAPH, &TYPEWRITER, &FONT, &BOLD, &ITALIC, &STRIKE, &HEADING, &LINK, &WIKI, &BULLETS, &NUMBERS, &TASK, &QUOTE, &IMAGE, &LOCK, &INFO, &LIGHT_BULB, &IMPORTANT, &WARNING, &CAUTION, &CALENDAR, &CHECK, &PENCIL, &EXPAND,
+            &LAYOUT_RIGHT, &LAYOUT_LEFT, &LAYOUT_BOTH, &LAYOUT_DOWN, &LAYOUT_UP, &SIDEBAR_LEFT, &SIDEBAR_RIGHT, &SEARCH, &PLUS, &MINUS, &CLOSE, &CHEVRON_DOWN, &CHEVRON_UP, &FOLDER, &FOLDER_OPEN, &TAG, &GEAR, &EYE, &CODE, &FOCUS, &WIDEN, &NARROW, &HELP, &COPY, &PARAGRAPH, &TYPEWRITER, &FONT, &BOLD, &ITALIC, &STRIKE, &HEADING, &LINK, &WIKI, &BULLETS, &NUMBERS, &TASK, &QUOTE, &IMAGE, &LOCK, &INFO, &LIGHT_BULB, &IMPORTANT, &WARNING, &CAUTION, &CALENDAR, &CHECK, &PENCIL, &EXPAND,
         ];
         for ic in all {
             let cov = rune::text::icon_coverage(ic, 16);
