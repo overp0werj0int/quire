@@ -73,6 +73,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "toggle-left",
     "copy-path",
     "crumb-file",
+    "crumb-lock",
     "find",
     "copy-all",
     "wide",

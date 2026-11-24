@@ -10,7 +10,7 @@ use rune::{Anim, Color, Cursor, El, Key, KeyEvent, Live, Mods, Phase, PointerBut
 use super::super::V;
 use super::super::lists;
 use super::super::styles::nav;
-use super::super::icons::CLOSE;
+use super::super::icons::{CLOSE, LOCK};
 use super::super::widgets::name_tip;
 use super::{BUTTON_END, ICON};
 use super::parts::{GAP, INNER_RADIUS, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
@@ -148,7 +148,21 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
         .group_opacity(if on { 1.0 } else { 0.0 }, 1.0)
         .on_press_tx(move |s: &mut App, tx| close_tab(s, &close_t, tx))
         .child(icon(&CLOSE, ICON).color(if on { c.dim } else { c.faint }));
-    let title_el = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().w_full().help_when_truncated(name_tip(&tip));
+    let lock_state = match t {
+        Shelved::Tab(p) if s.is_locked(p) => Some((p.clone(), s.note_unlocked(p))),
+        Shelved::File(_) if on => s.active.as_deref().filter(|a| s.is_locked(a)).map(|a| (a.to_string(), s.note_unlocked(a))),
+        _ => None,
+    };
+    let title_text = text(title.clone()).font(nav(ROW_TEXT, false).lh(TAB_TITLE_LH)).color(if on { c.text } else { c.dim }).truncate().help_when_truncated(name_tip(&tip));
+    let title_el = match lock_state {
+        Some((lp, unlocked)) => row()
+            .w_full()
+            .gap(4.0)
+            .center_y()
+            .child(title_text.shrink().min_w(0.0))
+            .child(icon(&LOCK, 12.0).key(format!("lock-tab:{lp}")).color(if unlocked { v.p.acc } else { v.p.mute })),
+        None => title_text.w_full(),
+    };
     let folder_el = text(folder.clone()).font(small).color(c.faint).truncate_head().shrink().min_w(last_part(&folder, small)).help_when_truncated(folder);
     let caption = row().key("caption").shrink().min_w(0.0).child(folder_el).children(count_text(sections).map(|n| {
         row()

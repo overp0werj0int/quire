@@ -568,11 +568,14 @@ pub(super) fn crumb(v: V) -> El {
     // and keeps at least "…". Once the title has a width, the cuts are made here (`crumb_fit`).
     let name = md::base(&active).to_string();
     let reloaded = s.reader.reloaded.is_some() && matches!(s.mode, Mode::Preview | Mode::Map);
+    let locked = s.is_locked(&active);
+    let unlocked = s.note_unlocked(&active);
     let copy_w = 24.0 + 6.0;
+    let lock_w = if locked { 24.0 + 6.0 } else { 0.0 };
     let fit = s.renaming.is_none().then(|| rune::memo::layout_size("title")).flatten().map(|[w, _]| {
         let pad = if v.left_visible() { 20.0 } else { 6.0 } + 8.0;
         let mark = if reloaded { 6.0 + super::reader::reloaded_w() } else { 0.0 };
-        crumb_fit(&dir, &name, (w - pad - mark - copy_w).max(0.0), style)
+        crumb_fit(&dir, &name, (w - pad - mark - copy_w - lock_w).max(0.0), style)
     });
     let (rw, rg, rc) = super::focus_ring(p);
     let copy_btn = super::focus::stop(row())
@@ -606,7 +609,7 @@ pub(super) fn crumb(v: V) -> El {
     let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);
     let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
     name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
-    let r = match &s.renaming {
+    let mut r = match &s.renaming {
         None => r.child(
             super::focus::stop(row())
                 .key("crumb-file")
@@ -671,6 +674,34 @@ pub(super) fn crumb(v: V) -> El {
             )
         }
     };
+    if locked {
+        let badge = if unlocked {
+            super::focus::stop(row())
+                .key("crumb-lock")
+                .size(24.0, 24.0)
+                .center()
+                .radius(5.0)
+                .hover(p.hover)
+                .no_window_drag()
+                .role("button")
+                .label("Unlocked · Click to lock now")
+                .help("Unlocked · Click to lock now")
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(super::titlebar::act(|s, _| s.relock()))
+                .child(icon(&super::icons::LOCK, 13.0).color(p.acc))
+        } else {
+            row()
+                .key("crumb-lock")
+                .size(20.0, 24.0)
+                .center()
+                .no_window_drag()
+                .label("Locked note")
+                .help("Locked note")
+                .child(icon(&super::icons::LOCK, 13.0).color(p.mute))
+        };
+        r = r.child(badge);
+    }
     // After an outside change (RD-33).
     if reloaded { r.child(super::reader::reloaded(v)) } else { r }
 }

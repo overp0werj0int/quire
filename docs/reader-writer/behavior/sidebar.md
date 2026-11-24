@@ -232,7 +232,7 @@ layout, or dropped, with why that is safe.
 - **SB-130** [adapted: 0013] [verify: script] The active note deleted, from a menu, the palette, a sync or another app, closes its tab by SB-20's rule (kept: `App::close_tab`).
 - **SB-131** [adapted: 0013] [verify: script] The active note renamed or moved keeps its tab and its place, with the new name and folder. In the tree it shows bold at its new place, with the folders above it open (kept: `App::move_note`, rename).
 - **SB-132** [adapted: 0013] [verify: geometry] [proposed] A window too short for the handle's place moves the handle up as far as SB-36's limits need, and keeps the stored place, so a taller window puts it back. When the window cannot hold both limits, the vault's label stays and its tree scrolls in what is left. The other choice was to fold the vault.
-- **SB-133** [adapted: 0013] [verify: state] A locked note shows in the tree and on the shelf as any note. While it is locked its outline has no entries, and search finds its name but not its text (kept: `md::search`, sealed text).
+- **SB-133** [adapted: 0013] [verify: state] A locked note shows a padlock signifier in the tree and on the shelf (muted while sealed, accented while unlocked in session). While it is locked its outline has no entries, and search finds its name but not its text (kept: `md::search`, sealed text).
 
 ## Remembered
 

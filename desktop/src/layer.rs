@@ -17,12 +17,19 @@ use crate::app::{App, Drawer, Mode, Palette, Screen};
 use crate::folders::MenuOn;
 use crate::sheet::Sheet;
 
+pub enum LockDialog {
+    /// Setting a new password, with why the last try was refused.
+    Set(Option<String>),
+    /// Confirming removing the password and saving the note as plain text on disk.
+    ConfirmRemove,
+}
+
 pub enum Layer {
     /// The quick switcher or the command palette.
     Palette(Palette),
     Settings,
-    /// The dialog that locks the note, with why the last try was refused.
-    Lock(Option<String>),
+    /// The lock dialog: setting a password or confirming its removal.
+    Lock(LockDialog),
     /// The keyboard help, with its search.
     Help(crate::help::Search),
     /// The edit sheet over the reader.
@@ -233,16 +240,17 @@ impl App {
     }
 
     /// Why the lock dialog refused the last password, while it is open.
+    #[cfg(test)]
     pub fn lock_error(&self) -> Option<&str> {
         self.open_layers().find_map(|l| match l {
-            Layer::Lock(e) => e.as_deref(),
+            Layer::Lock(LockDialog::Set(e)) => e.as_deref(),
             _ => None,
         })
     }
 
     /// The lock dialog refuses a password, and says why.
     pub fn refuse_lock(&mut self, why: String) {
-        if let Some(Layer::Lock(e)) = self.layers.last_mut().map(|o| &mut o.layer) {
+        if let Some(Layer::Lock(LockDialog::Set(e))) = self.layers.last_mut().map(|o| &mut o.layer) {
             *e = Some(why);
         }
     }

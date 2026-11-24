@@ -112,7 +112,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     if let Some(a) = s.active.as_deref() {
         if s.note_unlocked(a) {
             v.push(cmd(lock_name(true), "", |s, _| s.relock()));
-            v.push(cmd("Remove password", "", |s, tx| s.remove_password(tx)));
+            v.push(cmd("Remove password", "", |s, tx| s.ask_remove_password(tx)));
         } else if !s.note_locked(a) {
             v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
         }

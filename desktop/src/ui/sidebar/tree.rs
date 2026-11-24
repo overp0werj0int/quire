@@ -7,7 +7,7 @@ use super::super::V;
 use super::super::lists::{self, Branch};
 use super::super::panel;
 use super::super::styles::{medium, nav};
-use super::super::icons::{FOLDER, FOLDER_OPEN, PLUS};
+use super::super::icons::{FOLDER, FOLDER_OPEN, LOCK, PLUS};
 use super::super::widgets::{floating, label, name_tip};
 use super::parts::{COUNT_TEXT, GAP, INNER_RADIUS, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
 use super::{BUTTON_END, ICON};
@@ -44,6 +44,14 @@ pub(super) fn tree(v: V) -> El {
             &s.settings().panel_font,
         )
             .hash(&mut h);
+        for (p, t) in vault.files() {
+            if crate::lock::is_locked(t) {
+                p.hash(&mut h);
+            }
+        }
+        for k in s.unlocked.keys() {
+            k.hash(&mut h);
+        }
         h.finish()
     };
     rune::memo("tree", version, || build_tree(v, false))
@@ -222,6 +230,8 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
     if v.s.dragging.as_ref().is_some_and(|d| d.active && d.path == path) {
         r = r.opacity(0.5);
     }
+    let locked = v.s.is_locked(path);
+    let unlocked = v.s.note_unlocked(path);
     let head = row()
         .grow(1.0)
         .shrink()
@@ -231,7 +241,13 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
         .clip_rounded(0.0)
         .child(el().w(lead(depth) - INSET))
         .child(name(md::base(path), path, nav(ROW_TEXT, on), if on { c.text } else { c.dim }));
-    r.child(head)
+    if locked {
+        r.gap(6.0)
+            .child(head)
+            .child(icon(&LOCK, 12.0).key(format!("lock-tree:{path}")).color(if unlocked { v.p.acc } else { v.p.mute }))
+    } else {
+        r.child(head)
+    }
 }
 
 /// A row's name, cut at its end. One that shows in full needs no tooltip; one cut short offers

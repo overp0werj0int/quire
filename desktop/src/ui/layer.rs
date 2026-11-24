@@ -35,7 +35,7 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
     let card = match l {
         Layer::Palette(pal) => super::palette::palette(v, pal),
         Layer::Settings => Some(super::settings::settings(v)),
-        Layer::Lock(_) => Some(super::lock::dialog(v)),
+        Layer::Lock(dlg) => Some(super::lock::dialog(v, dlg)),
         Layer::Help(_) => Some(super::reader::help_sheet(v)),
         Layer::Sheet(sh) => Some(super::sheet::sheet(v, sh)),
         Layer::Drawer(_) => super::drawer(v),

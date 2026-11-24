@@ -6,19 +6,24 @@ use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
 use super::V;
 use super::layer::Card;
 use super::icons::LOCK;
-use super::widgets::{label, outline_button, primary_button};
+use super::widgets::{Control, label, outline_button, primary_button};
 use crate::app::App;
+use crate::layer::LockDialog;
 use super::styles::sans;
 use crate::theme;
 
 /// Key of the lock panel's password field.
 pub const PASS: &str = "unlock-pass";
 
-/// A password field kept in `App::fields`. Enter runs `submit`.
+/// A password field kept in `App::fields` with a show/hide toggle. Enter runs `submit`.
 fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mut App, &mut Tx)) -> El {
     let p = v.p;
-    let edit = v.s.fields.get(key).cloned().unwrap_or_else(|| TextEdit::new("")).secure();
-    super::widgets::input_focus_ring(
+    let revealed = v.s.reveal.contains(key);
+    let mut edit = v.s.fields.get(key).cloned().unwrap_or_else(|| TextEdit::new(""));
+    if !revealed {
+        edit = edit.secure();
+    }
+    super::widgets::input_focus_ring_when(
         row()
             .key(format!("box-{key}"))
             .w_full()
@@ -30,22 +35,46 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
             .border_layout()
             .clip_rounded(7.0),
         p,
+        edit.focused,
     )
     .child(
-            text_input(&edit, sans(13.0, 400.0))
-                .key(key)
-                .single_line()
-                .grow(1.0)
-                .min_w(0.0)
-                .px(10.0)
-                .color(p.ink)
-                .placeholder(ph, super::styles::placeholder_ink(p))
-                .caret(p.ink, p.sel)
-                .label(ph)
-                .on_edit(move |s: &mut App| s.field(key, String::new))
-                .on_submit(submit)
-                .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
-        )
+        text_input(&edit, sans(13.0, 400.0))
+            .key(key)
+            .single_line()
+            .grow(1.0)
+            .min_w(0.0)
+            .px(10.0)
+            .color(p.ink)
+            .placeholder(ph, super::styles::placeholder_ink(p))
+            .caret(p.ink, p.sel)
+            .label(ph)
+            .on_edit(move |s: &mut App| s.field(key, String::new))
+            .on_submit(submit)
+            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
+    )
+    .child(
+        row()
+            .key(format!("reveal-{key}"))
+            .h_full()
+            .px(10.0)
+            .center()
+            .border_sides([0.0, 0.0, 0.0, 1.0], p.line)
+            .border_layout()
+            .hover(p.hover)
+            .hover_group()
+            .role("button")
+            .label(if revealed { "Hide password" } else { "Show password" })
+            .help(if revealed { "Hide password" } else { "Show password" })
+            .control(move |s: &mut App, _: &mut Tx| {
+                if !s.reveal.remove(key) {
+                    s.reveal.insert(key.into());
+                }
+                if let Some(e) = s.fields.get_mut(key) {
+                    e.set_secure(!s.reveal.contains(key));
+                }
+            })
+            .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
+    )
 }
 
 /// In place of a locked note's text: the password field and the Unlock button.
@@ -77,10 +106,57 @@ pub fn panel(v: V) -> El {
     row().key("lock-wrap").w_full().child(c)
 }
 
-/// The dialog that locks the active note with a new password.
-pub(super) fn dialog(v: V) -> Card {
+/// The dialog that locks the active note with a new password, or confirms removing it.
+pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
     let p = v.p;
-    let err = v.s.lock_error().map(str::to_string);
+    if matches!(dlg, LockDialog::ConfirmRemove) {
+        let remove = row()
+            .key("remove-pass-ok")
+            .h(32.0)
+            .px(14.0)
+            .center()
+            .radius(7.0)
+            .border(1.0, p.err)
+            .border_layout()
+            .hover(p.hover)
+            .role("button")
+            .label("Remove password")
+            .child(label("Remove password", sans(12.5, 500.0), p.err))
+            .control(|s: &mut App, tx| s.confirm_remove_password(tx));
+        let panel = col()
+            .key("remove-pass-dialog")
+            .w_full()
+            .max_w(400.0)
+            .padding(24.0)
+            .gap(16.0)
+            .radius(12.0)
+            .fill(p.bg)
+            .border(1.0, Roles::new(p).hairline)
+            .box_shadow(theme::settings_shadows()[0])
+            .box_shadow(theme::settings_shadows()[1])
+            .role("alertdialog")
+            .label("Remove password?")
+            .child(
+                col()
+                    .gap(6.0)
+                    .child(label("Remove password?", sans(17.0, 600.0), p.ink))
+                    .child(label("This note will be saved as plain text on disk and will no longer require a password to read.", sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
+            )
+            .child(
+                row()
+                    .w_full()
+                    .gap(8.0)
+                    .mt(4.0)
+                    .child(el().grow(1.0))
+                    .child(outline_button(p, "remove-pass-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)).autofocus())
+                    .child(remove),
+            );
+        return Card { el: panel, plane: Some(col().center().px(16.0)) };
+    }
+    let err = match dlg {
+        LockDialog::Set(e) => e.as_deref(),
+        LockDialog::ConfirmRemove => None,
+    };
     let field = |key: &'static str, title: &str, ph: &'static str| {
         col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), |s, tx| s.lock_note(tx)))
     };

@@ -613,6 +613,11 @@ impl App {
         self.unlocked.contains_key(p)
     }
 
+    /// The note at `p` is password-protected, whether sealed or unlocked in this session.
+    pub fn is_locked(&self, p: &str) -> bool {
+        self.unlocked.contains_key(p) || self.files().get(p).is_some_and(|t| crate::lock::is_locked(t))
+    }
+
     pub fn is_dark(&self, system_dark: bool) -> bool {
         self.palette(system_dark).dark
     }

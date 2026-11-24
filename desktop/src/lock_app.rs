@@ -75,7 +75,9 @@ impl App {
         }
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
-        self.open_layer(crate::layer::Layer::Lock(None), tx);
+        self.reveal.remove("lock-pass");
+        self.reveal.remove("lock-repeat");
+        self.open_layer(crate::layer::Layer::Lock(crate::layer::LockDialog::Set(None)), tx);
         tx.focus("lock-pass", false);
     }
 
@@ -97,6 +99,8 @@ impl App {
         self.close_layer(tx);
         self.fields.remove("lock-pass");
         self.fields.remove("lock-repeat");
+        self.reveal.remove("lock-pass");
+        self.reveal.remove("lock-repeat");
         // The note stays open after the lock. It locks when its tab closes or with "Lock now".
         self.unlocked.insert(a.clone(), Unlocked::new(key, String::new()));
         self.store_unlocked(&a, text);
@@ -116,6 +120,7 @@ impl App {
         self.drop_find();
         self.unlock_error = None;
         self.fields.remove("unlock-pass");
+        self.reveal.remove("unlock-pass");
     }
 
     /// Opens the active locked note with the password in the lock panel.
@@ -127,6 +132,7 @@ impl App {
             Ok((plain, key)) => {
                 self.unlock_error = None;
                 self.fields.remove("unlock-pass");
+                self.reveal.remove("unlock-pass");
                 self.edits.remove(&a);
                 self.unlocked.insert(a, Unlocked::new(key, plain));
                 self.rebuild_names_pub();
@@ -142,6 +148,23 @@ impl App {
                 tx.focus(crate::ui::lock::PASS, false);
             }
         }
+    }
+
+    /// Opens the confirmation dialog before removing the active note's password.
+    pub fn ask_remove_password(&mut self, tx: &mut Tx) {
+        let Some(a) = self.active.as_deref() else { return };
+        if !self.note_unlocked(a) {
+            return;
+        }
+        self.open_layer(crate::layer::Layer::Lock(crate::layer::LockDialog::ConfirmRemove), tx);
+        tx.focus("remove-pass-cancel", tx.by_keys());
+    }
+
+    /// Confirms removing the password from the confirmation dialog.
+    pub fn confirm_remove_password(&mut self, tx: &mut Tx) {
+        self.close_layer(tx);
+        self.remove_password(tx);
+        self.toast("Password removed", tx);
     }
 
     /// Saves the active unlocked note as plain text again.
