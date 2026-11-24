@@ -172,8 +172,8 @@ pub struct Inline {
     last_hash: u64,
     /// Text when inline editing started, so `Esc` arms before discarding modified edits.
     original: String,
-    /// Clock time of the first `Esc` press while modified, cleared after 2 s.
-    armed_esc: Option<f64>,
+    /// Clock time and edit hash of the first `Esc` press while modified, cleared after 2 s or any edit.
+    armed_esc: Option<(f64, u64)>,
 }
 
 impl Inline {
@@ -2153,14 +2153,16 @@ impl App {
     }
 
     /// Esc in the field (MAP-017): unmodified edits cancel at once; modified edits arm discard
-    /// with a toast and discard on a second Esc within 2 s (matching the Edit Sheet).
+    /// with a toast and discard on a second Esc within 2 s (matching the Edit Sheet). Resuming
+    /// edits disarms so a subsequent Esc re-arms instead of discarding immediately.
     pub fn map_cancel(&mut self, tx: &mut Tx) {
         if let Some(e) = &mut self.map.inline
             && e.edit.text != e.original
         {
             let now = self.now.get();
-            if !e.armed_esc.is_some_and(|at| now - at <= 2.0) {
-                e.armed_esc = Some(now);
+            let h = edit_hash(&e.edit);
+            if !e.armed_esc.is_some_and(|(at, ah)| now - at <= 2.0 && ah == h) {
+                e.armed_esc = Some((now, h));
                 self.toast("Press Esc again to discard", tx);
                 tx.wake_after(std::time::Duration::from_millis(2050));
                 return;
@@ -2174,6 +2176,13 @@ impl App {
             }
         }
         self.keys_to_note(tx);
+    }
+
+    /// Disarms any pending double-Esc discard when the inline field is edited again.
+    pub fn map_inline_changed(&mut self) {
+        if let Some(e) = &mut self.map.inline {
+            e.armed_esc = None;
+        }
     }
 
     /// After an edit that wrote nothing: the selection is where it was before a new node, and
@@ -2190,7 +2199,10 @@ impl App {
         let multi = self.map.inline.as_ref().is_some_and(|e| e.multi);
         for a in self.keymap.lookup(crate::keymap::Ctx::MapEdit, ev) {
             match a.id {
-                "mapedit.newline" if multi => return false,
+                "mapedit.newline" if multi => {
+                    self.map_inline_changed();
+                    return false;
+                }
                 "mapedit.commit" | "mapedit.newline" => {
                     if self.map_commit_inner(true, tx) {
                         self.keys_to_note(tx);
@@ -2246,6 +2258,7 @@ impl App {
             }
             return true;
         }
+        self.map_inline_changed();
         false
     }
 
@@ -2258,6 +2271,7 @@ impl App {
             e.insert(&ed.insert);
             e.set_selection(ed.sel.0, ed.sel.1);
         });
+        e.armed_esc = None;
         true
     }
 
@@ -2270,6 +2284,7 @@ impl App {
             let h = edit_hash(&e.edit);
             if h != e.last_hash {
                 e.last_hash = h;
+                e.armed_esc = None;
                 self.ensure_inline_visible(tx);
             }
             return false;
@@ -2310,5 +2325,44 @@ impl App {
         let t = self.map_tree();
         let s = map::diff(&text, self.active_text());
         map::follow(&shown, &t, &s, shown.nodes.get(i)?.id).and_then(|id| t.find(id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn map_armed_esc_disarms_on_resumed_typing() {
+        let dir = std::env::temp_dir().join(format!("quire-map-esc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta\n\n## Details\n\nBody.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Beta.md", None, tx);
+            s.mode = crate::app::Mode::Map;
+            s.now.set(1.0);
+            s.map_edit(tx);
+            assert!(s.map.inline.is_some());
+            // Dirty the text and press Esc once -> arms discard, stays open.
+            let inline = s.map.inline.as_mut().unwrap();
+            inline.edit.insert(" dirty");
+            s.now.set(1.3);
+            s.map_cancel(tx);
+            assert!(s.map.inline.is_some(), "first Esc on dirty edit arms discard");
+            // Resume typing -> disarms armed_esc; next Esc within 2s must re-arm, NOT discard!
+            s.map.inline.as_mut().unwrap().edit.insert(" more");
+            s.map_inline_changed();
+            s.now.set(2.0);
+            s.map_cancel(tx);
+            assert!(s.map.inline.is_some(), "Esc after resumed typing must re-arm instead of discarding");
+            // Second Esc immediately with no further edits discards cleanly.
+            s.now.set(2.3);
+            s.map_cancel(tx);
+            assert!(s.map.inline.is_none(), "second consecutive Esc within 2s discards edit");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

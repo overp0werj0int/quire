@@ -202,7 +202,55 @@ fn conflict_banner(v: V) -> Option<El> {
     let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
     let (conf1, conf2) = (active.to_string(), active.to_string());
     let msg = format!("Sync conflict copy from {device} · Original: {orig}");
-    Some(
+    let keep_ink = Roles::readable_on(p.acc, p.bg, 4.5);
+    let buttons = row()
+        .gap(6.0)
+        .center_y()
+        .flex_wrap()
+        .child(act_btn(
+            "conflict-open-orig",
+            "Open original",
+            p.ink,
+            p.line,
+            Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
+        ))
+        .child(act_btn(
+            "conflict-keep-this",
+            "Keep this version",
+            keep_ink,
+            p.acc.alpha(0.55),
+            Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
+        ))
+        .child(act_btn(
+            "conflict-discard",
+            "Discard conflict",
+            c.readable_err(),
+            p.err.alpha(0.55),
+            Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
+        ));
+    let narrow = doc_width(v) < 760.0;
+    let banner = if narrow {
+        col()
+            .key("conflict-banner")
+            .w_full()
+            .px(16.0)
+            .py(8.0)
+            .gap(6.0)
+            .fill(bg)
+            .border_sides([0.0, 0.0, 1.0, 0.0], edge)
+            .border_layout()
+            .role("region")
+            .label("Sync conflict")
+            .child(
+                row()
+                    .w_full()
+                    .gap(8.0)
+                    .center_y()
+                    .child(icon(&super::icons::WARNING, 15.0).color(c.readable_err()))
+                    .child(text(msg).font(sans(12.5, 500.0)).color(p.ink).wrap().grow(1.0).min_w(0.0)),
+            )
+            .child(buttons.w_full())
+    } else {
         row()
             .key("conflict-banner")
             .w_full()
@@ -210,7 +258,6 @@ fn conflict_banner(v: V) -> Option<El> {
             .py(8.0)
             .gap(10.0)
             .center_y()
-            .flex_wrap()
             .fill(bg)
             .border_sides([0.0, 0.0, 1.0, 0.0], edge)
             .border_layout()
@@ -220,39 +267,15 @@ fn conflict_banner(v: V) -> Option<El> {
                 row()
                     .grow(1.0)
                     .shrink()
-                    .min_w(180.0)
+                    .min_w(280.0)
                     .gap(8.0)
                     .center_y()
                     .child(icon(&super::icons::WARNING, 15.0).color(c.readable_err()))
                     .child(text(msg).font(sans(12.5, 500.0)).color(p.ink).truncate().shrink().min_w(0.0)),
             )
-            .child(
-                row()
-                    .gap(6.0)
-                    .center_y()
-                    .child(act_btn(
-                        "conflict-open-orig",
-                        "Open original",
-                        p.ink,
-                        p.line,
-                        Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
-                    ))
-                    .child(act_btn(
-                        "conflict-keep-this",
-                        "Keep this version",
-                        p.acc,
-                        p.acc.alpha(0.55),
-                        Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
-                    ))
-                    .child(act_btn(
-                        "conflict-discard",
-                        "Discard conflict",
-                        c.readable_err(),
-                        p.err.alpha(0.55),
-                        Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
-                    )),
-            ),
-    )
+            .child(buttons)
+    };
+    Some(banner)
 }
 
 /// The progress bar: in both modes the share of the note's lines above the view, full at its

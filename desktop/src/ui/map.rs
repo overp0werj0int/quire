@@ -535,6 +535,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
             Some(e) => &mut e.edit,
             None => &mut s.map.spare,
         })
+        .on_input_change(|s: &mut App, _| s.map_inline_changed())
         .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
         .pin(Some(p.x + p.label_pads(m.pad_x, room)[0] + W), Some(p.y + p.content(m.pad_b).0 + W), None, None)
         .w(w)
