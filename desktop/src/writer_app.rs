@@ -883,7 +883,7 @@ impl App {
         }
         let items = match trig.kind {
             writer::AcKind::Wiki => self.ac_wiki_items(&trig.query),
-            writer::AcKind::Tag => self.ac_tag_items(&trig.query, &edit.text),
+            writer::AcKind::Tag => self.ac_tag_items(&trig.query, active, &edit.text, trig.start..trig.end),
         };
         if items.is_empty() {
             return None;
@@ -934,21 +934,26 @@ impl App {
             .collect()
     }
 
-    fn ac_tag_items(&self, q: &str, live_text: &str) -> Vec<AcItem> {
-        use std::collections::BTreeMap;
+    fn ac_tag_items(&self, q: &str, active: &str, live_text: &str, active_span: std::ops::Range<usize>) -> Vec<AcItem> {
+        use std::collections::{BTreeMap, BTreeSet};
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         if let Some(v) = &self.vault {
-            for (t, n) in self.search.borrow_mut().all_tags(v) {
+            for (t, n) in self.search.borrow_mut().all_tags_excluding(v, active) {
                 counts.insert(t, n);
             }
-            for text in v.files().values() {
+            for (p, text) in v.files() {
+                if p == active {
+                    continue;
+                }
                 for t in frontmatter_tags(text) {
                     counts.entry(t).or_insert(1);
                 }
             }
         }
-        for t in md::note_tags(live_text).into_iter().chain(frontmatter_tags(live_text)) {
-            counts.entry(t).or_insert(1);
+        let without_active = omit_span(live_text, active_span);
+        let active_tags: BTreeSet<String> = md::note_tags(&without_active).into_iter().chain(frontmatter_tags(&without_active)).collect();
+        for t in active_tags {
+            *counts.entry(t).or_insert(0) += 1;
         }
         let ql = q.to_lowercase();
         let mut scored: Vec<(i32, usize, String)> = counts
@@ -1110,6 +1115,25 @@ impl App {
     }
 }
 
+/// Replaces `span` in `text` with a single space so an active half-typed `#tag` token at the
+/// caret is excluded when collecting existing tag candidates.
+fn omit_span(text: &str, span: std::ops::Range<usize>) -> String {
+    let start = span.start.min(text.len());
+    let mut end = span.end.min(text.len()).max(start);
+    let b = text.as_bytes();
+    while end < b.len() && (b[end].is_ascii_alphanumeric() || matches!(b[end], b'_' | b'-' | b'/')) {
+        end += 1;
+    }
+    if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len().saturating_sub(end - start) + 1);
+    out.push_str(&text[..start]);
+    out.push(' ');
+    out.push_str(&text[end..]);
+    out
+}
+
 /// Extracts lowercased tag names from YAML front matter `tags:` / `tag:` fields (inline `[a, b]`,
 /// comma-separated, or bulleted list).
 fn frontmatter_tags(text: &str) -> Vec<String> {
@@ -1164,6 +1188,50 @@ mod tests {
         assert_eq!(frontmatter_tags("---\ntags: [design, roadmap]\n---\nBody"), vec!["design", "roadmap"]);
         assert_eq!(frontmatter_tags("---\ntags:\n  - alpha\n  - #beta\n---\n"), vec!["alpha", "beta"]);
         assert!(frontmatter_tags("# No front matter\ntags: [x]").is_empty());
+    }
+
+    #[test]
+    fn ac_tag_excludes_active_novel_tag_but_keeps_existing_tags() {
+        let dir = std::env::temp_dir().join(format!("quire-ac-tag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Alpha.md"), "---\ntags: [design, roadmap]\n---\n\n# Alpha\n").unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta\n\nEarlier #localtag here.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Beta.md", None, tx);
+            s.mode = crate::app::Mode::Source;
+            s.focus_editor(tx);
+        });
+        rt.update(|s, _| {
+            let e = s.cur_edit();
+            e.focused = true;
+            let novel = "# Beta\n\nEarlier #localtag here.\n#noveltagxyz";
+            e.replace_text(novel);
+            e.set_selection(novel.len(), novel.len());
+            s.after_edit();
+            assert!(s.ac_state().is_none(), "novel #tag at caret must not self-suggest");
+
+            let existing_vault = "# Beta\n\nEarlier #localtag here.\n#des";
+            let e = s.cur_edit();
+            e.replace_text(existing_vault);
+            e.set_selection(existing_vault.len(), existing_vault.len());
+            s.after_edit();
+            let (_, items, _) = s.ac_state().expect("existing vault tag should suggest");
+            assert!(items.iter().any(|it| it.insert == "#design"), "expected #design suggestion, got {items:?}");
+
+            let existing_same = "# Beta\n\nEarlier #localtag here.\n#loc";
+            let e = s.cur_edit();
+            e.replace_text(existing_same);
+            e.set_selection(existing_same.len(), existing_same.len());
+            s.after_edit();
+            let (_, items, _) = s.ac_state().expect("existing tag earlier in same note should suggest");
+            assert!(items.iter().any(|it| it.insert == "#localtag"), "expected #localtag suggestion, got {items:?}");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

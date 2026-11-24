@@ -324,10 +324,21 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// Every `#tag` in `vault` with its note count, most frequent first then by name.
-    pub fn all_tags(&mut self, vault: &Vault) -> Vec<(String, usize)> {
+    /// Every `#tag` in `vault` with its note count, omitting tags from `exclude`.
+    pub fn all_tags_excluding(&mut self, vault: &Vault, exclude: &str) -> Vec<(String, usize)> {
         self.index.sync(vault);
-        self.index.tags.clone()
+        let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+        for (p, e) in &self.index.notes {
+            if p == exclude {
+                continue;
+            }
+            for t in &e.tags {
+                *counts.entry(t.as_str()).or_default() += 1;
+            }
+        }
+        let mut tags: Vec<(String, usize)> = counts.into_iter().map(|(t, n)| (t.to_string(), n)).collect();
+        tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        tags
     }
 
     /// The results for `q` in `vault`. The same query on unchanged notes gives the last
