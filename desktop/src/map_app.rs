@@ -782,11 +782,16 @@ impl App {
 
     /// The camera that fits everything the map draws (MAP-035).
     fn fit_camera(&self) -> ([f32; 2], f32) {
+        self.fitted(2.0)
+    }
+
+    /// The whole map centred in the free canvas, zoomed in no further than `most`.
+    fn fitted(&self, most: f32) -> ([f32; 2], f32) {
         let [x0, y0, x1, y1] = self.map_extent();
         let [fx0, fy0, fx1, fy1] = self.map_free();
         let (w, h) = (fx1 - fx0, fy1 - fy0);
         let (bw, bh) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
-        let z = (w / bw * 0.95).min(h / bh * 0.95).min(2.0).clamp(ZOOM_MIN, ZOOM_MAX);
+        let z = (w / bw * 0.95).min(h / bh * 0.95).min(most).clamp(ZOOM_MIN, ZOOM_MAX);
         ([fx0 + w / 2.0 - (x0 + bw / 2.0) * z, fy0 + h / 2.0 - (y0 + bh / 2.0) * z], z)
     }
 
@@ -1377,9 +1382,19 @@ impl App {
             Ok(s) => s,
             Err(why) => return why.into_iter().for_each(|w| self.toast(w, tx)),
         };
+        let whole = self.map_all_in_view();
         self.map_apply_inner(&old, &s, Reveal::Keep, tx);
-        let cam = self.centred_on(self.map_selected(), self.map_camera().1);
+        let z = self.map_camera().1;
+        let cam = if whole { self.fitted(z) } else { self.centred_on(self.map_selected(), z) };
         self.map_glide(cam, tx);
+    }
+
+    /// Whether the free canvas shows every node, give or take a point.
+    fn map_all_in_view(&self) -> bool {
+        let ([px, py], z) = self.map_camera();
+        let [x0, y0, x1, y1] = self.map_extent();
+        let [fx0, fy0, fx1, fy1] = self.map_free();
+        px + x0 * z >= fx0 - 1.0 && py + y0 * z >= fy0 - 1.0 && px + x1 * z <= fx1 + 1.0 && py + y1 * z <= fy1 + 1.0
     }
 
     /// A right-click on node `i`, or the Menu key or Shift+F10 on the selected node with `at`

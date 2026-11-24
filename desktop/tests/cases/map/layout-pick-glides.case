@@ -2,7 +2,7 @@ A pick glides the nodes and the camera: 150 ms in, the root is part of the way t
 note: Plan.md
 at: 1.55
 events: key:m+cmd@0.3 tap:map-layout@0.6 tap:layout-down@1.4
-expect: rect:map-node:5: [611.19, 395.2, 116.0, 68.0]
+expect: rect:map-node:5: [621.39, 269.06, 116.0, 68.0]
 --- before
 # Plan
 

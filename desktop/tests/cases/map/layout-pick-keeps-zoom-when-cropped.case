@@ -1,0 +1,32 @@
+A map zoomed in past the window keeps its zoom after a pick, and the selected node ends up in the middle of the canvas.
+note: Plan.md
+size: 800x500
+events: key:m+cmd@0.3 key:Right@0.6 key:Right@0.9 key:=@1.2 key:=@1.6 key:=@2.0 tap:map-layout@2.6 tap:layout-down@3.4 key:s+cmd@4.2
+expect: rect:map-node:9: [458.97, 237.98, 130.06, 69.78]
+expect: selected: map-node:9
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
