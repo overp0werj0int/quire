@@ -1,0 +1,22 @@
+A click on a fold ring in Up folds the heading: its +2 pill sits over it, and its items go.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:7@1.0
+expect: rect:map-node:7: [556.0, 382.75, 158.0, 59.0]
+expect: rect:map-pill:7: [613.0, 338.75, 44.0, 32.0]
+expect: rect:map-node:9: None
+expect: label:map-node:7: 'Budget, level 2, collapsed, 2 hidden'
+--- before
+---
+markmap:
+  layout: up
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

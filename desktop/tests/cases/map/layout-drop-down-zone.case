@@ -1,0 +1,18 @@
+Mid-drag in Down, the After zone shows as an upright bar in the gap right of the target (which ends at x 653, the next node starts at 701).
+note: Plan.md
+at: 1.55
+events: key:m+cmd@0.3 drag:map-node:9>-265,0,0.6@1.0
+expect: label:map-drop: 'After map-node:7'
+expect: rect:map-drop: [659.0, 488.0, 6.0, 53.0]
+expect: rect:map-node:7: [557.0, 488.0, 96.0, 53.0]
+expect: rect:map-node:8: [701.0, 488.0, 100.0, 53.0]
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Rent
+- Food
+- Power

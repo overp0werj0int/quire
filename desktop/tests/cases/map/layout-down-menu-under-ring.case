@@ -1,0 +1,21 @@
+In Down the node menu opened from the keyboard hangs under the node's fold ring (which ends at y 498.25), not over it.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:F10+shift@1.2
+expect: rect:node-menu: [556.0, 506.25, 210.0, 250.0]
+expect: rect:map-dot:7: [621.0, 470.25, 28.0, 28.0]
+expect: rect:map-node:7: [556.0, 399.25, 158.0, 59.0]
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

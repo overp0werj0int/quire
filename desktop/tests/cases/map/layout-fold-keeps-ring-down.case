@@ -1,0 +1,21 @@
+A fold by click in Down keeps the pressed heading under the pointer: it stays at x 556, y 399.25 (layout-down-row), its +2 pill takes its ring's place under it, and the root moves over its fewer children.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-fold:7@1.0
+expect: rect:map-node:7: [556.0, 399.25, 158.0, 59.0]
+expect: rect:map-pill:7: [613.0, 470.25, 44.0, 32.0]
+expect: rect:map-node:5: [698.5, 211.25, 116.0, 68.0]
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

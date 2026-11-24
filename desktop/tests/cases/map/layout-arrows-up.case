@@ -1,0 +1,19 @@
+In Up, Up goes to the first child, Right to the next sibling and Down back to the parent.
+note: Plan.md
+events: key:m+cmd@0.3 key:Up@0.8 key:Up@1.0 key:Right@1.2 key:Down@1.4 key:Right@1.6
+expect: selected: map-node:12
+--- before
+---
+markmap:
+  layout: up
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

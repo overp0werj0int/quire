@@ -1,0 +1,22 @@
+An unfold glides in Down: 160 ms after the press, an item is part way from its heading's fold ring (x 587, y 504.25) to its place (x 514, y 578.25), fading in.
+note: Plan.md
+at: 1.76
+events: key:m+cmd@0.3 tap:map-fold:7@1.0 tap:map-pill:7@1.6
+expect: rect:map-node:9: [525.31, 566.78, 96.0, 51.5]
+expect: rect:map-node:7: [556.0, 399.25, 158.0, 59.0]
+expect: opacity:map-node:9: 0.8450000286102295
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

@@ -1,0 +1,26 @@
+In Down, Alt+Right moves an item past its next sibling.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Right+alt@1.2 key:s+cmd@1.8
+expect: selected: map-node:9
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Rent
+- Food
+  - Bread
+- Power
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Food
+  - Bread
+- Rent
+- Power

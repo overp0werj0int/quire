@@ -1,0 +1,13 @@
+In Down the Properties badge sits over the root, clear of where its fold ring goes, and the hint sits right under a lone root.
+note: Plan.md
+events: key:m+cmd@0.3
+expect: rect:map-node:6: [735.0, 405.5, 58.0, 34.0]
+expect: rect:map-props: [689.0, 375.5, 96.0, 24.0]
+expect: rect:map-hint: [630.5, 445.5, 266.59, 15.0]
+--- before
+---
+tags: [a]
+markmap:
+  layout: down
+---
+# Plan

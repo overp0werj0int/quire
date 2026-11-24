@@ -1,0 +1,24 @@
+In Down a drop on a node's left quarter puts the dragged item before it.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:9>-345,0,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:7
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Rent
+- Food
+- Power
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Power
+- Rent
+- Food

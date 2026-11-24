@@ -1,0 +1,19 @@
+In Down the arrows follow the screen: Down goes to the first child, Right to the next sibling, Down again to its child.
+note: Plan.md
+events: key:m+cmd@0.3 key:Down@0.8 key:Right@1.0 key:Down@1.2
+expect: selected: map-node:14
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

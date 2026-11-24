@@ -1,0 +1,24 @@
+In Down a node splits left to right: a drop on a node's right quarter puts the dragged item after it.
+note: Plan.md
+events: key:m+cmd@0.3 drag:map-node:9>-265,0,0.6@1.0 key:s+cmd@2.0
+expect: selected: map-node:8
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Rent
+- Food
+- Power
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+- Rent
+- Power
+- Food

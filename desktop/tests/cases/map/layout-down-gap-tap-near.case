@@ -1,0 +1,26 @@
+Zoomed far out in Down, a click in the gap between two tasks, nearer the right one (which starts at x 763), ticks it.
+note: Plan.md
+events: key:m+cmd@0.3 key:-@0.8 key:-@1.0 key:-@1.2 key:-@1.4 key:-@1.6 key:-@1.8 key:-@2.0 key:-@2.2 key:-@2.4 key:-@2.6 key:-@2.8 key:-@3.0 tap:758,342@3.8 key:s+cmd@4.2
+expect: rect:map-node:8: [727.67, 340.86, 21.31, 3.64]
+expect: rect:map-node:9: [763.0, 340.86, 23.36, 3.64]
+expect: rect:map-task:9: [755.98, 336.73, 10.72, 11.89]
+--- before
+---
+markmap:
+  layout: down
+  spacingVertical: 60
+---
+# Plan
+
+- [ ] Rent for the flat
+- [ ] Food for the week
+--- after
+---
+markmap:
+  layout: down
+  spacingVertical: 60
+---
+# Plan
+
+- [ ] Rent for the flat
+- [x] Food for the week
