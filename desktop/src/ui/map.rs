@@ -199,7 +199,7 @@ pub(super) fn canvas(v: V) -> El {
             Some((i, _, room, _, [fw, fh])) if i == sel => [g.w.max(fw + room + 2.0 * l.metrics.pad_x), g.h.max(fh + l.metrics.pad_b)],
             _ => [g.w, g.h],
         };
-        let (px, py) = (GLASS_PAD_X, GLASS_PAD_Y);
+        let [px, py] = crate::map_layout::GLASS_PAD;
         let r = [g.x - px, g.y - py, w + 2.0 * px, h + lw + 2.0 * py];
         (r, GLASS_R.min(r[3] / 2.0))
     });
@@ -407,7 +407,7 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (w.to_bits(), h.to_bits(), y0.to_bits(), y1.to_bits(), lw.to_bits(), color_bits(color)).hash(&mut hash);
     let shape = rune::memo(format!("map-link-s:{tail}"), hash.finish(), move || {
-        rune::canvas(Shape::new().fill(tapered([0.0, y0], [w, y1], lw), color)).size(w, h).inert()
+        rune::canvas(tapered([0.0, y0], [w, y1], lw, color)).size(w, h).inert()
     });
     el().key(key)
         .pin(Some(x0 + W), Some(top + W), None, None)
@@ -417,9 +417,7 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
         .child(shape)
 }
 
-/// The selection glass's padding round its node and its corner radius (MAP-055).
-const GLASS_PAD_X: f32 = 12.0;
-const GLASS_PAD_Y: f32 = 10.0;
+/// The selection glass's corner radius (MAP-055); its padding is `map_layout::GLASS_PAD`.
 const GLASS_R: f32 = 10.0;
 /// How much the selected node's content grows under the glass.
 const GLASS_K: f32 = 1.035;
@@ -435,30 +433,29 @@ fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
         .inert()
 }
 
-/// The outline of a branch from `a` (its parent's fold dot) to `z` (its node's underline): the
-/// link's Bézier, 1 point wide at the dot and widening to `lw` by halfway, so the branches
-/// fanning out of one dot don't merge into a blot.
-fn tapered(a: [f32; 2], z: [f32; 2], lw: f32) -> Vec<[f32; 2]> {
+/// A branch from `a` (its parent's fold dot) to `z` (its node's underline): the link's Bézier,
+/// 1 point wide at the dot and widening to `lw` by halfway, so the branches fanning out of one
+/// dot don't merge into a blot. Drawn as round-capped strokes, one a step, each as wide as the
+/// curve at its middle: strokes are antialiased all round, where a filled outline cut into thin
+/// triangles is stepped along its edges. The last cap runs on under the underline, so the two
+/// never meet edge to edge.
+fn tapered(a: [f32; 2], z: [f32; 2], lw: f32, color: Color) -> Shape {
     const STEPS: usize = 32;
     let mid = (a[0] + z[0]) / 2.0;
     let (c1, c2) = ([mid, a[1]], [mid, z[1]]);
-    let mut left = Vec::with_capacity(2 * STEPS + 2);
-    let mut right = Vec::with_capacity(STEPS + 1);
-    for k in 0..=STEPS {
-        let t = k as f32 / STEPS as f32;
+    let at = |t: f32| {
         let u = 1.0 - t;
-        let at = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
-        let slope = |i: usize| 3.0 * u * u * (c1[i] - a[i]) + 6.0 * u * t * (c2[i] - c1[i]) + 3.0 * t * t * (z[i] - c2[i]);
-        let (dx, dy) = (slope(0), slope(1));
-        let len = (dx * dx + dy * dy).sqrt().max(1e-3);
+        let f = |i: usize| u * u * u * a[i] + 3.0 * u * u * t * c1[i] + 3.0 * u * t * t * c2[i] + t * t * t * z[i];
+        [f(0), f(1)]
+    };
+    let width = |t: f32| {
         let e = (t / 0.5).min(1.0);
-        let half = (1.0 + (lw - 1.0).max(0.0) * e * e * (3.0 - 2.0 * e)) / 2.0;
-        let (nx, ny) = (-dy / len * half, dx / len * half);
-        left.push([at(0) + nx, at(1) + ny]);
-        right.push([at(0) - nx, at(1) - ny]);
-    }
-    left.extend(right.into_iter().rev());
-    left
+        1.0 + (lw - 1.0).max(0.0) * e * e * (3.0 - 2.0 * e)
+    };
+    (0..STEPS).fold(Shape::new(), |shape, k| {
+        let (t0, t1) = (k as f32 / STEPS as f32, (k + 1) as f32 / STEPS as f32);
+        shape.line(at(t0), at(t1), width((t0 + t1) / 2.0), LineCap::Round, color)
+    })
 }
 
 /// The inline field over the node being edited, in the label's place and style (MAP-016).
@@ -714,18 +711,14 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     let n = &t.nodes[i];
     let tail = key_tail(&node_key(t, i)).to_string();
     let branch = branch_color(c, n.branch);
-    // An expanded node's ring sits beside the middle of its right side; a folded node keeps its
-    // target at the junction, where its `+N` pill is.
-    let (cx, cy) = if folded { (p.right(), p.line_y()) } else { let [x, y] = map_app::fold_dot(&p); (x, y) };
+    // The ring sits beside the middle of the node's right side; a folded node's `+N` badge
+    // takes its place.
+    let [cx, cy] = map_app::fold_dot(&p);
     let clear = l.clear[i];
     // Never let the fold hit box reach far over the node's own label text, nor cross into
     // adjacent rows, the next column's task boxes, or a folded node's `+N` pill.
     let x0 = (cx - hit / 2.0).max(p.right() - FOLD_R);
-    let x1 = if folded {
-        (x0 + hit).min(p.right() + 5.0).max(cx)
-    } else {
-        (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_DOT_R)
-    };
+    let x1 = (x0 + hit).min(p.right() + l.metrics.sh / 2.0).max(cx + FOLD_DOT_R);
     let y0 = (cy - hit / 2.0).max(clear[0]).min(cy - FOLD_DOT_R);
     let y1 = (cy + hit / 2.0).min(clear[1]).max(cy + FOLD_DOT_R);
     let toggle = move |s: &mut App, tx: &mut Tx| {
@@ -798,24 +791,21 @@ fn fold(t: &Tree, l: &Laid, i: usize, folded: bool, editing: bool, lite: bool, h
     if folded {
         let hidden = n.end - i - 1;
         let font = map_app::chip_font(b, mono);
-        let (pill, [x, y, _, h]) = map_app::pill(hidden, p, font);
-        let pill_hover = crate::roles::mix(c.on_page(c.chip_fill), c.text, 0.08);
+        let (pill, [x, y, w, h]) = map_app::pill(hidden, p, font);
         out.push(
-            text(pill)
-                .key(format!("map-pill:{tail}"))
-                .font(font)
-                .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
-                .fill(c.chip_fill)
-                .hover(pill_hover)
+            el().key(format!("map-pill:{tail}"))
+                .size(w, h)
+                .center()
+                .fill(c.bg)
+                .hover(crate::roles::mix(c.bg, branch, 0.18))
                 .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                .border(1.0, c.chip_edge)
+                .border(1.5, branch)
                 .radius(h / 2.0)
-                .px(map_app::PILL_PAD)
-                .h(h)
                 .role("button")
                 .label(format!("Unfold, {hidden} hidden"))
                 .cursor(rune::Cursor::Pointer)
                 .pin(Some(x + W), Some(y + W), None, None)
+                .child(text(pill).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
                 .on_press_tx(toggle),
         );
     }

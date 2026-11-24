@@ -279,13 +279,20 @@ pub fn badge(props: usize, p: map_layout::Place, pad_x: f32, font: TextStyle) ->
 /// Horizontal padding inside the Properties badge pill.
 pub const BADGE_PAD: f32 = 6.0;
 
-/// The `+N` pill snugged right of a folded node's underline end, for box `p` (MAP-041): its
-/// text and `[x, y, w, h]`.
+/// A folded node's `+N` badge in its fold ring's place, for box `p` (MAP-041): its text and
+/// `[x, y, w, h]`. It starts where the ring's left edge would be and is centred on the ring's
+/// height, at least as tall and as wide as the ring.
 pub fn pill(hidden: usize, p: map_layout::Place, font: TextStyle) -> (String, [f32; 4]) {
+    let (text, [w, h]) = pill_size(hidden, font);
+    let [_, cy] = fold_dot(&p);
+    (text, [p.right() + FOLD_DOT_GAP, cy - h / 2.0, w, h])
+}
+
+fn pill_size(hidden: usize, font: TextStyle) -> (String, [f32; 2]) {
     let text = format!("+{hidden}");
-    let h = font.size + 6.0;
-    let w = rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * PILL_PAD;
-    (text, [p.right() + 6.0, p.line_y() - h / 2.0, w, h])
+    let h = (font.size + 6.0).max(2.0 * FOLD_DOT_R);
+    let w = (rune::text::measure(&text, &[], font, None).0.ceil() + 2.0 * PILL_PAD).max(h);
+    (text, [w, h])
 }
 
 /// A pill's padding either side of its text.
@@ -473,11 +480,8 @@ impl App {
                 full
             },
             |i| {
-                let hidden = t.nodes[i].end - i - 1;
-                let text = format!("+{hidden}");
-                let pw = rune::text::measure(&text, &[], chip, None).0.ceil() + 2.0 * PILL_PAD;
-                let half_h = ((chip.size + 6.0) / 2.0).max(FOLD_R);
-                [6.0 + pw + 4.0, half_h]
+                let [w, h] = pill_size(t.nodes[i].end - i - 1, chip).1;
+                [FOLD_DOT_GAP + w + 4.0, h / 2.0]
             },
         ));
         *self.map.laid.borrow_mut() = Some((key, laid.clone()));
@@ -1381,7 +1385,7 @@ impl App {
 
     /// Node `i` is selected and the folds above it open. Whether the tab's camera has been
     /// placed, or None with no note shown.
-    fn map_open_to(&mut self, i: usize) -> Option<bool> {
+    pub(crate) fn map_open_to(&mut self, i: usize) -> Option<bool> {
         let t = self.map_tree();
         let v = self.map_view_mut()?;
         v.selected = t.nodes[i].id;

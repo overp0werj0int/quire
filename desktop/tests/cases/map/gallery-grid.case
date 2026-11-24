@@ -4,10 +4,10 @@ file: attachments/wide.png fixtures/wide.png
 file: attachments/small.png fixtures/small.png
 file: attachments/tall.png fixtures/tall.png
 events: key:m+cmd@0.3 key:0+cmd@0.8 tap:map-thumb:3:2@1.2
-expect: rect:map-card:3: [881.0, 355.5, 292.0, 126.0]
-expect: rect:map-thumb:3:0: [888.0, 362.5, 179.0, 112.0]
-expect: rect:map-thumb:3:1: [1074.0, 362.5, 48.0, 112.0]
-expect: rect:map-thumb:3:2: [1129.0, 362.5, 37.0, 112.0]
+expect: rect:map-card:3: [875.89, 353.22, 302.22, 130.42]
+expect: rect:map-thumb:3:0: [883.14, 360.47, 185.27, 115.92]
+expect: rect:map-thumb:3:1: [1075.64, 360.47, 49.69, 115.92]
+expect: rect:map-thumb:3:2: [1132.56, 360.47, 38.3, 115.92]
 expect: rect:lightbox-pic: [536.5, 90.0, 207.0, 620.0]
 expect: text:lightbox-caption: 'three'
 expect: selected: map-node:3

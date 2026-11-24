@@ -40,6 +40,12 @@ impl Metrics {
     }
 }
 
+/// How far the selection glass (MAP-055) reaches past its node's box: left and right, then
+/// above the node and below its underline.
+pub const GLASS_PAD: [f32; 2] = [12.0, 10.0];
+/// The least room between a node's glass and the node next to it.
+const GLASS_CLEAR: f32 = 4.0;
+
 /// A branch's stroke and underline width at `depth`: 4 at the root, then towards 1.
 pub fn line_width(depth: usize) -> f32 {
     1.0 + 3.0 / 2f32.powi(depth.min(30) as i32)
@@ -117,7 +123,8 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
     // The gap below node `a` when node `b` sits under it: text leaves keep generous vertical
     // separation so each underline clearly belongs to its own row (R12) and parent groups read
     // distinctly (~1.7x cousin ratio), while framed cards keep enough gap for crisp drop bars
-    // without pushing card-heavy maps below LITE_ZOOM at Fit.
+    // without pushing card-heavy maps below LITE_ZOOM at Fit. No gap is less than the selection
+    // glass's reach plus a margin, so the glass round one node never covers its neighbour.
     let card_sv = r(m.sv * 0.58);
     let gap = |a: usize, b: usize| {
         let same = parent(a) == parent(b);
@@ -128,7 +135,7 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         } else {
             r(m.sv * 1.7)
         };
-        base + line_width(depth(a))
+        base.max(GLASS_PAD[1] + GLASS_CLEAR) + line_width(depth(a))
     };
     let mut profile: Vec<Option<Vec<Seg>>> = vec![None; n];
     let mut dy = vec![0.0f32; n];
@@ -136,12 +143,12 @@ pub fn layout(tree: &Tree, folded: &HashSet<NodeId>, m: Metrics, mut size: impl 
         let [w, h] = wh[v];
         let col = w + m.sh;
         let is_folded = !open(v) && !tree.nodes[v].children.is_empty();
-        // Reserve room for a folded node's fold circle and `+N` pill so sibling Bézier links
-        // crossing `[w_sib, w_sib + sh]` never slice through the pill and the sibling heading
-        // below clears the pill's bottom edge.
+        // Reserve room for a folded node's `+N` badge, centred on the node's middle where its
+        // fold ring would be, so sibling Bézier links crossing `[w_sib, w_sib + sh]` never
+        // slice through it and the sibling below clears its bottom edge.
         let mut prof = if is_folded {
             let [ext_w, half_h] = pill_ext(v);
-            let pill_bot = h + (half_h - line_width(depth(v)) / 2.0).max(0.0);
+            let pill_bot = (h / 2.0 + half_h).max(h);
             let split = (w - 6.0).max(0.0);
             if split > 0.0 {
                 vec![

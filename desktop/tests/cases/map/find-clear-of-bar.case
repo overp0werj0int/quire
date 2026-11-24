@@ -4,7 +4,7 @@ events: key:m+cmd@0.3 key:f+cmd@0.8 type:walk@1.0
 at: 2.0
 expect: rect:find-bar: [884.0, 51.0, 380.0, 40.0]
 expect: rect:map-node:11: [638.66, 430.34, 250.69, 41.13]
-expect: rect:find-cur: [651.44, 430.34, 53.65, 31.93]
+expect: rect:find-cur: [647.5, 429.67, 55.53, 33.05]
 --- before
 # Trip
 

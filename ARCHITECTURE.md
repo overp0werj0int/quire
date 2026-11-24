@@ -83,7 +83,7 @@ Map mode is the third value of `App::mode`, beside Source and Preview. Its canva
 tab, a pan and a zoom (`MapView::live_pan`, `live_zoom`), plus a quiet bottom-right zoom HUD
 (`map-zoom-hud`, painted in `doc-area` above `toast-band`). The view builds only the nodes,
 links and fold controls (a ring beside an expanded node's right side that its tapered branches
-leave from, `map_app::fold_dot`, with its `−` on hover; a snug `+N` pill when folded) that meet the
+leave from, `map_app::fold_dot`, with its `−` on hover; a `+N` badge in its place when folded) that meet the
 tab's mount (`App::map_mounted`, `App::map_region`): a world rectangle kept while it still holds
 the canvas and 160 points around it, and made again 640 points past the canvas when a pan leaves
 it (only the 160 points after a zoom, so a zoom out never mounts hundreds of nodes). A pan or
@@ -96,7 +96,11 @@ selection changed; below `0.20×` zoom opaque links batch into one memoized canv
 are cached per text, folds and fonts. The selected node sits under a glass card (`map-glass`
 under the links and nodes, its rim `map-selection` over them); only the node's content grows
 under it (`GLASS_K`, a scale on the node's memoized body), so its underline, links and fold ring
-never move with the selection.
+never move with the selection. The layout keeps every gap between nodes wider than the glass's
+reach (`map_layout::GLASS_PAD`), so a node's glass never covers its neighbour. A branch is drawn
+as one short round-capped stroke a step, each as wide as the taper is there (`ui::map::tapered`):
+Rune cuts strokes that continue one another on their joint's bisector, so the edges stay smooth
+at any zoom, where a filled outline cut into thin triangles drew them stepped.
 
 A node draws what the reader would. `map::Node::body` says what that is: plain text, a
 paragraph's or heading's inline runs, which the reader's `Rich` draws, or a block shown as a
@@ -143,7 +147,8 @@ A link in a node's label is followed as in the reader (`preview::on_link`). The 
 press, so the node is not selected and no drag starts. On the map an anchor goes to a node
 (`App::go_anchor`, `App::map_go_line`): the node is selected, the folds above it open and the
 camera centres it. Every footnote's anchor names the one footnotes block, so the map finds the
-footnote by its own lines. A wiki link opens its note on the map and goes to its `#Heading` the
+footnote by its own lines. A footnote's node starts with its number, a link to its first
+citation, as the page's footnotes do. A wiki link opens its note on the map and goes to its `#Heading` the
 same way. Ctrl+Enter follows the selected node's first link (`App::map_follow_link`). A tab
 shown on the map for the first time gets its first camera once the canvas has a size
 (`App::place_due`). The canvas reports its size only when it changes, so a note opened while
@@ -160,7 +165,10 @@ the folds and the selection to the new tree by `NodeId` (`MapView::follow`); a s
 the change removed gives way to the nearest node at or above its line. An open inline field
 keeps its text then, and its commit is refused with a notice while the note under it has
 changed, so a stale field never writes over another app's text. Each tab keeps its own
-`MapView`. In Note mode each note is a vault of its own, so `App::park` takes the note's view
+`MapView`. Preview folds the same headings from its folds (`App::page_folds`): a folded
+heading's blocks are empty rows, and its `+N` badge in the margin unfolds it on both
+surfaces (`App::toggle_page_fold`); a jump to a hidden block opens the folds above it first
+(`App::unfold_to_block`). In Note mode each note is a vault of its own, so `App::park` takes the note's view
 with it (`Parked::map`) and `App::open_note` puts it back. Opening a folder drops every view
 (`App::map_new_notes`). Both first settle the inline field (`App::map_settle`), writing what
 it holds if its note is unchanged.
@@ -494,7 +502,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`. |
 | `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling (with lists renumbered and blank lines matched), delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. `add_block` adds a block such as an image's link, a paragraph where `add` would make a heading or a bullet. |
 | `map_layout.rs` | Where each shown node sits: a left-to-right tidy tree in world points, built bottom-up from each subtree's top and bottom profile, so a short branch tucks under a long one. Pure: it takes the tree, the folds and a size per node. |
-| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, image inserts, the lightbox, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` pills' geometry, which the view draws and fit takes in (`App::map_extent`). |
+| `map_app.rs` | Map mode on `App`: each tab's `MapView` (camera, folds, selection), the tree and layout cached per text, fonts and folds, what the camera shows (`App::map_mounted`), the camera's glides, the map's keys, and entering and leaving the map with the place kept. It applies `map.rs`'s splices to the note (`App::map_apply`), runs undo and redo from the map, and holds the inline field (`Inline`): what it edits, the note's text when it opened, and the preview text that shows a new node before its first commit. Paste, image inserts, the lightbox, the node menu's anchor and the Properties badge's sheet start here, and the badge's and the `+N` fold badges' geometry, which the view draws and fit takes in (`App::map_extent`). |
 | `map_find.rs` | Find on the map (MAP-066): every match of the find bar's query in the nodes' labels and cards' pieces, in the note's order, folded branches included, where a search starts from the selection, and showing the current match. |
 | `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
 | `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's right edge. Nothing glides under reduced motion. |

@@ -4,7 +4,7 @@ events: key:m+cmd@0.3 key:l@0.8 type:_@1.1
 at: 1.16
 expect: nodes: 1 3 5 6 8 10
 expect: rect:map-node:5: [889.94, 313.5, 96.0, 51.5]
-expect: rect:map-node:8: [662.0, 462.69, 136.0, 59.0]
+expect: rect:map-node:8: [662.0, 452.56, 136.0, 59.0]
 --- before
 # Plan
 

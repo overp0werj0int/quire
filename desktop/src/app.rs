@@ -1744,8 +1744,14 @@ impl App {
         }
         match self.names.resolve(&t).map(str::to_string) {
             Some(p) => {
+                let fresh = self.mode == Mode::Map && self.map.views.get(&p).is_none_or(|v| !v.placed);
                 self.open_file(&p, None, tx);
                 if let Some(f) = frag.filter(|_| self.mode != Mode::Source) {
+                    // `open_file` gives a map shown for the first time its fitted camera; the
+                    // heading's node takes that first placement instead, at 100% (MAP-054).
+                    if fresh && let Some(v) = self.map_view_mut() {
+                        v.placed = false;
+                    }
                     self.go_anchor(&f, tx);
                 }
             }

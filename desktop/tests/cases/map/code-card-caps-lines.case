@@ -1,9 +1,9 @@
 A code card shows 12 lines and says how many more; a short one is as tall as its lines. At 100%: 32 top, 18 a line, 12 below, 18 for the label.
 note: Code.md
 events: key:m+cmd@0.3 key:0+cmd@0.8
-expect: rect:map-card:3: [884.0, 187.25, 168.0, 278.0]
+expect: rect:map-card:3: [884.0, 184.25, 168.0, 278.0]
 expect: text:map-more:3: '+3 more lines'
-expect: rect:map-card:21: [884.0, 479.75, 168.0, 62.0]
+expect: rect:map-card:21: [884.0, 482.75, 168.0, 62.0]
 expect: text:map-more:21: None
 --- before
 # Code

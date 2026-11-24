@@ -35,6 +35,7 @@ parentheses point into omarky 0.7.0 (`/home/p0werj0int/Projects/omarky`), unless
 - **BLK-14** [in] [verify: golden] No heading has a rule, underline or background. Hierarchy comes from size, weight, colour and space alone. (`components/blocks/Heading.qml:21-34`)
 - **BLK-15** [in] [verify: geometry, script] While the pointer is over a heading, a `#` appears in the left margin. It is mono at round(B × 0.95) [13], its right edge round(B × 0.6) [8] left of the text, vertically centred on the first line, in faint, and in accent while the pointer is on the `#` itself. It fades in and out over 120 ms and changes colour over 120 ms. (`components/blocks/Heading.qml:38-51`)
 - **BLK-16** [in] [verify: script] Clicking that `#` copies `<file name>#<slug>`, with the note's file name, and shows the toast "Copied <file name>#<slug>". (`components/blocks/Heading.qml:53`, `components/MarkdownView.qml:112-113`)
+- **BLK-102** [quire] [verify: -] A heading with a section (its node on the map has children) folds as the map folds it (`MAP-042`, `<!-- markmap: fold -->` included). While the pointer is over it, the map's fold ring shows in the margin left of its `#`, round(B × 0.5) [7] apart, in faint on `Roles::bg`; clicking it folds the section. A folded heading's section, up to the next heading of its level or above, is not drawn, and the ring is the map's `+<N>` badge, shown at rest; clicking it unfolds. A jump or a find match inside a folded section unfolds it first. Footnotes stay drawn.
 
 ## 4. Thematic break
 

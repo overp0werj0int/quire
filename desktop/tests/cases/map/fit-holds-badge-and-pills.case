@@ -4,7 +4,7 @@ size: 700x400
 events: key:m+cmd@0.3 key:Right@0.6 key:f@0.8 key:0@1.0
 expect: rect:map-canvas: [248.0, 41.0, 452.0, 359.0]
 expect: rect:map-props: [259.31, 231.83, 83.61, 20.91]
-expect: rect:map-pill:9: [669.55, 225.94, 19.16, 13.94]
+expect: rect:map-pill:9: [669.55, 203.08, 19.16, 13.94]
 --- before
 ---
 title: Plan

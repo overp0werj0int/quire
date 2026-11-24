@@ -8,7 +8,7 @@
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
-use crate::blocks::{self, Block, Doc, Kind, Run, Task};
+use crate::blocks::{self, Block, Doc, Kind, Link, Run, Task};
 
 pub type NodeId = u64;
 
@@ -210,9 +210,11 @@ pub fn build(doc: &Doc, src: &str, name: &str) -> Tree {
         let g = b.push(NodeKind::Footnotes, "Footnotes".into(), start..start, Some(ROOT), Body::Plain);
         for f in items {
             let text = f.blocks.iter().find_map(text_of).unwrap_or_default();
-            let mut runs = vec![Run { t: format!("[^{}] ", f.label), ..Run::default() }];
+            // Numbered as the preview numbers it, the number a link to its first citation.
+            let cite = (f.refs > 0).then(|| Link::Anchor(format!("fnref-{}-1", f.number)));
+            let mut runs = vec![Run { t: format!("{}.", f.number), link: cite, ..Run::default() }, Run { t: " ".into(), ..Run::default() }];
             runs.extend(f.blocks.iter().find_map(runs_of).unwrap_or_default().iter().cloned());
-            b.push(NodeKind::Footnote { number: f.number }, format!("[^{}] {}", f.label, text).trim_end().to_string(), f.lines.clone(), Some(g), Body::Runs(runs));
+            b.push(NodeKind::Footnote { number: f.number }, format!("{}. {}", f.number, text).trim_end().to_string(), f.lines.clone(), Some(g), Body::Runs(runs));
         }
     }
     let mut t = Tree { nodes: b.nodes, opts: options(&lines), props: front.map_or(0, |f| f.1) };

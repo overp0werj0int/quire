@@ -163,10 +163,10 @@ impl Rich {
                     self.links.push((a..self.text.len(), format!("url:{u}"), color));
                 }
                 Some(Link::Anchor(an)) => {
-                    // A footnote reference is small (PAGE-78, adapted): omarky's <sup> is 10 px at
-                    // 14 px. It sits on the baseline, since Rune has no raised spans.
+                    // A footnote reference is a superscript (PAGE-78): omarky's <sup> is 10 px at
+                    // 14 px.
                     let color = c.readable_link();
-                    let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), ..base } } else { base };
+                    let sup = if run.note { Span { size: Some(r(cx.look.b * 0.7)), sup: true, ..base } } else { base };
                     self.push(&run.t, Span { color: Some(color), ..sup });
                     if cx.doc.is_none() {
                         self.links.push((a..self.text.len(), format!("anchor:{an}"), color));
@@ -295,6 +295,7 @@ pub fn preview(v: V) -> El {
     // A row is built again only when something it draws from changes.
     let set = s.settings();
     let col_geom = column(v);
+    let folds = Rc::new(s.page_folds());
     let version = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -310,6 +311,7 @@ pub fn preview(v: V) -> El {
             s.names_gen,
             s.images.epoch.get(),
             s.reader.copied.map(|(l, _)| l),
+            folds.sig,
         )
             .hash(&mut h);
         h.finish()
@@ -336,6 +338,10 @@ pub fn preview(v: V) -> El {
                 let v = V { s, p, dark, vw, vh, trailing, caret: None, caret_view: None, find_at: None, place_at: None };
                 let doc = rows.clone();
                 let Some(bl) = doc.blocks.get(i) else { return el() };
+                if folds.hidden.get(i) == Some(&true) {
+                    return el();
+                }
+                let fold = folds.heads.get(&i).copied();
                 let gap = gaps.get(i).copied().unwrap_or(0.0);
                 let key = crate::reader::block_key(bl);
                 rune::memo(key.clone(), version, || {
@@ -344,8 +350,10 @@ pub fn preview(v: V) -> El {
                     // A right-click on the row, its gap above included, opens its block's menu (RD-68).
                     let line = bl.lines.start;
                     el().w_full()
+                        .hover_group()
                         .pt(gap)
                         .child(cx.top_block(bl, tone))
+                        .children(fold.map(|f| cx.fold_mark(bl, gap, f)))
                         .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
                         .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Block(line), (at.x, at.y), tx))
                 })
@@ -568,6 +576,53 @@ impl Cx<'_> {
             .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
             .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
         el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
+    }
+
+    /// A heading's fold control in the margin left of its `#` (MAP-042): the map's fold ring,
+    /// shown while the pointer is over the heading, or once folded the map's `+N` badge.
+    /// Either folds or unfolds the section here and on the map.
+    fn fold_mark(&self, bl: &Block, top: f32, (n, folded, hidden): (usize, bool, usize)) -> El {
+        let look = self.look;
+        let c = &look.c;
+        let Kind::Heading { level, .. } = bl.kind else { return el() };
+        let (size, lead) = page::heading_type(look.b, level.clamp(1, 6));
+        let hs = r(look.b * 0.95);
+        let hash_w = rune::text::advance("#", TextStyle::new(hs, 400.0).family(look.mono).lh(line(hs, 1.2))).ceil();
+        let right = hash_w + r(look.b * 0.6) + r(look.b * 0.5);
+        let font = crate::map_app::chip_font(look.b, look.mono);
+        let d = 2.0 * crate::map_app::FOLD_DOT_R;
+        let h = (font.size + 6.0).max(d);
+        let fade = || rune::Curve::linear(0.12);
+        let mark = if folded {
+            el().h(h)
+                .min_w(h)
+                .px(crate::map_app::PILL_PAD)
+                .center()
+                .radius(h / 2.0)
+                .border(1.5, c.faint)
+                .fill(c.bg)
+                .hover(mix(c.bg, c.accent, 0.18))
+                .hover_motion(fade(), fade())
+                .label(format!("Unfold, {hidden} hidden"))
+                .child(text(format!("+{hidden}")).font(font).color(c.readable_dim()).inert())
+        } else {
+            el().size(d, d)
+                .radius(d / 2.0)
+                .border(1.5, c.faint)
+                .fill(c.bg)
+                .group_opacity(0.0, 1.0)
+                .hover(mix(c.bg, c.accent, 0.18))
+                .hover_motion(fade(), fade())
+                .label("Fold")
+        };
+        let y = top + ((line(size, lead) - h) / 2.0).max(0.0);
+        let room = r(look.b * 4.0);
+        row().key("fold")
+            .pin(Some(-(right + room)), Some(y), None, None)
+            .size(room, h)
+            .justify_end()
+            .center_y()
+            .child(mark.role("button").cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, _| s.toggle_page_fold(n)))
     }
 
     /// Three faint dots (BLK-17).

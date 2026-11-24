@@ -11,9 +11,9 @@ Decision:
 - **Caret.** The writer and the edit sheet use Rune's caret in the accent colour: a 1.5 point bar
   that doesn't blink. omarky's is max(2, round(E / 9)) wide with round ends and a blink (WR-175,
   SHEET-029). Dropped `El::caret_style`.
-- **Footnote references.** They stay small (0.7 of the body size) and sit on the baseline.
-  omarky raises them as superscript (PAGE-78). Footnotes will move to a later design, and in Zen
-  mode they would need an overlay anyway. Dropped `Span::raise`.
+- **Footnote references.** Reversed on 2026-11-24: they are raised as superscript, as omarky
+  raises them (PAGE-78), by `Span::sup`, which hands Parley's own `vertical-align: super` through
+  and gives the span no leading of its own. It was a few lines, not the patch this decision feared.
 - **Where the reader's blocks are.** Quire keeps this itself, so it can later mark the block you
   are in. Each row of the page reports its height and place (`El::on_layout`), and the page map
   (`reader::PageMap`) adds the rows up, with the list's estimate for a row not laid out, then

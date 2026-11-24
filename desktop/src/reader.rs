@@ -798,6 +798,7 @@ impl App {
     /// may not be, so the trip starts from the map's estimate and lands again once the row lays
     /// out (`App::row_laid_out`): a long trip's cut is placed again a frame later, by the row.
     pub(crate) fn land(&mut self, i: usize, travel: bool, tx: &mut Tx) {
+        self.unfold_to_block(i);
         let doc = self.doc();
         let Some(b) = doc.blocks.get(i) else { return };
         let gap = crate::page::gap(self.b(), i.checked_sub(1).map(|p| crate::page::rk(&doc.blocks[p].kind)), crate::page::rk(&b.kind));
@@ -841,6 +842,7 @@ impl App {
         let doc = self.doc();
         let Some(hit) = m.get(self.reader.find.cur).copied() else { return };
         let i = hit.block;
+        self.unfold_to_block(i);
         let Some(b) = doc.blocks.get(i) else { return };
         let [offset, _, vh, _] = self.reader.scroll.get();
         let band = if self.foot_shows() { self.reader.reveal.band } else { 0.0 };
@@ -1502,6 +1504,79 @@ impl App {
             _ => None,
         };
         self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx);
+    }
+}
+
+/// The page's folds: the map's folded headings for this tab, or the folds the note opens with
+/// (`<!-- markmap: fold -->`, MAP-042), so a section folded in one view is folded in the other.
+#[derive(Default)]
+pub struct PageFolds {
+    /// Per top-level block: inside a folded heading's section, so drawn as nothing.
+    pub hidden: Vec<bool>,
+    /// Per heading block with a section: its map node, whether it is folded, and how many
+    /// nodes the fold hides, as the map's `+N` says.
+    pub heads: HashMap<usize, (usize, bool, usize)>,
+    /// Changes whenever any heading folds or unfolds.
+    pub sig: u64,
+}
+
+impl App {
+    pub fn page_folds(&self) -> PageFolds {
+        use std::hash::{Hash, Hasher};
+        let doc = self.doc();
+        let t = self.map_tree();
+        let opening;
+        let folded = match self.map_view() {
+            Some(v) => &v.folded,
+            None => {
+                opening = t.initial_folds().into_iter().collect();
+                &opening
+            }
+        };
+        let mut out = PageFolds { hidden: vec![false; doc.blocks.len()], ..PageFolds::default() };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut under: Option<usize> = None;
+        for (i, bl) in doc.blocks.iter().enumerate() {
+            if let blocks::Kind::Heading { level, .. } = bl.kind {
+                if under.is_some_and(|u| level <= u) {
+                    under = None;
+                }
+                let n = t.at_line(bl.lines.start);
+                let node = &t.nodes[n];
+                if under.is_none() && matches!(node.kind, crate::map::NodeKind::Heading { .. }) && !node.children.is_empty() {
+                    let f = folded.contains(&node.id);
+                    out.heads.insert(i, (n, f, node.end - n - 1));
+                    (i, f).hash(&mut h);
+                    if f {
+                        under = Some(level);
+                    }
+                    continue;
+                }
+            }
+            out.hidden[i] = under.is_some() && !matches!(bl.kind, blocks::Kind::Footnotes { .. });
+        }
+        out.sig = h.finish();
+        out
+    }
+
+    /// Folds or unfolds the heading whose map node is `n`, on the page and on the map.
+    pub fn toggle_page_fold(&mut self, n: usize) {
+        let id = self.map_tree().nodes[n].id;
+        if let Some(v) = self.map_view_mut() {
+            if !v.folded.remove(&id) {
+                v.folded.insert(id);
+            }
+            v.fold_ver += 1;
+        }
+    }
+
+    /// Opens the folds that hide top-level block `i` on the page, and selects its node on the map.
+    fn unfold_to_block(&mut self, i: usize) {
+        if self.page_folds().hidden.get(i) == Some(&true) {
+            let line = self.doc().blocks[i].lines.start;
+            let n = self.map_tree().at_line(line);
+            self.map_open_to(n);
+        }
     }
 }
 
