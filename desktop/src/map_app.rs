@@ -812,15 +812,6 @@ impl App {
         ([(x0 + x1) / 2.0 - (p.x + p.w / 2.0) * z, (y0 + y1) / 2.0 - (p.y + p.h / 2.0) * z], z)
     }
 
-    /// The camera at zoom `z` with node `i` near the edge of the free canvas its branches grow
-    /// away from, so they fill the viewport (MAP-065).
-    fn opening_on(&self, i: usize, z: f32) -> ([f32; 2], f32) {
-        match self.map_laid().opening_pan(i, self.map_free(), z) {
-            Some(pan) => (pan, z),
-            None => self.map_camera(),
-        }
-    }
-
     /// `c`: the selected node to the middle at the current zoom (MAP-036).
     pub fn map_center(&mut self, tx: &mut Tx) {
         self.map.drawer_return_pan = None;
@@ -1160,7 +1151,8 @@ impl App {
         } else if alone || leaf {
             self.centred_on(sel, 1.0)
         } else {
-            self.opening_on(sel, 1.0)
+            // The node near the edge its branches grow away from, so they fill the view (MAP-065).
+            self.map_laid().opening_pan(sel, self.map_free(), 1.0).map_or_else(|| self.map_camera(), |pan| (pan, 1.0))
         };
         self.set_camera(cam.0, cam.1);
         if let Some(v) = self.map_view_mut() {
@@ -1336,31 +1328,38 @@ impl App {
         let base = self.active_text().to_string();
         self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
-        let i = if reveal == Reveal::Keep { self.map_selected() } else { s.focus.map_or(ROOT, |l| t.at_line(l)) };
-        if self.map_open_to(i).is_some() && reveal != Reveal::Keep {
-            if reveal == Reveal::Always {
-                self.ensure_visible(i, tx);
-            } else {
-                let l = self.map_laid();
-                if let Some(p) = l.at[i] {
-                    let ([px, py], z) = self.map_camera();
-                    let [fx0, fy0, fx1, fy1] = self.map_free();
-                    let b = self.settings().size as f32;
-                    let room = task_room(&t.nodes[i], b);
-                    let (x_lo, x_hi, y_lo, y_hi) = if room > 0.0 {
-                        let lh = page::line(b, 1.45);
-                        let [x_lo, x_hi] = p.task_span(l.metrics.pad_x, room);
-                        (x_lo, x_hi, p.y, p.y + lh.min(p.h))
-                    } else {
-                        (p.x, p.right(), p.y, p.bottom())
-                    };
-                    if px + x_lo * z < fx0 || px + x_hi * z > fx1 || py + y_lo * z < fy0 || py + y_hi * z > fy1 {
-                        self.ensure_visible(i, tx);
-                    }
-                }
+        let focus = s.focus.map_or(ROOT, |l| t.at_line(l));
+        let show = match reveal {
+            Reveal::Keep => {
+                self.map_open_to(self.map_selected());
+                false
             }
+            Reveal::Always => self.map_open_to(focus).is_some(),
+            Reveal::IfClipped => self.map_open_to(focus).is_some() && self.map_clipped(&t, focus),
+        };
+        if show {
+            self.ensure_visible(focus, tx);
         }
         self.map_relayout(Some((old, s)), tx);
+    }
+
+    /// Node `i` is not whole in the canvas's free part: its task box and first line where it
+    /// has a box, else all of it.
+    fn map_clipped(&self, t: &Tree, i: usize) -> bool {
+        let l = self.map_laid();
+        let Some(p) = l.at[i] else { return false };
+        let ([px, py], z) = self.map_camera();
+        let [fx0, fy0, fx1, fy1] = self.map_free();
+        let b = self.settings().size as f32;
+        let room = task_room(&t.nodes[i], b);
+        let (x_lo, x_hi, y_lo, y_hi) = if room > 0.0 {
+            let lh = page::line(b, 1.45);
+            let [x_lo, x_hi] = p.task_span(l.metrics.pad_x, room);
+            (x_lo, x_hi, p.y, p.y + lh.min(p.h))
+        } else {
+            (p.x, p.right(), p.y, p.bottom())
+        };
+        px + x_lo * z < fx0 || px + x_hi * z > fx1 || py + y_lo * z < fy0 || py + y_hi * z > fy1
     }
 
     /// The layout picker's pick (MAP-089): the note says `layout`, as one undo step. The
