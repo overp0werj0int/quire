@@ -112,6 +112,8 @@ fn keeps(kind: Kind) -> Vec<&'static str> {
     let mut keys = vec!["toast-row", "notice"];
     if matches!(kind, Kind::Drawer(_)) {
         keys.extend(["titlebar", "left-zone"]);
+    } else if kind == Kind::Sheet {
+        keys.push("sheet-drag");
     }
     keys
 }

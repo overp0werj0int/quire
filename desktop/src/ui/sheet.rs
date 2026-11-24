@@ -110,17 +110,20 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         }
         None => {
             let (cancel, tone) = if armed { ("again to discard your edit", c.text) } else { ("cancels", c.faint) };
-            let hints = row()
+            let mut hints = row()
                 .gap(8.0)
                 .center_y()
                 .grow(1.0)
                 .shrink()
                 .min_w(0.0)
                 .child(cap(key_of("sheet.cancel"), v.p))
-                .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone).truncate().shrink().min_w(0.0))
-                .child(el().w(10.0 - 8.0))
-                .child(cap(key_of("sheet.save"), v.p))
-                .child(text("saves").font(sans(11.5, 400.0)).color(c.faint));
+                .child(text(cancel).key("sheet-cancel").font(sans(11.5, 400.0)).color(tone).truncate().shrink().min_w(0.0));
+            if !armed {
+                hints = hints
+                    .child(el().w(10.0 - 8.0))
+                    .child(cap(key_of("sheet.save"), v.p))
+                    .child(text("saves").font(sans(11.5, 400.0)).color(c.faint));
+            }
             let cancel_lbl = if armed { "Discard" } else { "Cancel" };
             let actions = row()
                 .gap(8.0)

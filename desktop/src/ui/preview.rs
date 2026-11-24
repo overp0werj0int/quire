@@ -645,6 +645,7 @@ impl Cx<'_> {
         let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
         let chip_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Edit", look.mono_at(size, 2.0)).ceil();
         let in_margin = gutter >= chip_w + 16.0;
+        let is_code_or_diff = matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. });
         let chip = super::chip::Chip {
             key: &key,
             glyph: &icons::PENCIL,
@@ -654,7 +655,7 @@ impl Cx<'_> {
             mono: look.mono,
             tint: c.readable_dim(),
             active: false,
-            fill: (!in_margin).then_some(c.panel),
+            fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
         }
         .el(c)
         .label(tip.clone())
@@ -663,6 +664,23 @@ impl Cx<'_> {
         if in_margin {
             let bridge = 10.0;
             el().pin(None, Some(top), Some(-(chip_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(chip)
+        } else if is_code_or_diff {
+            let copy_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Copy", look.mono_at(size, 2.0)).ceil();
+            let pad_x = r(look.b * 1.1);
+            let (y_off, right_off) = match bl.kind {
+                Kind::Diff { .. } => {
+                    let head_h = r(look.b * 2.1).max(r(size * 2.0) + 4.0);
+                    let chip_h = r(size * 2.0);
+                    let y = ((head_h - chip_h) / 2.0).max(0.0);
+                    (y, pad_x + copy_w + r(look.b * 0.6))
+                }
+                _ => {
+                    let (t, _) = code::top_clearance(look.b);
+                    let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
+                    (t, (pad_r - 6.0) + copy_w + 6.0)
+                }
+            };
+            el().pin(None, Some(top + y_off), Some(right_off), None).group_opacity(0.0, 1.0).child(chip)
         } else {
             el().pin(None, Some(top), Some(4.0), None).group_opacity(0.0, 1.0).child(chip)
         }

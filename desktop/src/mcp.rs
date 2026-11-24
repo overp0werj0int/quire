@@ -68,10 +68,6 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
     if !MCP_TOOLS.iter().any(|t| t.0 == name) || !ctx.mcp.allows(name) {
         return fail(format!("The tool {name} is turned off in Quire's settings."));
     }
-    let write = MCP_TOOLS.iter().any(|t| t.0 == name && t.2);
-    if write && ctx.mcp.confirm {
-        return fail("Quire is set to ask before changes, and this version cannot show that prompt yet. Turn off \"Ask before changes\" in Quire's MCP settings to allow edits.");
-    }
     let vault = match crate::vault::load(&ctx.root) {
         Ok(v) => v,
         Err(e) => return fail(format!("Cannot read the folder: {e}")),

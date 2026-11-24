@@ -163,7 +163,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
         .child(text(format!("+{added}")).key("added").font(count).color(c.readable_green()))
         .child(text(format!("\u{2212}{removed}")).key("removed").font(count).color(c.readable_red()))
         .child(el().key("space").grow(1.0))
-        .children((!lang.is_empty()).then(|| badge(cx, lang)))
+        .children((!lang.is_empty()).then(|| badge(cx, lang).group_opacity(1.0, 0.0)))
         .child(copy_chip(cx, &copy_key, expand_tabs(src), at));
     // Bands run the full width of the panel, or of the longest line when it scrolls.
     let mut body = col().key("lines").min_w(look.width - 2.0).py(r(b * 0.7));
