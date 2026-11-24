@@ -7871,7 +7871,7 @@ mod layer_matrix_tests {
                 seen.push(k);
             }
         }
-        for k in ["toolbar-switch", "links-switch", "enc-switch", "mcp-switch", "confirm-switch"] {
+        for k in ["toolbar-switch", "links-switch", "enc-switch", "mcp-switch"] {
             assert!(seen.iter().any(|s| s == k), "{k} was measured: {seen:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);

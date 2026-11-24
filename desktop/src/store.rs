@@ -129,7 +129,7 @@ impl Default for Mcp {
             transport: "stdio".into(),
             port: "3917".into(),
             access: "read".into(),
-            confirm: true,
+            confirm: false,
             hidden: Vec::new(),
             token: new_token(),
             tools: MCP_TOOLS.iter().map(|(id, _, _)| (id.to_string(), on.contains(id))).collect(),

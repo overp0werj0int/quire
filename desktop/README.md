@@ -90,7 +90,7 @@ With the stdio transport, the AI app starts Quire's helper itself:
 
 With the HTTP transport, Quire serves `http://127.0.0.1:3917/mcp` while the app is open. Each request needs the access token from Settings as a `Bearer` header.
 
-Access is read-only by default. Each tool has its own switch, and hidden folders stay out of listings and search. When "Ask before changes" is on, tools that write return an error, because this version cannot show the approval prompt yet. Turn the option off to allow edits.
+Access is read-only by default. Each tool has its own switch, and hidden folders stay out of listings, search and note creation. Switching to **Read & write** allows connected apps to apply edits directly; interactive approval prompts are not available in this version.
 
 ## Sync
 

@@ -13,12 +13,17 @@ use crate::store::{MCP_TOOLS, new_token};
 use super::styles::{literal, sans};
 
 pub fn config_json(v: V) -> String {
+    config_json_with(v, false)
+}
+
+fn config_json_with(v: V, masked: bool) -> String {
     let s = v.s;
     let m = &s.settings().mcp;
     let path = s.vault.as_ref().map_or_else(String::new, |x| x.path.to_string_lossy().into_owned());
     let exe = std::env::current_exe().ok().map_or_else(|| "quire".to_string(), |p| p.to_string_lossy().into_owned());
     let server = if m.transport == "http" {
-        serde_json::json!({ "url": url(v), "headers": { "Authorization": format!("Bearer {}", m.token) } })
+        let token = if masked { "••••••••" } else { m.token.as_str() };
+        serde_json::json!({ "url": url(v), "headers": { "Authorization": format!("Bearer {token}") } })
     } else {
         serde_json::json!({ "command": exe, "args": ["mcp", "--folder", path] })
     };
@@ -106,7 +111,15 @@ pub fn mcp(v: V) -> El {
             );
         c = c.child(grid);
     }
-    let access = |id: &'static str, l: &str| seg(l, (if m.access == "write" { "write" } else { "read" }) == id, move |s, _| s.settings_mut().mcp.access = id.into());
+    let access = |id: &'static str, l: &str| {
+        seg(l, (if m.access == "write" { "write" } else { "read" }) == id, move |s, _| {
+            let mcp = &mut s.settings_mut().mcp;
+            mcp.access = id.into();
+            if id == "write" {
+                mcp.confirm = false;
+            }
+        })
+    };
     c = c.child(row_(v, "access", "Access", Some("Read only turns off every tool that changes files."), settings_seg(v, "access-seg", vec![access("read", "Read only"), access("write", "Read & write")])));
 
     let ro = m.access != "write";
@@ -184,19 +197,18 @@ pub fn mcp(v: V) -> El {
     }
     c = c.child(block(v, "visible", "Folders apps can see", Some("Hidden folders don't show up in listings or search results.")).child(folders));
     if !ro {
-        c = c.child(row_(
+        c = c.child(block(
             v,
-            "confirm",
-            "Ask before changes",
-            Some("Quire shows the change and waits for you to approve it."),
-            switch(v, "confirm-switch", m.confirm, "Ask before changes", |s, _| {
-                let e = s.settings().mcp.confirm;
-                s.settings_mut().mcp.confirm = !e;
-            }),
+            "confirm-note",
+            "Write behavior",
+            Some("Direct edits enabled · Interactive approval prompts are not available in this version."),
         ));
     }
-    let cfg = config_json(v);
+    let revealed = s.reveal.contains("mcp-token");
+    let cfg = config_json_with(v, !revealed);
+    let cfg_copy = config_json(v);
     let copied = s.mcp_copied;
+    let http_err = http && s.mcp_http_error.is_some();
     let status = if http {
         match &s.mcp_http_error {
             Some(e) => e.clone(),
@@ -205,7 +217,6 @@ pub fn mcp(v: V) -> El {
     } else {
         format!("ready on stdio · {n_on} {} · waiting for a client", if n_on == 1 { "tool" } else { "tools" })
     };
-    let cfg_copy = cfg.clone();
     c.child(
         col()
             .key("client")
@@ -237,8 +248,8 @@ pub fn mcp(v: V) -> El {
                     .gap(8.0)
                     .mt(12.0)
                     .items_start()
-                    .child(el().size(6.0, 6.0).mt(5.25).radius(3.0).fill(p.acc))
-                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(p.mute).wrap().grow(1.0).shrink().min_w(0.0)),
+                    .child(el().size(6.0, 6.0).mt(5.25).radius(3.0).fill(if http_err { p.err } else { p.acc }))
+                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(if http_err { p.err } else { p.mute }).wrap().grow(1.0).shrink().min_w(0.0)),
             ),
     )
 }

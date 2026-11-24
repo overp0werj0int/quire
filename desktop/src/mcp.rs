@@ -118,6 +118,9 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
                 Ok(p) => p,
                 Err(e) => return fail(e),
             };
+            if !visible(&ctx.mcp, &p) {
+                return fail(format!("Cannot create a note in a hidden folder: {p}"));
+            }
             if ctx.root.join(&p).exists() {
                 return fail(format!("A note already exists at {p}"));
             }
@@ -143,6 +146,9 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
                     return fail("The new name is empty.");
                 }
                 let np = md::join(md::dir(&p), &format!("{name}.md"));
+                if !visible(&ctx.mcp, &np) {
+                    return fail(format!("Cannot rename a note into a hidden folder: {np}"));
+                }
                 if ctx.root.join(&np).exists() {
                     return fail(format!("A note already exists at {np}"));
                 }
@@ -450,6 +456,31 @@ mod tests {
         assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
         assert!(ok.contains("read_note"));
         drop(srv);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_note_respects_hidden_folders_and_default_write_settings() {
+        let dir = std::env::temp_dir().join(format!("quire-mcp-hidden-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Secret")).unwrap();
+        let mut m = Mcp::default();
+        m.access = "write".into();
+        m.hidden = vec!["Secret".into()];
+        let c = Ctx { root: dir.clone(), mcp: m, update_links: true };
+
+        let denied = handle(&c, &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_note","arguments":{"path":"Secret/Private.md","content":"nope"}}})).unwrap();
+        assert_eq!(denied["result"]["isError"], true, "{denied}");
+        assert!(!dir.join("Secret/Private.md").exists());
+
+        let nested = handle(&c, &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_note","arguments":{"path":"Secret/Sub/Deep.md","content":"nope"}}})).unwrap();
+        assert_eq!(nested["result"]["isError"], true, "{nested}");
+        assert!(!dir.join("Secret/Sub/Deep.md").exists());
+
+        let allowed = handle(&c, &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_note","arguments":{"path":"Public.md","content":"# Public"}}})).unwrap();
+        assert!(allowed["result"].get("isError").is_none(), "{allowed}");
+        assert_eq!(std::fs::read_to_string(dir.join("Public.md")).unwrap(), "# Public");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
