@@ -131,6 +131,12 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
             v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
         }
     }
+    if !s.unlocked.is_empty() {
+        v.push(cmd("Lock all notes", "", |s, tx| {
+            s.lock_all_notes();
+            s.toast("Locked all notes", tx);
+        }));
+    }
     let help_action = match s.mode {
         Mode::Preview => "reader.help",
         Mode::Map => "map.help",

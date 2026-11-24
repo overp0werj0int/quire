@@ -39,6 +39,8 @@ pub struct Settings {
     /// The formatting toolbar above the note, in source mode.
     pub toolbar: bool,
     pub update_links: bool,
+    /// Minutes of inactivity before unlocked notes automatically re-lock (`0` = Off).
+    pub auto_lock_mins: u32,
     /// The sidebar's and menus' family, with no row in Settings (SB-07): `quattro`, iA Writer
     /// Quattro S, or `mono`, the system's monospace.
     pub panel_font: String,
@@ -65,6 +67,7 @@ impl Default for Settings {
             typewriter_scroll: false,
             toolbar: true,
             update_links: true,
+            auto_lock_mins: 15,
             panel_font: "quattro".into(),
             sync: Sync::default(),
             mcp: Mcp::default(),

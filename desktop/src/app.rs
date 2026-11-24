@@ -228,6 +228,10 @@ pub struct App {
     /// Locked notes open for reading and editing, by path. The plain text lives only here and
     /// in the note's editor. The folder copy in `vault.files` stays sealed.
     pub unlocked: HashMap<String, Unlocked>,
+    /// In-flight background PBKDF2 key-derivation job (`lock_app::LockJob`).
+    pub lock_job: Option<crate::lock_app::LockJob>,
+    /// App-clock time of the most recent user interaction, for idle auto-lock.
+    pub last_activity: f64,
     /// Why the last unlock failed.
     pub unlock_error: Option<String>,
     /// The reader's state: find, help, toasts, scrolling (`crate::reader`).
@@ -434,6 +438,8 @@ pub fn init() -> App {
         drop_over: false,
         hover_switch: None,
         unlocked: HashMap::new(),
+        lock_job: None,
+        last_activity: 0.0,
         notes: Vec::new(),
         parked: HashMap::new(),
         laid_out: std::cell::Cell::new(false),
@@ -749,6 +755,8 @@ impl App {
         changed |= self.sync_mcp_http();
         changed |= self.check_link_click(tx);
         changed |= self.apply_outside_changes();
+        changed |= self.poll_lock(t, tx);
+        changed |= self.poll_auto_lock(t, tx);
         changed |= self.poll_trash(tx);
         changed |= self.poll_sync(t, tx);
         changed |= self.images.poll();
@@ -1176,6 +1184,7 @@ impl App {
         self.tabs.clear();
         self.edits.clear();
         self.renaming_folder = None;
+        self.lock_job = None;
         self.unlocked.clear();
         self.active = None;
         self.bump_tab(0);
@@ -1340,6 +1349,7 @@ impl App {
         self.vault = Some(v);
         self.edits.clear();
         self.renaming_folder = None;
+        self.lock_job = None;
         // An Undo offer puts a note back into the folder it left, so it ends with that folder.
         self.deleted = None;
         self.notice_open = None;
@@ -1522,7 +1532,13 @@ impl App {
     }
 
     /// The editor's text changed: keep the folder copy in step and save soon.
+    /// Records user interaction on the app clock so idle auto-lock resets its timer.
+    pub fn touch_activity(&mut self) {
+        self.last_activity = self.now.get();
+    }
+
     pub fn after_edit(&mut self) {
+        self.touch_activity();
         let writing_with_foot = self.writing() && self.foot_shows();
         let typewriter = self.settings().typewriter_scroll;
         self.reader.reveal.on_editor_edit(writing_with_foot, typewriter);

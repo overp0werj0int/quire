@@ -2312,6 +2312,7 @@ mod lock_tests {
             set(s, "lock-pass", "tiger lily");
             set(s, "lock-repeat", "tiger lily");
             s.lock_note(tx);
+            s.wait_lock(tx);
             assert!(s.layer().is_none());
             assert!(crate::lock::is_locked(&s.files()[&a]), "the folder copy is sealed");
             assert_eq!(s.active_text(), "# Secret\n\nThe code is 4711.", "the note stays open");
@@ -2322,9 +2323,11 @@ mod lock_tests {
             assert!(s.note_locked(&a) && s.active_text().is_empty());
             set(s, "unlock-pass", "wrong password");
             s.unlock(tx);
+            s.wait_lock(tx);
             assert_eq!(s.unlock_error.as_deref(), Some("The password does not open this note."));
             set(s, "unlock-pass", "tiger lily");
             s.unlock(tx);
+            s.wait_lock(tx);
             assert_eq!(s.active_text(), "# Secret\n\nThe code is 1234.");
             s.remove_password(tx);
             assert_eq!(s.files()[&a], "# Secret\n\nThe code is 1234.");
@@ -2354,6 +2357,7 @@ mod lock_tests {
             set(s, "lock-pass", "tiger lily");
             set(s, "lock-repeat", "tiger lily");
             s.lock_note(tx);
+            s.wait_lock(tx);
             s.open_find(tx);
             assert!(s.reader.find.open, "find opens while unlocked");
             s.relock();
@@ -4797,6 +4801,7 @@ mod note_mode_tests {
             set(s, "lock-pass", "tiger lily");
             set(s, "lock-repeat", "tiger lily");
             s.lock_note(tx);
+            s.wait_lock(tx);
             assert!(s.note_unlocked("a.md"));
             // Away to a note of the same name, and back.
             s.open_note(&b1);

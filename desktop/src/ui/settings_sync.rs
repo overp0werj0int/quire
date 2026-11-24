@@ -361,7 +361,7 @@ pub fn sync(v: V) -> El {
             })
             .child(text(msg).font(sans(12.5, 400.0).lh(12.5 * 1.45)).color(color).wrap().grow(1.0).min_w(180.0)),
     );
-    c.child(text("Keys are saved in Quire's settings file, never inside the notes folder.").font(sans(12.0, 400.0).lh(17.0)).color(p.mute).pt(14.0).wrap().w_full())
+    c.child(text("Keys and passphrases are stored as plain text in Quire's local settings file (0600 permissions), never inside the notes folder.").font(sans(12.0, 400.0).lh(17.0)).color(p.mute).pt(14.0).wrap().w_full())
 }
 
 fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {

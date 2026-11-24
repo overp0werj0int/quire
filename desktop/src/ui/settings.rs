@@ -457,6 +457,8 @@ fn files(v: V) -> El {
         outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)),
     );
     let upd = s.settings().update_links;
+    let al = s.settings().auto_lock_mins;
+    let al_opt = |mins: u32, lbl: &str| seg(lbl, al == mins, move |s, _| s.settings_mut().auto_lock_mins = mins);
     col()
         .key("files-set")
         .w_full()
@@ -470,6 +472,13 @@ fn files(v: V) -> El {
                 let u = s.settings().update_links;
                 s.settings_mut().update_links = !u;
             }),
+        ))
+        .child(row_(
+            v,
+            "autolock",
+            "Auto-lock unlocked notes",
+            Some("Re-locks unlocked notes after a period of inactivity."),
+            settings_seg(v, "set-autolock", vec![al_opt(0, "Off"), al_opt(5, "5m"), al_opt(15, "15m"), al_opt(30, "30m")]),
         ))
         .child(row_(v, "sample", "Sample notes", Some("Put Field Notes back the way it started."), outline_button(p, "restore", "Restore", 30.0, |s, tx| s.reset_sample(tx))))
 }

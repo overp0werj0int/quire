@@ -1,11 +1,41 @@
-//! Locking notes in the app: the lock dialog, unlock, lock again and remove the password.
+//! Locking notes in the app: async PBKDF2 key derivation, unlock, relock, idle auto-lock, and
+//! password removal.
+
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::{Duration, Instant};
 
 use rune::Tx;
 
 use crate::app::{App, Mode, Unlocked};
+use crate::layer::{Layer, LockDialog};
 use crate::lock;
 
+/// Which background PBKDF2 operation is in flight.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LockJobKind {
+    Locking,
+    Unlocking,
+}
+
+enum LockResult {
+    Locked { rel: String, text: String, key: lock::Key },
+    Unlocked { rel: String, res: Result<(String, lock::Key), String> },
+}
+
+/// Off-UI-thread PBKDF2 key-derivation job (`quire-kdf`).
+pub struct LockJob {
+    pub kind: LockJobKind,
+    rx: Receiver<LockResult>,
+    started_at: f64,
+    started_wall: Instant,
+}
+
 impl App {
+    /// Non-`None` while PBKDF2 key derivation is running on the worker thread.
+    pub fn lock_busy(&self) -> Option<LockJobKind> {
+        self.lock_job.as_ref().map(|j| j.kind)
+    }
+
     /// Seals an unlocked note's new text into the folder copy, to save soon.
     pub(crate) fn store_unlocked(&mut self, rel: &str, text: String) {
         let old_key = self.active_text_key().to_owned();
@@ -77,12 +107,15 @@ impl App {
         self.fields.remove("lock-repeat");
         self.reveal.remove("lock-pass");
         self.reveal.remove("lock-repeat");
-        self.open_layer(crate::layer::Layer::Lock(crate::layer::LockDialog::Set(None)), tx);
+        self.open_layer(Layer::Lock(LockDialog::Set(None)), tx);
         tx.focus("lock-pass", false);
     }
 
-    /// Locks the active note with the password in the dialog.
+    /// Locks the active note with the password in the dialog, running PBKDF2 off the UI thread.
     pub fn lock_note(&mut self, tx: &mut Tx) {
+        if self.lock_job.is_some() {
+            return;
+        }
         let pass = self.fields.get("lock-pass").map(|e| e.text.clone()).unwrap_or_default();
         let repeat = self.fields.get("lock-repeat").map(|e| e.text.clone()).unwrap_or_default();
         if pass.chars().count() < lock::MIN_PASSWORD {
@@ -93,19 +126,23 @@ impl App {
             self.refuse_lock("The two passwords are not the same.".into());
             return;
         }
-        let Some(a) = self.active.clone() else { return };
+        let Some(rel) = self.active.clone() else { return };
         let text = self.active_text().to_string();
-        let key = lock::new_key(&pass);
-        self.close_layer(tx);
-        self.fields.remove("lock-pass");
-        self.fields.remove("lock-repeat");
-        self.reveal.remove("lock-pass");
-        self.reveal.remove("lock-repeat");
-        // The note stays open after the lock. It locks when its tab closes or with "Lock now".
-        self.unlocked.insert(a.clone(), Unlocked::new(key, String::new()));
-        self.store_unlocked(&a, text);
-        self.flush_notes();
-        self.focus_editor(tx);
+        if let Some(Layer::Lock(LockDialog::Set(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
+            *err = None;
+        }
+        let (tx_res, rx) = mpsc::channel();
+        let waker = self.waker.clone();
+        let rel_w = rel.clone();
+        let _ = std::thread::Builder::new().name("quire-kdf".into()).spawn(move || {
+            let key = lock::new_key(&pass);
+            let _ = tx_res.send(LockResult::Locked { rel: rel_w, text, key });
+            if let Some(w) = waker {
+                w();
+            }
+        });
+        self.lock_job = Some(LockJob { kind: LockJobKind::Locking, rx, started_at: self.now.get(), started_wall: Instant::now() });
+        tx.wake_after(Duration::from_millis(16));
     }
 
     /// Locks the active note again: its plain text leaves memory.
@@ -123,31 +160,148 @@ impl App {
         self.reveal.remove("unlock-pass");
     }
 
-    /// Opens the active locked note with the password in the lock panel.
+    /// Locks every currently unlocked note, clearing plain text and editor buffers from memory.
+    pub fn lock_all_notes(&mut self) {
+        if self.unlocked.is_empty() {
+            return;
+        }
+        self.flush_notes();
+        let keys: Vec<String> = self.unlocked.keys().cloned().collect();
+        self.unlocked.clear();
+        for k in keys {
+            self.edits.remove(&k);
+        }
+        self.drop_find();
+        self.unlock_error = None;
+        self.fields.remove("unlock-pass");
+        self.reveal.remove("unlock-pass");
+    }
+
+    /// Opens the active locked note with the password in the lock panel, running PBKDF2 off the
+    /// UI thread so frames stay responsive.
     pub fn unlock(&mut self, tx: &mut Tx) {
-        let Some(a) = self.active.clone() else { return };
-        let Some(text) = self.files().get(&a).cloned() else { return };
+        if self.lock_job.is_some() {
+            return;
+        }
+        let Some(rel) = self.active.clone() else { return };
+        let Some(text) = self.files().get(&rel).cloned() else { return };
         let pass = self.fields.get("unlock-pass").map(|e| e.text.clone()).unwrap_or_default();
-        match lock::open(&text, &pass) {
-            Ok((plain, key)) => {
-                self.unlock_error = None;
-                self.fields.remove("unlock-pass");
-                self.reveal.remove("unlock-pass");
-                self.edits.remove(&a);
-                self.unlocked.insert(a, Unlocked::new(key, plain));
-                self.rebuild_names_pub();
-                if self.mode == Mode::Map {
-                    self.keys_to_note(tx);
-                } else {
-                    self.focus_editor(tx);
-                }
+        self.unlock_error = None;
+        let (tx_res, rx) = mpsc::channel();
+        let waker = self.waker.clone();
+        let rel_w = rel.clone();
+        let _ = std::thread::Builder::new().name("quire-kdf".into()).spawn(move || {
+            let res = lock::open(&text, &pass);
+            let _ = tx_res.send(LockResult::Unlocked { rel: rel_w, res });
+            if let Some(w) = waker {
+                w();
             }
-            Err(e) => {
-                self.unlock_error = Some(e);
-                // After a press on Unlock, the field takes the keyboard back for another try.
-                tx.focus(crate::ui::lock::PASS, false);
+        });
+        self.lock_job = Some(LockJob { kind: LockJobKind::Unlocking, rx, started_at: self.now.get(), started_wall: Instant::now() });
+        tx.wake_after(Duration::from_millis(16));
+    }
+
+    /// Collects completed background PBKDF2 work without blocking real UI frames.
+    pub(crate) fn poll_lock(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let Some(job) = self.lock_job.as_ref() else { return false };
+        match job.rx.try_recv() {
+            Ok(res) => {
+                self.lock_job = None;
+                self.finish_lock_job(res, tx);
+                true
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.lock_job = None;
+                true
+            }
+            Err(TryRecvError::Empty) => {
+                // Only in non-realtime simulated clock replays where app time advances far faster
+                // than wall time: wait once simulated time has passed 0.25 s so deterministic
+                // scripted replays observe the real worker thread's completion.
+                let app_dt = t - job.started_at;
+                let wall_dt = job.started_wall.elapsed().as_secs_f64();
+                if app_dt >= 0.25 && app_dt > wall_dt * 3.0 + 0.15 {
+                    if let Some(job) = self.lock_job.take()
+                        && let Ok(res) = job.rx.recv_timeout(Duration::from_secs(5))
+                    {
+                        self.finish_lock_job(res, tx);
+                        return true;
+                    }
+                    return true;
+                }
+                tx.wake_after(Duration::from_millis(16));
+                false
             }
         }
+    }
+
+    /// Waits for an in-flight background lock/unlock job to finish (for synchronous unit tests).
+    #[cfg(test)]
+    pub fn wait_lock(&mut self, tx: &mut Tx) {
+        if let Some(job) = self.lock_job.take()
+            && let Ok(res) = job.rx.recv_timeout(Duration::from_secs(10))
+        {
+            self.finish_lock_job(res, tx);
+        }
+    }
+
+    fn finish_lock_job(&mut self, res: LockResult, tx: &mut Tx) {
+        match res {
+            LockResult::Locked { rel, text, key } => {
+                if matches!(self.layer(), Some(Layer::Lock(LockDialog::Set(_)))) {
+                    self.close_layer(tx);
+                }
+                self.fields.remove("lock-pass");
+                self.fields.remove("lock-repeat");
+                self.reveal.remove("lock-pass");
+                self.reveal.remove("lock-repeat");
+                // The note stays open after the lock. It locks when its tab closes, after
+                // inactivity, or with "Lock now" / "Lock all notes".
+                self.unlocked.insert(rel.clone(), Unlocked::new(key, String::new()));
+                self.store_unlocked(&rel, text);
+                self.flush_notes();
+                self.touch_activity();
+                self.focus_editor(tx);
+            }
+            LockResult::Unlocked { rel, res } => match res {
+                Ok((plain, key)) => {
+                    self.unlock_error = None;
+                    self.fields.remove("unlock-pass");
+                    self.reveal.remove("unlock-pass");
+                    self.edits.remove(&rel);
+                    self.unlocked.insert(rel, Unlocked::new(key, plain));
+                    self.rebuild_names_pub();
+                    self.touch_activity();
+                    if self.mode == Mode::Map {
+                        self.keys_to_note(tx);
+                    } else {
+                        self.focus_editor(tx);
+                    }
+                }
+                Err(e) => {
+                    self.unlock_error = Some(e);
+                    // After a press on Unlock, the field takes the keyboard back for another try.
+                    tx.focus(crate::ui::lock::PASS, false);
+                }
+            },
+        }
+    }
+
+    /// Re-locks every unlocked note once inactivity exceeds `settings.auto_lock_mins`.
+    pub(crate) fn poll_auto_lock(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let mins = self.settings().auto_lock_mins;
+        if mins == 0 || self.unlocked.is_empty() {
+            return false;
+        }
+        let limit = (mins as f64) * 60.0;
+        let elapsed = (t - self.last_activity).max(0.0);
+        if elapsed >= limit {
+            self.lock_all_notes();
+            self.toast("Locked notes after inactivity", tx);
+            return true;
+        }
+        tx.wake_after(Duration::from_secs_f64((limit - elapsed).max(0.5)));
+        false
     }
 
     /// Opens the confirmation dialog before removing the active note's password.
@@ -156,7 +310,7 @@ impl App {
         if !self.note_unlocked(a) {
             return;
         }
-        self.open_layer(crate::layer::Layer::Lock(crate::layer::LockDialog::ConfirmRemove), tx);
+        self.open_layer(Layer::Lock(LockDialog::ConfirmRemove), tx);
         tx.focus("remove-pass-cancel", tx.by_keys());
     }
 
@@ -180,5 +334,38 @@ impl App {
         if self.mode == Mode::Source {
             self.focus_editor(tx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn idle_auto_lock_locks_all_notes_after_timeout() {
+        let dir = std::env::temp_dir().join(format!("quire-autolock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("secret.md"), "# Secret\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("secret.md", None, tx);
+            s.settings_mut().auto_lock_mins = 5;
+            s.now.set(10.0);
+            s.ask_lock(tx);
+            s.field("lock-pass", String::new).replace_text("tiger lily");
+            s.field("lock-repeat", String::new).replace_text("tiger lily");
+            s.lock_note(tx);
+            s.wait_lock(tx);
+            assert!(s.note_unlocked("secret.md"));
+            assert!(!s.poll_auto_lock(10.0 + 299.0, tx), "stays unlocked before timeout");
+            assert!(s.note_unlocked("secret.md"));
+            assert!(s.poll_auto_lock(10.0 + 300.0, tx), "locks at 5-minute threshold");
+            assert!(s.unlocked.is_empty());
+            assert!(s.note_locked("secret.md"));
+            assert!(s.reader.toast.as_ref().is_some_and(|(m, _)| m.contains("inactivity")));
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

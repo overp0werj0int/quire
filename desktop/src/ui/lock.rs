@@ -81,6 +81,21 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
 pub fn panel(v: V) -> El {
     let p = v.p;
     let err = v.s.unlock_error.clone();
+    let busy = v.s.lock_busy() == Some(crate::lock_app::LockJobKind::Unlocking);
+    let submit_btn = if busy {
+        row()
+            .key("unlock")
+            .h(32.0)
+            .px(14.0)
+            .center()
+            .radius(7.0)
+            .fill(p.button.alpha(0.6))
+            .disabled(true)
+            .label("Unlocking…")
+            .child(label("Unlocking…", sans(13.0, 500.0), p.on_acc).key("lock-busy"))
+    } else {
+        primary_button(p, "unlock", "Unlock", 32.0, 14.0, 13.0, |s, tx| s.unlock(tx))
+    };
     let mut c = col()
         .key("lock-panel")
         .w_full()
@@ -97,7 +112,7 @@ pub fn panel(v: V) -> El {
                 .mt(8.0)
                 .center_y()
                 .child(el().grow(1.0).min_w(0.0).child(password(v, PASS, "Password", err.is_some(), |s, tx| s.unlock(tx))))
-                .child(primary_button(p, "unlock", "Unlock", 32.0, 14.0, 13.0, |s, tx| s.unlock(tx))),
+                .child(submit_btn),
         );
     if let Some(e) = err {
         c = c.child(label(e, sans(12.5, 400.0), p.err).wrap());
@@ -185,6 +200,21 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
     if let Some(e) = err {
         panel = panel.child(label(e, sans(12.5, 400.0), p.err).wrap());
     }
+    let busy = v.s.lock_busy() == Some(crate::lock_app::LockJobKind::Locking);
+    let lock_btn = if busy {
+        row()
+            .key("lock-ok")
+            .h(32.0)
+            .px(14.0)
+            .center()
+            .radius(7.0)
+            .fill(p.button.alpha(0.6))
+            .disabled(true)
+            .label("Locking…")
+            .child(label("Locking…", sans(13.0, 500.0), p.on_acc).key("lock-busy"))
+    } else {
+        primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))
+    };
     panel = panel.child(
         row()
             .w_full()
@@ -192,7 +222,7 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
             .mt(4.0)
             .child(el().grow(1.0))
             .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)))
-            .child(primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))),
+            .child(lock_btn),
     );
     Card { el: panel, plane: Some(col().center().px(16.0)) }
 }
