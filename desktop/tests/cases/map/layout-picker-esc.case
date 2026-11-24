@@ -1,0 +1,16 @@
+Esc closes the picker, writes nothing and hands the keyboard back to the map.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 key:Escape@1.4 key:s+cmd@2.2
+expect: rect:layouts: None
+expect: focus: note-keys (no ring)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

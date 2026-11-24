@@ -1,0 +1,30 @@
+L, Right and Enter pick the next tile: Left.
+note: Plan.md
+events: key:m+cmd@0.3 key:L@0.8 key:Right@1.2 key:Enter@1.6 key:s+cmd@2.2
+expect: focus: note-keys (no ring)
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

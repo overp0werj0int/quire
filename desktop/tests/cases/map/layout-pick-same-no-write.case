@@ -1,0 +1,20 @@
+Picking the layout the note already has closes the picker and writes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:s+cmd@2.2
+expect: rect:layouts: None
+expect: focus: note-keys (no ring)
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

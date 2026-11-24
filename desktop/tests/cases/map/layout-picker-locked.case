@@ -1,0 +1,11 @@
+A locked note's map is hidden: its layout button is disabled with the reason, and L opens no picker.
+note: Secret.md
+events: key:m+cmd@0.3 key:L@0.8
+expect: rect:layouts: None
+expect: label:map-layout: 'Unlock the note to change its layout'
+--- before
+%QUIRE-LOCKED-NOTE v1 pbkdf2-sha256 600000 AAAAAAAAAAAAAAAAAAAAAA==
+
+Locked.
+
+AAAA

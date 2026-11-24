@@ -1,0 +1,19 @@
+The picker hangs under its title bar button: its right edge is the button's, 6 points below the bar, and the five tiles sit in one row.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8
+expect: rect:map-layout: [1047.0, 8.0, 24.0, 24.0]
+expect: rect:layouts: [455.0, 46.0, 616.0, 181.0]
+expect: rect:layout-right: [467.0, 92.0, 112.0, 99.0]
+expect: rect:layout-up: [947.0, 92.0, 112.0, 99.0]
+expect: label:map-layout: 'Layout (L)'
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

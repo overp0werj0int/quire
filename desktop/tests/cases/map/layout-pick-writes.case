@@ -1,0 +1,29 @@
+Layout, then Down in the picker adds front matter to a note that has none, and the note keeps its text.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:s+cmd@2.2
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

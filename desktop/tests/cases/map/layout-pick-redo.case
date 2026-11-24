@@ -1,0 +1,29 @@
+Ctrl+Shift+Z after that undo puts the layout back.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:z+cmd@2.0 key:z+cmd+shift@2.5 key:s+cmd@3.0
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

@@ -1,0 +1,15 @@
+A press outside the card closes it and writes nothing.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:300,600@1.4 key:s+cmd@2.2
+expect: rect:layouts: None
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

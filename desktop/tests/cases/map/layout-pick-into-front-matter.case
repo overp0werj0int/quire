@@ -1,0 +1,33 @@
+Picking Left adds a markmap block to front matter that has a title, after its fields.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-left@1.4 key:s+cmd@2.2
+--- before
+---
+title: Plan
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+title: Plan
+markmap:
+  layout: left
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

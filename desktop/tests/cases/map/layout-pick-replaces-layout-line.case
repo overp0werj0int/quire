@@ -1,0 +1,35 @@
+Picking Both changes the layout line that is there and leaves the options round it.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-both@1.4 key:s+cmd@2.2
+--- before
+---
+markmap:
+  layout: down
+  maxWidth: 300
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: both
+  maxWidth: 300
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

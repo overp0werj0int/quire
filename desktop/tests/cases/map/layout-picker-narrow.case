@@ -1,0 +1,18 @@
+In a narrow window the tiles wrap to three and two, and the card stays inside the window.
+note: Plan.md
+size: 560x600
+events: key:m+cmd@0.3 tap:map-layout@0.8
+expect: rect:layouts: [8.0, 46.0, 376.0, 288.0]
+expect: rect:layout-right: [20.0, 92.0, 112.0, 99.0]
+expect: rect:layout-up: [140.0, 199.0, 112.0, 99.0]
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

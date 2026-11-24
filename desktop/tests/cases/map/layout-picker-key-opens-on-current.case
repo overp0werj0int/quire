@@ -1,0 +1,19 @@
+L opens the picker with the keyboard on the tile of the layout the note has, ringed.
+note: Plan.md
+events: key:m+cmd@0.3 key:L@0.8
+expect: focus: layout-down (ring shown)
+--- before
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

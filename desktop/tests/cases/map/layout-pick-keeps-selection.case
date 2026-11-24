@@ -1,0 +1,30 @@
+A pick keeps the selected node: a heading stays selected, whose key moves down four lines under the new front matter.
+note: Plan.md
+events: key:m+cmd@0.3 key:Right@0.8 tap:map-layout@1.3 tap:layout-down@1.9
+expect: selected: map-node:7
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: down
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

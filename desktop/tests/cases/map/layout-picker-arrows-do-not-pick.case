@@ -1,0 +1,15 @@
+Arrows only move between the tiles: nothing is written until Enter, and Esc then closes.
+note: Plan.md
+events: key:m+cmd@0.3 key:L@0.8 key:Right@1.2 key:Right@1.5 key:Down@1.8 key:Escape@2.2 key:s+cmd@2.6
+expect: rect:layouts: None
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

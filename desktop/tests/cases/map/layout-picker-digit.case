@@ -1,0 +1,29 @@
+A digit picks the tile with that number: 3 is Both sides.
+note: Plan.md
+events: key:m+cmd@0.3 key:L@0.8 key:3@1.2 key:s+cmd@1.8
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: both
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

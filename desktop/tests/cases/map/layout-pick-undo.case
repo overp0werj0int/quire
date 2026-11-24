@@ -1,0 +1,14 @@
+Ctrl+Z after a pick takes the layout back, front matter and all, in one step.
+note: Plan.md
+events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-down@1.4 key:z+cmd@2.0 key:s+cmd@2.6
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.

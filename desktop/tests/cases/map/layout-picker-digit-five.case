@@ -1,0 +1,29 @@
+The digits go up to 5, which is Up.
+note: Plan.md
+events: key:m+cmd@0.3 key:L@0.8 key:5@1.2 key:s+cmd@1.8
+--- before
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
+--- after
+---
+markmap:
+  layout: up
+---
+# Plan
+
+## Budget
+
+- Rent
+- Food
+
+## Dates
+
+Late May.
