@@ -32,8 +32,11 @@ const EDGE: f32 = 8.0;
 /// A sample's room inside its plate.
 const INSET: f32 = 7.0;
 
-/// The tree every tile draws: a root, three branches and two leaves on the first.
+/// The tree a one-sided tile draws: a root, three branches and two leaves on the first.
 const SAMPLE: &str = "# R\n\n## A\n\n- a\n- b\n\n## B\n\n## C\n";
+/// Both sides draws six branches, three a side, so its plate is no wider than the others' and
+/// its drawing is not shrunk to fit.
+const SAMPLE_BOTH: &str = "# R\n\n## A\n\n## B\n\n## C\n\n## D\n\n## E\n\n## F\n";
 
 pub(in crate::ui) fn layouts(v: V) -> Card {
     let c = Roles::new(v.p);
@@ -141,7 +144,8 @@ fn schematic(c: &Roles, l: Layout) -> El {
     let c = *c;
     let key = (l, palette_hash(&c));
     rune::memo(format!("layout-thumb:{}", l.word()), key, move || {
-        let src = format!("---\nmarkmap:\n  layout: {}\n---\n{SAMPLE}", l.word());
+        let sample = if l == Layout::Both { SAMPLE_BOTH } else { SAMPLE };
+        let src = format!("---\nmarkmap:\n  layout: {}\n---\n{sample}", l.word());
         let tree: Tree = crate::map::build(&crate::blocks::build(&src), &src, "");
         let m = Metrics { sh: 26.0, sv: 7.0, pad_x: 0.0, pad_b: 0.0, min_h: 0.0, max_w: 1000.0 };
         let size = |i: usize| match tree.nodes[i].depth {
