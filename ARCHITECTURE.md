@@ -93,7 +93,10 @@ zoom sets the live values, and runs the view only when that mount, a detail thre
 `rune::memo`, so a view that does run builds again only the nodes whose label, fold or
 selection changed; below `0.20×` zoom opaque links batch into one memoized canvas
 (`map-links-batch`) and text nodes mount as flat plain labels. The tree, node sizes and layout
-are cached per text, folds and fonts.
+are cached per text, folds and fonts. The selected node sits under a glass card (`map-glass`
+under the links and nodes, its rim `map-selection` over them); only the node's content grows
+under it (`GLASS_K`, a scale on the node's memoized body), so its underline, links and fold ring
+never move with the selection.
 
 A node draws what the reader would. `map::Node::body` says what that is: plain text, a
 paragraph's or heading's inline runs, which the reader's `Rich` draws, or a block shown as a

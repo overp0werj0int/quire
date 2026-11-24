@@ -183,6 +183,29 @@ pub(super) fn canvas(v: V) -> El {
     let drag = s.map.node_drag.as_ref().filter(|g| g.active);
     let moved = drag.and_then(|g| t.find(g.node)).map_or(0..0, |m| m..t.nodes[m].end);
     let dim = |i: usize| drawn.alpha(i) * if moved.contains(&i) { 0.35 } else { 1.0 };
+    let editing = s.map_editing();
+    // The field over the node being edited: its place, room left of the text, style and size.
+    let field_at = editing.and_then(|i| {
+        let (e, p) = (s.map.inline.as_ref()?, l.at[i]?);
+        let room = map_app::task_room(&t.nodes[i], b);
+        let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
+        Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
+    });
+    // The selected node sits under a glass card (MAP-055). Only its content grows under the glass
+    // (`node`); its underline, links and fold ring stay put, so no line moves or breaks there.
+    let glass = nodes.contains(&sel).then(|| l.at[sel]).flatten().map(|g| {
+        let lw = line_width(g.depth);
+        let [w, h] = match field_at {
+            Some((i, _, room, _, [fw, fh])) if i == sel => [g.w.max(fw + room + 2.0 * l.metrics.pad_x), g.h.max(fh + l.metrics.pad_b)],
+            _ => [g.w, g.h],
+        };
+        let (px, py) = (GLASS_PAD_X, GLASS_PAD_Y);
+        let r = [g.x - px, g.y - py, w + 2.0 * px, h + lw + 2.0 * py];
+        (r, GLASS_R.min(r[3] / 2.0))
+    });
+    if let Some((r, rad)) = glass {
+        world = world.child(glass_base(c, r, rad));
+    }
     if plain_label {
         let mut static_links = Vec::new();
         for &i in &links {
@@ -201,7 +224,6 @@ pub(super) fn canvas(v: V) -> El {
             world = world.child(link(&t, &l, i, c, dim(i)));
         }
     }
-    let editing = s.map_editing();
     let query = s.find_query();
     let cur = query.and_then(|_| s.map_hits().get(s.reader.find.cur).copied());
     for &i in &nodes {
@@ -209,53 +231,21 @@ pub(super) fn canvas(v: V) -> El {
         let st = State { folded: folded(i), selected: i == sel, editing: editing == Some(i), alpha: dim(i), lite, no_hover, plain_label, target, chip_compact, found };
         world = world.child(node(&cx, &t, &l, i, st));
     }
-    // The field over the node being edited: its place, room left of the text, style and size.
-    let field_at = editing.and_then(|i| {
-        let (e, p) = (s.map.inline.as_ref()?, l.at[i]?);
-        let room = map_app::task_room(&t.nodes[i], b);
-        let st = map_app::style(map_app::tier(&t, i), b, prose, mono);
-        Some((i, p, room, st, map_app::field_size(e, p, room, st, l.metrics)))
-    });
-    // Paint `map-selection` BEFORE fold targets so hover-revealed fold controls sit cleanly
-    // above the selection border while leaving it unbroken at rest.
-    if nodes.contains(&sel)
-        && let Some(p) = l.at[sel]
-    {
-        let [w, h] = match field_at {
-            Some((i, _, room, _, [fw, fh])) if i == sel => [p.w.max(fw + room + 2.0 * l.metrics.pad_x), p.h.max(fh + l.metrics.pad_b)],
-            _ => [p.w, p.h],
-        };
-        let lw = line_width(p.depth);
-        let z = cam.1.max(map_app::ZOOM_MIN);
-        let sel_w = (2.0 / z).clamp(2.0, 20.0);
-        let extra_pad = (sel_w - 2.0).max(0.0);
-        let side_pad = 3.0 + extra_pad;
-        // Keep the bottom stroke unified over the branch underline at readable & intermediate
-        // zooms (>= LITE_ZOOM, including 0.51x) so outgoing curves never separate from the border,
-        // expanding downward only at overview zoom (< LITE_ZOOM) so 0.10x stays hollow.
-        let bot_pad = if z < map_app::LITE_ZOOM {
-            extra_pad * ((map_app::LITE_ZOOM - z) / 0.15).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let unified = bot_pad <= 0.5;
-        let accent = Roles::readable_on(c.accent, c.bg, GRAPHIC);
-        let stroke = if s.map.canvas_focused {
-            accent
-        } else {
-            Roles::readable_on(crate::roles::mix(c.bg, accent, 0.55), c.bg, GRAPHIC)
-        };
-        let top_r = 4.0 + extra_pad;
-        let bot_r = if unified { 1.5 } else { top_r };
-        let bot_w = if unified { sel_w.max(lw) } else { sel_w };
-        let sel_el = el()
-            .key("map-selection")
-            .pin(Some(p.x - side_pad + W), Some(p.y - side_pad + W), None, None)
-            .size(w + 2.0 * side_pad, h + lw + side_pad + bot_pad)
-            .corners([top_r, top_r, bot_r, bot_r])
-            .border_sides([sel_w, sel_w, bot_w, sel_w], stroke)
-            .inert();
-        world = world.child(sel_el);
+    // The glass's top-lit rim, over the node. Paint it BEFORE fold targets so hover-revealed fold
+    // controls sit above it. The rim stays at least a pixel wide on screen when zoomed out.
+    if let Some(([x, y, w, h], rad)) = glass {
+        let lit = if s.map.canvas_focused { 1.0 } else { 0.6 };
+        let rim = (1.0 / cam.1.max(map_app::ZOOM_MIN)).max(1.0);
+        world = world.child(
+            el().key("map-selection")
+                .pin(Some(x + W), Some(y + W), None, None)
+                .size(w, h)
+                .radius(rad)
+                .gradient(c.text.alpha(0.07 * lit), c.text.alpha(0.0))
+                .border_gradient(rim, c.text.alpha(0.55 * lit), c.text.alpha(0.12 * lit))
+                .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 10.0, spread: 0.0, color: c.text.alpha(0.08 * lit), inset: true })
+                .inert(),
+        );
     }
     for &i in &nodes {
         if !t.nodes[i].children.is_empty() {
@@ -427,6 +417,24 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32) -> El {
         .child(shape)
 }
 
+/// The selection glass's padding round its node and its corner radius (MAP-055).
+const GLASS_PAD_X: f32 = 12.0;
+const GLASS_PAD_Y: f32 = 10.0;
+const GLASS_R: f32 = 10.0;
+/// How much the selected node's content grows under the glass.
+const GLASS_K: f32 = 1.035;
+
+/// The glass's body, under the links and nodes: a faint sheen and the card's shadow.
+fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
+    el().key("map-glass")
+        .pin(Some(x + W), Some(y + W), None, None)
+        .size(w, h)
+        .radius(rad)
+        .fill(crate::roles::mix(c.bg, c.text, 0.035))
+        .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: 0.0, color: Color::BLACK.alpha(0.35), inset: false })
+        .inert()
+}
+
 /// The outline of a branch from `a` (its parent's fold dot) to `z` (its node's underline): the
 /// link's Bézier, 1 point wide at the dot and widening to `lw` by halfway, so the branches
 /// fanning out of one dot don't merge into a blot.
@@ -572,32 +580,41 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     (std::ptr::from_ref(cx.v.p) as usize, cx.v.s.names_gen, cx.look.family, cx.look.mono, copied, pics, (lite, plain_label), target.to_bits(), chip_compact.map(f32::to_bits), rel_clear.map(f32::to_bits), sh.to_bits(), found).hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
+    let grow = if selected && !lite { GLASS_K } else { 1.0 };
     let body = rune::memo(body_key.clone(), h.finish(), move || {
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));
         let cx = &Cx::map(cx.v, cx.look, hl.as_ref());
+        let label_el = (!editing).then(|| {
+            let shown = match &n.body {
+                Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
+                    Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &body_tail))
+                }
+                Body::Card(bl) => card::card(cx, bl, i, &body_tail, chip_compact).map(|(e, _)| e),
+                _ => None,
+            };
+            let text = || {
+                let mut r = label(cx, n, st, color);
+                if let Some(f) = found {
+                    r.marks = label_marks(c, &r.text, f);
+                }
+                r.el(st, color, None).wrap_anywhere().w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
+            };
+            shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
+        });
+        // The node's content, its task box with its label or card, grows as one piece under the
+        // selection glass (MAP-055); the underline below it stays put.
+        let content = el()
+            .pin(Some(0.0), Some(0.0), None, None)
+            .size(p.w, p.h)
+            .scale(grow)
+            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, lite, plain_label)))
+            .children(label_el);
         el().key(body_key)
             .pin(Some(0.0), Some(0.0), None, None)
             .size(p.w, p.h + lw)
-            .children((room > 0.0).then(|| task_box(n, i, p, b, pad_x, room, sh, target, clear, c, lite, plain_label)))
-            .children((!editing).then(|| {
-                let shown = match &n.body {
-                    Body::Card(bl) if lite && !matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }) => {
-                        Some(card::lite(cx, bl, p.w - 2.0 * pad_x - room, p.h - pad_b, &body_tail))
-                    }
-                    Body::Card(bl) => card::card(cx, bl, i, &body_tail, chip_compact).map(|(e, _)| e),
-                    _ => None,
-                };
-                let text = || {
-                    let mut r = label(cx, n, st, color);
-                    if let Some(f) = found {
-                        r.marks = label_marks(c, &r.text, f);
-                    }
-                    r.el(st, color, None).wrap_anywhere().w(p.w - 2.0 * pad_x - room).clip_soft(0.0)
-                };
-                shown.unwrap_or_else(text).pin(Some(pad_x + room), Some(0.0), None, None)
-            }))
-            .children((!selected || lite).then(|| el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert()))
+            .child(content)
+            .child(el().pin(Some(0.0), Some(p.h), None, None).size(p.w, lw).fill(branch).inert())
     });
     let mut e = el().key(key)
         .pin(Some(p.x + W), Some(p.y + W), None, None)
