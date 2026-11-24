@@ -224,16 +224,17 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
             return;
         }
         // On the active tab a click, Enter or Space folds its outline, and the keyboard stays
-        // (SB-26, SB-83), except inside a narrow overlay sidebar drawer where activating the
-        // active tab closes the drawer and returns to the note like activating its vault row.
+        // (SB-26, SB-83), including inside a narrow overlay sidebar drawer when the note has
+        // sections to expand. When there are no sections, activating the active tab in a narrow
+        // drawer closes the drawer and returns to the note.
         if s.shelved().as_ref() == Some(&press_t) {
+            if sections > 0 {
+                fold(s, &press_t, !out, tx);
+                return;
+            }
             if s.drawer() == Some(crate::app::Drawer::Sidebar) {
                 s.close_drawer(tx);
                 s.keys_to_note(tx);
-                return;
-            }
-            if sections > 0 {
-                fold(s, &press_t, !out, tx);
             }
             return;
         }
@@ -307,7 +308,7 @@ fn outline(v: V, t: &Shelved, heads: &[md::Heading]) -> El {
     for (n, h) in heads.iter().enumerate() {
         let on = cur == Some(n);
         let ink = |on: bool| if on { c.accent_text } else { c.faint };
-        let mut name = text(h.text.clone()).font(nav(OUT_TEXT, false)).color(ink(on)).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
+        let mut name = text(h.text.clone()).key(format!("shelf-h:{n}")).font(nav(OUT_TEXT, false)).color(ink(on)).truncate().shrink().min_w(0.0).help_when_truncated(h.text.clone());
         if live {
             // The ink alone: an entry is never filled (SB-30).
             let mark = crate::reader::Mark { on: [Color::TRANSPARENT, ink(true)], off: [Color::TRANSPARENT, ink(false)], fill: Live::new(Color::TRANSPARENT), ink: Live::new(ink(on)) };
@@ -329,7 +330,7 @@ fn entry(v: V, t: &Shelved, n: usize, h: &md::Heading, name: El) -> El {
     let tab = t.key();
     lists::item(el, v.p, false, move |s: &mut App, tx| {
         s.jump(line, tx);
-        if tx.by_keys() {
+        if s.drawer() == Some(crate::app::Drawer::Sidebar) || tx.by_keys() {
             s.close_drawer(tx);
             s.keys_to_note(tx);
         }
@@ -439,4 +440,48 @@ fn reorder(v: V, el: El, i: usize, len: usize, drag: Option<Reorder>, lead: f32)
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn narrow_drawer_active_tab_chevron_expands_outline_and_entry_closes_drawer() {
+        let dir = std::env::temp_dir().join(format!("quire-drawer-chev-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Alpha.md"), "# First\n\nBody.\n\n# Second\n\nMore.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (640.0, 720.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Alpha.md", None, tx);
+            s.mode = crate::app::Mode::Source;
+            s.open_layer(crate::layer::Layer::Drawer(crate::app::Drawer::Sidebar), tx);
+        });
+        for _ in 0..10 {
+            rt.frame(1.0 / 60.0);
+        }
+        let chev = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("tab-chev:Alpha.md")).expect("tab-chev in drawer");
+        let (cx, cy) = (chev.rect[0] + chev.rect[2] / 2.0, chev.rect[1] + chev.rect[3] / 2.0);
+        rt.pointer_move(cx, cy);
+        rt.pointer_down(cx, cy);
+        rt.pointer_up(cx, cy);
+        for _ in 0..10 {
+            rt.frame(1.0 / 60.0);
+        }
+        assert_eq!(rt.state.drawer(), Some(crate::app::Drawer::Sidebar), "tapping chevron keeps drawer open");
+        let els = rt.elements();
+        assert!(els.iter().any(|e| e.key.as_deref() == Some("shelf-h:0")), "expanded outline exposes shelf-h:0");
+        let toc1 = els.iter().find(|e| e.key.as_deref() == Some("toc:1")).expect("toc:1 entry");
+        let (tx, ty) = (toc1.rect[0] + 20.0, toc1.rect[1] + toc1.rect[3] / 2.0);
+        rt.pointer_move(tx, ty);
+        rt.pointer_down(tx, ty);
+        rt.pointer_up(tx, ty);
+        for _ in 0..10 {
+            rt.frame(1.0 / 60.0);
+        }
+        assert_eq!(rt.state.drawer(), None, "clicking an outline heading closes the drawer");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
