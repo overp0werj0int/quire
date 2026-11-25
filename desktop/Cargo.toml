@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 2a1d6caf9
-# (rebased 2026-11-26) plus the 7 commits Quire still needs and upstream does not have:
+# (rebased 2026-11-26) plus the 8 commits Quire still needs and upstream does not have:
 # 1. `El::modal_keeps` (a modal that leaves chosen elements live to the pointer, e.g. title bar),
 # 2. field menus: caret moved before custom right-click menu, keyboard menu opened below caret
 #    with its first item marked,
@@ -22,14 +22,15 @@ path = "src/main.rs"
 #    ends (the map's branches),
 # 6. sliding glass focus cards (`Cx::focus_glass`) and `ElementInfo::stroke`,
 # 7. Wayland Chrome-style touchpad fling (decision 0012), wheel event timestamps, and
-#    `App::on_touchpad_hold` (the map stops its own coast when fingers land).
+#    `App::on_touchpad_hold` (the map stops its own coast when fingers land),
+# 8. prefer non-conformant hardware GPUs (Asahi Borealis/Honeykrisp reporting conformance 0.0.0.0)
+#    over conformant lavapipe (`DeviceType::Cpu`), and warn once on software rendering.
 # Dropped at the 2026-11-26 rebase because upstream now handles them: drag-selection edge scroll,
 # right-click outside a modal closing it, isolated-layer pipeline pre-warming, Phosphor pan
-# cursors, caret follow after `on_input_key`, non-conformant Mesa Vulkan adapter fallback, and
-# earlier by-paragraph/highlight fixes.
+# cursors, caret follow after `on_input_key`, and earlier by-paragraph/highlight fixes.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -44,7 +45,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -58,20 +59,20 @@ embed-resource = "3"
 # (`accesskit_consumer 0.39.2` panics at `text.rs:1533` on the first keystroke in an empty
 # `text_input`). Keep `accessibility` off on Linux until Rune guards or patches Linux AT-SPI.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9", default-features = false, features = ["accessibility"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61", default-features = false, features = ["accessibility"] }
 
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-naga = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+naga = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
 # Rune's winit, plus file drops from other apps and touchpad pinch on Wayland.
 winit = { path = "vendor/winit" }
-sctk-adwaita = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
-accesskit_atspi_common = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+sctk-adwaita = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
+accesskit_atspi_common = { git = "https://github.com/overp0werj0int/rune", rev = "1eafdfaaca8a8621349607729333e348eda5fe61" }
 
 [profile.dev]
 opt-level = 1

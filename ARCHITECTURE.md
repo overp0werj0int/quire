@@ -435,8 +435,8 @@ flowchart LR
    character. Quire pins branch `quire/dev` of the fork `overp0werj0int/rune` in
    `desktop/Cargo.toml` for the patches upstream does not carry (per-paragraph styles, field
    right-click caret placement and keyboard menu placement, kept long-field layout, `El::modal_keeps`,
-   superscript/bisector/tapered strokes, `Cx::focus_glass`, and Wayland touchpad fling /
-   `App::on_touchpad_hold`).
+   superscript/bisector/tapered strokes, `Cx::focus_glass`, Wayland touchpad fling /
+   `App::on_touchpad_hold`, and preferring non-conformant hardware GPUs over lavapipe).
 2. `App::after_edit` puts the new text into the vault (`Vault::put`) and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you
