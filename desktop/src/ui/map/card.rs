@@ -10,11 +10,11 @@ use crate::blocks::{Block, DiffKind, DiffLine, GalleryItem, Kind, Table};
 use crate::md::Img;
 use crate::page::{self, line, r};
 use crate::roles::{Roles, mix};
-use crate::ui::chip::Chip;
 use crate::ui::icons;
 use crate::ui::preview::code as pcode;
 use crate::ui::preview::table::Grid;
 use crate::ui::preview::{Cx, LOADING, Pic, Tone};
+use crate::ui::widgets::{MINI_BAR_H, MINI_BTN, mini_bar_at, mini_bar_w, mini_button_at};
 
 /// Code and diff cards show this many lines (MAP-049).
 const CODE_LINES: usize = 12;
@@ -106,13 +106,13 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
 fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, i: usize, tail: &str, inset_x: f32, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let shown = h.min(cap).ceil();
     if h <= cap || extra == 0 {
-        let compact = chip_compact.map(|side| side.min((w.min(shown) - 12.0).max(16.0)));
+        let k = bar_scale(chip_compact, 1, w, shown);
         let out = el()
             .size(w, shown)
             .hover_group()
             .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
             .child(inner.pin(Some(0.0), Some(0.0), None, None).w(w))
-            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+            .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
         return (out, [w, shown]);
     }
     let avail = (w - inset_x).max(0.0);
@@ -120,7 +120,7 @@ fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, i: usize
     let more_lh = more_style(cx, pcode::badge_size(cx.look.b)).line_height;
     let foot_top = shown + 4.0;
     let total_h = (foot_top + more_lh + 6.0).ceil();
-    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
+    let k = bar_scale(chip_compact, 1, w, total_h);
     let clipped = el()
         .pin(Some(0.0), Some(0.0), None, None)
         .size(w, shown)
@@ -132,7 +132,7 @@ fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, i: usize
         .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(clipped)
         .child(more_el.pin(Some(inset_x), Some(foot_top), None, None))
-        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+        .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 
@@ -148,13 +148,13 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, i: u
     let full_body_h = full_h - (2.0 * pad + title_h + gap);
     if full_body_h <= body_cap {
         let h = full_h.ceil();
-        let compact = chip_compact.map(|side| side.min((w.min(h) - 12.0).max(16.0)));
+        let k = bar_scale(chip_compact, 1, w, h);
         let out = el()
             .size(w, h)
             .hover_group()
             .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
             .child(cx.alert(kind, blocks, tone).pin(Some(0.0), Some(0.0), None, None).w(w))
-            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+            .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
         return (out, [w, h]);
     }
     let shown_body_h = body_cap.ceil();
@@ -166,7 +166,7 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, i: u
     let foot_gap = r(b * 0.35);
     let foot_top = body_top + shown_body_h + foot_gap;
     let total_h = (foot_top + more_lh + (pad * 0.75).round()).ceil();
-    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
+    let k = bar_scale(chip_compact, 1, w, total_h);
     let body = el()
         .pin(Some(pad), Some(body_top), None, None)
         .size(inner_w, shown_body_h)
@@ -183,7 +183,7 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, i: u
         .child(title.pin(Some(pad), Some(pad), None, None).w(inner_w))
         .child(body)
         .child(more_el.pin(Some(pad), Some(foot_top), None, None))
-        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+        .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 
@@ -212,86 +212,49 @@ fn more_style(cx: &Cx, size: f32) -> TextStyle {
     cx.look.mono_at(size, 1.6)
 }
 
-/// Compact square icon-only card chip used below `COMPACT_CHIP_ZOOM` (`0.65×`).
-fn icon_chip(cx: &Cx, key: &str, glyph: &'static rune::Icon, side: f32, tint: rune::Color, a11y: &'static str, tip: &'static str) -> El {
-    let c = &cx.look.c;
-    let icon_sz = (side * 0.52).round().max(11.0);
-    row()
-        .key(key)
-        .size(side, side)
-        .center()
-        .radius(4.0)
-        .fill(c.panel)
-        .border(1.0, c.on_page(c.hairline))
-        .hover(c.hover)
-        .hover_group()
-        .hover_motion(crate::ui::chip::fade(), crate::ui::chip::fade())
-        .cursor(rune::Cursor::Pointer)
-        .role("button")
-        .label(a11y)
-        .help(tip)
-        .child(rune::icon(glyph, icon_sz).color(tint).group_color(c.text))
+/// Scale factor for a card's floating mini-bar holding `n` buttons inside `[w, max_h]`.
+/// Uses 1× at normal zoom (`chip_compact` is None) and scales smoothly below `0.65×` zoom so
+/// icon buttons stay clickable without overflowing narrow cards.
+fn bar_scale(chip_compact: Option<f32>, n: usize, w: f32, max_h: f32) -> f32 {
+    let raw = chip_compact.map_or(1.0, |side| (side / MINI_BTN).clamp(0.75, 2.0));
+    let max_k_w = ((w - 12.0).max(20.0)) / mini_bar_w(n);
+    let max_k_h = ((max_h - 8.0).max(20.0)) / MINI_BAR_H;
+    raw.min(max_k_w).min(max_k_h).max(0.6)
 }
 
-/// The Edit chip beside Copy: the Edit Sheet on the card's block (MAP-049).
-fn edit_chip(cx: &Cx, i: usize, tail: &str, compact: Option<f32>) -> El {
-    let c = &cx.look.c;
-    let key = format!("map-edit:{tail}");
-    if let Some(side) = compact {
-        return icon_chip(cx, &key, &icons::PENCIL, side, c.readable_dim(), "Edit the Markdown", "Edit")
-            .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx));
-    }
-    let size = pcode::chip_size(cx.look.b);
-    Chip { key: &key, glyph: &icons::PENCIL, size, icon: r(size * 1.1), label: "Edit", mono: cx.look.mono, tint: c.readable_dim(), active: false, fill: Some(c.panel) }
-        .el(c)
+/// Floating mini-bar holding the single Edit icon button for a map card (MAP-049).
+fn edit_bar(cx: &Cx, i: usize, tail: &str, k: f32) -> El {
+    let edit_btn = mini_button_at(cx.v.p, &format!("map-edit:{tail}"), &icons::PENCIL, "Edit block", None, k)
         .label("Edit the Markdown")
-        .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx))
+        .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx));
+    mini_bar_at(cx.v.p, &format!("map-actions:{tail}"), k).child(edit_btn)
 }
 
-/// The Copy chip: normal labelled pill above `0.65×`, compact icon button below `0.65×`.
-fn copy_chip(cx: &Cx, key: &str, code: String, at: usize, compact: Option<f32>) -> El {
+/// Floating mini-bar holding Edit and Copy icon buttons for code/diff map cards, shown under the
+/// pointer and while Copy says Copied.
+fn chips(cx: &Cx, code: &str, at: usize, i: usize, tail: &str, k: f32) -> El {
     let c = &cx.look.c;
-    let (glyph, label, tint) = if pcode::copied(cx, at) { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
-    if let Some(side) = compact {
-        return icon_chip(cx, key, glyph, side, tint, "Copy the code", label)
-            .on_press_tx(move |s: &mut App, tx| s.copy_code(&code, at, tx));
-    }
-    let size = pcode::chip_size(cx.look.b);
-    Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }
-        .el(c)
-        .label("Copy the code")
-        .on_press_tx(move |s: &mut App, tx| s.copy_code(&code, at, tx))
-}
-
-/// A chip's width with `label`, as `Chip::el` lays it out.
-fn chip_w(cx: &Cx, label: &str) -> f32 {
-    let s = pcode::chip_size(cx.look.b);
-    r(s * 1.3) + r(s * 1.1) + r(s * 0.45) + rune::text::advance(label, cx.look.mono_at(s, 2.0)).ceil()
-}
-
-/// The gap between the Copy and Edit chips.
-const CHIP_GAP: f32 = 4.0;
-
-/// The Copy and Edit chips, shown under the pointer and while Copy says Copied.
-fn chips(cx: &Cx, code: &str, at: usize, i: usize, tail: &str, compact: Option<f32>) -> El {
     let copied = pcode::copied(cx, at);
-    let gap = if compact.is_some() { 6.0 } else { CHIP_GAP };
-    row()
-        .gap(gap)
-        .child(copy_chip(cx, &format!("map-copy:{tail}"), code.to_string(), at, compact))
-        .child(edit_chip(cx, i, tail, compact))
+    let (glyph, tip, tint) = if copied {
+        (&icons::CHECK, "Copied", Some((c.readable_green(), c.readable_green())))
+    } else {
+        (&icons::COPY, "Copy code", None)
+    };
+    let edit_btn = mini_button_at(cx.v.p, &format!("map-edit:{tail}"), &icons::PENCIL, "Edit block", None, k)
+        .label("Edit the Markdown")
+        .on_press_tx(move |s: &mut App, tx| s.map_click(i, true, tx));
+    let copy_str = code.to_string();
+    let copy_btn = mini_button_at(cx.v.p, &format!("map-copy:{tail}"), glyph, tip, tint, k)
+        .on_press_tx(move |s: &mut App, tx| s.copy_code(&copy_str, at, tx));
+    mini_bar_at(cx.v.p, &format!("map-actions:{tail}"), k)
+        .child(edit_btn)
+        .child(copy_btn)
         .group_opacity(if copied { 1.0 } else { 0.0 }, 1.0)
 }
 
-/// How wide the chips are, with the Copy chip saying Copied, so the card never grows for it.
-fn chips_w(cx: &Cx) -> f32 {
-    chip_w(cx, "Copied") + CHIP_GAP + chip_w(cx, "Edit")
-}
-
-/// Clamps compact icon-chip side so two side-by-side chips fit cleanly inside `[w, max_h]`.
-fn clamp_compact_pair(side: f32, w: f32, max_h: f32) -> f32 {
-    let max_side_w = ((w - 18.0) / 2.0).max(16.0);
-    side.min(max_side_w).min(max_h.max(16.0))
+/// Width of the 2-button floating mini-bar at 1× scale.
+fn chips_w(_cx: &Cx) -> f32 {
+    mini_bar_w(2)
 }
 
 /// MAP-049: the reader's code block, capped at 12 lines, with no scrolling.
@@ -342,8 +305,8 @@ fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize, i: usize,
     if !lang.is_empty() {
         out = out.child(pcode::badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }
-    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, h - 12.0));
-    out = out.child(chips(cx, src, at, i, tail, compact).pin(None, Some(top), Some(pad_r - 6.0), None));
+    let k = bar_scale(chip_compact, 2, w, h);
+    out = out.child(chips(cx, src, at, i, tail, k).pin(None, Some(top), Some(pad_r - 6.0), None));
     if rest > 0 {
         out = out.child(more(cx, rest, "line", tail).pin(Some(pad_x), Some(pad_top + shown as f32 * lh + r(pad_b / 2.0)), None, None));
     }
@@ -362,7 +325,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     let pad_x = r(b * 1.1);
     let bs = pcode::badge_size(b);
     let count = pcode::count_style(cx);
-    let head_h = r(b * 2.1).max(r(pcode::chip_size(b) * 2.0) + 4.0);
+    let head_h = r(b * 2.1).max(MINI_BAR_H + 8.0);
     let gap = r(b * 0.6);
     let py = r(b * 0.7);
     let sign_w = r(size * 1.6);
@@ -417,12 +380,9 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
     let fades = (if natural > look.width { r(b * 2.4) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     let body = el().pin(Some(0.0), Some(head_h), None, None).size(w, body_h).clip_fade_linear(0.0, 0.0, fades.0, fades.1).child(rows);
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    let compact = chip_compact.map(|side| clamp_compact_pair(side, w, h - 8.0));
-    let chip_h = compact.unwrap_or_else(|| r(pcode::chip_size(b) * 2.0));
-    let chip_top = match compact {
-        Some(_) => 4.0,
-        None => ((head_h - chip_h) / 2.0).max(1.0),
-    };
+    let k = bar_scale(chip_compact, 2, w, h);
+    let bar_h = MINI_BAR_H * k;
+    let chip_top = if chip_compact.is_some() { 4.0 } else { ((head_h - bar_h) / 2.0).max(2.0) };
     let mut inner = el()
         .pin(Some(0.0), Some(0.0), None, None)
         .size(w, h)
@@ -440,7 +400,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
         .hover_group()
         .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(inner)
-        .child(chips(cx, src, at, i, tail, compact).pin(None, Some(chip_top), Some(pad_r - 6.0), None));
+        .child(chips(cx, src, at, i, tail, k).pin(None, Some(chip_top), Some(pad_r - 6.0), None));
     (out, [w, h])
 }
 
@@ -477,7 +437,7 @@ fn table(cx: &Cx, t: &Table, tone: Tone, i: usize, tail: &str, chip_compact: Opt
     let fades = (if natural > w { r(b * 2.8) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     if rest == 0 {
         let grid_h = inner_h + 2.0;
-        let compact = chip_compact.map(|side| side.min((w.min(grid_h) - 12.0).max(16.0)));
+        let k = bar_scale(chip_compact, 1, w, grid_h);
         let frame = g.frame(cx, shown).pin(Some(0.0), Some(0.0), None, None);
         let clipped = el().pin(Some(0.0), Some(0.0), None, None).size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, 0.0).child(frame);
         let out = el()
@@ -485,13 +445,13 @@ fn table(cx: &Cx, t: &Table, tone: Tone, i: usize, tail: &str, chip_compact: Opt
             .hover_group()
             .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
             .child(clipped)
-            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+            .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
         return (out, [w, grid_h]);
     }
     let foot_py = r(b * 0.3);
     let foot_h = more_style(cx, pcode::badge_size(b)).line_height + 2.0 * foot_py;
     let total_h = inner_h + foot_h + 2.0;
-    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
+    let k = bar_scale(chip_compact, 1, w, total_h);
     let grid = el()
         .pin(Some(1.0), Some(1.0), None, None)
         .size(w - 2.0, inner_h)
@@ -514,20 +474,20 @@ fn table(cx: &Cx, t: &Table, tone: Tone, i: usize, tail: &str, chip_compact: Opt
         .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(grid)
         .child(foot)
-        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+        .child(edit_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 
 /// MAP-046: the picture at its natural size, never larger, at most `B × 20` by `B × 14`, with
 /// its alt text under it in at most two lines; the placeholder while it loads or when it is
-/// missing. MAP-047: the Expand chip at its top-right corner under the pointer.
+/// missing. MAP-047: the Expand button in a floating mini-bar at top-right under the pointer.
 fn image(cx: &Cx, img: &Img, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
     let (pic, [pw, ph]) = thumb(cx, img, [r(b * 20.0), r(b * 14.0)]);
-    let compact = chip_compact.map(|side| side.min((pw.min(ph) - 12.0).max(16.0)));
-    let pic = pic.key(format!("map-pic:{tail}")).child(expand_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+    let k = bar_scale(chip_compact, 1, pw, ph);
+    let pic = pic.key(format!("map-pic:{tail}")).child(expand_bar(cx, i, tail, k).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     let mut w = pw;
     let mut h = ph;
     let mut out = rune::col().items_center().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).child(pic);
@@ -567,19 +527,12 @@ fn thumb(cx: &Cx, img: &Img, [max_w, max_h]: [f32; 2]) -> (El, [f32; 2]) {
     }
 }
 
-/// The Expand chip: the lightbox on the image (MAP-047).
-fn expand_chip(cx: &Cx, i: usize, tail: &str, compact: Option<f32>) -> El {
-    let c = &cx.look.c;
-    let key = format!("map-expand:{tail}");
-    if let Some(side) = compact {
-        return icon_chip(cx, &key, &icons::EXPAND, side, c.readable_dim(), "Expand the image", "Expand")
-            .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, 0, tx));
-    }
-    let size = pcode::chip_size(cx.look.b);
-    Chip { key: &key, glyph: &icons::EXPAND, size, icon: r(size * 1.1), label: "", mono: cx.look.mono, tint: c.readable_dim(), active: false, fill: Some(c.panel) }
-        .el(c)
+/// Floating mini-bar holding the Expand icon button on an image card (MAP-047).
+fn expand_bar(cx: &Cx, i: usize, tail: &str, k: f32) -> El {
+    let btn = mini_button_at(cx.v.p, &format!("map-expand:{tail}"), &icons::EXPAND, "Expand image", None, k)
         .label("Expand the image")
-        .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, 0, tx))
+        .on_press_tx(move |s: &mut App, tx| s.map_lightbox(i, 0, tx));
+    mini_bar_at(cx.v.p, &format!("map-actions:{tail}"), k).child(btn)
 }
 
 /// MAP-047: a gallery's images as thumbnails at most `B × 8` tall, in rows that wrap at the

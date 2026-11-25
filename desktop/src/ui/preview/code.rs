@@ -48,12 +48,12 @@ pub(in crate::ui) fn badge_size(b: f32) -> f32 {
     r((11.0 * (b / 14.0)).clamp(10.0, 18.0))
 }
 
-/// Top inset for the badge / Copy chip and top padding for the code body (BLK-44, BLK-51).
-/// Keeps at least 4 pt of vertical clearance between the chip and line 1 at every zoom level.
+/// Top inset for the badge / floating bar and top padding for the code body (BLK-44, BLK-51).
+/// Keeps at least 4 pt of vertical clearance between the floating mini-bar and line 1 at every zoom.
 pub(in crate::ui) fn top_clearance(b: f32) -> (f32, f32) {
-    let chip_h = r(chip_size(b) * 2.0);
+    let bar_h = crate::ui::widgets::MINI_BAR_H;
     let top = 4f32.max(r(b * 0.3));
-    let pad_top = r(b * 1.25).max(top + chip_h + 4.0);
+    let pad_top = r(b * 1.25).max(top + bar_h + 4.0);
     (top, pad_top)
 }
 
@@ -90,19 +90,30 @@ pub(in crate::ui) fn copied(cx: &Cx, at: usize) -> bool {
     cx.v.s.reader.copied.is_some_and(|(l, _)| l == at)
 }
 
-/// The Copy chip, which says Copied in green for a moment after a click (BLK-51).
-pub(in crate::ui) fn copy_chip(cx: &Cx, key: &str, code: String, at: usize) -> El {
-    use crate::ui::widgets::Control;
+/// Floating top-right action bar for a code or diff block: Edit (when unlocked) and Copy,
+/// using the shared uniform icon-only mini-bar with tooltips (BLK-51).
+fn action_bar(cx: &Cx, bar_key: &str, copy_key: &str, code: String, at: usize) -> El {
+    use crate::ui::widgets::{Control, mini_bar, mini_button};
+    let p = cx.v.p;
     let c = &cx.look.c;
-    let size = chip_size(cx.look.b);
-    let (rw, rg, rc) = crate::ui::focus_ring(cx.v.p);
-    let (glyph, label, tint) = if copied(cx, at) { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
-    crate::ui::focus::stop(
-        crate::ui::chip::Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }.el(c),
-    )
-    .label("Copy the code")
-    .focus_ring(rw, rg, rc)
-    .control(move |s: &mut crate::app::App, tx| s.copy_code(&code, at, tx))
+    let (rw, rg, rc) = crate::ui::focus_ring(p);
+    let is_copied = copied(cx, at);
+    let (glyph, tip, tint) = if is_copied {
+        (&icons::CHECK, "Copied", Some((c.readable_green(), c.readable_green())))
+    } else {
+        (&icons::COPY, "Copy code", None)
+    };
+    let copy_btn = crate::ui::focus::stop(mini_button(p, copy_key, glyph, tip, tint))
+        .focus_ring(rw, rg, rc)
+        .control(move |s: &mut crate::app::App, tx| s.copy_code(&code, at, tx));
+    let mut bar = mini_bar(p, bar_key);
+    if !cx.v.s.active_locked() {
+        let edit_tip = cx.v.s.keymap.tip("Edit block", "reader.edit-block");
+        let edit_btn = mini_button(p, &format!("block-edit:{at}"), &icons::PENCIL, &edit_tip, None)
+            .on_press_tx(move |s: &mut crate::app::App, tx| s.open_sheet_at(Some(at), crate::sheet::Scope::Block, tx));
+        bar = bar.child(edit_btn);
+    }
+    bar.child(copy_btn).group_opacity(if is_copied { 1.0 } else { 0.0 }, 1.0)
 }
 
 pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {
@@ -131,14 +142,14 @@ pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize
     let fade = rune::ScrollFade::strength(r(b * 2.4)).full_at(1.0).linear().end_only();
     body = body.child(el().key("scroll").grow(1.0).min_w(0.0).scroll_x().scroll_fade(fade).child(code));
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-    // Over the block the badge gives way to the Copy chip, which stays while it says Copied.
+    // Over the block the badge gives way to the floating action bar, which stays while Copied.
     let copied = copied(cx, at);
-    let chip = copy_chip(cx, "copy", copy, at).group_opacity(if copied { 1.0 } else { 0.0 }, 1.0).pin(None, Some(top), Some(pad_r - 6.0), None);
+    let bar = action_bar(cx, "code-actions", "copy", copy, at).pin(None, Some(top), Some(pad_r - 6.0), None);
     let mut out = el().w_full().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).radius(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(body);
     if !lang.is_empty() {
         out = out.child(badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0).pin(None, Some(top), Some(pad_r), None));
     }
-    out.child(chip)
+    out.child(bar)
 }
 
 /// A diff's `+N` and `−M` counts (BLK-54).
@@ -156,10 +167,12 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
     let pad_x = r(b * 1.1);
     let count = count_style(cx);
     let copy_key = format!("copy-diff:{at}");
+    let copied = copied(cx, at);
+    let head_h = r(b * 2.1).max(crate::ui::widgets::MINI_BAR_H + 8.0);
     let head = row()
         .key("head")
         .w_full()
-        .h(r(b * 2.1).max(r(chip_size(b) * 2.0) + 4.0))
+        .h(head_h)
         .px(pad_x)
         .gap(r(b * 0.6))
         .center_y()
@@ -167,8 +180,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
         .child(text(format!("+{added}")).key("added").font(count).color(c.readable_green()))
         .child(text(format!("\u{2212}{removed}")).key("removed").font(count).color(c.readable_red()))
         .child(el().key("space").grow(1.0))
-        .children((!lang.is_empty()).then(|| badge(cx, lang).group_opacity(1.0, 0.0)))
-        .child(copy_chip(cx, &copy_key, expand_tabs(src), at));
+        .children((!lang.is_empty()).then(|| badge(cx, lang).group_opacity(if copied { 0.0 } else { 1.0 }, 0.0)));
     // Bands run the full width of the panel, or of the longest line when it scrolls.
     let mut body = col().key("lines").min_w(look.width - 2.0).py(r(b * 0.7));
     let mut k = 0;
@@ -193,7 +205,11 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
         }
         body = body.child(rw);
     }
-    col().w_full().radius(4.0).clip_rounded(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(head).child(el().key("scroll").w_full().scroll_x().child(body))
+    let bar_top = ((head_h - crate::ui::widgets::MINI_BAR_H) / 2.0).max(2.0);
+    let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
+    let bar = action_bar(cx, "diff-actions", &copy_key, expand_tabs(src), at).pin(None, Some(bar_top), Some(pad_r - 6.0), None);
+    let inner = col().w_full().radius(4.0).clip_rounded(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(head).child(el().key("scroll").w_full().scroll_x().child(body));
+    el().w_full().hover_group().hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12)).child(inner).child(bar)
 }
 
 #[cfg(test)]
@@ -215,10 +231,10 @@ mod tests {
 
     #[test]
     fn codeclear_top_padding_clears_copy_chip() {
+        let bar_h = crate::ui::widgets::MINI_BAR_H;
         for b in [9.0, 10.0, 14.0, 18.0, 20.0, 28.0] {
             let (top, pad_top) = super::top_clearance(b);
-            let chip_h = super::r(super::chip_size(b) * 2.0);
-            assert!(pad_top >= top + chip_h + 4.0, "b={b}: pad_top {pad_top} < top {top} + chip_h {chip_h} + 4");
+            assert!(pad_top >= top + bar_h + 4.0, "b={b}: pad_top {pad_top} < top {top} + bar_h {bar_h} + 4");
         }
     }
 }

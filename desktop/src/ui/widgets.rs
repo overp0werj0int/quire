@@ -121,6 +121,74 @@ pub fn floating(e: El, c: &Roles) -> El {
     e.fill(c.bg).border(1.0, c.hairline).box_shadow(a).box_shadow(b)
 }
 
+/// Uniform button size for the title bar and floating action mini-bars.
+pub const MINI_BTN: f32 = 24.0;
+/// Uniform icon size inside `MINI_BTN` buttons.
+pub const MINI_ICON: f32 = 15.0;
+/// Height of a floating action mini-bar (`MINI_BTN` + 4 pt top and bottom padding).
+pub const MINI_BAR_H: f32 = MINI_BTN + 8.0;
+/// Horizontal padding inside a floating action mini-bar.
+pub const MINI_BAR_PX: f32 = 4.0;
+/// Gap between buttons in a floating action mini-bar.
+pub const MINI_BAR_GAP: f32 = 4.0;
+
+/// Width of a floating action mini-bar holding `n` uniform icon buttons.
+pub fn mini_bar_w(n: usize) -> f32 {
+    2.0 * MINI_BAR_PX + n as f32 * MINI_BTN + n.saturating_sub(1) as f32 * MINI_BAR_GAP
+}
+
+/// Shared floating mini-toolbar container (the zen/preview top-right floating pill):
+/// 85% opaque fill, 1 pt border, 12 pt backdrop blur, and soft drop shadow, scaled by `k`.
+pub fn mini_bar_at(p: &Pal, key: &str, k: f32) -> El {
+    row()
+        .key(key)
+        .h(MINI_BAR_H * k)
+        .px(MINI_BAR_PX * k)
+        .gap(MINI_BAR_GAP * k)
+        .center_y()
+        .radius(10.0 * k)
+        .fill(p.bg.alpha(0.85))
+        .border(k, p.line)
+        .backdrop_blur(12.0)
+        .box_shadow(Shadow {
+            x: 0.0,
+            y: 6.0 * k,
+            blur: 22.0 * k,
+            spread: -4.0 * k,
+            color: Color::BLACK.alpha(if p.dark { 0.5 } else { 0.12 }),
+            inset: false,
+        })
+}
+
+/// Shared floating mini-toolbar container at 1× scale.
+pub fn mini_bar(p: &Pal, key: &str) -> El {
+    mini_bar_at(p, key, 1.0)
+}
+
+/// Uniform icon-only button for a floating mini-bar at scale `k`, with tooltip and accessible
+/// label. `tint` overrides `(rest, hover)` icon colours; by default uses muted ink lifted for
+/// graphic contrast (`>= 3.2:1`) on `p.bg`.
+pub fn mini_button_at(p: &Pal, key: &str, glyph: &'static Icon, help: &str, tint: Option<(Color, Color)>, k: f32) -> El {
+    let (rest, hot) = tint.unwrap_or_else(|| (Roles::readable_on(p.mute, p.bg, 3.2), p.ink));
+    row()
+        .key(key)
+        .size(MINI_BTN * k, MINI_BTN * k)
+        .center()
+        .radius(6.0 * k)
+        .hover(p.hover)
+        .hover_group()
+        .cursor(rune::Cursor::Pointer)
+        .role("button")
+        .label(help)
+        .help(help)
+        .child(icon(glyph, MINI_ICON * k).color(rest).group_color(hot))
+}
+
+/// Uniform `24 × 24` icon-only button for a floating mini-bar, with tooltip.
+pub fn mini_button(p: &Pal, key: &str, glyph: &'static Icon, help: &str, tint: Option<(Color, Color)>) -> El {
+    mini_button_at(p, key, glyph, help, tint, 1.0)
+}
+
 pub fn icon_button(p: &Pal, key: &str, glyph: &'static Icon, size: f32, help: &str) -> El {
     row()
         .key(key)

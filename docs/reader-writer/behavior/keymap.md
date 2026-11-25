@@ -140,7 +140,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-67** [adapted: 0003] [verify: unit, script] writer.paragraph-focus (writer): `Ctrl+Shift+D`. Toggles the fade of every paragraph but the current one (WR-75, WR-79).
 - **KEY-68** [adapted: 0003] [verify: unit, script] writer.typewriter (writer): `F9`. Toggles typewriter scrolling (WR-75, WR-85).
 - **KEY-69** [in] [verify: unit, script] writer.next-font (writer): `Ctrl+Shift+M`. Steps the source font to the next iA Writer family (WR-75, WR-125).
-- **KEY-70** [in] [verify: unit, script] writer.escape (writer): `Esc`. Dismisses Quire's notice, else closes the find bar, else runs `app.escape`, else exits Source mode to Preview (WR-77, decision 0003).
+- **KEY-70** [in] [verify: unit, script] writer.escape (writer): `Esc`. Dismisses Quire's notice, else closes the find bar, else closes inline prompts, else exits Source mode to Preview while keeping zen mode active (WR-77, decision 0003).
 - **KEY-71** [deferred] [verify: -] writer.spelling (writer): `F7`. Toggles spell checking (moved from `Ctrl+Shift+L` for KEY-170).
 - **KEY-72** [deferred] [verify: -] writer.rewrite (writer, sheet): `Ctrl+J`. Opens the rewrite line on the block or selection (WR-76, WR-167, SHEET-034).
 - **KEY-73** [deferred] [verify: -] writer.rewrite-section (writer, sheet): `Ctrl+Shift+J`. Opens the rewrite line on the section (WR-76, WR-167, SHEET-034).

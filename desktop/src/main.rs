@@ -2968,9 +2968,9 @@ mod writer_chrome_tests {
         for _ in 0..8 {
             rt.frame(DT);
         }
-        let copy1 = info(&rt, "copy").expect("zoomed copy chip").rect;
+        let copy1 = info(&rt, "copy").expect("zoomed copy button").rect;
         let badge1 = info(&rt, "badge").expect("zoomed language badge").rect;
-        assert!(copy1[3] > copy0[3] + 2.0, "Copy chip scales with zoom: {copy0:?} -> {copy1:?}");
+        assert!((copy1[2] - 24.0).abs() < 0.5 && (copy1[3] - 24.0).abs() < 0.5, "Copy button stays standard 24x24 size across zoom: {copy1:?}");
         assert!(badge1[2] > badge0[2] + 3.0, "language badge scales with zoom: {badge0:?} -> {badge1:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4120,8 +4120,9 @@ mod escape_tests {
 
     const DT: f64 = 1.0 / 60.0;
 
-    /// WR-77: Esc in the editor closes what is open first, one thing per press, and with
-    /// nothing open goes to the preview. Esc there stays in preview (one-way Esc).
+    /// WR-77: Esc in the editor closes what is open first, one thing per press, then exits
+    /// Source mode to Preview while keeping zen mode active; a subsequent Esc in Preview leaves
+    /// zen mode, and Esc in Preview outside zen stays in Preview (one-way Esc).
     #[test]
     fn wr_77_esc_in_the_editor_goes_to_the_preview() {
         let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
@@ -4156,7 +4157,6 @@ mod escape_tests {
         for _ in 0..3 {
             rt.frame(DT);
         }
-        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "the first Esc leaves zen mode only");
         let ([x, y, _, _], _) = rt.presented("editor").expect("the editor");
         rt.secondary_down(x + 2.0, y + 8.0);
         rt.secondary_up(x + 2.0, y + 8.0);
@@ -4169,9 +4169,105 @@ mod escape_tests {
             false
         });
         assert!(open, "the right-click opened the editor's menu");
-        assert_eq!(esc(&mut rt), (Mode::Source, false, false), "Esc closes the editor's menu and stays");
-        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "with nothing open, Esc goes to the preview");
-        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "and Esc in the preview stays in preview");
+        assert_eq!(esc(&mut rt), (Mode::Source, true, false), "Esc closes the editor's menu and stays in Source + zen");
+        assert_eq!(esc(&mut rt), (Mode::Preview, true, false), "next Esc exits Source mode into Preview, keeping zen mode");
+        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "next Esc in Preview leaves zen mode");
+        assert_eq!(esc(&mut rt), (Mode::Preview, false, false), "and Esc in Preview outside zen stays in Preview");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Floating icon mini-bars on Preview and Edit Sheet, heading `#` size and clickable folding
+    /// without left-gutter circles, and equidistant edit-sheet corner paddings.
+    #[test]
+    fn batch_floating_bars_heading_fold_and_sheet_padding() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-batch-ui-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: the ENV lock keeps other tests that read these variables out.
+        unsafe {
+            std::env::set_var("HOME", &dir);
+            std::env::set_var("XDG_CONFIG_HOME", dir.join("cfg"));
+            std::env::set_var("XDG_DATA_HOME", dir.join("data"));
+        }
+        let md = "# Top Heading\n\nIntro paragraph.\n\n## Sub Heading\n\n```rust\nfn hi() {}\n```\n\n### Leaf Heading\n";
+        let mut rt = Runtime::new(crate::app::init(), crate::ui::view, (1280.0, 800.0), Env { system_dark: false, scale: 1.0 });
+        rt.on_key = Some(crate::keys::on_key);
+        rt.frame(DT);
+        rt.update(|s, _| {
+            s.mode = Mode::Preview;
+            let a = s.active.clone().unwrap();
+            s.set_text(&a, md.into());
+        });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let all = rt.elements();
+        // No left-gutter fold circle exists while headings are unfolded.
+        assert!(all.iter().all(|e| !e.key.as_deref().is_some_and(|k| k.starts_with("page-fold:"))), "no fold circles while unfolded");
+        // Heading `#` indicators scale with their heading level (H1 > H2 > H3).
+        let mut anchors: Vec<[f32; 4]> = all.iter().filter(|e| e.key.as_deref() == Some("anchor")).map(|e| e.rect).collect();
+        anchors.sort_by(|a, b| a[1].total_cmp(&b[1]));
+        assert_eq!(anchors.len(), 3, "three heading anchors: {anchors:?}");
+        assert!(anchors[0][3] > anchors[1][3] && anchors[1][3] > anchors[2][3], "H1 > H2 > H3 anchor height: {anchors:?}");
+        // Preview code block groups Edit and Copy into one 32 pt floating mini-bar of 24x24 icon buttons.
+        let code_bar = all.iter().find(|e| e.key.as_deref() == Some("code-actions")).expect("code-actions mini-bar");
+        assert!((code_bar.rect[3] - crate::ui::widgets::MINI_BAR_H).abs() < 0.5, "code mini-bar height: {:?}", code_bar.rect);
+        let copy_btn = all.iter().find(|e| e.key.as_deref() == Some("copy")).expect("copy button");
+        let code_edit = all.iter().find(|e| e.key.as_deref() == Some("block-edit:6")).expect("code edit button");
+        assert!((copy_btn.rect[2] - 24.0).abs() < 0.5 && (copy_btn.rect[3] - 24.0).abs() < 0.5, "copy icon button 24x24: {:?}", copy_btn.rect);
+        assert!((code_edit.rect[2] - 24.0).abs() < 0.5 && (code_edit.rect[3] - 24.0).abs() < 0.5, "edit icon button 24x24: {:?}", code_edit.rect);
+        assert!(code_edit.rect[0] >= code_bar.rect[0] - 0.5 && copy_btn.rect[0] + copy_btn.rect[2] <= code_bar.rect[0] + code_bar.rect[2] + 0.5, "Edit and Copy share code-actions pill");
+        // Clicking `#` on foldable `## Sub Heading` folds its section (showing `page-fold:` pill at rest).
+        let h2_a = anchors[1];
+        rt.pointer_move(h2_a[0] + h2_a[2] + 40.0, h2_a[1] + h2_a[3] / 2.0);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.pointer_move(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
+        for _ in 0..3 {
+            rt.frame(DT);
+        }
+        rt.pointer_down(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
+        rt.pointer_up(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
+        for _ in 0..5 {
+            rt.frame(DT);
+        }
+        let folded_all = rt.elements();
+        let pill = folded_all.iter().find(|e| !e.exiting && e.key.as_deref().is_some_and(|k| k.starts_with("page-fold:"))).expect("+N fold badge after clicking #");
+        assert!(pill.opacity > 0.99, "+N badge visible at rest: {}", pill.opacity);
+        let live_copy: Vec<_> = folded_all.iter().filter(|e| !e.exiting && e.key.as_deref() == Some("copy")).map(|e| (e.rect, e.opacity)).collect();
+        assert!(live_copy.is_empty(), "folded code block is hidden, got: {live_copy:?}");
+        // Clicking `+N` unfolds the section again.
+        let (px, py) = (pill.rect[0] + pill.rect[2] / 2.0, pill.rect[1] + pill.rect[3] / 2.0);
+        rt.pointer_down(px, py);
+        rt.pointer_up(px, py);
+        for _ in 0..5 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some("copy")), "code block restored on unfold");
+        // Open Edit Sheet: verify top-right floating mini-bar and equidistant corner paddings.
+        rt.update(|s, tx| s.open_sheet_at(Some(0), crate::sheet::Scope::Block, tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let sh_els = rt.elements();
+        let pop = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-pop")).expect("sheet-pop").rect;
+        let title = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-title")).expect("sheet-title").rect;
+        let kbd = sh_els.iter().find(|e| e.key.as_deref() == Some("kbd") && e.rect[1] > pop[1]).expect("footer kbd").rect;
+        let left_gap = kbd[0] - pop[0];
+        let bot_gap = (pop[1] + pop[3]) - (kbd[1] + kbd[3]);
+        let top_gap = title[1] - pop[1];
+        assert!((bot_gap - left_gap).abs() < 0.5, "bottom kbd gap {bot_gap} must equal left gap {left_gap}");
+        assert!((top_gap - (left_gap - 2.0)).abs() < 0.5, "top title gap {top_gap} compensates for 2pt leading vs left {left_gap}");
+        let sh_bar = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions mini-bar");
+        assert!(sh_bar.opacity < 0.05, "sheet-actions hidden until hover: {}", sh_bar.opacity);
+        assert!(sh_bar.rect[1] < pop[1] + 40.0 && sh_bar.rect[0] > pop[0] + pop[2] / 2.0, "sheet-actions sits top-right: {:?} in {pop:?}", sh_bar.rect);
+        rt.pointer_move(pop[0] + 40.0, pop[1] + 40.0);
+        for _ in 0..12 {
+            rt.frame(DT);
+        }
+        let sh_bar_hover = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions hovered");
+        assert!(sh_bar_hover.opacity > 0.99, "sheet-actions shows on card hover: {}", sh_bar_hover.opacity);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

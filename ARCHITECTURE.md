@@ -118,8 +118,8 @@ A node draws what the reader would. `map::Node::body` says what that is: plain t
 paragraph's or heading's inline runs, which the reader's `Rich` draws, or a block shown as a
 card. `ui/map/card.rs` builds the cards (code, diff, table, quote, alert, HTML, image and
 gallery) from the reader's own builders in `ui::preview`, and adds what only the map has:
-the caps on lines and rows with a fade and a "+N more" label, the Copy, Edit and Expand
-chips, and no scrolling inside a card. The layout must know each node's size before Rune
+the caps on lines and rows with a fade and a "+N more" label, the shared floating icon mini-bar
+(`ui::widgets::mini_bar`: Edit, Copy, and Expand icon buttons with tooltips), and no scrolling inside a card. The layout must know each node's size before Rune
 lays anything out, since it also runs from handlers between frames, so each card is measured
 by the code that builds it (`ui::MapSizer`). Sizes are cached by `Node::src`, a hash of what
 the node draws, with its tier, the body size and the wrap width, and for an image or a
@@ -140,7 +140,7 @@ rewrites the preview (`App::map_pick_kind`), so the node changes kind before any
 in `Ctx::MapEdit`. While it is open its node takes the field's size in the layout
 (`App::map_laid`), and an existing node never less than its own, so the neighbours move
 clear as the text grows. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
-its place. Map cards (code, diff, table, quote, alert, HTML) all expose hover `Edit` chips, and `map_paste_key` reads the live OS clipboard first before falling back to `last_copied`. Zoom HUD buttons (`zoom-out`, `zoom-reset`, `zoom-in`, `zoom-fit`), `map-props`, and fold pills (`map-pill:*`, `map-fold:*`) are keyboard-focusable stops with focus rings.
+its place. Map cards (code, diff, table, quote, alert, HTML), Preview blocks (with combined Edit/Copy on code and diff blocks), and the Edit Sheet (Cancel/Save, or Copy/Close on conflict) all use the shared floating icon mini-bar (`ui::widgets::mini_bar`, uniform `24 × 24` icon buttons with tooltips), and `map_paste_key` reads the live OS clipboard first before falling back to `last_copied`. Zoom HUD buttons (`zoom-out`, `zoom-reset`, `zoom-in`, `zoom-fit`), `map-props`, and fold pills (`map-pill:*`, `map-fold:*`) are keyboard-focusable stops with focus rings.
 
 A move, by a drop or by Alt and the arrows, is `map::move_to`, one more of these functions.
 `map::zone` says which moves the rules allow, and the drop zones under a drag show only those
@@ -200,7 +200,7 @@ the change removed gives way to the nearest node at or above its line. An open i
 keeps its text then, and its commit is refused with a notice while the note under it has
 changed, so a stale field never writes over another app's text. Each tab keeps its own
 `MapView`. Preview folds the same headings from its folds (`App::page_folds`): a folded
-heading's blocks are empty rows, and its `+N` badge in the margin unfolds it on both
+heading's blocks are empty rows, its hover `#` (matched to the heading's font size) clicks to fold when foldable without a separate gutter circle, and its `+N` badge in the margin unfolds it on both
 surfaces (`App::toggle_page_fold`); a jump to a hidden block opens the folds above it first
 (`App::unfold_to_block`). In Note mode each note is a vault of its own, so `App::park` takes the note's view
 with it (`Parked::map`) and `App::open_note` puts it back. Opening a folder drops every view

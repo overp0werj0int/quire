@@ -2672,14 +2672,8 @@ impl App {
         false
     }
 
-    /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
-    /// the notice goes, then new folder, rename and the create prompt close, then zen mode ends.
-    /// The keyboard stays where it was.
-    pub fn escape(&mut self, tx: &mut Tx) -> bool {
-        if self.notice.take().is_some() {
-            self.notice_open = None;
-            return true;
-        }
+    /// Closes inline page prompts (new folder, folder rename, note rename, vault create).
+    pub(crate) fn escape_prompts(&mut self, tx: &mut Tx) -> bool {
         if self.new_folder.is_some() {
             self.new_folder = None;
         } else if self.renaming_folder.is_some() {
@@ -2689,12 +2683,28 @@ impl App {
         } else if self.creating.is_some() {
             self.creating = None;
             tx.focus("create", tx.by_keys());
-        } else if self.focus {
-            self.focus = false;
         } else {
             return false;
         }
         true
+    }
+
+    /// Esc on the page, with no layer open (an open layer takes Esc first, `keys::on_key`):
+    /// the notice goes, then new folder, rename and the create prompt close, then zen mode ends.
+    /// The keyboard stays where it was.
+    pub fn escape(&mut self, tx: &mut Tx) -> bool {
+        if self.notice.take().is_some() {
+            self.notice_open = None;
+            return true;
+        }
+        if self.escape_prompts(tx) {
+            return true;
+        }
+        if self.focus {
+            self.focus = false;
+            return true;
+        }
+        false
     }
 
     /// Toggles the inline line-by-line conflict diff view for the active sync conflict copy.

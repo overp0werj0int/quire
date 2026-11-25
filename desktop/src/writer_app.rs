@@ -705,24 +705,30 @@ impl App {
         self.toast("Saved", tx);
     }
 
-    /// Esc in the writer (WR-77): the notice, the find bar, then Quire's own overlays and zen
-    /// mode, then the preview. Help and every other layer take Esc first (`keys::on_key`).
+    /// Esc in the writer (WR-77): the notice, the find bar, then inline prompts (rename, new
+    /// folder, create), then Preview (staying in zen mode if active), and only with no open note
+    /// does it leave zen mode. Help and every other layer take Esc first (`keys::on_key`).
     pub fn writer_escape(&mut self, tx: &mut Tx) -> bool {
         if self.notice.take().is_some() {
+            self.notice_open = None;
             return true;
         }
         if self.reader.find.open {
             self.close_find(tx);
             return true;
         }
-        if self.escape(tx) {
+        if self.escape_prompts(tx) {
             return true;
         }
-        if self.active.is_none() {
-            return false;
+        if self.active.is_some() {
+            self.show_mode(crate::app::Mode::Preview, tx);
+            return true;
         }
-        self.show_mode(crate::app::Mode::Preview, tx);
-        true
+        if self.focus {
+            self.focus = false;
+            return true;
+        }
+        false
     }
 
     // ---------- Find in the source (WR-115 to WR-123) ----------

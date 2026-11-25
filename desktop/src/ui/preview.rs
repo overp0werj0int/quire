@@ -357,8 +357,8 @@ pub fn preview(v: V) -> El {
                         .hover_group()
                         .hover_motion(fade(), fade())
                         .pt(gap)
-                        .child(cx.top_block(bl, tone))
-                        .children(fold.map(|f| cx.fold_mark(bl, gap, f)))
+                        .child(cx.top_block(bl, tone, fold))
+                        .children(fold.filter(|&(_, folded, _)| folded).map(|f| cx.fold_mark(bl, gap, f)))
                         .children((!v.s.active_locked()).then(|| cx.edit_mark(bl, gap, col_geom.gutter)))
                         .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
                         .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Block(line), (at.x, at.y), tx))
@@ -486,9 +486,9 @@ impl Cx<'_> {
 
     /// A top-level block of the page. The block under the pointer is the one Ctrl+Shift+C and e
     /// act on (RD-100).
-    fn top_block(&self, bl: &Block, tone: Tone) -> El {
+    fn top_block(&self, bl: &Block, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
         let line = bl.lines.start;
-        self.block(bl, tone)
+        self.block_with_fold(bl, tone, fold)
             .key("block")
             .on_hover_change(move |s: &mut App, on, tx| {
                 if on {
@@ -517,9 +517,13 @@ impl Cx<'_> {
     }
 
     fn block(&self, bl: &Block, tone: Tone) -> El {
+        self.block_with_fold(bl, tone, None)
+    }
+
+    fn block_with_fold(&self, bl: &Block, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
         match &bl.kind {
             Kind::FrontMatter { title, fields } => front::card(self, title, fields),
-            Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone),
+            Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone, fold),
             Kind::Paragraph { runs } if is_tag_line(runs) => tag_line(self, runs, tone),
             Kind::Paragraph { runs } => {
                 let mut e = self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color, self.sel()).w_full();
@@ -543,7 +547,8 @@ impl Cx<'_> {
     }
 
     /// PAGE-03, PAGE-14, PAGE-15, BLK-11 to BLK-14.
-    fn heading(&self, level: usize, runs: &[Run], label: &str, slug: &str, pid: Option<usize>, tone: Tone) -> El {
+    #[allow(clippy::too_many_arguments)]
+    fn heading(&self, level: usize, runs: &[Run], label: &str, slug: &str, pid: Option<usize>, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
         let look = self.look;
         let level = level.clamp(1, 6);
         let (size, lead) = page::heading_type(look.b, level);
@@ -562,71 +567,66 @@ impl Cx<'_> {
         if tone.quote_depth > 0 || tone.contained || slug.is_empty() {
             return e;
         }
-        // The `#` in the margin while the pointer is over the heading (BLK-15, BLK-16).
-        let hs = r(look.b * 0.95);
-        let hash_style = TextStyle::new(hs, 400.0).family(look.mono).lh(line(hs, 1.2));
+        // When folded, the `+{hidden}` pill occupies the left-gutter slot (BLK-102).
+        if fold.is_some_and(|(_, folded, _)| folded) {
+            return e;
+        }
+        // The `#` in the margin while the pointer is over the heading (BLK-15, BLK-16, BLK-102):
+        // matched to the heading's font size, clicking folds when foldable else copies the link.
+        let hs = size;
+        let lh = line(size, lead);
+        let hash_style = TextStyle::new(hs, 400.0).family(look.mono).lh(lh);
         let w = rune::text::advance("#", hash_style).ceil();
-        let top = ((line(size, lead) - line(hs, 1.2)) / 2.0).max(0.0);
-        let slug = slug.to_string();
-        // Faint, and accent under the pointer itself; fades and colour changes take 120 ms.
+        let gap = r(look.b * 0.6);
         let fade = || rune::Curve::linear(0.12);
-        let hash = el()
+        let mut hash = el()
             .key("anchor")
+            .pr(gap)
             .hover_group()
             .hover_motion(fade(), fade())
             .group_opacity(0.0, 1.0)
             .cursor(rune::Cursor::Pointer)
             .role("button")
-            .label("Copy a link to this heading")
-            .on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
             .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
-            .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
+            .pin(Some(-(w + gap)), Some(0.0), None, None);
+        if let Some((n, _, _)) = fold {
+            let tip = self.v.s.keymap.tip("Fold section", "reader.toggle-fold");
+            hash = hash.label(tip.clone()).help(tip).on_press(move |s: &mut App| s.toggle_page_fold(n));
+        } else {
+            let slug = slug.to_string();
+            hash = hash.label("Copy a link to this heading").help("Copy link to heading").on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx));
+        }
         el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
     }
 
-    /// A heading's fold control in the margin left of its `#` (MAP-042): the map's fold ring,
-    /// shown while the pointer is over the heading, or once folded the map's `+N` badge.
-    /// Either folds or unfolds the section here and on the map.
-    fn fold_mark(&self, bl: &Block, top: f32, (n, folded, hidden): (usize, bool, usize)) -> El {
+    /// A folded heading's `+{hidden}` badge in the left margin (BLK-102, MAP-042), shown at rest
+    /// in the heading indicator slot; clicking unfolds the section here and on the map.
+    fn fold_mark(&self, bl: &Block, top: f32, (n, _folded, hidden): (usize, bool, usize)) -> El {
         let look = self.look;
         let c = &look.c;
         let Kind::Heading { level, .. } = bl.kind else { return el() };
         let (size, lead) = page::heading_type(look.b, level.clamp(1, 6));
-        let hs = r(look.b * 0.95);
-        let hash_w = rune::text::advance("#", TextStyle::new(hs, 400.0).family(look.mono).lh(line(hs, 1.2))).ceil();
-        let right = hash_w + r(look.b * 0.6) + r(look.b * 0.5);
+        let right = r(look.b * 0.6);
         let font = crate::map_app::chip_font(look.b, look.mono);
-        let d = 2.0 * crate::map_geom::FOLD_DOT_R;
-        let hit = 24.0f32.max(d);
+        let hit = 24.0f32.max(2.0 * crate::map_geom::FOLD_DOT_R);
         let h = (font.size + 6.0).max(hit);
         let fade = || rune::Curve::linear(0.12);
-        let mark = if folded {
-            el().h(h)
-                .min_w(h)
-                .px(crate::map_app::PILL_PAD)
-                .center()
-                .radius(h / 2.0)
-                .border(1.5, c.faint)
-                .fill(c.bg)
-                .hover(mix(c.bg, c.accent, 0.18))
-                .hover_motion(fade(), fade())
-                .label(format!("Unfold, {hidden} hidden"))
-                .child(text(format!("+{hidden}")).font(font).color(c.readable_dim()).inert())
-        } else {
-            let ring = el().size(d, d).radius(d / 2.0).border(1.5, c.faint).fill(c.bg).inert();
-            row()
-                .size(hit, hit)
-                .center()
-                .radius(hit / 2.0)
-                .group_opacity(0.0, 1.0)
-                .hover(mix(c.bg, c.accent, 0.18))
-                .hover_motion(fade(), fade())
-                .label("Fold")
-                .child(ring)
-        };
+        let tip = self.v.s.keymap.tip(&format!("Unfold, {hidden} hidden"), "reader.toggle-fold");
+        let mark = el()
+            .h(h)
+            .min_w(h)
+            .px(crate::map_app::PILL_PAD)
+            .center()
+            .radius(h / 2.0)
+            .border(1.5, c.faint)
+            .fill(c.bg)
+            .hover(mix(c.bg, c.accent, 0.18))
+            .hover_motion(fade(), fade())
+            .label(format!("Unfold, {hidden} hidden"))
+            .help(tip)
+            .child(text(format!("+{hidden}")).font(font).color(c.readable_dim()).inert());
         let y = top + ((line(size, lead) - h) / 2.0).max(0.0);
         let room = r(look.b * 4.0).max(hit);
-        let right = if folded { right } else { (right - (hit - d) / 2.0).max(0.0) };
         let (rw, rg, rc) = super::focus_ring(self.v.p);
         row().key("fold")
             .pin(Some(-(right + room)), Some(y), None, None)
@@ -643,57 +643,27 @@ impl Cx<'_> {
             )
     }
 
-    /// Subtle hover-revealed Edit chip in the right margin (or top-right on narrow windows)
-    /// opening the Edit Sheet on this block (`hover_group()` + `group_opacity` so scrolling runs
-    /// zero extra views).
+    /// Hover-revealed floating mini-bar for non-code blocks (code and diff blocks render their
+    /// combined Edit + Copy floating mini-bar inside `code.rs`). Uses the shared uniform icon-only
+    /// floating toolbar with tooltip (`hover_group()` + `group_opacity` so scrolling runs zero
+    /// extra views).
     fn edit_mark(&self, bl: &Block, top: f32, gutter: f32) -> El {
-        let look = self.look;
-        let c = &look.c;
+        if matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. }) {
+            return el();
+        }
         let line = bl.lines.start;
-        let size = code::chip_size(look.b);
-        let icon_sz = r(size * 1.05);
         let key = format!("block-edit:{line}");
         let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
-        let chip_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Edit", look.mono_at(size, 2.0)).ceil();
-        let in_margin = gutter >= chip_w + 16.0;
-        let is_code_or_diff = matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. });
-        let chip = super::chip::Chip {
-            key: &key,
-            glyph: &icons::PENCIL,
-            size,
-            icon: icon_sz,
-            label: "Edit",
-            mono: look.mono,
-            tint: c.readable_dim(),
-            active: false,
-            fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
-        }
-        .el(c)
-        .label(tip.clone())
-        .help(tip)
-        .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        let bar_w = super::widgets::mini_bar_w(1);
+        let in_margin = gutter >= bar_w + 16.0;
+        let btn = super::widgets::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None)
+            .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        let bar = super::widgets::mini_bar(self.v.p, &format!("block-actions:{line}")).child(btn);
         if in_margin {
             let bridge = 10.0;
-            el().pin(None, Some(top), Some(-(chip_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(chip)
-        } else if is_code_or_diff {
-            let copy_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Copy", look.mono_at(size, 2.0)).ceil();
-            let pad_x = r(look.b * 1.1);
-            let (y_off, right_off) = match bl.kind {
-                Kind::Diff { .. } => {
-                    let head_h = r(look.b * 2.1).max(r(size * 2.0) + 4.0);
-                    let chip_h = r(size * 2.0);
-                    let y = ((head_h - chip_h) / 2.0).max(0.0);
-                    (y, pad_x + copy_w + r(look.b * 0.6))
-                }
-                _ => {
-                    let (t, _) = code::top_clearance(look.b);
-                    let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
-                    (t, (pad_r - 6.0) + copy_w + 6.0)
-                }
-            };
-            el().pin(None, Some(top + y_off), Some(right_off), None).group_opacity(0.0, 1.0).child(chip)
+            el().pin(None, Some(top), Some(-(bar_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(bar)
         } else {
-            el().pin(None, Some(top), Some(4.0), None).group_opacity(0.0, 1.0).child(chip)
+            el().pin(None, Some(top), Some(4.0), None).group_opacity(0.0, 1.0).child(bar)
         }
     }
 

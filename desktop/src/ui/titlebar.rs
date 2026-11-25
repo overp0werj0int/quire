@@ -13,10 +13,10 @@ use super::styles::sans;
 /// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
 /// each about the golden ratio (1.618) of the next size down, all centred 20 points down.
 pub const BAR_H: f32 = 40.0;
-const BUTTON: f32 = 24.0;
+const BUTTON: f32 = super::widgets::MINI_BTN;
 /// Every icon in the bar is drawn at this one size. A glyph that looks heavier or lighter than
 /// its neighbours is fixed in its own drawing, not by a size of its own.
-const ICON: f32 = 15.0;
+const ICON: f32 = super::widgets::MINI_ICON;
 
 /// An icon button sized for the bar, keyboard-focusable with a focus ring while preserving
 /// editor/preview focus on pointer clicks via the bar's `preserve_focus_on_press(true)` (`KBDA11Y`).
@@ -267,22 +267,7 @@ fn focus_bar(v: V) -> El {
         .child(el().grow(1.0))
         .child(
             // The title bar's buttons on a floating pill, 85% opaque, in the top-right corner.
-            actions(
-                v,
-                row()
-                    .key("zen-actions")
-                    .h(BUTTON + 8.0)
-                    .px(4.0)
-                    .mr(8.0)
-                    .gap(4.0)
-                    .center_y()
-                    .radius(10.0)
-                    .fill(p.bg.alpha(0.85))
-                    .border(1.0, p.line)
-                    .backdrop_blur(12.0)
-                    .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if p.dark { 0.5 } else { 0.12 }), inset: false })
-                    .no_window_drag(),
-            ),
+            actions(v, super::widgets::mini_bar(p, "zen-actions").mr(8.0).no_window_drag()),
         )
         .child(el().w(v.trailing));
     el().key("titlebar").h(BAR_H).w_full().window_drag().preserve_focus_on_press(true).hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(hint).child(inner)
