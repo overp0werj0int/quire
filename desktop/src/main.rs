@@ -3223,7 +3223,18 @@ mod writer_chrome_tests {
             for _ in 0..6 {
                 rt.frame(DT);
             }
-            assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "{mode:?}: empty Find Tab jumps to find-close");
+            if mode == crate::app::Mode::Source {
+                assert_eq!(focused_key(&rt).as_deref(), Some("find-case"), "Source: empty Find Tab lands on find-case");
+                for want in ["find-word", "find-close"] {
+                    rt.key(tab.clone());
+                    for _ in 0..6 {
+                        rt.frame(DT);
+                    }
+                    assert_eq!(focused_key(&rt).as_deref(), Some(want), "Source: empty Find Tab advances to {want}");
+                }
+            } else {
+                assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "{mode:?}: empty Find Tab jumps to find-close");
+            }
         }
 
         // 2. Fast Tab during Preview's 40 ms debounce lands on find-prev, never shows "No matches",
