@@ -127,7 +127,7 @@ gallery the images epoch, so a card takes its picture's size once it loads. A pi
 
 The map writes the note the way the edit sheet does. Each gesture is a function in `map.rs`
 from the note's text, its tree and the gesture to a `Splice`: some whole lines replaced by
-others, and the line to select after. Rename, add, delete and the task toggle are these
+others, and the line to select after. Rename, add, delete, type conversion (`map::convert_kind`) and the task toggle are these
 functions, and a guard parses the result again so a deletion or an insertion never turns a
 neighbour into something else (a paragraph into a setext heading, say). `App::map_apply`
 applies the splice as one undo step on the note's `TextEdit` (`App::splice_note`), so
@@ -136,11 +136,11 @@ new tree (`map::follow`). A new node is named in the inline field before anythin
 the map shows a preview text holding it (`Inline::preview`), and the note gets it on the first
 commit. Its kind (`map::NewKind`) starts as its place's default (`map::default_kind`), and a
 toolbar over the field picks another of the kinds the place takes (`map::kinds`): the pick
-rewrites the preview (`App::map_pick_kind`), so the node changes kind before anything is written. The inline field is a text field over the node (`map_app::FIELD`), with its own keys
+rewrites the preview (`App::map_pick_kind`), so the node changes kind before anything is written. The inline field is a text field over the node (`map_app::FIELD`) with spellcheck, edit context menu, and a commit/newline hint (`map-edit-hint`), with its own keys
 in `Ctx::MapEdit`. While it is open its node takes the field's size in the layout
 (`App::map_laid`), and an existing node never less than its own, so the neighbours move
 clear as the text grows. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
-its place.
+its place. Map cards (code, diff, table, quote, alert, HTML) all expose hover `Edit` chips, and `map_paste_key` reads the live OS clipboard first before falling back to `last_copied`. Zoom HUD buttons (`zoom-out`, `zoom-reset`, `zoom-in`, `zoom-fit`), `map-props`, and fold pills (`map-pill:*`, `map-fold:*`) are keyboard-focusable stops with focus rings.
 
 A move, by a drop or by Alt and the arrows, is `map::move_to`, one more of these functions.
 `map::zone` says which moves the rules allow, and the drop zones under a drag show only those

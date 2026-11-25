@@ -14,6 +14,7 @@ use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, T
 use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
 pub(super) use layouts::layouts;
 pub(super) use lightbox::lightbox;
+use super::widgets::Control;
 use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Run;
@@ -263,8 +264,9 @@ pub(super) fn canvas(v: V) -> El {
                 .inert(),
         );
     }
+    let ring_spec = super::focus_ring(v.p);
     for &i in &nodes {
-        let of = RingOf { t: &t, l: &l, i, editing: editing == Some(i), lite, hit, c, font: map_app::chip_font(b, mono) };
+        let of = RingOf { t: &t, l: &l, i, editing: editing == Some(i), lite, hit, c, font: map_app::chip_font(b, mono), ring: ring_spec };
         for (nth, r) in rings(i).iter().enumerate() {
             world = world.children(fold(&of, r, nth).into_iter().flatten().map(|e| e.opacity(dim(i))));
         }
@@ -295,21 +297,25 @@ pub(super) fn canvas(v: V) -> El {
         let badge = (t.props > 0).then(|| map_app::badge(t.props, &l, font)).flatten();
         let badge_under = badge.is_some() && l.badge_under();
         if let Some((badge, [x, y, _, h])) = badge {
+            let (rw, rg, rc) = ring_spec;
             world = world.child(
-                rune::row()
-                    .key("map-props")
-                    .h(h)
-                    .px(map_app::BADGE_PAD)
-                    .center_y()
-                    .radius(4.0)
-                    .hover(c.hover)
-                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                    .role("button")
-                    .label(badge.clone())
-                    .cursor(rune::Cursor::Pointer)
-                    .on_press_tx(|s: &mut App, tx: &mut Tx| s.map_props(tx))
-                    .pin(Some(x + W), Some(y + W), None, None)
-                    .child(text(badge).font(font).color(c.dim)),
+                super::focus::stop(
+                    rune::row()
+                        .key("map-props")
+                        .h(h)
+                        .px(map_app::BADGE_PAD)
+                        .center_y()
+                        .radius(4.0)
+                        .hover(c.hover)
+                        .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                        .role("button")
+                        .label(badge.clone())
+                        .cursor(rune::Cursor::Pointer)
+                        .focus_ring(rw, rg, rc)
+                        .control(|s: &mut App, tx: &mut Tx| s.map_props(tx))
+                        .pin(Some(x + W), Some(y + W), None, None)
+                        .child(text(badge).font(font).color(c.dim)),
+                ),
             );
         }
         if t.nodes.len() == 1 {
@@ -526,22 +532,38 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
     let Some(e) = &v.s.map.inline else { return el() };
     let c = Roles::new(v.p);
     let surface = c.on_page(c.raised);
-    rune::text_input(&e.edit, st)
-        .key(map_app::FIELD)
-        .label("Node text")
-        .color(v.p.ink)
-        .caret(v.p.ink, v.p.sel)
-        .on_edit(|s: &mut App| match &mut s.map.inline {
-            Some(e) => &mut e.edit,
-            None => &mut s.map.spare,
-        })
-        .on_input_change(|s: &mut App, _| s.map_inline_changed())
-        .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
-        .pin(Some(p.x + p.label_pads(m.pad_x, room)[0] + W), Some(p.y + p.content(m.pad_b).0 + W), None, None)
-        .w(w)
-        .radius(3.0)
-        .fill(surface)
-        .wrap_anywhere()
+    let x = p.x + p.label_pads(m.pad_x, room)[0] + W;
+    let y = p.y + p.content(m.pad_b).0 + W;
+    let input = super::editor::with_edit_menu(
+        rune::text_input(&e.edit, st)
+            .key(map_app::FIELD)
+            .label("Node text")
+            .color(v.p.ink)
+            .caret(v.p.ink, v.p.sel)
+            .spellcheck(v.s.settings().spellcheck)
+            .on_edit(|s: &mut App| match &mut s.map.inline {
+                Some(e) => &mut e.edit,
+                None => &mut s.map.spare,
+            })
+            .on_input_change(|s: &mut App, _| s.map_inline_changed())
+            .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| s.map_field_key(ev, tx))
+            .w(w)
+            .radius(3.0)
+            .fill(surface)
+            .wrap_anywhere(),
+        map_app::FIELD,
+    );
+    let hint_font = styles::sans(10.5, 400.0);
+    let hint = text("Enter saves · Shift+Enter newline · Esc cancels")
+        .key("map-edit-hint")
+        .font(hint_font)
+        .color(Roles::readable_on(c.dim, c.bg, 4.8))
+        .inert();
+    rune::col()
+        .pin(Some(x), Some(y), None, None)
+        .gap(4.0)
+        .child(input)
+        .child(hint)
 }
 
 /// The add toolbar over a new node's glass, its top-left corner at `at` (MAP-087): the types the
@@ -843,6 +865,7 @@ struct RingOf<'a> {
     hit: f32,
     c: &'a Roles,
     font: rune::TextStyle,
+    ring: (f32, f32, Color),
 }
 
 /// A press on node `i`'s ring or pill on side `d`: fold or unfold what it hides, and everything
@@ -856,7 +879,7 @@ fn fold_press(i: usize, d: crate::map_geom::Dir) -> impl Fn(&mut App, &mut Tx) +
 }
 
 /// A node's `nth` fold ring and its hit target, or the `+N` pill in the ring's place.
-fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate::map_layout::Ring, nth: usize) -> [Option<El>; 3] {
+fn fold(&RingOf { t, l, i, editing, lite, hit, c, font, ring: (rw, rg, rc) }: &RingOf, ring: &crate::map_layout::Ring, nth: usize) -> [Option<El>; 3] {
     let (mut dot, mut target, mut pill) = (None, None, None);
     let (d, folded) = (ring.side.dir, ring.folded);
     let tail = key_tail(&node_key(t, i)).to_string();
@@ -870,20 +893,23 @@ fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate:
         let (count, size) = map_app::pill_size(hidden, font);
         let [x, y, w, h] = p.pill_box(d, size);
         pill = Some(
-            el().key(key("map-pill"))
-                .size(w, h)
-                .center()
-                .fill(c.bg)
-                .hover(crate::roles::mix(c.bg, branch, 0.18))
-                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                .border(1.5, branch)
-                .radius(h / 2.0)
-                .role("button")
-                .label(format!("Unfold, {hidden} hidden"))
-                .cursor(rune::Cursor::Pointer)
-                .pin(Some(x + W), Some(y + W), None, None)
-                .child(text(count).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
-                .on_press_tx(fold_press(i, d)),
+            super::focus::stop(
+                el().key(key("map-pill"))
+                    .size(w, h)
+                    .center()
+                    .fill(c.bg)
+                    .hover(crate::roles::mix(c.bg, branch, 0.18))
+                    .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                    .border(1.5, branch)
+                    .radius(h / 2.0)
+                    .role("button")
+                    .label(format!("Unfold, {hidden} hidden"))
+                    .cursor(rune::Cursor::Pointer)
+                    .focus_ring(rw, rg, rc)
+                    .pin(Some(x + W), Some(y + W), None, None)
+                    .child(text(count).font(font).color(Roles::readable_on(c.dim, c.bg, 4.8)).inert())
+                    .control(fold_press(i, d)),
+            ),
         );
     } else {
         // The ring the branches leave from, at rest too; hovering adds its `−` and a halo.
@@ -898,14 +924,16 @@ fn fold(&RingOf { t, l, i, editing, lite, hit, c, font }: &RingOf, ring: &crate:
         );
     }
     if !editing {
-        let mut hit_el = el()
-            .key(key("map-fold"))
-            .pin(Some(x0 + W), Some(y0 + W), None, None)
-            .size(x1 - x0, y1 - y0)
-            .role("button")
-            .label(if folded { "Unfold" } else { "Fold" })
-            .cursor(rune::Cursor::Pointer)
-            .on_press_tx(fold_press(i, d));
+        let mut hit_el = super::focus::stop(
+            el().key(key("map-fold"))
+                .pin(Some(x0 + W), Some(y0 + W), None, None)
+                .size(x1 - x0, y1 - y0)
+                .role("button")
+                .label(if folded { "Unfold" } else { "Fold" })
+                .cursor(rune::Cursor::Pointer)
+                .focus_ring(rw, rg, rc)
+                .control(fold_press(i, d)),
+        );
         if !folded && !lite {
             let (fw, fh) = (x1 - x0, y1 - y0);
             let (rcx, rcy) = (cx - x0, cy - y0);
@@ -1016,7 +1044,11 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
         y = pointer[1] - GHOST_DY - ghost_h;
     }
     y = y.clamp(GHOST_EDGE, (ch - ghost_h - GHOST_EDGE).max(GHOST_EDGE));
-    let label_el = text(label_text).font(st).color(c.text).truncate().w(label_w).min_w(0.0).clip_soft(0.0);
+    let label_ink = Roles::readable_on(c.text, surface, 4.8);
+    let pill_bg = crate::roles::mix(surface, c.chip_fill.alpha(1.0), c.chip_fill.a);
+    let pill_ink = Roles::readable_on(c.dim, pill_bg, 4.8);
+    let ref_ink = Roles::readable_on(c.red, surface, 4.8);
+    let label_el = text(label_text).font(st).color(label_ink).truncate().w(label_w).min_w(0.0).clip_soft(0.0);
     let main_row = rune::row()
         .center_y()
         .gap(gap)
@@ -1025,7 +1057,7 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
         .children(pill_text.map(|pt| {
             text(pt)
                 .font(pill_font)
-                .color(Roles::readable_on(c.dim, c.on_page(c.chip_fill), 4.8))
+                .color(pill_ink)
                 .fill(c.chip_fill)
                 .border(1.0, c.chip_edge)
                 .radius(pill_h / 2.0)
@@ -1037,8 +1069,8 @@ fn ghost(cx: &Cx, t: &Tree, i: usize, pointer: [f32; 2], canvas_size: [f32; 2], 
             .key("map-ghost-refused")
             .center_y()
             .gap(4.0)
-            .child(rune::icon(&super::icons::WARNING, 12.0).color(c.readable_err()))
-            .child(text(why).font(ref_font).color(c.readable_err()).truncate().min_w(0.0))
+            .child(rune::icon(&super::icons::WARNING, 12.0).color(ref_ink))
+            .child(text(why).font(ref_font).color(ref_ink).truncate().min_w(0.0))
     });
     rune::col()
         .key("map-ghost")
@@ -1113,10 +1145,37 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
         color: Color::BLACK.alpha(if v.dark { 0.24 } else { 0.08 }),
         inset: false,
     };
+    let (rw, rg, rc) = super::focus_ring(v.p);
     let icon_btn = |key: &'static str, glyph: &'static rune::Icon, label: &'static str, help: String, run: fn(&mut App, &mut Tx)| {
+        super::focus::stop(
+            rune::row()
+                .key(key)
+                .size(24.0, 24.0)
+                .center()
+                .radius(4.0)
+                .hover(hud_hover)
+                .hover_group()
+                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
+                .cursor(rune::Cursor::Pointer)
+                .role("button")
+                .label(label)
+                .help(help)
+                .focus_ring(rw, rg, rc)
+                .control(move |s: &mut App, tx: &mut Tx| {
+                    run(s, tx);
+                    s.keys_to_note(tx);
+                })
+                .child(rune::icon(glyph, 12.0).color(hud_ink).group_color(c.text)),
+        )
+    };
+    let pct = format!("{}%", (zoom * 100.0).round() as i32);
+    let pct_font = styles::note(mono, 11.0, normal_lh(mono, 11.0)).features("'tnum' 1");
+    let reset = super::focus::stop(
         rune::row()
-            .key(key)
-            .size(24.0, 24.0)
+            .key("zoom-reset")
+            .h(24.0)
+            .min_w(42.0)
+            .px(5.0)
             .center()
             .radius(4.0)
             .hover(hud_hover)
@@ -1124,35 +1183,15 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
             .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
             .cursor(rune::Cursor::Pointer)
             .role("button")
-            .label(label)
-            .help(help)
-            .on_press_tx(move |s: &mut App, tx: &mut Tx| {
-                run(s, tx);
+            .label(format!("Zoom {pct}, reset to 100%"))
+            .help(tip("Zoom 100%", "app.zoom-reset"))
+            .focus_ring(rw, rg, rc)
+            .control(|s: &mut App, tx: &mut Tx| {
+                s.map_zoom_reset(tx);
                 s.keys_to_note(tx);
             })
-            .child(rune::icon(glyph, 12.0).color(hud_ink).group_color(c.text))
-    };
-    let pct = format!("{}%", (zoom * 100.0).round() as i32);
-    let pct_font = styles::note(mono, 11.0, normal_lh(mono, 11.0)).features("'tnum' 1");
-    let reset = rune::row()
-        .key("map-zoom-reset")
-        .h(24.0)
-        .min_w(42.0)
-        .px(5.0)
-        .center()
-        .radius(4.0)
-        .hover(hud_hover)
-        .hover_group()
-        .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-        .cursor(rune::Cursor::Pointer)
-        .role("button")
-        .label(format!("Zoom {pct}, reset to 100%"))
-        .help(tip("Zoom 100%", "app.zoom-reset"))
-        .on_press_tx(|s: &mut App, tx: &mut Tx| {
-            s.map_zoom_reset(tx);
-            s.keys_to_note(tx);
-        })
-        .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text));
+            .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
+    );
     let sep = el().size(1.0, 14.0).mx(2.0).fill(sep_color).inert();
     Some(
         rune::row()
@@ -1166,11 +1205,11 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
             .fill(hud_bg)
             .border(1.0, hud_edge)
             .box_shadow(shadow)
-            .child(icon_btn("map-zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
+            .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
             .child(reset)
-            .child(icon_btn("map-zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
+            .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
             .child(sep)
-            .child(icon_btn("map-zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx))),
+            .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx))),
     )
 }
 

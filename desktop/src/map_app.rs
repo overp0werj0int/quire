@@ -1573,11 +1573,16 @@ impl App {
         }
     }
 
-    /// Ctrl+Alt+1 to 6 (MAP-031).
+    /// Ctrl+Alt+1 to 6 (MAP-031): changes a heading's level, or converts a text node to that heading.
     pub fn map_level(&mut self, to: usize, tx: &mut Tx) {
+        self.map_convert(map::NewKind::Heading(to), tx);
+    }
+
+    /// Converts the selected existing Map node to `kind` (Paragraph, Heading, Task, Bullet, Number).
+    pub fn map_convert(&mut self, kind: map::NewKind, tx: &mut Tx) {
         if self.map_editable() {
             let t = self.map_tree();
-            let r = map::set_level(self.active_text(), &t, self.map_selected(), to);
+            let r = map::convert_kind(self.active_text(), &t, self.map_selected(), kind);
             self.map_try(&t, r, tx);
         }
     }
@@ -1668,16 +1673,10 @@ impl App {
     }
 
     /// Keymap fallback for `map.paste` when `Ctrl+V` wasn't intercepted by the platform clipboard
-    /// paste hook (e.g. headless script replay or a rebound paste chord).
+    /// paste hook (e.g. headless script replay or a rebound paste chord): reads the live OS
+    /// clipboard first, falling back to `last_copied` only when the OS clipboard is empty.
     pub fn map_paste_key(&mut self, tx: &mut Tx) {
-        if !self.map_editable() || self.map.inline.is_some() {
-            return;
-        }
-        if let Some(last) = self.map.last_copied.clone() {
-            self.map_paste(&last, tx);
-        } else {
-            self.map_paste_menu(tx);
-        }
+        self.map_paste_menu(tx);
     }
 }
 
@@ -1710,6 +1709,19 @@ impl App {
             }
             Editing::New(_) => self.map_selected(),
         })
+    }
+
+    /// Opens the Edit Sheet directly on the selected node's own lines (used by Image/Gallery
+    /// context menu "Edit" so clicking the image still opens the lightbox).
+    pub fn map_edit_sheet(&mut self, tx: &mut Tx) {
+        if !self.map_editable() || self.map.inline.is_some() {
+            return;
+        }
+        let t = self.map_tree();
+        let n = &t.nodes[self.map_selected()];
+        if !n.own.is_empty() {
+            self.open_sheet_lines(n.own.clone(), crate::sheet::Scope::Block, tx);
+        }
     }
 
     /// `F2`, `e` or a double click (MAP-016, MAP-019, MAP-020): the inline field on a text
@@ -2396,6 +2408,42 @@ mod tests {
             s.map_cancel(tx);
             assert!(s.map.inline.is_none(), "second consecutive Esc within 2s discards edit");
         });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn map_paste_key_prefers_live_clipboard_and_falls_back_to_last_copied() {
+        let dir = std::env::temp_dir().join(format!("quire-map-paste-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta\n\n## One\n\nParagraph.\n").unwrap();
+
+        let clip = rune::clipboard::memory();
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.use_clipboard(&clip);
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Beta.md", None, tx);
+            s.mode = crate::app::Mode::Map;
+            // Live external clipboard text must win over stale last_copied.
+            s.map.last_copied = Some("Stale internal copy".to_string());
+        });
+        clip.set_content(rune::ClipboardContent::new("Fresh external copy"));
+        rt.update(|s, tx| s.map_paste_key(tx));
+        rt.frame(1.0 / 60.0);
+        rt.frame(1.0 / 60.0);
+        let text = rt.state.active_text().to_string();
+        assert!(text.contains("Fresh external copy"), "live clipboard should win over stale last_copied: {text:?}");
+        assert!(!text.contains("Stale internal copy"), "stale last_copied must not shadow live clipboard: {text:?}");
+
+        // When OS clipboard is empty, map_paste_key falls back to last_copied.
+        clip.set_content(rune::ClipboardContent::default());
+        rt.update(|s, tx| s.map_paste_key(tx));
+        rt.frame(1.0 / 60.0);
+        rt.frame(1.0 / 60.0);
+        let text2 = rt.state.active_text().to_string();
+        assert!(text2.contains("Stale internal copy"), "empty OS clipboard should fall back to last_copied: {text2:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

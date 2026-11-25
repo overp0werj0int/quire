@@ -2512,7 +2512,7 @@ mod a11y_tests {
         });
         assert!(!q_foc, "search-box drops input focus ring while search-clear has focus");
 
-        // Find with matches: Tab moves to find-prev and drops find-bar's input ring.
+        // Find with matches: Tab moves through find-case, find-word to find-prev and drops find-bar's input ring.
         rt.update(|s, tx| {
             s.writer_find(tx);
             s.reader.find.q = rune::TextEdit::new("hello");
@@ -2523,15 +2523,21 @@ mod a11y_tests {
         step(&mut rt, 6);
         rt.key(tab.clone());
         step(&mut rt, 6);
-        assert_eq!(focused_key(&rt).as_deref(), Some("find-prev"), "Tab moves from find-input to find-prev when matches exist");
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-case"), "Tab moves from find-input to find-case");
         let mut f_foc = true;
         rt.update_if(|s, _| {
             f_foc = s.reader.find.q.focused;
             false
         });
-        assert!(!f_foc, "find-bar drops input focus ring while find-prev has focus");
+        assert!(!f_foc, "find-bar drops input focus ring while find-case has focus");
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-word"), "Tab moves from find-case to find-word");
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-prev"), "Tab moves from find-word to find-prev when matches exist");
 
-        // Find with 0 matches: find-prev & find-next are non-focusable, Tab jumps straight to find-close.
+        // Find with 0 matches: find-prev & find-next are non-focusable, Tab skips them to find-close.
         rt.update(|s, tx| {
             s.reader.find.q = rune::TextEdit::new("zzz_no_match_999");
             s.reader.find.q.focused = true;
@@ -2546,7 +2552,13 @@ mod a11y_tests {
         }
         rt.key(tab.clone());
         step(&mut rt, 6);
-        assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "0-match Tab jumps directly to find-close");
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-case"));
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-word"));
+        rt.key(tab.clone());
+        step(&mut rt, 6);
+        assert_eq!(focused_key(&rt).as_deref(), Some("find-close"), "0-match Tab skips disabled prev/next to find-close");
 
         // 4. Clicking `mode` into Preview restores focus to `note-keys`, and back to Source -> `editor`.
         rt.update(|s, tx| s.close_find(tx));
@@ -9184,7 +9196,7 @@ mod layer_matrix_tests {
         rt.update(|_, tx| tx.focus("file:note.md", true));
         settle(&mut rt);
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
-        for k in [Key::Down, Key::Down, Key::Enter] {
+        for k in [Key::Down, Key::Down, Key::Down, Key::Down, Key::Enter] {
             key(&mut rt, k, Mods::default());
         }
         let field = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("editor")).and_then(|e| e.text).unwrap_or_default();
@@ -9202,7 +9214,7 @@ mod layer_matrix_tests {
         rt.update(|_, tx| tx.focus("file:Box|a.md", true));
         settle(&mut rt);
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
-        for k in [Key::Down, Key::Down, Key::Down, Key::Enter] {
+        for k in [Key::Down, Key::Down, Key::Down, Key::Down, Key::Down, Key::Enter] {
             key(&mut rt, k, Mods::default());
         }
         let y0 = seen(&mut rt).page_y;
@@ -9583,7 +9595,7 @@ mod layer_matrix_tests {
         rt.update(|_, tx| tx.focus("file:Box|a.md", true));
         settle(&mut rt);
         key(&mut rt, Key::Function(10), Mods { shift: true, ..Mods::default() });
-        for k in [Key::Down, Key::Down, Key::Down, Key::Enter] {
+        for k in [Key::Down, Key::Down, Key::Down, Key::Down, Key::Down, Key::Enter] {
             key(&mut rt, k, Mods::default());
         }
         let before = seen(&mut rt);

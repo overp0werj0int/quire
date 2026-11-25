@@ -76,21 +76,21 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
     let (e, size) = match &bl.kind {
         Kind::Code { lang, text } => code(cx, lang, text, bl.pid, at, i, tail, chip_compact),
         Kind::Diff { lang, text, lines, added, removed } => diff(cx, lang, text, lines, (*added, *removed), bl.pid, at, i, tail, chip_compact),
-        Kind::Table(t) => table(cx, t, tone, tail),
+        Kind::Table(t) => table(cx, t, tone, i, tail, chip_compact),
         Kind::Quote { blocks } => {
             let (_, inset, inner) = cx.quote_parts(tone);
             let [w, h] = cx.quote_size(blocks, tone, max);
             let cap = TEXT_LINES * line(page::quote_size(cx.look.b), 1.6);
             let extra = if h > cap { cx.hidden_lines(blocks, inner, (w - inset).max(1.0), cap).max(1) } else { 0 };
-            capped(cx, cx.quote(blocks, tone), [w, h], cap, extra, tail, inset)
+            capped(cx, cx.quote(blocks, tone), [w, h], cap, extra, i, tail, inset, chip_compact)
         }
-        Kind::Alert { kind, blocks } => alert(cx, *kind, blocks, tone, tail),
+        Kind::Alert { kind, blocks } => alert(cx, *kind, blocks, tone, i, tail, chip_compact),
         Kind::Html { text } => {
             let [w, h] = cx.html_size(text, max);
             let cap = HTML_LINES * line(r(cx.look.b * 0.8), 1.5);
             let inset = 1.0 + r(cx.look.b * 0.9);
             let extra = if h > cap { cx.html_hidden_lines(text, w, cap) } else { 0 };
-            capped(cx, cx.html(text), [w, h], cap, extra, tail, inset)
+            capped(cx, cx.html(text), [w, h], cap, extra, i, tail, inset, chip_compact)
         }
         Kind::Image { img, .. } => image(cx, img, i, tail, chip_compact),
         Kind::Gallery { items } => gallery(cx, items, i, tail),
@@ -102,16 +102,25 @@ pub(super) fn card(cx: &Cx, bl: &Block, i: usize, tail: &str, chip_compact: Opti
 /// A card drawn by a reader builder (Quote or HTML): `inner` at its natural size `[w, h]`, shown
 /// at most `cap` tall with its bottom fading out and a `"+N more lines"` footer aligned to its
 /// text inset `inset_x` with comfortable clearance above the branch underline (MAP-052).
-fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, tail: &str, inset_x: f32) -> (El, [f32; 2]) {
+#[allow(clippy::too_many_arguments)]
+fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, i: usize, tail: &str, inset_x: f32, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let shown = h.min(cap).ceil();
     if h <= cap || extra == 0 {
-        return (el().size(w, shown).child(inner.pin(Some(0.0), Some(0.0), None, None).w(w)), [w, shown]);
+        let compact = chip_compact.map(|side| side.min((w.min(shown) - 12.0).max(16.0)));
+        let out = el()
+            .size(w, shown)
+            .hover_group()
+            .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
+            .child(inner.pin(Some(0.0), Some(0.0), None, None).w(w))
+            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+        return (out, [w, shown]);
     }
     let avail = (w - inset_x).max(0.0);
     let more_el = more_fit(cx, extra, "line", tail, avail, cx.look.c.dim);
     let more_lh = more_style(cx, pcode::badge_size(cx.look.b)).line_height;
     let foot_top = shown + 4.0;
     let total_h = (foot_top + more_lh + 6.0).ceil();
+    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
     let clipped = el()
         .pin(Some(0.0), Some(0.0), None, None)
         .size(w, shown)
@@ -119,14 +128,17 @@ fn capped(cx: &Cx, inner: El, [w, h]: [f32; 2], cap: f32, extra: usize, tail: &s
         .child(inner.pin(Some(0.0), Some(0.0), None, None).w(w));
     let out = el()
         .size(w, total_h)
+        .hover_group()
+        .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(clipped)
-        .child(more_el.pin(Some(inset_x), Some(foot_top), None, None));
+        .child(more_el.pin(Some(inset_x), Some(foot_top), None, None))
+        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 
 /// MAP-052: an alert card with its rounded tinted fill and border enclosing both the clipped body
 /// and its `"+N more lines"` footer when taller than `TEXT_LINES`.
-fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, tail: &str) -> (El, [f32; 2]) {
+fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let b = cx.look.b;
     let max = cx.look.width;
     let [w, full_h] = cx.alert_size(kind, blocks, tone, max);
@@ -136,7 +148,14 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, tail
     let full_body_h = full_h - (2.0 * pad + title_h + gap);
     if full_body_h <= body_cap {
         let h = full_h.ceil();
-        return (el().size(w, h).child(cx.alert(kind, blocks, tone).pin(Some(0.0), Some(0.0), None, None).w(w)), [w, h]);
+        let compact = chip_compact.map(|side| side.min((w.min(h) - 12.0).max(16.0)));
+        let out = el()
+            .size(w, h)
+            .hover_group()
+            .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
+            .child(cx.alert(kind, blocks, tone).pin(Some(0.0), Some(0.0), None, None).w(w))
+            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
+        return (out, [w, h]);
     }
     let shown_body_h = body_cap.ceil();
     let inner_w = (w - 2.0 * pad).max(1.0);
@@ -147,6 +166,7 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, tail
     let foot_gap = r(b * 0.35);
     let foot_top = body_top + shown_body_h + foot_gap;
     let total_h = (foot_top + more_lh + (pad * 0.75).round()).ceil();
+    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
     let body = el()
         .pin(Some(pad), Some(body_top), None, None)
         .size(inner_w, shown_body_h)
@@ -158,9 +178,12 @@ fn alert(cx: &Cx, kind: crate::blocks::Alert, blocks: &[Block], tone: Tone, tail
         .clip_rounded(4.0)
         .fill(fill)
         .border(1.0, border)
+        .hover_group()
+        .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(title.pin(Some(pad), Some(pad), None, None).w(inner_w))
         .child(body)
-        .child(more_el.pin(Some(pad), Some(foot_top), None, None));
+        .child(more_el.pin(Some(pad), Some(foot_top), None, None))
+        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 
@@ -423,7 +446,7 @@ fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], (added, removed): (u
 
 /// MAP-051: the reader's table at the card's widest, capped at 8 body rows. When truncated,
 /// `"+N more rows"` sits inside the same bordered table card with matching horizontal inset.
-fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
+fn table(cx: &Cx, t: &Table, tone: Tone, i: usize, tail: &str, chip_compact: Option<f32>) -> (El, [f32; 2]) {
     let look = cx.look;
     let c = &look.c;
     let b = look.b;
@@ -454,13 +477,21 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
     let fades = (if natural > w { r(b * 2.8) } else { 0.0 }, if rest > 0 { BOTTOM_FADE } else { 0.0 });
     if rest == 0 {
         let grid_h = inner_h + 2.0;
+        let compact = chip_compact.map(|side| side.min((w.min(grid_h) - 12.0).max(16.0)));
         let frame = g.frame(cx, shown).pin(Some(0.0), Some(0.0), None, None);
-        let out = el().size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, 0.0).child(frame);
+        let clipped = el().pin(Some(0.0), Some(0.0), None, None).size(w, grid_h).clip_fade_linear(0.0, 0.0, fades.0, 0.0).child(frame);
+        let out = el()
+            .size(w, grid_h)
+            .hover_group()
+            .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
+            .child(clipped)
+            .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
         return (out, [w, grid_h]);
     }
     let foot_py = r(b * 0.3);
     let foot_h = more_style(cx, pcode::badge_size(b)).line_height + 2.0 * foot_py;
     let total_h = inner_h + foot_h + 2.0;
+    let compact = chip_compact.map(|side| side.min((w.min(total_h) - 12.0).max(16.0)));
     let grid = el()
         .pin(Some(1.0), Some(1.0), None, None)
         .size(w - 2.0, inner_h)
@@ -479,8 +510,11 @@ fn table(cx: &Cx, t: &Table, tone: Tone, tail: &str) -> (El, [f32; 2]) {
         .radius(4.0)
         .clip_rounded(4.0)
         .border(1.0, c.hairline)
+        .hover_group()
+        .hover_motion(rune::Curve::linear(0.12), rune::Curve::linear(0.12))
         .child(grid)
-        .child(foot);
+        .child(foot)
+        .child(edit_chip(cx, i, tail, compact).pin(None, Some(6.0), Some(6.0), None).group_opacity(0.0, 1.0));
     (out, [w, total_h])
 }
 

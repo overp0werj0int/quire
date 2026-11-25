@@ -211,7 +211,11 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-127** [adapted: 0014] [verify: unit, script] map.move-right (map): `Alt+Right`. Moves the selected node right (indent or outdent according to side) (MAP-031).
 - **KEY-159** [quire] [verify: -] map.layout (map): `L`. Opens the map layout picker (MAP-089).
 - **KEY-158** [adapted: 0014] [verify: unit, script] map.move-left (map): `Alt+Left`. Moves the selected node left (outdent or indent according to side) (MAP-031).
-- **KEY-128** [adapted: 0014] [verify: unit, script] map.heading-1 to map.heading-6 (map): `Ctrl+Alt+1` to `Ctrl+Alt+6`. Sets a selected heading to level 1 to 6 and shifts its subheadings by the delta (MAP-031).
+- **KEY-128** [adapted: 0014] [verify: unit, script] map.heading-1 to map.heading-6 (map): `Ctrl+Alt+1` to `Ctrl+Alt+6`. Sets a selected heading to level 1 to 6 and shifts its subheadings by the delta, or converts a text node to that heading (MAP-031).
+- **KEY-190** [quire] [verify: -] map.paragraph (map): `Ctrl+Alt+0`. Converts the selected text node to a paragraph.
+- **KEY-191** [quire] [verify: -] map.task (map): `Ctrl+Shift+7`. Converts the selected text node to a task item.
+- **KEY-192** [quire] [verify: -] map.bulleted (map): `Ctrl+Shift+8`. Converts the selected text node to a bulleted list item.
+- **KEY-193** [quire] [verify: -] map.numbered (map): `Ctrl+Shift+9`. Converts the selected text node to a numbered list item.
 - **KEY-129** [adapted: 0014] [verify: unit, script] map.follow-link (map): `Ctrl+Enter`. Activates the selected node's first link or tag, or opens the lightbox on an image card (MAP-054).
 - **KEY-130** [adapted: 0014] [verify: unit, script] map.find (map): `Ctrl+F` or `/`. Opens the find bar with focus in its field (MAP-066).
 - **KEY-131** [adapted: 0014] [verify: unit, script] map.find-next (map): `n`, `F3` or `Ctrl+G`. Steps to the next match; `n` acts only while a query exists (MAP-066).

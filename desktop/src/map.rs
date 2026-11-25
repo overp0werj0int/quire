@@ -1792,6 +1792,120 @@ pub fn set_level(src: &str, t: &Tree, i: usize, to: usize) -> Result<Splice, Ref
     Ok(traced(&old, &new, &out, span.start))
 }
 
+/// Whether existing node `i` can be converted between Paragraph, Heading, Task, Bullet and Number.
+pub fn can_convert(t: &Tree, i: usize) -> bool {
+    let n = &t.nodes[i];
+    !n.card() && matches!(n.kind, NodeKind::Heading { .. } | NodeKind::Item { .. } | NodeKind::Block(BlockKind::Paragraph))
+}
+
+/// Converts existing text node `i` to `to` (Paragraph, Heading 1..6, Task, Bullet or Number),
+/// preserving its text and adjusting child indentation when converting between list item kinds.
+pub fn convert_kind(src: &str, t: &Tree, i: usize, to: NewKind) -> Result<Splice, Refused> {
+    let n = &t.nodes[i];
+    if !can_convert(t, i) {
+        return Err(Some("This node cannot be converted"));
+    }
+    if to.is(&n.kind) {
+        return Err(None);
+    }
+    if matches!(n.kind, NodeKind::Heading { .. })
+        && let NewKind::Heading(l) = to
+    {
+        return set_level(src, t, i, l);
+    }
+    if matches!(n.kind, NodeKind::Item { .. })
+        && matches!(to, NewKind::Paragraph | NewKind::Heading(_))
+        && !n.children.is_empty()
+    {
+        return Err(Some("Move or remove child items first"));
+    }
+    let old: Vec<&str> = src.split('\n').collect();
+    let Some(x) = text(&old, t, i) else {
+        return Err(Some("This node cannot be converted"));
+    };
+    let (indent, indent_cols) = match &n.kind {
+        NodeKind::Item { .. } | NodeKind::Heading { .. } => {
+            let first = old[n.own.start];
+            let (cols, b) = lead(first);
+            (first[..b].to_string(), cols)
+        }
+        NodeKind::Block(BlockKind::Paragraph) => match n.parent.map(|p| &t.nodes[p].kind) {
+            Some(NodeKind::Item { content_col, .. }) => (" ".repeat(*content_col), *content_col),
+            _ => (String::new(), 0),
+        },
+        _ => (String::new(), 0),
+    };
+    let (body, new_col): (Vec<String>, usize) = match to {
+        NewKind::Heading(l) => {
+            let joined = x.bodies.iter().map(|s| s.trim()).collect::<Vec<_>>().join(" ");
+            (vec![format!("{indent}{} {joined}", "#".repeat(l.clamp(1, 6)))], indent_cols)
+        }
+        NewKind::Paragraph => {
+            let lines = x.bodies.iter().map(|l| format!("{indent}{l}")).collect();
+            (lines, indent_cols)
+        }
+        NewKind::Bullet => {
+            let col = indent_cols + 2;
+            let cont = " ".repeat(col);
+            let lines = x
+                .bodies
+                .iter()
+                .enumerate()
+                .map(|(k, l)| if k == 0 { format!("{indent}- {l}") } else { format!("{cont}{l}") })
+                .collect();
+            (lines, col)
+        }
+        NewKind::Task => {
+            let col = indent_cols + 2;
+            let cont = " ".repeat(col);
+            let lines = x
+                .bodies
+                .iter()
+                .enumerate()
+                .map(|(k, l)| if k == 0 { format!("{indent}- [ ] {l}") } else { format!("{cont}{l}") })
+                .collect();
+            (lines, col)
+        }
+        NewKind::Number => {
+            let col = indent_cols + 3;
+            let cont = " ".repeat(col);
+            let lines = x
+                .bodies
+                .iter()
+                .enumerate()
+                .map(|(k, l)| if k == 0 { format!("{indent}1. {l}") } else { format!("{cont}{l}") })
+                .collect();
+            (lines, col)
+        }
+    };
+    let old_col = match n.kind {
+        NodeKind::Item { content_col, .. } => content_col,
+        _ => indent_cols,
+    };
+    let delta_col = new_col as isize - old_col as isize;
+    let real = old.len() - usize::from(src.ends_with('\n'));
+    let need_blank = matches!(n.kind, NodeKind::Item { .. }) && matches!(to, NewKind::Paragraph | NewKind::Heading(_));
+    let before = need_blank && n.own.start > 0 && !blank(old[n.own.start - 1]);
+    let after = need_blank && n.own.end < real && !blank(old[n.own.end]);
+    let mut new: Vec<String> = old.iter().map(|l| l.to_string()).collect();
+    if delta_col != 0 && n.own.end < n.span.end {
+        for l in n.own.end..n.span.end {
+            new[l] = shift(&new[l], delta_col);
+        }
+    }
+    let mut ins = Vec::with_capacity(body.len() + 2);
+    if before {
+        ins.push(String::new());
+    }
+    ins.extend(body);
+    if after {
+        ins.push(String::new());
+    }
+    let focus = n.own.start + usize::from(before);
+    new.splice(n.own.clone(), ins);
+    Ok(splice_of(&old, &new, Some(focus)))
+}
+
 /// Node `i`'s Markdown as written: its own lines, or with `branch` everything under it too
 /// (MAP-059). The virtual root's own text is its label.
 pub fn markdown(src: &str, t: &Tree, i: usize, branch: bool) -> String {
@@ -2016,5 +2130,31 @@ mod paste_tests {
         let five = t.nodes.iter().position(|n| n.label == "Five").unwrap();
         let res = paste(src, &t, Add::Child(five), "## Top\n\n### Deep");
         assert_eq!(res.err(), Some(Some(PAST_H6)));
+    }
+
+    fn apply_convert(src: &str, label: &str, to: NewKind) -> Result<String, Refused> {
+        let doc = blocks::build(src);
+        let t = build(&doc, src, "Note");
+        let idx = t.nodes.iter().position(|n| n.label == label).unwrap();
+        let s = convert_kind(src, &t, idx, to)?;
+        let mut lines: Vec<String> = src.split('\n').map(str::to_string).collect();
+        lines.splice(s.lines.clone(), s.with.clone());
+        Ok(lines.join("\n"))
+    }
+
+    #[test]
+    fn convert_kind_converts_paragraph_to_task_bullet_number_and_heading() {
+        let src = "# Beta Note\n\nOriginal local version of Beta.\n\n## Details\n";
+        let as_task = apply_convert(src, "Original local version of Beta.", NewKind::Task).unwrap();
+        assert!(as_task.contains("- [ ] Original local version of Beta."), "{as_task:?}");
+        let as_bullet = apply_convert(&as_task, "Original local version of Beta.", NewKind::Bullet).unwrap();
+        assert!(as_bullet.contains("- Original local version of Beta."), "{as_bullet:?}");
+        assert!(!as_bullet.contains("- [ ]"), "{as_bullet:?}");
+        let as_num = apply_convert(&as_bullet, "Original local version of Beta.", NewKind::Number).unwrap();
+        assert!(as_num.contains("1. Original local version of Beta."), "{as_num:?}");
+        let as_h2 = apply_convert(&as_num, "Original local version of Beta.", NewKind::Heading(2)).unwrap();
+        assert!(as_h2.contains("## Original local version of Beta."), "{as_h2:?}");
+        let back_para = apply_convert(&as_h2, "Original local version of Beta.", NewKind::Paragraph).unwrap();
+        assert!(back_para.contains("\nOriginal local version of Beta.\n"), "{back_para:?}");
     }
 }

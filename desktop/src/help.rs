@@ -196,6 +196,7 @@ const MAP: &[Group] = &[
             h("Move the node", &["map.move-up", "map.move-down", "map.move-left", "map.move-right"]),
             h("Outdent", &["map.outdent"]),
             k("Heading 1 to 6", &["map.heading-1", "map.heading-6"]),
+            h("Convert to paragraph / task / bullet / number", &["map.paragraph", "map.task", "map.bulleted", "map.numbered"]),
             h("Undo / redo", &["map.undo", "map.redo"]),
             h("Cut / copy node / branch", &["map.cut", "map.copy-node", "map.copy-subtree"]),
             h("Copy the whole note", &["map.copy-all"]),

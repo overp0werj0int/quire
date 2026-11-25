@@ -285,7 +285,13 @@ impl App {
     /// Whether the edit menu's field has text selected, for Cut and Copy.
     pub fn edit_menu_selected(&self) -> bool {
         let Some(Menu { of: MenuOf::Edit(field), .. }) = self.menu() else { return false };
-        let edit = if *field == crate::sheet::EDITOR { self.sheet().map(|s| &s.edit) } else { self.active.as_ref().and_then(|a| self.edits.get(a)) };
+        let edit = if *field == crate::sheet::EDITOR {
+            self.sheet().map(|s| &s.edit)
+        } else if *field == crate::map_app::FIELD {
+            self.map.inline.as_ref().map(|e| &e.edit)
+        } else {
+            self.active.as_ref().and_then(|a| self.edits.get(a))
+        };
         edit.is_some_and(|e| e.anchor != e.focus)
     }
 }

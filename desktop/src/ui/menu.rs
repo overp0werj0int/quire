@@ -346,7 +346,12 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
     let folded = v.s.map_view().is_some_and(|m| m.folds.whole(id));
     let fold = (!n.children.is_empty()).then(|| on("menu-fold", if folded { "Unfold" } else { "Fold" }, "map.toggle-fold", true, |s, i, tx| s.map_toggle(i, None, false, tx)));
     let copy = on("menu-copy", "Copy Markdown", "map.copy-node", true, |s, _, tx| s.map_copy(false, tx));
-    let edit = on("menu-edit", "Edit", "map.edit", true, |s, _, tx| s.map_edit(tx));
+    let is_media = matches!(&n.body, crate::map::Body::Card(bl) if matches!(bl.kind, crate::blocks::Kind::Image { .. } | crate::blocks::Kind::Gallery { .. }));
+    let edit = if is_media {
+        on("menu-edit", "Edit", "map.edit", true, |s, _, tx| s.map_edit_sheet(tx))
+    } else {
+        on("menu-edit", "Edit", "map.edit", true, |s, _, tx| s.map_edit(tx))
+    };
     match n.kind {
         NodeKind::Footnotes => fold.into_iter().chain([copy]).collect(),
         NodeKind::Footnote { .. } => vec![edit, copy],
@@ -364,6 +369,14 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
                 ..item("Edit properties", Box::new(|s, tx| s.map_props(tx)))
             }));
             items.extend(fold);
+            if !root && !v.s.active_locked() && crate::map::can_convert(&t, i) {
+                use crate::map::NewKind;
+                items.push(on("menu-convert-para", "Convert to paragraph", "map.paragraph", true, |s, _, tx| s.map_convert(NewKind::Paragraph, tx)));
+                items.push(on("menu-convert-heading", "Convert to heading", "map.heading-2", true, |s, _, tx| s.map_convert(NewKind::Heading(2), tx)));
+                items.push(on("menu-convert-task", "Convert to task", "map.task", true, |s, _, tx| s.map_convert(NewKind::Task, tx)));
+                items.push(on("menu-convert-bullet", "Convert to bulleted list", "map.bulleted", true, |s, _, tx| s.map_convert(NewKind::Bullet, tx)));
+                items.push(on("menu-convert-number", "Convert to numbered list", "map.numbered", true, |s, _, tx| s.map_convert(NewKind::Number, tx)));
+            }
             items.extend((!root && !v.s.active_locked()).then(|| on("menu-cut", "Cut", "map.cut", true, |s, _, tx| s.map_cut(tx))));
             items.push(copy);
             items.push(on("menu-copy-branch", "Copy branch", "map.copy-subtree", true, |s, _, tx| s.map_copy(true, tx)));
