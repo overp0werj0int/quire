@@ -102,6 +102,8 @@ pub const TABLE: &[Action] = &[
     a(101, "app.previous-tab", "Previous tab", &[Global], Quire, &["Ctrl+Shift+Tab"]),
     a(186, "app.nav-back", "Go back", &[Reader, Writer], Quire, &["Alt+Left"]),
     a(187, "app.nav-forward", "Go forward", &[Reader, Writer], Quire, &["Alt+Right"]),
+    a(188, "note.lock", "Lock or lock now", &[Global], Quire, &["Ctrl+Alt+L"]),
+    a(189, "note.lock-all", "Lock all notes", &[Global], Quire, &["Ctrl+Alt+Shift+L"]),
     // Reader.
     a(24, "reader.scroll-down", "Scroll down", &[Reader], In, &["j", "Down"]),
     a(25, "reader.scroll-up", "Scroll up", &[Reader], In, &["k", "Up"]),

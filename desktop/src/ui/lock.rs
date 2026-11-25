@@ -175,9 +175,16 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
             );
         return Card { el: panel, plane: Some(col().center().px(16.0)) };
     }
-    let err = match dlg {
-        LockDialog::Set(e) => e.as_deref(),
-        LockDialog::ConfirmRemove => None,
+    let (changing, err) = match dlg {
+        LockDialog::Set(e) => (false, e.as_deref()),
+        LockDialog::Change(e) => (true, e.as_deref()),
+        LockDialog::ConfirmRemove => (false, None),
+    };
+    let title = if changing { "Change password" } else { "Lock this note" };
+    let desc = if changing {
+        "Re-encrypts this note with a new password without writing plain text to disk. If you forget it, nobody can open the note."
+    } else {
+        "Quire encrypts the note with this password. If you forget it, nobody can open the note."
     };
     let field = |key: &'static str, title: &str, ph: &'static str, submit: fn(&mut App, &mut Tx)| {
         col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), submit))
@@ -198,20 +205,22 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
         .box_shadow(theme::settings_shadows()[0])
         .box_shadow(theme::settings_shadows()[1])
         .role("dialog")
-        .label("Lock this note")
+        .label(title)
         .child(
             col()
                 .gap(6.0)
                 // Match the lock panel and modal heading scale (`TYPOPOLISH`).
-                .child(label("Lock this note", sans(17.0, 600.0), p.ink))
-                .child(label("Quire encrypts the note with this password. If you forget it, nobody can open the note.", sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
+                .child(label(title, sans(17.0, 600.0), p.ink))
+                .child(label(desc, sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
         )
-        .child(field("lock-pass", "Password", "At least 8 characters", focus_repeat))
-        .child(field("lock-repeat", "Repeat password", "The same password again", |s, tx| s.lock_note(tx)));
+        .child(field("lock-pass", if changing { "New password" } else { "Password" }, "At least 8 characters", focus_repeat))
+        .child(field("lock-repeat", if changing { "Repeat new password" } else { "Repeat password" }, "The same password again", |s, tx| s.lock_note(tx)));
     if let Some(e) = err {
         panel = panel.child(label(e, sans(12.5, 400.0), p.err).wrap());
     }
     let busy = v.s.lock_busy() == Some(crate::lock_app::LockJobKind::Locking);
+    let ok_label = if changing { "Change" } else { "Lock" };
+    let busy_label = if changing { "Changing…" } else { "Locking…" };
     let lock_btn = if busy {
         row()
             .key("lock-ok")
@@ -221,10 +230,10 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
             .radius(7.0)
             .fill(p.button.alpha(0.6))
             .disabled(true)
-            .label("Locking…")
-            .child(label("Locking…", sans(13.0, 500.0), p.on_acc).key("lock-busy"))
+            .label(busy_label)
+            .child(label(busy_label, sans(13.0, 500.0), p.on_acc).key("lock-busy"))
     } else {
-        primary_button(p, "lock-ok", "Lock", 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))
+        primary_button(p, "lock-ok", ok_label, 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))
     };
     panel = panel.child(
         row()

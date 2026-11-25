@@ -332,6 +332,13 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.previous-tab" => |s, tx| s.step_tab(false, tx),
         "app.nav-back" => |s, tx| s.nav_back(tx),
         "app.nav-forward" => |s, tx| s.nav_forward(tx),
+        "note.lock" => |s, tx| s.ask_lock(tx),
+        "note.lock-all" => |s, tx| {
+            if !s.unlocked.is_empty() || s.parked_has_unlocked() {
+                s.lock_all_notes(tx);
+                s.toast("Locked all notes", tx);
+            }
+        },
         "app.escape" => |s, tx| {
             s.escape(tx);
         },

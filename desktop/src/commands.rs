@@ -131,18 +131,19 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     }
     if let Some(a) = s.active.as_deref() {
         if s.note_unlocked(a) {
-            v.push(cmd(lock_name(true), "", |s, tx| {
+            v.push(cmd(lock_name(true), "note.lock", |s, tx| {
                 s.relock();
                 tx.focus(crate::ui::lock::PASS, false);
             }));
+            v.push(cmd("Change password…", "", |s, tx| s.ask_change_password(tx)));
             v.push(cmd("Remove password", "", |s, tx| s.ask_remove_password(tx)));
         } else if !s.note_locked(a) {
-            v.push(cmd(lock_name(false), "", |s, tx| s.ask_lock(tx)));
+            v.push(cmd(lock_name(false), "note.lock", |s, tx| s.ask_lock(tx)));
         }
     }
     if !s.unlocked.is_empty() || s.parked_has_unlocked() {
-        v.push(cmd("Lock all notes", "", |s, tx| {
-            s.lock_all_notes();
+        v.push(cmd("Lock all notes", "note.lock-all", |s, tx| {
+            s.lock_all_notes(tx);
             s.toast("Locked all notes", tx);
         }));
     }

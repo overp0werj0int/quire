@@ -65,6 +65,8 @@ Notes on reading this file:
 - **KEY-101** [quire] [verify: -] app.previous-tab (global): `Ctrl+Shift+Tab`. Switches to the previous tab in the Open shelf, wrapping around.
 - **KEY-186** [quire] [verify: -] app.nav-back (reader, writer): `Alt+Left`. Navigates back to the previously visited note in history.
 - **KEY-187** [quire] [verify: -] app.nav-forward (reader, writer): `Alt+Right`. Navigates forward to the next note in history.
+- **KEY-188** [quire] [verify: -] note.lock (global): `Ctrl+Alt+L`. Locks a plain note with a password, or immediately re-locks an unlocked note.
+- **KEY-189** [quire] [verify: -] note.lock-all (global): `Ctrl+Alt+Shift+L`. Immediately re-locks every unlocked note in memory.
 
 ## Reader
 

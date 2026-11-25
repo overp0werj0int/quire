@@ -44,7 +44,7 @@ fn item(label: &'static str, run: Run) -> Item {
 pub(super) fn menu(v: V, m: &Menu) -> Card {
     let el = match &m.of {
         MenuOf::Folder => folder(v, m.at),
-        MenuOf::Tree(on) => list(v, "tree-menu", m.at, 200.0, None, 0.0, tree(on, m.at)),
+        MenuOf::Tree(on) => list(v, "tree-menu", m.at, 200.0, None, 0.0, tree(v, on, m.at)),
         MenuOf::DeleteFolder(f) => confirm_delete_folder(v, f, m.at),
         MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, 0.0, edit(v)),
         MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, 0.0, block(v, *line)),
@@ -132,7 +132,52 @@ fn recent_vault(path: &std::path::Path) -> Vec<Item> {
     vec![Item { key: Some("menu-forget"), ..item("Remove from recent", Box::new(move |s, tx| s.forget_vault(&p, tx))) }]
 }
 
-/// An Open shelf tab's context menu: Rename (folder mode), Copy path, Close, Close others.
+/// Shared lock actions for a note path in the file tree or Open shelf tab menu.
+fn lock_menu_items(v: V, path: &str) -> Vec<Item> {
+    let mut items = Vec::new();
+    let lock_key = Some(v.s.keymap.label("note.lock")).filter(|k| !k.is_empty());
+    if v.s.note_unlocked(path) {
+        let (p1, p2, p3) = (path.to_string(), path.to_string(), path.to_string());
+        items.push(Item {
+            key: Some("menu-lock-now"),
+            keys: lock_key,
+            ..item("Lock now", Box::new(move |s, tx| s.relock_path(&p1, tx)))
+        });
+        items.push(Item {
+            key: Some("menu-change-pass"),
+            ..item("Change password…", Box::new(move |s, tx| {
+                if s.active.as_deref() != Some(p2.as_str()) {
+                    s.open_file(&p2, None, tx);
+                }
+                s.ask_change_password(tx);
+            }))
+        });
+        items.push(Item {
+            key: Some("menu-remove-pass"),
+            ..item("Remove password", Box::new(move |s, tx| {
+                if s.active.as_deref() != Some(p3.as_str()) {
+                    s.open_file(&p3, None, tx);
+                }
+                s.ask_remove_password(tx);
+            }))
+        });
+    } else if !v.s.note_locked(path) {
+        let p1 = path.to_string();
+        items.push(Item {
+            key: Some("menu-lock"),
+            keys: lock_key,
+            ..item("Lock with password…", Box::new(move |s, tx| {
+                if s.active.as_deref() != Some(p1.as_str()) {
+                    s.open_file(&p1, None, tx);
+                }
+                s.ask_lock(tx);
+            }))
+        });
+    }
+    items
+}
+
+/// An Open shelf tab's context menu: Rename (folder mode), Copy path, Lock actions, Close, Close others.
 fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
     let mut items = Vec::new();
     if let crate::app::Shelved::Tab(p) = t {
@@ -147,6 +192,16 @@ fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
         key: Some("menu-tab-copy-path"),
         ..item("Copy path", Box::new(move |s, tx| s.copy_shelved_path(&t1, tx)))
     });
+    match t {
+        crate::app::Shelved::Tab(p) => items.extend(lock_menu_items(v, p)),
+        crate::app::Shelved::File(f) => {
+            if v.s.note_path().as_deref() == Some(f.as_path())
+                && let Some(a) = v.s.active.as_deref()
+            {
+                items.extend(lock_menu_items(v, a));
+            }
+        }
+    }
     let close_key = Some(v.s.keymap.label("app.close-tab")).filter(|k| !k.is_empty());
     items.push(Item {
         key: Some("menu-tab-close"),
@@ -164,9 +219,9 @@ fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
     items
 }
 
-/// The tree's menu: new notes and folders, rename, move or delete for a note, and rename or delete
-/// for a folder.
-fn tree(on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
+/// The tree's menu: new notes and folders, rename, move, lock or delete for a note, and rename or
+/// delete for a folder.
+fn tree(v: V, on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
     match on.clone() {
         MenuOn::Folder(f) => {
             let (f2, f3, f4) = (f.clone(), f.clone(), f.clone());
@@ -192,6 +247,7 @@ fn tree(on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
             if !md::dir(&n).is_empty() {
                 items.push(item("Move to folder root", Box::new(move |s, tx| s.move_note(&n3, "", tx))));
             }
+            items.extend(lock_menu_items(v, &n));
             items.push(item("Delete note", Box::new(move |s, tx| {
                 s.delete_path(&n);
                 s.row_deleted(tx);

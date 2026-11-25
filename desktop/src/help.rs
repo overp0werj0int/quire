@@ -57,6 +57,7 @@ const APP: Group = (
         h("Zen mode", &["app.focus-mode"]),
         h("Settings", &["app.settings"]),
         h("Insert an image", &["app.insert-image"]),
+        h("Lock note / lock all", &["note.lock", "note.lock-all"]),
         h("Undo the delete", &["app.undo-delete"]),
         h("Quit", &["app.quit"]),
     ],

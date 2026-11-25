@@ -20,6 +20,8 @@ use crate::sheet::Sheet;
 pub enum LockDialog {
     /// Setting a new password, with why the last try was refused.
     Set(Option<String>),
+    /// Changing the password of an already-unlocked note in place, with any validation error.
+    Change(Option<String>),
     /// Confirming removing the password and saving the note as plain text on disk.
     ConfirmRemove,
 }
@@ -265,14 +267,14 @@ impl App {
     #[cfg(test)]
     pub fn lock_error(&self) -> Option<&str> {
         self.open_layers().find_map(|l| match l {
-            Layer::Lock(LockDialog::Set(e)) => e.as_deref(),
+            Layer::Lock(LockDialog::Set(e) | LockDialog::Change(e)) => e.as_deref(),
             _ => None,
         })
     }
 
     /// The lock dialog refuses a password, and says why.
     pub fn refuse_lock(&mut self, why: String) {
-        if let Some(Layer::Lock(LockDialog::Set(e))) = self.layers.last_mut().map(|o| &mut o.layer) {
+        if let Some(Layer::Lock(LockDialog::Set(e) | LockDialog::Change(e))) = self.layers.last_mut().map(|o| &mut o.layer) {
             *e = Some(why);
         }
     }

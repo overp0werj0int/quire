@@ -18,7 +18,7 @@ pub enum LockJobKind {
 }
 
 enum LockResult {
-    Locked { id: u64, rel: String, text: String, key: lock::Key },
+    Locked { id: u64, rel: String, text: String, key: lock::Key, changing: bool },
     Unlocked { id: u64, rel: String, res: Result<(String, lock::Key), String> },
 }
 
@@ -143,11 +143,27 @@ impl App {
         tx.focus("lock-pass", false);
     }
 
-    /// Locks the active note with the password in the dialog, running PBKDF2 off the UI thread.
+    /// Opens the dialog that changes the active unlocked note's password in place.
+    pub fn ask_change_password(&mut self, tx: &mut Tx) {
+        let Some(a) = self.active.as_deref() else { return };
+        if !self.note_unlocked(a) {
+            return;
+        }
+        self.fields.remove("lock-pass");
+        self.fields.remove("lock-repeat");
+        self.reveal.remove("lock-pass");
+        self.reveal.remove("lock-repeat");
+        self.open_layer(Layer::Lock(LockDialog::Change(None)), tx);
+        tx.focus("lock-pass", false);
+    }
+
+    /// Locks (or re-encrypts in place for `Change`) the active note with the password in the
+    /// dialog, running PBKDF2 off the UI thread.
     pub fn lock_note(&mut self, tx: &mut Tx) {
         if self.lock_job.is_some() {
             return;
         }
+        let changing = matches!(self.layer(), Some(Layer::Lock(LockDialog::Change(_))));
         let pass = self.fields.get("lock-pass").map(|e| e.text.clone()).unwrap_or_default();
         let repeat = self.fields.get("lock-repeat").map(|e| e.text.clone()).unwrap_or_default();
         if pass.chars().count() < lock::MIN_PASSWORD {
@@ -159,8 +175,11 @@ impl App {
             return;
         }
         let Some(rel) = self.active.clone() else { return };
+        if changing && !self.note_unlocked(&rel) {
+            return;
+        }
         let text = self.active_text().to_string();
-        if let Some(Layer::Lock(LockDialog::Set(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
+        if let Some(Layer::Lock(LockDialog::Set(err) | LockDialog::Change(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
             *err = None;
         }
         let (tx_res, rx) = mpsc::channel();
@@ -170,13 +189,30 @@ impl App {
         let id = self.lock_job_seq;
         let _ = std::thread::Builder::new().name("quire-kdf".into()).spawn(move || {
             let key = lock::new_key(&pass);
-            let _ = tx_res.send(LockResult::Locked { id, rel: rel_w, text, key });
+            let _ = tx_res.send(LockResult::Locked { id, rel: rel_w, text, key, changing });
             if let Some(w) = waker {
                 w();
             }
         });
         self.lock_job = Some(LockJob { kind: LockJobKind::Locking, rx, started_at: self.now.get(), started_wall: Instant::now() });
         tx.wake_after(Duration::from_millis(16));
+    }
+
+    /// Locks `rel` again if unlocked; if `rel` is the active note, moves focus into `unlock-pass`.
+    pub fn relock_path(&mut self, rel: &str, tx: &mut Tx) {
+        if !self.unlocked.contains_key(rel) {
+            return;
+        }
+        self.flush_notes();
+        self.unlocked.remove(rel);
+        self.edits.remove(rel);
+        if self.active.as_deref() == Some(rel) {
+            self.drop_find();
+            self.unlock_error = None;
+            self.fields.remove("unlock-pass");
+            self.reveal.remove("unlock-pass");
+            tx.focus(crate::ui::lock::PASS, false);
+        }
     }
 
     /// Locks the active note again: its plain text leaves memory.
@@ -196,14 +232,14 @@ impl App {
 
     /// Clears any inline validation error on the Lock Password dialog once the user edits either field.
     pub(crate) fn clear_lock_dialog_error(&mut self) {
-        if let Some(Layer::Lock(LockDialog::Set(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
+        if let Some(Layer::Lock(LockDialog::Set(err) | LockDialog::Change(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
             *err = None;
         }
     }
 
     /// Locks every currently unlocked note (including parked Note-mode notes), clearing plain text
-    /// and editor buffers from memory.
-    pub fn lock_all_notes(&mut self) {
+    /// and editor buffers from memory, and focuses `unlock-pass` if the active note is now locked.
+    pub fn lock_all_notes(&mut self, tx: &mut Tx) {
         if self.unlocked.is_empty() && !self.parked_has_unlocked() {
             return;
         }
@@ -218,6 +254,9 @@ impl App {
         self.unlock_error = None;
         self.fields.remove("unlock-pass");
         self.reveal.remove("unlock-pass");
+        if self.active_locked() {
+            tx.focus(crate::ui::lock::PASS, false);
+        }
     }
 
     /// Opens the active locked note with the password in the lock panel, running PBKDF2 off the
@@ -292,22 +331,31 @@ impl App {
 
     fn finish_lock_job(&mut self, res: LockResult, tx: &mut Tx) {
         match res {
-            LockResult::Locked { id, rel, text, key } => {
+            LockResult::Locked { id, rel, text, key, changing } => {
                 if id != self.lock_job_seq || !self.files().contains_key(&rel) {
                     return;
                 }
-                if matches!(self.layer(), Some(Layer::Lock(LockDialog::Set(_)))) {
+                if changing && !self.note_unlocked(&rel) {
+                    return;
+                }
+                if matches!(self.layer(), Some(Layer::Lock(LockDialog::Set(_) | LockDialog::Change(_)))) {
                     self.close_layer(tx);
                 }
                 self.fields.remove("lock-pass");
                 self.fields.remove("lock-repeat");
                 self.reveal.remove("lock-pass");
                 self.reveal.remove("lock-repeat");
-                // The note stays open after the lock. It locks when its tab closes, after
-                // inactivity, or with "Lock now" / "Lock all notes".
-                self.unlocked.insert(rel.clone(), Unlocked::new(key, String::new()));
-                self.store_unlocked(&rel, text);
+                // Seal directly with the new key so neither `vault.files` nor disk ever sees plain text.
+                let sealed = lock::seal(&key, &text);
+                if let Some(v) = &mut self.vault {
+                    v.put(rel.clone(), sealed);
+                }
+                self.unlocked.insert(rel.clone(), Unlocked::new(key, text));
+                self.mark_dirty_pub(&rel);
                 self.flush_notes();
+                if changing {
+                    self.toast("Password changed", tx);
+                }
                 self.touch_activity();
                 self.focus_editor(tx);
             }
@@ -361,7 +409,7 @@ impl App {
         let limit = (mins as f64) * 60.0;
         let elapsed = (t - self.last_activity.get()).max(0.0);
         if elapsed >= limit {
-            self.lock_all_notes();
+            self.lock_all_notes(tx);
             self.toast("Locked notes after inactivity", tx);
             return true;
         }
@@ -552,11 +600,83 @@ mod tests {
             s.wait_lock(tx);
             assert!(s.open_note(&note_b));
             assert!(s.parked_has_unlocked());
-            s.lock_all_notes();
+            s.lock_all_notes(tx);
             assert!(!s.parked_has_unlocked());
             assert!(s.open_note(&note_a));
             assert!(s.note_locked("SecretA.md"));
         });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn change_password_reseals_in_place_without_plaintext_on_disk() {
+        let dir = std::env::temp_dir().join(format!("quire-change-pass-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = "# Secret\nTop secret line.\n";
+        std::fs::write(dir.join("Secret.md"), plain).unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Secret.md", None, tx);
+            s.ask_lock(tx);
+            s.field("lock-pass", String::new).replace_text("old password");
+            s.field("lock-repeat", String::new).replace_text("old password");
+            s.lock_note(tx);
+            s.wait_lock(tx);
+            assert!(s.note_unlocked("Secret.md"));
+
+            s.ask_change_password(tx);
+            assert!(matches!(s.layer(), Some(crate::layer::Layer::Lock(crate::layer::LockDialog::Change(None)))));
+            s.field("lock-pass", String::new).replace_text("new password");
+            s.field("lock-repeat", String::new).replace_text("new password");
+            s.lock_note(tx);
+            s.wait_lock(tx);
+            s.flush_all();
+
+            assert!(s.note_unlocked("Secret.md"));
+            assert!(s.reader.toast.as_ref().is_some_and(|(m, _)| m == "Password changed"));
+            let stored = s.files().get("Secret.md").cloned().unwrap_or_default();
+            assert!(crate::lock::is_locked(&stored), "vault copy must stay encrypted");
+            assert!(!stored.contains("Top secret line"), "vault copy must never contain plaintext");
+            assert!(crate::lock::open(&stored, "old password").is_err(), "old password must no longer open note");
+            assert_eq!(crate::lock::open(&stored, "new password").unwrap().0, plain);
+        });
+        let on_disk = std::fs::read_to_string(dir.join("Secret.md")).unwrap();
+        assert!(crate::lock::is_locked(&on_disk), "disk file must stay encrypted");
+        assert!(!on_disk.contains("Top secret line"));
+        assert_eq!(crate::lock::open(&on_disk, "new password").unwrap().0, plain);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lock_all_notes_focuses_unlock_pass_when_active_locked() {
+        let dir = std::env::temp_dir().join(format!("quire-lock-all-focus-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Secret.md"), "# Secret\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Secret.md", None, tx);
+            s.ask_lock(tx);
+            s.field("lock-pass", String::new).replace_text("tiger lily");
+            s.field("lock-repeat", String::new).replace_text("tiger lily");
+            s.lock_note(tx);
+            s.wait_lock(tx);
+            s.mode = crate::app::Mode::Preview;
+        });
+        rt.frame(0.016);
+        rt.update(|s, tx| {
+            s.lock_all_notes(tx);
+        });
+        rt.frame(0.032);
+        let focused = rt.elements().into_iter().find(|e| e.focused && !e.exiting).and_then(|e| e.key);
+        assert_eq!(focused.as_deref(), Some(crate::ui::lock::PASS), "lock_all_notes must focus unlock-pass");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
