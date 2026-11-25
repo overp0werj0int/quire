@@ -796,7 +796,7 @@ impl App {
             if self.layers.is_empty() && tx.focused().is_none() {
                 if self.writing_note() {
                     tx.focus("editor", false);
-                } else if self.mode == Mode::Map && self.active_locked() {
+                } else if self.active_locked() {
                     tx.focus(crate::ui::lock::PASS, false);
                 }
             }
@@ -1179,6 +1179,21 @@ impl App {
             Err(e) => {
                 self.notice = Some(format!("Could not open {}: {e}", store::tilde(&file)));
                 false
+            }
+        }
+    }
+
+    /// Whether any parked Note-mode note currently holds decrypted plaintext in memory.
+    pub(crate) fn parked_has_unlocked(&self) -> bool {
+        self.parked.values().any(|p| p.unlocked.is_some())
+    }
+
+    /// Drops decrypted keys and editor buffers from every parked Note-mode note so
+    /// `lock_all_notes` and idle auto-lock leave zero plaintext behind.
+    pub(crate) fn clear_parked_unlocked(&mut self) {
+        for p in self.parked.values_mut() {
+            if p.unlocked.take().is_some() {
+                p.edit = None;
             }
         }
     }
@@ -1613,11 +1628,11 @@ impl App {
     }
 
     pub fn focus_editor(&mut self, tx: &mut Tx) {
-        if self.active.is_some() && self.mode == Mode::Source {
-            tx.focus("editor", false);
-            self.want_editor_focus = !self.laid_out.get();
-        } else if self.mode == Mode::Map && self.active_locked() {
+        if self.active_locked() {
             tx.focus(crate::ui::lock::PASS, false);
+            self.want_editor_focus = !self.laid_out.get();
+        } else if self.active.is_some() && self.mode == Mode::Source {
+            tx.focus("editor", false);
             self.want_editor_focus = !self.laid_out.get();
         }
     }
@@ -1634,7 +1649,7 @@ impl App {
             self.active = Some(n.to_string());
             self.tree_reveal = Some(n.to_string());
             self.ensure_edit();
-            self.want_editor_focus = self.mode == Mode::Source || (self.mode == Mode::Map && self.active_locked());
+            self.want_editor_focus = self.mode == Mode::Source || self.active_locked();
         }
     }
 

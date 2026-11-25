@@ -171,7 +171,14 @@ fn tab(v: V, t: &Shelved, on: bool, sections: usize, out: bool) -> El {
             );
         }
         if let Some((lp, unlocked)) = lock_state {
-            r = r.child(icon(&LOCK, 12.0).key(format!("lock-tab:{lp}")).color(if unlocked { v.p.acc } else { v.p.mute }));
+            let tip = if unlocked { "Unlocked in this session" } else { "Locked note" };
+            r = r.child(
+                icon(&LOCK, 12.0)
+                    .key(format!("lock-tab:{lp}"))
+                    .color(if unlocked { v.p.acc } else { v.p.mute })
+                    .label(tip)
+                    .help(tip),
+            );
         }
         r
     } else {

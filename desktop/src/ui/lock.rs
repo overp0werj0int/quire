@@ -49,6 +49,13 @@ fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mu
             .caret(p.ink, p.sel)
             .label(ph)
             .on_edit(move |s: &mut App| s.field(key, String::new))
+            .on_input_change(move |s: &mut App, _| {
+                if key == PASS {
+                    s.unlock_error = None;
+                } else {
+                    s.clear_lock_dialog_error();
+                }
+            })
             .on_submit(submit)
             .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
     )
@@ -172,8 +179,12 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
         LockDialog::Set(e) => e.as_deref(),
         LockDialog::ConfirmRemove => None,
     };
-    let field = |key: &'static str, title: &str, ph: &'static str| {
-        col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), |s, tx| s.lock_note(tx)))
+    let field = |key: &'static str, title: &str, ph: &'static str, submit: fn(&mut App, &mut Tx)| {
+        col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), submit))
+    };
+    let focus_repeat: fn(&mut App, &mut Tx) = |s, tx| {
+        s.field("lock-repeat", String::new).focused = true;
+        tx.focus("lock-repeat", false);
     };
     let mut panel = col()
         .key("lock-dialog")
@@ -195,8 +206,8 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
                 .child(label("Lock this note", sans(17.0, 600.0), p.ink))
                 .child(label("Quire encrypts the note with this password. If you forget it, nobody can open the note.", sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
         )
-        .child(field("lock-pass", "Password", "At least 8 characters"))
-        .child(field("lock-repeat", "Repeat password", "The same password again"));
+        .child(field("lock-pass", "Password", "At least 8 characters", focus_repeat))
+        .child(field("lock-repeat", "Repeat password", "The same password again", |s, tx| s.lock_note(tx)));
     if let Some(e) = err {
         panel = panel.child(label(e, sans(12.5, 400.0), p.err).wrap());
     }

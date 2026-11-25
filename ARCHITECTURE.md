@@ -372,9 +372,9 @@ on disk is never half-written. `Op::Barrier` lets other code wait until the writ
 are done. A delete moves the note or folder to `.trash` (recording exact original relative paths in
 `.trash/.meta.json` so filenames containing `" - "` restore to their exact folder), and the thread remembers where.
 `Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`). `Op::ListTrash`,
-`Op::RestoreTrash` and `Op::EmptyTrash` serve the browseable Trash dialog (`ui/trash.rs`, opened
+`Op::RestoreTrash`, `Op::DeleteTrashItem` and `Op::EmptyTrash` serve the browseable Trash dialog (`ui/trash.rs`, opened
 from `foot-trash` in the sidebar footer or `"Open trash…"` in the command palette) off the UI
-thread, waking the UI when results arrive, and restoring clears any matching Undo toast.
+thread, waking the UI when results arrive; restoring keeps the dialog open while other items remain and clears any matching Undo toast.
 
 ```mermaid
 flowchart LR
@@ -502,8 +502,10 @@ edit from a delete:
 - Both sides changed: the local text stays, and the remote text comes down beside it as
   `<name> (conflict <device>).md`. Conflict copies carry a warning badge in the file tree and Open
   shelf (`md::conflict_origin`), a clickable `"Open"` action in the conflict notice, and an inline
-  resolution banner (`conflict-banner` in `ui/editor.rs`) with `"Open original"`,
-  `"Keep this version"` (undoable replacement + move conflict to `.trash`), and `"Discard conflict"`.
+  resolution banner (`conflict-banner` in `ui/editor.rs`) on both the conflict copy (`"Open original"`,
+  `"Keep this version"` with full Undo recovery, and `"Discard conflict"`) and the original note
+  (`"Open conflict"`). Failed `"On save"` syncs schedule automatic backoff retries, and clicking
+  `"sync failed"` in `side-sync` retries at once.
 - A deleted note moves to `.trash` on the other devices.
 
 The base is saved only after all disk writes of a sync succeed. If a write fails, the base is
@@ -518,6 +520,8 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 - While the app is open, the same `handle` function can also answer `POST /mcp` on
   `127.0.0.1`. That needs the access token from Settings.
 - Settings are read again for every call, so a change in the app applies at once.
+- Locked notes are refused for `read_note`, `update_note` and `delete_note`, and `delete_note` moves
+  files through `vault::trash_file` so `.trash/.meta.json` records their original path.
 - Writes go straight to disk, not through `App`. The app sees them through the watcher.
 
 ### Desktop module map
@@ -550,7 +554,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `format.rs` | Toolbar edits (bold, lists, links...) as plain text changes. |
 | `folders.rs` | The folder tree, moving notes by drag, and what the tree menu opens on (`MenuOn`). `Folder` is the vault's tree in the tree's order (SB-54) with each folder's note count, its subfolders' included (SB-52); `Tree` keeps it on `App::tree` and builds it again only when the vault's `paths` count (a note added or taken out) or its folders change, never for an edit to a note's text. |
 | `images.rs` | Adding images to `attachments/` and linking them, at the caret or, on the map, as a new node; and downloading web images. |
-| `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`: PBKDF2 key derivation runs off the UI thread (`quire-kdf`, showing `"Locking…"` / `"Unlocking…"` until complete), `poll_auto_lock` re-locks all unlocked notes after `settings.auto_lock_mins` of inactivity (default 15m, configurable in Settings → Files & links), and `"Lock all notes"` in the Command Palette re-locks all unlocked notes on demand. |
+| `lock.rs`, `lock_app.rs` | The locked-note format, and the lock actions on `App`: PBKDF2 key derivation runs off the UI thread (`quire-kdf`, showing `"Locking…"` / `"Unlocking…"` until complete), `poll_auto_lock` and `lock_all_notes` re-lock both active and parked Note-mode unlocked notes after `settings.auto_lock_mins` of inactivity (default 15m, configurable in Settings → Files & links), and opening a locked note in any mode auto-focuses `unlock-pass`. |
 | `map.rs` | Map mode's model (`docs/reader-writer/behavior/map.md`, decision 0014): the note's `blocks::Doc` as a tree of nodes in preorder. Headings nest by level, list items by their list, and every other block is a leaf. Each node keeps its own source lines and its subtree's, a `NodeId` that survives edits elsewhere, its branch colour and its fold directive. The note's `markmap:` front matter options are read here. The map's edits are here too, each a pure function to a `Splice` of whole lines: rename (with the node's prefix and closing kept), add a child or a sibling of a given `NewKind` (with lists renumbered and blank lines matched), with `default_kind` for the kind a place starts with and `kinds` for the kinds it takes, each kept only when the node written there parses as that kind at that depth and no other node changes, delete, the task toggle, the Markdown a copy takes, and `follow`, which finds a node again after a splice. Moves are here as well: `zone`, the rules for where a node may go (a heading moves only among headings and stops at H6, text stays above subheadings), `move_to`, which shifts heading levels, takes the target list's marker and indent and renumbers both lists, `step` for the keys, and `set_level`. `add_block` adds a block such as an image's link, as a paragraph where the place's default would be a heading or a bullet. |
 | `map_layout.rs` | Where each shown node sits: a tidy tree in world points, growing the way the note's layout says (`Tree::opts.layout`), built bottom-up in a local frame from each subtree's profile across its branches, so a short branch tucks under a long one. Pure: it takes the tree, the folds (`map_fold.rs`) and a size per node. `Sides` is where the root's branches grow, which the whole tree says and no fold changes. The result, `Laid`, also answers what needs a node's neighbours: the branch into a node (`Laid::branch`), each node's hit cell (`Laid::cell`), the sides a node has fold rings on (`Laid::rings`, one for each of `Laid::sides` on the root) and each ring's hit box, what an arrow key means on a node (`Laid::toward`) and whether two nodes are on one side of Both's root (`Sides::same`, where the Alt+arrow that nests a node stops), the part of a node a drop is on and where its mark draws, the Properties badge's box and the first camera's pan. |
 | `map_fold.rs` | A tab's folds (`Folds`, MAP-041): the nodes folded whole, and the one side of Both's root that is folded alone. It holds the rules for what a fold hides, opening the way to a node, and following an edit, so nothing else asks which kind of fold the root has. |

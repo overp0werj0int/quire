@@ -258,7 +258,14 @@ fn note_row(v: V, path: &str, depth: usize, on: bool) -> El {
             );
         }
         if locked {
-            r = r.child(icon(&LOCK, 12.0).key(format!("lock-tree:{path}")).color(if unlocked { v.p.acc } else { v.p.mute }));
+            let tip = if unlocked { "Unlocked in this session" } else { "Locked note" };
+            r = r.child(
+                icon(&LOCK, 12.0)
+                    .key(format!("lock-tree:{path}"))
+                    .color(if unlocked { v.p.acc } else { v.p.mute })
+                    .label(tip)
+                    .help(tip),
+            );
         }
         r
     } else {

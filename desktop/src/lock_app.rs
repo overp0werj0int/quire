@@ -194,9 +194,17 @@ impl App {
         self.reveal.remove("unlock-pass");
     }
 
-    /// Locks every currently unlocked note, clearing plain text and editor buffers from memory.
+    /// Clears any inline validation error on the Lock Password dialog once the user edits either field.
+    pub(crate) fn clear_lock_dialog_error(&mut self) {
+        if let Some(Layer::Lock(LockDialog::Set(err))) = self.layers.last_mut().map(|o| &mut o.layer) {
+            *err = None;
+        }
+    }
+
+    /// Locks every currently unlocked note (including parked Note-mode notes), clearing plain text
+    /// and editor buffers from memory.
     pub fn lock_all_notes(&mut self) {
-        if self.unlocked.is_empty() {
+        if self.unlocked.is_empty() && !self.parked_has_unlocked() {
             return;
         }
         self.flush_notes();
@@ -205,6 +213,7 @@ impl App {
         for k in keys {
             self.edits.remove(&k);
         }
+        self.clear_parked_unlocked();
         self.drop_find();
         self.unlock_error = None;
         self.fields.remove("unlock-pass");
@@ -329,7 +338,12 @@ impl App {
                     Err(e) => {
                         if is_active {
                             self.unlock_error = Some(e);
-                            // After a press on Unlock, the field takes the keyboard back for another try.
+                            // Select the wrong password so the user can immediately type a fresh one.
+                            if let Some(ed) = self.fields.get_mut(crate::ui::lock::PASS) {
+                                let n = ed.text.len();
+                                ed.set_selection(0, n);
+                                ed.focused = true;
+                            }
                             tx.focus(crate::ui::lock::PASS, false);
                         }
                     }
@@ -341,7 +355,7 @@ impl App {
     /// Re-locks every unlocked note once inactivity exceeds `settings.auto_lock_mins`.
     pub(crate) fn poll_auto_lock(&mut self, t: f64, tx: &mut Tx) -> bool {
         let mins = self.settings().auto_lock_mins;
-        if mins == 0 || self.unlocked.is_empty() {
+        if mins == 0 || (self.unlocked.is_empty() && !self.parked_has_unlocked()) {
             return false;
         }
         let limit = (mins as f64) * 60.0;
@@ -492,6 +506,86 @@ mod tests {
         rt.frame(0.016);
         let after_scroll = rt.state.last_activity.get();
         assert!(after_scroll > after_click, "wheel scroll should advance last_activity (before={after_click}, after={after_scroll})");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parked_note_mode_unlocked_notes_lock_on_lock_all_and_auto_lock() {
+        let dir = std::env::temp_dir().join(format!("quire-park-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = crate::lock::new_key("parked secret");
+        let sealed = crate::lock::seal(&key, "# Parked Secret\nHidden plaintext.\n");
+        let note_a = dir.join("SecretA.md");
+        let note_b = dir.join("PlainB.md");
+        std::fs::write(&note_a, &sealed).unwrap();
+        std::fs::write(&note_b, "# Plain B\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.settings_mut().auto_lock_mins = 5;
+            s.now.set(10.0);
+            assert!(s.open_note(&note_a));
+            s.field(crate::ui::lock::PASS, String::new).replace_text("parked secret");
+            s.unlock(tx);
+            s.wait_lock(tx);
+            assert!(s.note_unlocked("SecretA.md"));
+
+            // Switch to PlainB.md in Note mode so SecretA.md is parked while unlocked.
+            assert!(s.open_note(&note_b));
+            assert!(s.unlocked.is_empty(), "active vault has no unlocked note");
+            assert!(s.parked_has_unlocked(), "parked Note-mode note must be tracked as unlocked");
+
+            // Idle auto-lock must detect and lock parked Note-mode notes.
+            assert!(s.poll_auto_lock(10.0 + 300.0, tx));
+            assert!(!s.parked_has_unlocked(), "auto-lock must clear parked unlocked entries");
+
+            // Switching back to SecretA.md must find it locked again.
+            assert!(s.open_note(&note_a));
+            assert!(s.note_locked("SecretA.md"));
+            assert!(!s.note_unlocked("SecretA.md"));
+
+            // Re-unlock, park again, and verify explicit lock_all_notes also clears parked state.
+            s.field(crate::ui::lock::PASS, String::new).replace_text("parked secret");
+            s.unlock(tx);
+            s.wait_lock(tx);
+            assert!(s.open_note(&note_b));
+            assert!(s.parked_has_unlocked());
+            s.lock_all_notes();
+            assert!(!s.parked_has_unlocked());
+            assert!(s.open_note(&note_a));
+            assert!(s.note_locked("SecretA.md"));
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_unlock_selects_password_and_retyping_clears_error() {
+        let dir = std::env::temp_dir().join(format!("quire-unlock-err-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = crate::lock::new_key("right password");
+        let sealed = crate::lock::seal(&key, "# Locked\n");
+        std::fs::write(dir.join("Secret.md"), &sealed).unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Secret.md", None, tx);
+            s.field(crate::ui::lock::PASS, String::new).replace_text("wrong");
+            s.unlock(tx);
+            s.wait_lock(tx);
+            assert!(s.unlock_error.is_some());
+            let ed = s.fields.get(crate::ui::lock::PASS).expect("unlock-pass field");
+            assert_eq!((ed.anchor, ed.focus), (0, 5), "wrong password should be fully selected");
+        });
+        rt.frame(0.016);
+        // Typing a replacement character into unlock-pass clears the stale unlock error.
+        rt.key(rune::KeyEvent { key: rune::Key::Text("r".into()), mods: rune::Mods::default() });
+        rt.frame(0.032);
+        assert!(rt.state.unlock_error.is_none(), "typing into unlock-pass must clear unlock_error");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
