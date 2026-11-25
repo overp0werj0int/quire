@@ -432,11 +432,11 @@ flowchart LR
    paint only: the text stays the note's Markdown, character for character. The field (and
    the edit sheet's) is laid out per line with Rune's `dir_by_paragraph`, so a keystroke
    reshapes only its own line, and each line takes the direction of its first strong
-   character. That needs Rune's fixes on branch `quire/dev` of the fork
-   `overp0werj0int/rune`, which `desktop/Cargo.toml` pins by revision:
-   before them a blank line doubled the next line's first letter in the accessible text, and
-   long notes typed slowly. The same branch moves the caret to a right-click before the
-   editor's own menu opens.
+   character. Quire pins branch `quire/dev` of the fork `overp0werj0int/rune` in
+   `desktop/Cargo.toml` for the patches upstream does not carry (per-paragraph styles, field
+   right-click caret placement and keyboard menu placement, kept long-field layout, `El::modal_keeps`,
+   superscript/bisector/tapered strokes, `Cx::focus_glass`, and Wayland touchpad fling /
+   `App::on_touchpad_hold`).
 2. `App::after_edit` puts the new text into the vault (`Vault::put`) and calls `mark_dirty`.
 3. `mark_dirty` adds the note to `dirty`. It sets the save time to 0.5 s from now, unless a
    save is already pending. So a note saves 0.5 s after the first change, even while you

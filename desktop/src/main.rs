@@ -1256,8 +1256,9 @@ pub(crate) mod scroll_tests {
             acc = crate::roles::Roles::new(s.palette(false)).accent;
             false
         });
+        let want = [acc.premul(1.0), acc.premul_srgb(1.0)];
         let near = |a: [f32; 4], b: [f32; 4]| (0..4).all(|i| (a[i] - b[i]).abs() < 0.02);
-        let prog_idx = rt.instances.iter().rposition(|q| near(q.fill, [acc.r, acc.g, acc.b, acc.a]) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
+        let prog_idx = rt.instances.iter().rposition(|q| want.iter().any(|w| near(q.fill, *w)) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
         let band_idx = rt.instances.iter().rposition(|q| (q.rect[1] - band[1]).abs() < 1.0 && (q.rect[3] - band[3]).abs() < 1.0);
         assert!(prog_idx.is_some() && band_idx.is_some() && prog_idx.unwrap() > band_idx.unwrap(), "progress ({prog_idx:?}) must paint above find-narrow-band ({band_idx:?})");
         for k in ["find-prev", "find-next", "find-close"] {
@@ -1338,8 +1339,9 @@ pub(crate) mod scroll_tests {
                 acc = crate::roles::Roles::new(s.palette(false)).accent;
                 false
             });
+            let want = [acc.premul(1.0), acc.premul_srgb(1.0)];
             let near = |a: [f32; 4], b: [f32; 4]| (0..4).all(|i| (a[i] - b[i]).abs() < 0.02);
-            let prog_idx = rt.instances.iter().rposition(|q| near(q.fill, [acc.r, acc.g, acc.b, acc.a]) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
+            let prog_idx = rt.instances.iter().rposition(|q| want.iter().any(|w| near(q.fill, *w)) && (q.rect[1] - prog[1]).abs() < 1.0 && q.rect[3] <= 3.0);
             let band_idx = rt.instances.iter().rposition(|q| (q.rect[1] - band[1]).abs() < 1.0 && (q.rect[3] - band[3]).abs() < 1.0);
             assert!(prog_idx.is_some() && band_idx.is_some() && prog_idx.unwrap() > band_idx.unwrap(), "{w}x{h}: progress ({prog_idx:?}) must paint above {want_key} ({band_idx:?})");
         }

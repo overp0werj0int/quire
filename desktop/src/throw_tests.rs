@@ -216,7 +216,7 @@ fn fingers_landing_stop_the_map() {
     let dir = std::env::temp_dir().join(format!("quire-throw-map-hold-{}", std::process::id()));
     let text = (1..=200).map(|i| format!("- item {i}\n")).collect::<String>();
     let (mut rt, _) = open(&dir, &format!("# Map\n\n{text}"), Mode::Preview);
-    rt.on_touchpad_hold = Some(App::touchpad_hold);
+    rt.set_on_touchpad_hold(Some(App::touchpad_hold));
     rt.update(|s, tx| s.enter_map(tx));
     for _ in 0..30 {
         rt.frame(DT);

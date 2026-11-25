@@ -27,12 +27,23 @@ pub use crate::window::Theme;
 pub trait ActiveEventLoopExtWayland {
     /// True if the [`ActiveEventLoop`] uses Wayland.
     fn is_wayland(&self) -> bool;
+
+    /// Rune: when `wake` is true, any successful Wayland display read marks the event loop as
+    /// having dispatched events so `ControlFlow::Wait` runs a turn even when winit's own queues
+    /// had no events. Foreign Wayland queues sharing the display (such as layer-shell overlays)
+    /// dispatch on that turn without background reader threads. Off by default; no-op on X11.
+    fn set_wake_on_wayland_read(&self, wake: bool);
 }
 
 impl ActiveEventLoopExtWayland for ActiveEventLoop {
     #[inline]
     fn is_wayland(&self) -> bool {
         self.p.is_wayland()
+    }
+
+    #[inline]
+    fn set_wake_on_wayland_read(&self, wake: bool) {
+        self.p.set_wake_on_wayland_read(wake);
     }
 }
 
@@ -81,6 +92,30 @@ impl<T> EventLoopBuilderExtWayland for EventLoopBuilder<T> {
 pub trait WindowExtWayland {
     /// Returns `xdg_toplevel` of the window or [`None`] if the window is X11 window.
     fn xdg_toplevel(&self) -> Option<NonNull<c_void>>;
+
+    /// Rune: the radius, in logical points, of the arc the window's content takes at its bottom
+    /// corners. A client-side frame (`sctk-adwaita`) draws a one-point border around the window
+    /// and rounds its corners while it floats, so the content's own square corners would show
+    /// past it.
+    ///
+    /// Zero when the frame draws the window square (maximized or tiled), when no client-side
+    /// frame is drawn (server side decorations, or decorations off), and on X11.
+    fn content_corner_radius(&self) -> f32;
+
+    /// Rune: whether a client-side frame draws the window's decorations, true whatever state the
+    /// frame is in: a maximized, tiled or fullscreen window keeps its frame, which hides parts of
+    /// itself rather than going away.
+    ///
+    /// False when the compositor draws the decorations, when decorations are off, when no frame
+    /// could be made, and on X11.
+    fn has_client_side_frame(&self) -> bool;
+
+    /// Rune: confirmed Wayland `xdg_toplevel` / `xdg-decoration` state from the latest configure:
+    /// `(is_server_decoration, tiled_edges [top, right, bottom, left], wm_capabilities bits)`.
+    ///
+    /// Returns `None` before the initial configure and on X11. `tiled_edges` is `None` below
+    /// `xdg_toplevel` v2 and `wm_capabilities` is `None` below v5.
+    fn wayland_wm_state(&self) -> Option<(bool, Option<[bool; 4]>, Option<u16>)>;
 }
 
 impl WindowExtWayland for Window {
@@ -92,6 +127,39 @@ impl WindowExtWayland for Window {
             crate::platform_impl::Window::X(_) => None,
             #[cfg(wayland_platform)]
             crate::platform_impl::Window::Wayland(window) => window.xdg_toplevel(),
+        }
+    }
+
+    #[inline]
+    fn content_corner_radius(&self) -> f32 {
+        #[allow(clippy::single_match)]
+        match &self.window {
+            #[cfg(x11_platform)]
+            crate::platform_impl::Window::X(_) => 0.,
+            #[cfg(wayland_platform)]
+            crate::platform_impl::Window::Wayland(window) => window.content_corner_radius(),
+        }
+    }
+
+    #[inline]
+    fn has_client_side_frame(&self) -> bool {
+        #[allow(clippy::single_match)]
+        match &self.window {
+            #[cfg(x11_platform)]
+            crate::platform_impl::Window::X(_) => false,
+            #[cfg(wayland_platform)]
+            crate::platform_impl::Window::Wayland(window) => window.has_client_side_frame(),
+        }
+    }
+
+    #[inline]
+    fn wayland_wm_state(&self) -> Option<(bool, Option<[bool; 4]>, Option<u16>)> {
+        #[allow(clippy::single_match)]
+        match &self.window {
+            #[cfg(x11_platform)]
+            crate::platform_impl::Window::X(_) => None,
+            #[cfg(wayland_platform)]
+            crate::platform_impl::Window::Wayland(window) => window.wayland_wm_state(),
         }
     }
 }

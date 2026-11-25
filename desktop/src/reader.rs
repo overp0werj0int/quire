@@ -209,9 +209,9 @@ struct Pending {
 enum Arrive {
     /// Put the row `at` points under the view's top, at once.
     Jump { at: f32 },
-    /// A long trip's cut, placed by the map's estimate: once the row is laid out, cut again to
-    /// 0.8 of a view short of where it is and glide the rest.
-    Cut,
+    /// A long trip's cut, placed by the map's estimate: once the row is laid out, anchor the cut
+    /// to 0.8 of a view short of the row and glide the rest.
+    Cut { gap: f32 },
     /// Glide the block's top to 20 points under the view's top; `to` is the offset asked for
     /// last.
     Glide { to: f32 },
@@ -220,7 +220,8 @@ enum Arrive {
 /// What a row laid out asks of the scroll viewport.
 pub enum Arrival {
     Key(f32),
-    Cut(f32, f32),
+    /// Anchor the row `at` points under the view's top, then glide to `to`.
+    CutKey(f32, f32),
     Glide(f32),
 }
 
@@ -410,11 +411,16 @@ impl PageMap {
                 self.pending = None;
                 Some(Arrival::Key(at))
             }
-            Arrive::Cut => {
+            Arrive::Cut { gap } => {
+                let gap = *gap;
                 let want = (top - 20.0).clamp(0.0, max.max(0.0));
                 p.how = Arrive::Glide { to: want };
-                let cut = if (want - offset).abs() > 0.8 * vh { want - (want - offset).signum() * 0.8 * vh } else { offset };
-                Some(Arrival::Cut(cut, want))
+                if (want - offset).abs() > 0.8 * vh {
+                    let at = 20.0 - gap + (want - offset).signum() * 0.8 * vh;
+                    Some(Arrival::CutKey(at, want))
+                } else {
+                    Some(Arrival::Glide(want))
+                }
             }
             Arrive::Glide { to } => {
                 let want = (top - 20.0).clamp(0.0, max.max(0.0));
@@ -835,7 +841,7 @@ impl App {
         }
         tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
         if !near {
-            map.wait(key, if far { Arrive::Cut } else { Arrive::Glide { to } }, now);
+            map.wait(key, if far { Arrive::Cut { gap } } else { Arrive::Glide { to } }, now);
         }
     }
 
@@ -998,8 +1004,8 @@ impl App {
         drop(map);
         match arrival {
             Some(Arrival::Key(at)) => tx.scroll_key_to(key.to_owned(), at),
-            Some(Arrival::Cut(cut, to)) => {
-                tx.scroll_to_instant(SCROLL, 0.0, cut);
+            Some(Arrival::CutKey(at, to)) => {
+                tx.scroll_key_to(key.to_owned(), at);
                 tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0));
             }
             Some(Arrival::Glide(to)) => tx.scroll_to_with(SCROLL, 0.0, to, Spring::new(0.24, 0.0)),

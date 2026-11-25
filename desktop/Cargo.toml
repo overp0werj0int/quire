@@ -10,31 +10,26 @@ name = "quire"
 path = "src/main.rs"
 
 [dependencies]
-# Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 4a2e4379
-# (merged 2026-11-18) plus what Quire needs and upstream does not have: paragraph styles for the
-# per-line editor's hanging marks (decision 0009), a field's caret moved before its right-click
-# menu opens, the keyboard menu opened below the caret with its first item marked, the edge
-# scroll for a text field's drag selection, the Chrome-style touchpad fling (docs/reader-writer
-# decision 0012), a modal that keeps chosen elements live to the pointer (the drawers' title
-# bar), a right-click outside a modal closing it, a long field's layout kept while another screen
-# shows (the editor back from the preview), the isolated layers' pipelines made on a thread
-# before the first fade needs them, Phosphor-style pan cursors for middle-click autoscroll,
-# caret following after `on_input_key` edits, the app told when trackpad fingers land (the map
-# stops its own coast there), and a GPU used even when its Mesa driver reports no Vulkan
-# conformance (Asahi's git builds do; wgpu hid them and windows drew on lavapipe, the CPU),
-# with a warning when a window still draws on a software adapter though the machine has a GPU,
-# superscript spans (footnote numbers), and strokes that meet once at a joint, cut on its
-# bisector, so a curve drawn in short pieces has smooth edges (the map's branches), strokes that
-# widen along their length and joined ends that stay round (a branch runs into its underline),
-# focus rings drawn as a glass card (`Cx::focus_glass`) that slides to the next focused
-# element, and a shape's stroke colour in the
-# element tree (the contrast cases read the branches by it).
-# Four earlier fork commits went at that merge because upstream now does their work: highlights
-# on their own paragraph, a keyed highlight found in a by-paragraph field, letters coloured
-# under a mark on an indented line, and the by-paragraph span lookup and blank-line fix.
+# Rune comes from the fork overp0werj0int/rune, branch quire/dev: upstream origin/dev 2a1d6caf9
+# (rebased 2026-11-26) plus the 7 commits Quire still needs and upstream does not have:
+# 1. `El::modal_keeps` (a modal that leaves chosen elements live to the pointer, e.g. title bar),
+# 2. field menus: caret moved before custom right-click menu, keyboard menu opened below caret
+#    with its first item marked,
+# 3. a long field's layout kept past the stale budget while another screen shows (editor back
+#    from preview),
+# 4. per-paragraph layout styles (`ParagraphStyle`, `El::paragraph_styles`) for hanging marks,
+# 5. superscript spans (footnote numbers), bisector-joined and tapered strokes, and round joined
+#    ends (the map's branches),
+# 6. sliding glass focus cards (`Cx::focus_glass`) and `ElementInfo::stroke`,
+# 7. Wayland Chrome-style touchpad fling (decision 0012), wheel event timestamps, and
+#    `App::on_touchpad_hold` (the map stops its own coast when fingers land).
+# Dropped at the 2026-11-26 rebase because upstream now handles them: drag-selection edge scroll,
+# right-click outside a modal closing it, isolated-layer pipeline pre-warming, Phosphor pan
+# cursors, caret follow after `on_input_key`, non-conformant Mesa Vulkan adapter fallback, and
+# earlier by-paragraph/highlight fixes.
 # To try a Rune change before pushing it, add a [patch."https://github.com/overp0werj0int/rune"]
 # section pointing rune and rune-highlights at a local checkout, and remove it before committing.
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9", default-features = false, features = ["dbus", "svg", "native-file-dialog"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Sync: HTTPS requests, request signing, and encryption before upload.
@@ -49,7 +44,7 @@ getrandom = "0.2"
 # The reader's Markdown parser (docs/reader-writer, phase 4).
 pulldown-cmark = { version = "0.13", default-features = false }
 # Code colours on the reader page (docs/reader-writer, phase 5): Rune's own lexers.
-rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c" }
+rune-highlights = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
 
 [features]
 # Phase timings (view, layout, text, paint) in the benches (`src/bench.rs`).
@@ -63,17 +58,20 @@ embed-resource = "3"
 # (`accesskit_consumer 0.39.2` panics at `text.rs:1533` on the first keystroke in an empty
 # `text_input`). Keep `accessibility` off on Linux until Rune guards or patches Linux AT-SPI.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-rune = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c", default-features = false, features = ["accessibility"] }
+rune = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9", default-features = false, features = ["accessibility"] }
 
 # Rune builds these crates with its own changes. Cargo ignores a dependency's [patch]
 # section, so the app repeats it here at the same Rune revision.
 [patch.crates-io]
-wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c" }
-# Rune's winit, plus file drops from other apps on Wayland (vendor/winit/src/platform_impl/linux/wayland/dnd.rs).
+naga = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+wgpu-hal = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+# Rune's winit, plus file drops from other apps and touchpad pinch on Wayland.
 winit = { path = "vendor/winit" }
-parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c" }
-accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c" }
-accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "bea3a4aedbab8162cba683622ac561a6bd222f5c" }
+sctk-adwaita = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+parley_engine = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+accesskit_windows = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+accesskit_macos = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
+accesskit_atspi_common = { git = "https://github.com/overp0werj0int/rune", rev = "84525f664e4c597cf6011109df88d1bf67d4f7a9" }
 
 [profile.dev]
 opt-level = 1

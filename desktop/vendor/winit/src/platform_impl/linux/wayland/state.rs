@@ -33,6 +33,7 @@ use crate::platform_impl::wayland::types::kwin_blur::KWinBlurManager;
 use crate::platform_impl::wayland::types::wp_fractional_scaling::FractionalScalingManager;
 use crate::platform_impl::wayland::types::wp_viewporter::ViewporterState;
 use crate::platform_impl::wayland::types::xdg_activation::XdgActivationState;
+use crate::platform_impl::wayland::types::xdg_toplevel_icon::XdgToplevelIconManagerState;
 use crate::platform_impl::wayland::window::{WindowRequests, WindowState};
 use crate::platform_impl::wayland::{WaylandError, WindowId};
 use crate::platform_impl::OsError;
@@ -94,6 +95,9 @@ pub struct WinitState {
     /// Xdg activation.
     pub xdg_activation: Option<XdgActivationState>,
 
+    /// Xdg toplevel icon manager, for window icons.
+    pub xdg_toplevel_icon_manager: Option<XdgToplevelIconManagerState>,
+
     /// Relative pointer.
     pub relative_pointer: Option<RelativePointerState>,
 
@@ -115,9 +119,17 @@ pub struct WinitState {
     /// Loop handle to re-register event sources, such as keyboard repeat.
     pub loop_handle: LoopHandle<'static, Self>,
 
+    /// The data devices of the seats come from it, for file drops (`dnd.rs`).
+    pub data_device_manager: Option<sctk::data_device_manager::DataDeviceManagerState>,
+
     /// Whether we have dispatched events to the user thus we want to
     /// send `AboutToWait` and normally wakeup the user.
     pub dispatched_events: bool,
+
+    /// Rune: when true, any successful Wayland display read marks `dispatched_events = true`
+    /// even when winit's own event sinks are empty, so foreign queues sharing the display
+    /// dispatch on that turn without background reader threads.
+    pub wake_on_wayland_read: bool,
 }
 
 impl WinitState {
@@ -126,6 +138,19 @@ impl WinitState {
         queue_handle: &QueueHandle<Self>,
         loop_handle: LoopHandle<'static, WinitState>,
     ) -> Result<Self, OsError> {
+        // A compositor without the decoration protocol answers a decorated window's first
+        // configure with a client-side frame, and that frame reads the system's colour scheme and
+        // button layout through two `dbus-send` processes, 100 ms of reply timeout each. Started
+        // here, on threads of their own, they are done (or well on their way) when the configure
+        // asks, instead of running one after the other on this thread before the first frame.
+        #[cfg(feature = "sctk-adwaita")]
+        if !globals
+            .contents()
+            .with_list(|list| list.iter().any(|global| global.interface == "zxdg_decoration_manager_v1"))
+        {
+            sctk_adwaita::read_system_config_early();
+        }
+
         let registry_state = RegistryState::new(globals);
         let compositor_state =
             CompositorState::bind(globals, queue_handle).map_err(WaylandError::Bind)?;
@@ -145,10 +170,15 @@ impl WinitState {
         let monitors = output_state.outputs().map(MonitorHandle::new).collect();
 
         let seat_state = SeatState::new(globals, queue_handle);
+        let data_device_manager =
+            sctk::data_device_manager::DataDeviceManagerState::bind(globals, queue_handle).ok();
 
         let mut seats = AHashMap::default();
         for seat in seat_state.seats() {
-            seats.insert(seat.id(), WinitSeatState::new());
+            let mut state = WinitSeatState::new();
+            state.data_device =
+                data_device_manager.as_ref().map(|m| m.get_data_device(queue_handle, &seat));
+            seats.insert(seat.id(), state);
         }
 
         let (viewporter_state, fractional_scaling_manager) =
@@ -172,6 +202,8 @@ impl WinitState {
 
             xdg_shell: XdgShell::bind(globals, queue_handle).map_err(WaylandError::Bind)?,
             xdg_activation: XdgActivationState::bind(globals, queue_handle).ok(),
+            xdg_toplevel_icon_manager: XdgToplevelIconManagerState::bind(globals, queue_handle)
+                .ok(),
 
             windows: Default::default(),
             window_requests: Default::default(),
@@ -194,8 +226,10 @@ impl WinitState {
             monitors: Arc::new(Mutex::new(monitors)),
             events_sink: EventSink::new(),
             loop_handle,
+            data_device_manager,
             // Make it true by default.
             dispatched_events: true,
+            wake_on_wayland_read: false,
         })
     }
 
