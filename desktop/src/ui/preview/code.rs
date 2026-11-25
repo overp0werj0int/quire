@@ -92,13 +92,17 @@ pub(in crate::ui) fn copied(cx: &Cx, at: usize) -> bool {
 
 /// The Copy chip, which says Copied in green for a moment after a click (BLK-51).
 pub(in crate::ui) fn copy_chip(cx: &Cx, key: &str, code: String, at: usize) -> El {
+    use crate::ui::widgets::Control;
     let c = &cx.look.c;
     let size = chip_size(cx.look.b);
+    let (rw, rg, rc) = crate::ui::focus_ring(cx.v.p);
     let (glyph, label, tint) = if copied(cx, at) { (&icons::CHECK, "Copied", c.readable_green()) } else { (&icons::COPY, "Copy", c.readable_dim()) };
-    crate::ui::chip::Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }
-        .el(c)
-        .label("Copy the code")
-        .on_press_tx(move |s: &mut crate::app::App, tx| s.copy_code(&code, at, tx))
+    crate::ui::focus::stop(
+        crate::ui::chip::Chip { key, glyph, size, icon: r(size * 1.1), label, mono: cx.look.mono, tint, active: false, fill: Some(c.panel) }.el(c),
+    )
+    .label("Copy the code")
+    .focus_ring(rw, rg, rc)
+    .control(move |s: &mut crate::app::App, tx| s.copy_code(&code, at, tx))
 }
 
 pub(super) fn code(cx: &Cx, lang: &str, src: &str, pid: Option<usize>, at: usize) -> El {

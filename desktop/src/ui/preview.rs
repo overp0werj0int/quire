@@ -13,6 +13,7 @@ use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextHighlight, TextStyl
 
 use super::V;
 use super::icons;
+use super::widgets::Control;
 use crate::app::App;
 use crate::blocks::{Alert, Block, Doc, Footnote, GalleryItem, Kind, Link, Run};
 use crate::md::Img;
@@ -569,15 +570,17 @@ impl Cx<'_> {
         let slug = slug.to_string();
         // Faint, and accent under the pointer itself; fades and colour changes take 120 ms.
         let fade = || rune::Curve::linear(0.12);
-        let hash = el()
-            .key("anchor")
+        let (rw, rg, rc) = super::focus_ring(self.v.p);
+        let hash = super::focus::stop(el())
+            .key(format!("page-anchor:{slug}"))
             .hover_group()
             .hover_motion(fade(), fade())
             .group_opacity(0.0, 1.0)
             .cursor(rune::Cursor::Pointer)
             .role("button")
             .label("Copy a link to this heading")
-            .on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
+            .focus_ring(rw, rg, rc)
+            .control(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
             .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
             .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
         el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
@@ -626,12 +629,20 @@ impl Cx<'_> {
         let y = top + ((line(size, lead) - h) / 2.0).max(0.0);
         let room = r(look.b * 4.0).max(hit);
         let right = if folded { right } else { (right - (hit - d) / 2.0).max(0.0) };
+        let (rw, rg, rc) = super::focus_ring(self.v.p);
         row().key("fold")
             .pin(Some(-(right + room)), Some(y), None, None)
             .size(room, h)
             .justify_end()
             .center_y()
-            .child(mark.role("button").cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, _| s.toggle_page_fold(n)))
+            .child(
+                super::focus::stop(mark)
+                    .key(format!("page-fold:{n}"))
+                    .role("button")
+                    .cursor(rune::Cursor::Pointer)
+                    .focus_ring(rw, rg, rc)
+                    .control(move |s: &mut App, _| s.toggle_page_fold(n)),
+            )
     }
 
     /// Subtle hover-revealed Edit chip in the right margin (or top-right on narrow windows)
@@ -648,21 +659,25 @@ impl Cx<'_> {
         let chip_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Edit", look.mono_at(size, 2.0)).ceil();
         let in_margin = gutter >= chip_w + 16.0;
         let is_code_or_diff = matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. });
-        let chip = super::chip::Chip {
-            key: &key,
-            glyph: &icons::PENCIL,
-            size,
-            icon: icon_sz,
-            label: "Edit",
-            mono: look.mono,
-            tint: c.readable_dim(),
-            active: false,
-            fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
-        }
-        .el(c)
+        let (rw, rg, rc) = super::focus_ring(self.v.p);
+        let chip = super::focus::stop(
+            super::chip::Chip {
+                key: &key,
+                glyph: &icons::PENCIL,
+                size,
+                icon: icon_sz,
+                label: "Edit",
+                mono: look.mono,
+                tint: c.readable_dim(),
+                active: false,
+                fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
+            }
+            .el(c),
+        )
         .label(tip.clone())
         .help(tip)
-        .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        .focus_ring(rw, rg, rc)
+        .control(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
         if in_margin {
             let bridge = 10.0;
             el().pin(None, Some(top), Some(-(chip_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(chip)
@@ -1047,13 +1062,15 @@ impl Cx<'_> {
         if self.doc.is_some() {
             let img_c = img.clone();
             let tip = if img.alt.is_empty() { "Click to expand".to_string() } else { format!("{} · Click to expand", img.alt) };
-            pic = el()
+            let (rw, rg, rc) = super::focus_ring(self.v.p);
+            pic = super::focus::stop(el())
                 .key(format!("page-img:{}", lines.start))
                 .cursor(rune::Cursor::Pointer)
                 .role("button")
                 .label(tip.clone())
                 .help(tip)
-                .on_press_tx(move |s: &mut App, tx| s.open_image_lightbox(vec![img_c.clone()], 0, lines.clone(), tx))
+                .focus_ring(rw, rg, rc)
+                .control(move |s: &mut App, tx| s.open_image_lightbox(vec![img_c.clone()], 0, lines.clone(), tx))
                 .child(pic);
         }
         let mut c = col().w_full().items_center().child(pic);
@@ -1093,13 +1110,15 @@ impl Cx<'_> {
                 let imgs_c = all_imgs.clone();
                 let lines_c = lines.clone();
                 let full_tip = if tip.is_empty() { "Click to expand".to_string() } else { format!("{tip} · Click to expand") };
-                pic = el()
+                let (rw, rg, rc) = super::focus_ring(self.v.p);
+                pic = super::focus::stop(el())
                     .key(format!("page-img:{}-{i}", lines.start))
                     .cursor(rune::Cursor::Pointer)
                     .role("button")
                     .label(full_tip.clone())
                     .help(full_tip)
-                    .on_press_tx(move |s: &mut App, tx| s.open_image_lightbox(imgs_c.clone(), i, lines_c.clone(), tx))
+                    .focus_ring(rw, rg, rc)
+                    .control(move |s: &mut App, tx| s.open_image_lightbox(imgs_c.clone(), i, lines_c.clone(), tx))
                     .child(pic);
             } else if !tip.is_empty() {
                 pic = pic.help(tip.clone());

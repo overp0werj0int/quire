@@ -74,6 +74,7 @@ const READER: &[Group] = &[
             h("Sidebar", &["reader.toggle-sidebar"]),
             h("Outline", &["reader.toggle-outline", "app.toggle-outline"]),
             h("Readable / full width", &["reader.toggle-wide"]),
+            h("Fold / unfold section", &["reader.toggle-fold"]),
             h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
             h("Source / preview / map", &["app.mode-source", "reader.mode-preview", "app.mode-preview", "reader.mode-map", "app.mode-map"]),
             h("Zen / settings / image", &["reader.focus-mode", "reader.settings", "reader.insert-image"]),

@@ -42,12 +42,21 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     // SHEET-020: the note's name and the line span, counted from 1.
     let (a, z) = (sh.pick.lines.start + 1, sh.pick.lines.end.max(sh.pick.lines.start + 1));
     let span = if a == z { format!("line {a}") } else { format!("lines {a} to {z}") };
-    let title = row()
+    let dirty = sh.edit.text != sh.orig;
+    let mut title = row()
         .key("sheet-title")
         .gap(8.0)
         .center_y()
         .child(text(crate::md::base(&sh.rel).to_string()).font(sans(12.5, 600.0)).color(c.text).truncate().shrink().min_w(0.0))
         .child(text(span).key("sheet-span").font(sans(12.5, 400.0)).color(c.faint));
+    if dirty {
+        title = title.child(
+            text("Modified")
+                .key("sheet-dirty")
+                .font(sans(11.0, 500.0))
+                .color(c.accent),
+        );
+    }
 
     // SHEET-022 to SHEET-026: a neighbour, clipped to three reading lines, fading at the edge
     // where it is cut.
@@ -77,10 +86,12 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .color(ink.text);
     let input = super::editor::writer_caret(input, &c)
         .label("Edit the block")
+        .spellcheck(s.settings().spellcheck)
         .spans(spans)
         .strikes(strikes)
         .text_highlights(Vec::<TextHighlight>::new())
         .on_edit(|s: &mut App| s.sheet_field())
+        .on_input_paste(|s: &mut App, content, tx| s.paste_content(content, tx))
         .on_input_key(on_sheet_key);
     // The field starts at the card's padding and its lines a gutter in, so marks hang there.
     let input = super::editor::with_edit_menu(input, EDITOR).paragraph_styles(super::editor::paragraph_styles(&hangs, gutter));
@@ -101,11 +112,12 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
             let cancel_lbl = if armed { "Discard" } else { "Close" };
             row()
                 .key("sheet-problem")
-                .h(KEY_ROW)
+                .min_h(KEY_ROW)
                 .w_full()
-                .gap(12.0)
+                .gap(10.0)
                 .center_y()
-                .child(text(p).font(sans(11.5, 400.0)).color(c.red).truncate().shrink().min_w(0.0).grow(1.0))
+                .child(text(p).font(sans(11.5, 400.0)).color(c.red).wrap().shrink().min_w(0.0).grow(1.0))
+                .child(super::widgets::outline_button(v.p, "sheet-btn-copy", "Copy text", 28.0, |s, tx| s.sheet_copy(tx)))
                 .child(super::widgets::outline_button(v.p, "sheet-btn-cancel", cancel_lbl, 28.0, |s, tx| s.sheet_escape(tx)))
         }
         None => {
@@ -125,11 +137,15 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
                     .child(text("saves").font(sans(11.5, 400.0)).color(c.faint));
             }
             let cancel_lbl = if armed { "Discard" } else { "Cancel" };
+            let mut save_btn = super::widgets::primary_button(v.p, "sheet-btn-save", "Save", 28.0, 14.0, 12.5, |s, tx| s.sheet_save(tx));
+            if !dirty {
+                save_btn = save_btn.opacity(0.75);
+            }
             let actions = row()
                 .gap(8.0)
                 .center_y()
                 .child(super::widgets::outline_button(v.p, "sheet-btn-cancel", cancel_lbl, 28.0, |s, tx| s.sheet_escape(tx)))
-                .child(super::widgets::primary_button(v.p, "sheet-btn-save", "Save", 28.0, 14.0, 12.5, |s, tx| s.sheet_save(tx)));
+                .child(save_btn);
             row()
                 .key("sheet-keys")
                 .h(KEY_ROW)

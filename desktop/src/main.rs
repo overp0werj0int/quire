@@ -9383,8 +9383,28 @@ mod layer_matrix_tests {
             away(&mut rt);
             glide(&mut rt);
             tab(&mut rt);
-            if !focused(&rt).is_some_and(|k| k.starts_with("wiki:") || k.starts_with("tag:")) {
-                fails.push(format!("a sidebar row, then {how}: Tab goes to {:?}, not the note's link", focused(&rt)));
+            let in_note = |k: &str| {
+                k.starts_with("wiki:")
+                    || k.starts_with("tag:")
+                    || k.starts_with("page-fold:")
+                    || k.starts_with("page-anchor:")
+                    || k.starts_with("block-edit:")
+            };
+            if !focused(&rt).is_some_and(|k| in_note(&k)) {
+                fails.push(format!("a sidebar row, then {how}: Tab goes to {:?}, not inside the note", focused(&rt)));
+            }
+            let mut hit_link = focused(&rt).is_some_and(|k| k.starts_with("wiki:") || k.starts_with("tag:"));
+            for _ in 0..8 {
+                if hit_link {
+                    break;
+                }
+                tab(&mut rt);
+                if focused(&rt).is_some_and(|k| k.starts_with("wiki:") || k.starts_with("tag:")) {
+                    hit_link = true;
+                }
+            }
+            if !hit_link {
+                fails.push(format!("a sidebar row, then {how}: Tab never reaches the note's link ({:?})", focused(&rt)));
             }
         }
 

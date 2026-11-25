@@ -97,6 +97,7 @@ Notes on reading this file:
 - **KEY-42** [in] [verify: unit, script] reader.edit-section (reader): `E`. Opens the edit sheet on the block's section (RD-78, SHEET-001, SHEET-009).
 - **KEY-184** [quire] [verify: -] reader.undo (reader): `Ctrl+Z`. Undoes the last edit to the active note from Preview.
 - **KEY-185** [quire] [verify: -] reader.redo (reader): `Ctrl+Shift+Z` or `Ctrl+Y`. Redoes the last undone edit to the active note from Preview.
+- **KEY-194** [quire] [verify: -] reader.toggle-fold (reader): `Ctrl+Shift+[`. Folds or unfolds the hovered or current heading section in Preview.
 - **KEY-43** [adapted: 0003] [verify: unit, script] reader.help (reader): `?`. Opens the help sheet (`Ctrl+/` and `F1` act globally via KEY-66).
 - **KEY-44** [dropped] [verify: -] reader.close-tab (reader): unbound. Removed to prevent accidental tab loss; use `Ctrl+W` (KEY-20).
 - **KEY-45** [adapted: 0003] [verify: unit, script] reader.escape (reader): `Esc`. Dismisses Quire's notice, else closes find, else clears the selection, else runs `app.escape`, staying in Preview (decision 0003).

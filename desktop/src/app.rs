@@ -785,6 +785,7 @@ impl App {
         changed |= self.check_link_click(tx);
         changed |= self.apply_outside_changes();
         changed |= self.poll_lock(t, tx);
+        changed |= self.poll_map_paste(t, tx);
         changed |= self.poll_auto_lock(t, tx);
         changed |= self.poll_trash(tx);
         changed |= self.poll_sync(t, tx);

@@ -65,6 +65,12 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("hint-", Pane::Note),
     ("map-pill:", Pane::Note),
     ("map-fold:", Pane::Note),
+    ("page-fold:", Pane::Note),
+    ("page-anchor:", Pane::Note),
+    ("block-edit:", Pane::Note),
+    ("copy-code:", Pane::Note),
+    ("copy-diff:", Pane::Note),
+    ("page-img:", Pane::Note),
     ("ol-", Pane::Outline),
     ("bl-", Pane::Outline),
 ];

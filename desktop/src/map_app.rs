@@ -148,6 +148,9 @@ pub struct MapState {
     /// Last Markdown copied or cut from the map, used when `map.paste` runs without an OS clipboard
     /// paste event (e.g. headless replay or rebound key).
     pub(crate) last_copied: Option<String>,
+    /// Timestamp when `map_paste_menu` requested the OS clipboard, so headless runs with no
+    /// clipboard backend cleanly fall back to `last_copied` after 50 ms.
+    pub(crate) pending_paste: Option<f64>,
 }
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
@@ -228,6 +231,7 @@ impl Default for MapState {
             canvas_focused: true,
             drawer_return_pan: None,
             last_copied: None,
+            pending_paste: None,
         }
     }
 }
@@ -1655,12 +1659,15 @@ impl App {
     }
 
     /// Map context-menu Paste: reads the OS clipboard asynchronously via Rune, falling back to
-    /// `last_copied` if empty.
+    /// `last_copied` if empty (or after 50 ms if the headless runner has no clipboard backend).
     pub fn map_paste_menu(&mut self, tx: &mut Tx) {
         if !self.map_editable() || self.map.inline.is_some() {
             return;
         }
+        self.map.pending_paste = Some(self.now.get());
+        tx.wake_after(std::time::Duration::from_millis(60));
         tx.read_clipboard(|s: &mut App, content, tx| {
+            s.map.pending_paste = None;
             if !s.paste_content(content, tx) {
                 let text = content.text();
                 if !text.trim().is_empty() {
@@ -1670,6 +1677,21 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Completes a pending map paste with `last_copied` if the runtime has no clipboard backend
+    /// to answer `tx.read_clipboard`.
+    pub(crate) fn poll_map_paste(&mut self, t: f64, tx: &mut Tx) -> bool {
+        let Some(at) = self.map.pending_paste else { return false };
+        if t - at < 0.05 {
+            return false;
+        }
+        self.map.pending_paste = None;
+        if let Some(last) = self.map.last_copied.clone() {
+            self.map_paste(&last, tx);
+            return true;
+        }
+        false
     }
 
     /// Keymap fallback for `map.paste` when `Ctrl+V` wasn't intercepted by the platform clipboard

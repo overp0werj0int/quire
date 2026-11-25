@@ -235,6 +235,13 @@ impl App {
         }
     }
 
+    /// Copies the sheet's current text to the clipboard (used from the conflict/deleted error row).
+    pub fn sheet_copy(&mut self, tx: &mut Tx) {
+        let Some(txt) = self.sheet().map(|sh| sh.edit.text.clone()) else { return };
+        tx.copy(txt);
+        self.toast("Copied", tx);
+    }
+
     /// The armed discard lapses (SHEET-038). True when it did.
     pub(crate) fn expire_sheet(&mut self, t: f64) -> bool {
         match self.sheet_mut() {

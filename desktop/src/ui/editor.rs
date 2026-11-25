@@ -392,8 +392,7 @@ fn conflict_diff_view(v: V) -> Option<El> {
     }
     let scroll = col()
         .key("conflict-diff-scroll")
-        .grow(1.0)
-        .min_h(0.0)
+        .max_h(220.0)
         .w_full()
         .scroll(ScrollSpec { stick_bottom: false })
         .child(list);

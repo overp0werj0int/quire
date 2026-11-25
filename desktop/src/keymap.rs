@@ -132,6 +132,7 @@ pub const TABLE: &[Action] = &[
     a(42, "reader.edit-section", "Edit this section", &[Reader], In, &["E"]),
     a(184, "reader.undo", "Undo", &[Reader], Quire, &["Ctrl+Z"]),
     a(185, "reader.redo", "Redo", &[Reader], Quire, &["Ctrl+Shift+Z", "Ctrl+Y"]),
+    a(194, "reader.toggle-fold", "Fold or unfold section", &[Reader], Quire, &["Ctrl+Shift+["]),
     a(43, "reader.help", "Keyboard help", &[Reader], Adapted, &["?"]),
     a(44, "reader.close-tab", "Close tab", &[Reader], Dropped, &[]),
     a(45, "reader.escape", "Close find or clear the selection", &[Reader], Adapted, &["Esc"]),

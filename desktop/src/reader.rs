@@ -1608,6 +1608,35 @@ impl App {
         }
     }
 
+    /// Keyboard heading fold toggle in Preview: toggles the hovered heading, else the nearest
+    /// foldable heading at or above the top visible block (or the first foldable heading).
+    pub fn toggle_current_page_fold(&mut self) {
+        if self.mode != Mode::Preview || self.active_locked() {
+            return;
+        }
+        let doc = self.doc();
+        let pf = self.page_folds();
+        if pf.heads.is_empty() {
+            return;
+        }
+        let hovered_idx = self
+            .reader
+            .hover
+            .and_then(|line| doc.blocks.iter().position(|b| b.lines.start == line));
+        let pick_bi = hovered_idx
+            .filter(|i| pf.heads.contains_key(i))
+            .or_else(|| {
+                let top = hovered_idx.unwrap_or_else(|| self.top());
+                pf.heads.keys().copied().filter(|&i| i <= top).max()
+            })
+            .or_else(|| pf.heads.keys().copied().min());
+        if let Some(bi) = pick_bi
+            && let Some(&(n, _, _)) = pf.heads.get(&bi)
+        {
+            self.toggle_page_fold(n);
+        }
+    }
+
     /// Opens the folds that hide top-level block `i` on the page, and selects its node on the map.
     fn unfold_to_block(&mut self, i: usize) {
         if self.page_folds().hidden.get(i) == Some(&true) {
