@@ -132,6 +132,7 @@ Use `./dev` while you work. It checks and tests an edit in seconds, and it leave
 - Plain `cargo build`, `cargo test` and release builds still use the pinned stable toolchain. They work as before and need no nightly.
 - The fast binary runs this crate's code unoptimized, so its timings are not the app's: on a 1,753-line note a mode switch took 81 to 92 ms in it when the app build took 55 to 73 ms (7 to 16 ms in the app build since Rune 98955867). Use it for behaviour. Measure timing on `./dev app` or a release build.
 - Every `./dev` command runs at the lowest CPU and disk priority, under a 2.4 GB memory cap, with two build jobs. `QUIRE_DEV_MEM` and `CARGO_BUILD_JOBS` change the limits.
+- `./dev test` runs through `tests/run-bounded.py` with `RUST_TEST_THREADS=1` by default (`QUIRE_TEST_THREADS` overrides), a 120 s stall timeout (`QUIRE_TEST_STALL_SECS`, ignoring libtest's 60 s wait lines) and a 900 s wall-clock cap (`QUIRE_TEST_MAX_SECS`), aborting with exit code `124` and naming any hung test instead of stalling. `tests/probe.py` (and `tests/cases.py`) enforce a 45 s per-run timeout (`QUIRE_PROBE_TIMEOUT`).
 - After a change that touches most of the crate, measured on a 4-core laptop: `./dev check` 1.4 s, `./dev test` builds in 9 s, `./dev build` 7 s, `./dev app` 40 s.
 
 ```sh

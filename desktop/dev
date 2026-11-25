@@ -18,6 +18,10 @@
 # Every command runs at the lowest CPU and disk priority and under a memory cap, so a compile
 # cannot take the desktop down or make it stutter. QUIRE_DEV_MEM (default 2400M) and
 # CARGO_BUILD_JOBS (default 2) change the limits.
+#
+# `./dev test` runs through `tests/run-bounded.py` with a stall timeout
+# (QUIRE_TEST_STALL_SECS, default 120s), a wall-clock cap (QUIRE_TEST_MAX_SECS, default 900s),
+# and RUST_TEST_THREADS defaulted to 1 (QUIRE_TEST_THREADS) to prevent ENV-lock stalls.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -33,6 +37,10 @@ case "$cmd" in
             exit 1
         fi
         run=(nice -n 19 cargo "+$toolchain" --config .cargo/fast.toml "$cmd" --profile fast "$@")
+        if [ "$cmd" = "test" ]; then
+            export RUST_TEST_THREADS="${QUIRE_TEST_THREADS:-1}"
+            run=(python3 tests/run-bounded.py "${run[@]}")
+        fi
         ;;
     app)
         # The pinned stable toolchain and the dev profile, as plain `cargo build`.

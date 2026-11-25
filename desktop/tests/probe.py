@@ -180,26 +180,61 @@ def parse_events(arg):
     return events
 
 
-def run_outside(cmd, env, notes, outside):
+def probe_timeout(extra=0.0):
+    raw = os.environ.get("QUIRE_PROBE_TIMEOUT", "45")
+    base = max(0.0, float(raw))
+    return None if base == 0.0 else base + extra
+
+
+def run_outside(cmd, env, notes, outside, timeout=None):
     """A --realtime run that acts on its `probe-write:NAME` and `probe-delete:NAME` marks as
     the app reaches them, writing `outside[NAME]` to the notes folder or deleting NAME."""
+    import selectors
     with tempfile.TemporaryFile("w+") as err:
-        p = subprocess.Popen(cmd + ["--realtime"], env=env, stdout=subprocess.PIPE, stderr=err, text=True)
-        for line in p.stdout:
-            m = re.match(r"rune-mark probe-(write|delete):(\S+) ", line)
-            if not m:
-                continue
-            path = os.path.join(notes, m.group(2))
-            if m.group(1) == "delete":
-                os.remove(path)
-                continue
-            if m.group(2) not in outside:
-                p.kill()
-                raise SystemExit("probe: no text for write:%s (see --outside)" % m.group(2))
-            with open(path + ".probe-tmp", "wb") as f:
-                f.write(outside[m.group(2)])
-            os.replace(path + ".probe-tmp", path)
-        p.wait()
+        p = subprocess.Popen(cmd + ["--realtime"], env=env, stdout=subprocess.PIPE, stderr=err, text=True, start_new_session=True)
+        sel = selectors.DefaultSelector()
+        sel.register(p.stdout, selectors.EVENT_READ)
+        deadline = (time.monotonic() + timeout) if timeout else None
+        try:
+            while True:
+                wait = None if deadline is None else max(0.0, deadline - time.monotonic())
+                if deadline is not None and wait <= 0.0:
+                    try:
+                        os.killpg(os.getpgid(p.pid), 9)
+                    except ProcessLookupError:
+                        pass
+                    p.wait()
+                    raise SystemExit("probe: timed out after %.0fs" % timeout)
+                if not sel.select(timeout=min(0.5, wait) if wait is not None else 0.5):
+                    if p.poll() is not None:
+                        break
+                    continue
+                line = p.stdout.readline()
+                if not line:
+                    break
+                m = re.match(r"rune-mark probe-(write|delete):(\S+) ", line)
+                if not m:
+                    continue
+                path = os.path.join(notes, m.group(2))
+                if m.group(1) == "delete":
+                    os.remove(path)
+                    continue
+                if m.group(2) not in outside:
+                    p.kill()
+                    raise SystemExit("probe: no text for write:%s (see --outside)" % m.group(2))
+                with open(path + ".probe-tmp", "wb") as f:
+                    f.write(outside[m.group(2)])
+                os.replace(path + ".probe-tmp", path)
+            p.wait(timeout=max(1.0, deadline - time.monotonic()) if deadline else None)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(p.pid), 9)
+            except ProcessLookupError:
+                pass
+            p.wait()
+            raise SystemExit("probe: timed out after %.0fs" % timeout)
+        finally:
+            sel.close()
         err.seek(0)
         return subprocess.CompletedProcess(cmd, p.returncode, "", err.read())
 
@@ -254,13 +289,17 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
         timed = any(e.get("type") == "mark" and e.get("name", "").startswith(("probe-write:", "probe-delete:")) for e in events)
         if timed and not (note or folder):
             raise SystemExit("probe: write and delete need --note or --folder")
+        limit = probe_timeout(extra=at if timed else 0.0)
         with open(LOCK_PATH, "w") as lf:
             fcntl.flock(lf, fcntl.LOCK_EX)
             try:
                 if timed:
-                    r = run_outside(cmd, env, notes, outside or {})
+                    r = run_outside(cmd, env, notes, outside or {}, timeout=limit)
                 else:
-                    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                    try:
+                        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=limit)
+                    except subprocess.TimeoutExpired:
+                        raise SystemExit("probe: timed out after %.0fs" % limit)
             finally:
                 fcntl.flock(lf, fcntl.LOCK_UN)
         if not r.returncode:
