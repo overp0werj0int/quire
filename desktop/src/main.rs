@@ -4340,7 +4340,7 @@ mod edit_menu_tests {
         }
         assert!(rt.elements().iter().all(|e| !(e.focused && e.focus_visible && e.key.as_deref().is_some_and(|k| k.starts_with("tm-")))), "a menu the pointer opened marks no item");
         key(&mut rt, Key::Text("d".into()));
-        assert_eq!(marked(&rt), Some(("tm-2".into(), true)), "d jumps to Delete note");
+        assert_eq!(marked(&rt), Some(("tm-4".into(), true)), "d jumps to Delete note");
         key(&mut rt, Key::Enter);
         let mut seen = (true, true);
         rt.update_if(|s, _| {

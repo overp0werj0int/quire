@@ -94,6 +94,8 @@ const NOTE_BUTTONS: &[&str] = &[
     "find-prev",
     "find-next",
     "find-close",
+    "find-case",
+    "find-word",
     "find-replace-toggle",
     "replace-one",
     "replace-all",

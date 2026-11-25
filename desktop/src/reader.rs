@@ -78,7 +78,7 @@ impl Default for Reader {
     fn default() -> Self {
         Reader {
             wide: None,
-            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0, replace_open: false, replace: TextEdit::new("") },
+            find: Find { open: false, q: TextEdit::new(""), searched: String::new(), due: None, cur: 0, case_sensitive: false, whole_word: false, replace_open: false, replace: TextEdit::new("") },
             toast: None,
             copied: None,
             reloaded: None,
@@ -560,6 +560,9 @@ pub struct Find {
     pub due: Option<f64>,
     /// The current match, an index into `blocks::find_all`.
     pub cur: usize,
+    /// Source-mode case-sensitive (`Aa`) and whole-word (`W`) toggles.
+    pub case_sensitive: bool,
+    pub whole_word: bool,
     /// Whether the Source-mode Replace row is expanded inside the find bar (`Ctrl+H`).
     pub replace_open: bool,
     pub replace: TextEdit,

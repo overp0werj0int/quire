@@ -160,9 +160,41 @@ pub fn find_bar(v: V) -> El {
         let glyph = if show_replace { &CHEVRON_DOWN } else { &CHEVRON_RIGHT };
         top_row = top_row.child(button("find-replace-toggle", glyph, 11.0, tip("Find and replace", "writer.replace"), true, |s, tx| s.toggle_replace(tx)));
     }
+    let opt_toggle = |key: &'static str, lbl: &'static str, help: &'static str, on: bool, run: fn(&mut App, &mut Tx)| {
+        let fill = if on { v.p.act } else { Color::TRANSPARENT };
+        let ink = if on { Roles::readable_on(v.p.acc, c.bg, 4.5) } else { quiet.faint };
+        super::focus::stop(row())
+            .key(key)
+            .size(24.0, 24.0)
+            .center()
+            .radius(4.0)
+            .fill(fill)
+            .hover(if on { v.p.act } else { v.p.hover })
+            .border(1.0, if on { v.p.acc.alpha(0.5) } else { Color::TRANSPARENT })
+            .border_layout()
+            .role("switch")
+            .checked(on)
+            .label(help)
+            .help(help)
+            .focus_ring(2.0, 1.0, rc)
+            .keeps_text_selection()
+            .control(run)
+            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(ink))
+    };
     top_row = top_row
         .child(icon(&SEARCH, 14.0).color(quiet.faint))
-        .child(field)
+        .child(field);
+    if is_source {
+        top_row = top_row.child(
+            row()
+                .gap(2.0)
+                .center_y()
+                .preserve_focus_on_press(true)
+                .child(opt_toggle("find-case", "Aa", "Match case", f.case_sensitive, |s, _| s.toggle_find_case()))
+                .child(opt_toggle("find-word", "W", "Whole word", f.whole_word, |s, _| s.toggle_find_word())),
+        );
+    }
+    top_row = top_row
         .child(text(count).key("find-count").font(sans(12.0, 400.0)).color(tone))
         .child(
             row()
@@ -220,6 +252,10 @@ pub fn find_bar(v: V) -> El {
                     if s.notice.take().is_none() {
                         s.close_find(tx);
                     }
+                    return true;
+                }
+                if ev.key == Key::Enter && (ev.mods.cmd || ev.mods.ctrl) && !ev.mods.alt && !ev.mods.logo {
+                    s.replace_all(tx);
                     return true;
                 }
                 if ev.key == Key::Enter && !ev.mods.ctrl && !ev.mods.cmd && !ev.mods.alt && !ev.mods.logo {
@@ -297,8 +333,13 @@ pub(super) fn help_sheet(v: V) -> Card {
     let cols = if left < all.len() && v.vw > 1040.0 { 2 } else { 1 };
     let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let header_h = 44.0;
+    let narrow_header = v.vw < 720.0;
+    let header_h = if narrow_header { 78.0 } else { 44.0 };
     let search_h = 40.0;
+    let pill_on_bg = crate::roles::mix(c.bg, v.p.act, v.p.act.a);
+    let pill_off_bg = crate::roles::mix(c.bg, v.p.soft, v.p.soft.a);
+    let pill_on_ink = Roles::readable_on(v.p.acc, pill_on_bg, 4.8);
+    let pill_off_ink = Roles::readable_on(c.dim, pill_off_bg, 4.8);
     let mode_pill = |m: crate::app::Mode, key: &'static str, lbl: &'static str| {
         let on = help_mode == m;
         let (rw, rg, rc) = super::focus_ring(v.p);
@@ -322,7 +363,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                     h.idx = 0;
                 }
             })
-            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(if on { v.p.acc } else { c.dim }))
+            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(if on { pill_on_ink } else { pill_off_ink }))
     };
     let mode_pills = row()
         .key("help-modes")
@@ -335,44 +376,78 @@ pub(super) fn help_sheet(v: V) -> Card {
         .child(mode_pill(crate::app::Mode::Source, "help-mode-source", "Source"))
         .child(mode_pill(crate::app::Mode::Preview, "help-mode-preview", "Preview"))
         .child(mode_pill(crate::app::Mode::Map, "help-mode-map", "Map"));
-    let header = row()
-        .key("help-header")
-        .w(w)
-        .h(header_h)
-        .pl(24.0)
-        .pr(14.0)
-        .gap(8.0)
-        .center_y()
-        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
-        .border_layout()
-        .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
-        .child(mode_pills)
-        .child(
-            text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
-                .key("help-version")
-                .font(sans(11.0, 400.0))
-                .color(super::styles::caption_ink(v.p)),
-        )
-        .child(el().grow(1.0))
-        .child(super::widgets::outline_button(v.p, "help-customize", "Customize shortcuts", 26.0, |s: &mut App, tx: &mut Tx| {
-            s.open_settings(tx);
-            s.set_sec = crate::app::Sec::Keys;
-        }))
-        .child(cap(keymap::label_of("Esc"), v.p))
-        .child(
-            row()
-                .key("help-close")
-                .size(24.0, 24.0)
-                .center()
-                .radius(6.0)
-                .hover(v.p.hover)
-                .hover_group()
-                .role("button")
-                .label("Close help")
-                .help(km.tip("Close help", "help.close"))
-                .control(|s: &mut App, tx| s.close_layer(tx))
-                .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink)),
-        );
+    let version_lbl = text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
+        .key("help-version")
+        .font(sans(11.0, 400.0))
+        .color(super::styles::caption_ink(v.p));
+    let customize_btn = super::widgets::outline_button(v.p, "help-customize", "Customize shortcuts", 26.0, |s: &mut App, tx: &mut Tx| {
+        s.open_settings(tx);
+        s.set_sec = crate::app::Sec::Keys;
+    });
+    let close_btn = row()
+        .key("help-close")
+        .size(24.0, 24.0)
+        .center()
+        .radius(6.0)
+        .hover(v.p.hover)
+        .hover_group()
+        .role("button")
+        .label("Close help")
+        .help(km.tip("Close help", "help.close"))
+        .control(|s: &mut App, tx| s.close_layer(tx))
+        .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink));
+    let header = if narrow_header {
+        col()
+            .key("help-header")
+            .w(w)
+            .h(header_h)
+            .pl(20.0)
+            .pr(14.0)
+            .py(6.0)
+            .gap(6.0)
+            .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
+            .border_layout()
+            .child(
+                row()
+                    .w_full()
+                    .h(30.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
+                    .child(el().grow(1.0))
+                    .child(customize_btn)
+                    .child(cap(keymap::label_of("Esc"), v.p))
+                    .child(close_btn),
+            )
+            .child(
+                row()
+                    .w_full()
+                    .h(28.0)
+                    .gap(8.0)
+                    .center_y()
+                    .child(mode_pills)
+                    .child(el().grow(1.0))
+                    .child(version_lbl),
+            )
+    } else {
+        row()
+            .key("help-header")
+            .w(w)
+            .h(header_h)
+            .pl(24.0)
+            .pr(14.0)
+            .gap(8.0)
+            .center_y()
+            .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
+            .border_layout()
+            .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
+            .child(mode_pills)
+            .child(version_lbl)
+            .child(el().grow(1.0))
+            .child(customize_btn)
+            .child(cap(keymap::label_of("Esc"), v.p))
+            .child(close_btn)
+    };
     let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
     // The search (RD-105): it filters the rows as it is typed, Up and Down pick one, and Enter
     // runs what the row's keys run.
@@ -443,24 +518,27 @@ pub(super) fn help_sheet(v: V) -> Card {
                 }
             }
             let mut line = row().key(format!("r-{i}")).min_h(row_h).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
-            if crate::help::action(r).is_some() {
-                let at = n;
-                n += 1;
-                let on = pick.is_some_and(|p| std::ptr::eq(p, *r));
-                let row_ref: &'static crate::help::Row = r;
-                line = line
-                    .key(crate::help::row_key(at))
-                    .fill(if on { v.p.act } else { Color::TRANSPARENT })
-                    .role("option")
-                    .cursor(rune::Cursor::Pointer)
-                    .on_hover(move |s: &mut App| {
-                        if let Some(h) = s.help_search_mut()
-                            && h.idx != at
-                        {
-                            h.idx = at;
-                        }
-                    })
-                    .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
+            if let Some(act) = crate::help::action(r) {
+                let cross_blocked = help_mode != v.s.mode && !act.ctx.contains(&Ctx::Global) && (v.s.active.is_none() || v.s.active_locked());
+                if !cross_blocked {
+                    let at = n;
+                    n += 1;
+                    let on = pick.is_some_and(|p| std::ptr::eq(p, *r));
+                    let row_ref: &'static crate::help::Row = r;
+                    line = line
+                        .key(crate::help::row_key(at))
+                        .fill(if on { v.p.act } else { Color::TRANSPARENT })
+                        .role("option")
+                        .cursor(rune::Cursor::Pointer)
+                        .on_hover(move |s: &mut App| {
+                            if let Some(h) = s.help_search_mut()
+                                && h.idx != at
+                            {
+                                h.idx = at;
+                            }
+                        })
+                        .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
+                }
             }
             g = g.child(line);
         }

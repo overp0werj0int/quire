@@ -148,29 +148,52 @@ fn ink_bits(i: &Ink) -> [u32; 40] {
     out
 }
 
-/// Literal, case-insensitive, non-overlapping matches of `q` in `text`, at most 10000 (WR-116).
-pub fn find_in(text: &str, q: &str) -> Vec<Range<usize>> {
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Literal, non-overlapping matches of `q` in `text`, at most 10000, with optional case-sensitive
+/// and whole-word filtering (WR-116).
+pub fn find_in_opts(text: &str, q: &str, case_sensitive: bool, whole_word: bool) -> Vec<Range<usize>> {
     if q.is_empty() {
         return Vec::new();
     }
-    let lower = text.to_lowercase();
-    let ql = q.to_lowercase();
+    let lower = if case_sensitive { String::new() } else { text.to_lowercase() };
+    let ql = if case_sensitive { String::new() } else { q.to_lowercase() };
     // Lowercasing keeps byte offsets for nearly all text; where it would not, match ASCII case
     // only, on the text itself.
-    let (hay, needle) = if lower.len() == text.len() { (lower.as_str(), ql.as_str()) } else { (text, q) };
-    let ascii = lower.len() != text.len();
+    let (hay, needle, ascii) = if case_sensitive {
+        (text, q, false)
+    } else if lower.len() == text.len() {
+        (lower.as_str(), ql.as_str(), false)
+    } else {
+        (text, q, true)
+    };
     let mut out = Vec::new();
     let mut at = 0;
     while at + needle.len() <= hay.len() && out.len() < 10_000 {
         let hit = if ascii { hay.get(at..at + needle.len()).is_some_and(|w| w.eq_ignore_ascii_case(needle)) } else { hay[at..].starts_with(needle) };
         if hit && text.is_char_boundary(at) && text.is_char_boundary(at + needle.len()) {
-            out.push(at..at + needle.len());
-            at += needle.len();
+            let end = at + needle.len();
+            let word_ok = !whole_word
+                || (!text[..at].chars().next_back().is_some_and(is_word_char)
+                    && !text[end..].chars().next().is_some_and(is_word_char));
+            if word_ok {
+                out.push(at..end);
+                at = end;
+            } else {
+                at += hay[at..].chars().next().map_or(1, char::len_utf8);
+            }
         } else {
             at += hay[at..].chars().next().map_or(1, char::len_utf8);
         }
     }
     out
+}
+
+/// Literal, case-insensitive, non-overlapping matches of `q` in `text`, at most 10000 (WR-116).
+pub fn find_in(text: &str, q: &str) -> Vec<Range<usize>> {
+    find_in_opts(text, q, false, false)
 }
 
 /// Spans, strike lines and each line's hanging mark (`Styled::hang`) for a whole text.
@@ -699,7 +722,21 @@ impl App {
     // ---------- Find in the source (WR-115 to WR-123) ----------
 
     pub fn source_matches(&self) -> Vec<Range<usize>> {
-        self.find_query().map_or_else(Vec::new, |q| find_in(self.active_text(), q))
+        self.find_query().map_or_else(Vec::new, |q| find_in_opts(self.active_text(), q, self.reader.find.case_sensitive, self.reader.find.whole_word))
+    }
+
+    pub fn toggle_find_case(&mut self) {
+        self.reader.find.case_sensitive = !self.reader.find.case_sensitive;
+        if self.reader.find.open && self.find_query().is_some() {
+            self.source_found();
+        }
+    }
+
+    pub fn toggle_find_word(&mut self) {
+        self.reader.find.whole_word = !self.reader.find.whole_word;
+        if self.reader.find.open && self.find_query().is_some() {
+            self.source_found();
+        }
     }
 
     /// Ctrl+F in the writer: the editor's selection becomes the query (WR-115).
@@ -882,8 +919,8 @@ impl App {
 
     // ---------- Inline Autocomplete (`[[wiki]]` and `#tag`) ----------
 
-    /// Active inline autocomplete state `(trigger, suggestions, selected_index)` in Source mode.
-    pub fn ac_state(&self) -> Option<(writer::AcTrigger, Vec<AcItem>, usize)> {
+    /// Active inline autocomplete state `(trigger, suggestions, selected_index, total_count)` in Source mode.
+    pub fn ac_state(&self) -> Option<(writer::AcTrigger, Vec<AcItem>, usize, usize)> {
         if self.mode != Mode::Source || self.sheet().is_some() || self.active_locked() || self.layer().is_some() || self.reader.find.open {
             return None;
         }
@@ -896,7 +933,7 @@ impl App {
         if self.wstate.ac_dismissed.as_ref().is_some_and(|(p, st)| p == active && *st == trig.start) {
             return None;
         }
-        let items = match trig.kind {
+        let (items, total) = match trig.kind {
             writer::AcKind::Wiki => self.ac_wiki_items(&trig.query),
             writer::AcKind::Tag => self.ac_tag_items(&trig.query, active, &edit.text, trig.start..trig.end),
         };
@@ -904,20 +941,61 @@ impl App {
             return None;
         }
         let idx = self.wstate.ac_idx.min(items.len() - 1);
-        Some((trig, items, idx))
+        Some((trig, items, idx, total))
     }
 
     pub fn ac_active(&self) -> bool {
         self.ac_state().is_some()
     }
 
-    fn ac_wiki_items(&self, q: &str) -> Vec<AcItem> {
+    fn ac_wiki_items(&self, q: &str) -> (Vec<AcItem>, usize) {
+        if let Some((note_part, head_part)) = q.split_once('#') {
+            let note_trim = note_part.trim();
+            let head_q = head_part.trim();
+            let target = if note_trim.is_empty() {
+                self.active.as_deref()
+            } else {
+                self.names.resolve(note_trim)
+            };
+            let Some(path) = target else { return (Vec::new(), 0) };
+            if self.note_locked(path) {
+                return (Vec::new(), 0);
+            }
+            let Some(text) = self.note_text(path) else { return (Vec::new(), 0) };
+            let headings = md::headings(text);
+            let mut matched: Vec<(f32, usize, md::Heading)> = if head_q.is_empty() {
+                headings.into_iter().enumerate().map(|(i, h)| (0.0, i, h)).collect()
+            } else {
+                headings
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, h)| md::fuzzy(head_q, &h.text).map(|(sc, _)| (sc, i, h)))
+                    .collect()
+            };
+            if !head_q.is_empty() {
+                matched.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1)));
+            }
+            let total = matched.len();
+            let items = matched
+                .into_iter()
+                .take(8)
+                .map(|(_, _, h)| {
+                    let insert = if note_trim.is_empty() {
+                        format!("[[#{}]]", h.text)
+                    } else {
+                        format!("[[{}#{}]]", note_trim, h.text)
+                    };
+                    AcItem { label: h.text, sub: format!("H{}", h.level), insert }
+                })
+                .collect();
+            return (items, total);
+        }
         let files = self.files();
-        let paths: Vec<String> = if q.is_empty() {
+        let all: Vec<String> = if q.is_empty() {
             let rec: Vec<&String> = self.recent.iter().filter(|x| files.contains_key(*x)).collect();
             let mut rest: Vec<&String> = files.keys().filter(|x| !rec.contains(x)).collect();
             rest.sort();
-            rec.into_iter().chain(rest).take(8).cloned().collect()
+            rec.into_iter().chain(rest).cloned().collect()
         } else {
             let mut scored: Vec<(f32, String)> = files
                 .keys()
@@ -929,10 +1007,12 @@ impl App {
                 })
                 .collect();
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1)));
-            scored.into_iter().take(8).map(|(_, x)| x).collect()
+            scored.into_iter().map(|(_, x)| x).collect()
         };
-        paths
+        let total = all.len();
+        let items = all
             .into_iter()
+            .take(8)
             .map(|p| {
                 let base = md::base(&p);
                 let target = if md::dir(&p).is_empty() || self.names.resolve(base) == Some(p.as_str()) {
@@ -946,10 +1026,11 @@ impl App {
                     insert: format!("[[{target}]]"),
                 }
             })
-            .collect()
+            .collect();
+        (items, total)
     }
 
-    fn ac_tag_items(&self, q: &str, active: &str, live_text: &str, active_span: std::ops::Range<usize>) -> Vec<AcItem> {
+    fn ac_tag_items(&self, q: &str, active: &str, live_text: &str, active_span: std::ops::Range<usize>) -> (Vec<AcItem>, usize) {
         use std::collections::BTreeMap;
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         if let Some(v) = &self.vault {
@@ -978,9 +1059,10 @@ impl App {
             .collect();
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)).then_with(|| a.2.cmp(&b.2)));
         if !ql.is_empty() && scored.len() == 1 && scored[0].2 == ql {
-            return Vec::new();
+            return (Vec::new(), 0);
         }
-        scored
+        let total = scored.len();
+        let items = scored
             .into_iter()
             .take(8)
             .map(|(_, n, t)| AcItem {
@@ -988,7 +1070,8 @@ impl App {
                 sub: if n > 0 { n.to_string() } else { String::new() },
                 insert: format!("#{t}"),
             })
-            .collect()
+            .collect();
+        (items, total)
     }
 
     pub fn ac_after_edit(&mut self) {
@@ -1006,20 +1089,20 @@ impl App {
     }
 
     pub fn ac_step(&mut self, down: bool) -> bool {
-        let Some((_, items, cur)) = self.ac_state() else { return false };
+        let Some((_, items, cur, _)) = self.ac_state() else { return false };
         let n = items.len();
         self.wstate.ac_idx = if down { (cur + 1) % n } else { (cur + n - 1) % n };
         true
     }
 
     pub fn ac_dismiss(&mut self) -> bool {
-        let Some((trig, _, _)) = self.ac_state() else { return false };
+        let Some((trig, _, _, _)) = self.ac_state() else { return false };
         self.wstate.ac_dismissed = self.active.clone().map(|a| (a, trig.start));
         true
     }
 
     pub fn ac_accept(&mut self, index: Option<usize>, tx: &mut Tx) -> bool {
-        let Some((trig, items, cur)) = self.ac_state() else { return false };
+        let Some((trig, items, cur, _)) = self.ac_state() else { return false };
         let item = &items[index.unwrap_or(cur).min(items.len() - 1)];
         let mut end = trig.end;
         if trig.kind == writer::AcKind::Wiki && self.active_text().get(end..).is_some_and(|rest| rest.starts_with("]]")) {
@@ -1188,7 +1271,7 @@ mod tests {
             e.replace_text(existing_vault);
             e.set_selection(existing_vault.len(), existing_vault.len());
             s.after_edit();
-            let (_, items, _) = s.ac_state().expect("existing vault tag should suggest");
+            let (_, items, _, _) = s.ac_state().expect("existing vault tag should suggest");
             assert!(items.iter().any(|it| it.insert == "#design"), "expected #design suggestion, got {items:?}");
 
             let existing_same = "# Beta\n\nEarlier #localtag here.\n#loc";
@@ -1196,8 +1279,54 @@ mod tests {
             e.replace_text(existing_same);
             e.set_selection(existing_same.len(), existing_same.len());
             s.after_edit();
-            let (_, items, _) = s.ac_state().expect("existing tag earlier in same note should suggest");
+            let (_, items, _, _) = s.ac_state().expect("existing tag earlier in same note should suggest");
             assert!(items.iter().any(|it| it.insert == "#localtag"), "expected #localtag suggestion, got {items:?}");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_in_opts_respects_case_sensitive_and_whole_word() {
+        use super::find_in_opts;
+        let text = "Cat cat caterpillar CAT";
+        assert_eq!(find_in_opts(text, "cat", false, false).len(), 4);
+        assert_eq!(find_in_opts(text, "cat", true, false), vec![4..7, 8..11]);
+        assert_eq!(find_in_opts(text, "cat", false, true), vec![0..3, 4..7, 20..23]);
+        assert_eq!(find_in_opts(text, "cat", true, true), vec![4..7]);
+    }
+
+    #[test]
+    fn ac_wiki_heading_autocomplete_suggests_headings_for_note_and_self() {
+        let dir = std::env::temp_dir().join(format!("quire-ac-head-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Alpha.md"), "# Alpha\n\n## Intro\n\nSee [[Beta#").unwrap();
+        std::fs::write(dir.join("Beta.md"), "# Beta Note\n\n## Details\n\n### Deep Dive\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Alpha.md", None, tx);
+            s.mode = crate::app::Mode::Source;
+            s.focus_editor(tx);
+        });
+        rt.update(|s, _| {
+            let e = s.cur_edit();
+            e.focused = true;
+            let len = e.text.len();
+            e.set_selection(len, len);
+            let (_, items, _, _) = s.ac_state().expect("[[Beta# should open heading autocomplete");
+            assert!(items.iter().any(|it| it.insert == "[[Beta#Details]]"), "expected [[Beta#Details]], got {items:?}");
+
+            // Same-note [[#In should suggest Intro
+            let self_h = "# Alpha\n\n## Intro\n\nSee [[#In";
+            let e = s.cur_edit();
+            e.replace_text(self_h);
+            e.set_selection(self_h.len(), self_h.len());
+            s.after_edit();
+            let (_, items2, _, _) = s.ac_state().expect("[[#In should open same-note heading autocomplete");
+            assert!(items2.iter().any(|it| it.insert == "[[#Intro]]"), "expected [[#Intro]], got {items2:?}");
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

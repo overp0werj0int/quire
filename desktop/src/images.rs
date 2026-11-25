@@ -266,16 +266,34 @@ impl App {
         self.link_images(&[format!("{ATTACHMENTS}/{name}")], tx)
     }
 
-    /// A paste into the editor: image files and a copied image become links. Other pastes
-    /// go to the text field as usual.
+    /// A paste into the editor: image files and a copied image become links; pasting a URL over a
+    /// non-empty single-line selection wraps it as `[selection](url)`. Other pastes go to the field.
     pub fn paste_content(&mut self, content: &rune::ClipboardContent, tx: &mut Tx) -> bool {
         if content.files().iter().any(|f| md::is_image(&f.to_string_lossy())) {
             return self.insert_images(content.files(), tx);
         }
         match content.image() {
-            Some(img) if content.text().trim().is_empty() => self.paste_image(img.png(), tx),
-            _ => false,
+            Some(img) if content.text().trim().is_empty() => return self.paste_image(img.png(), tx),
+            _ => {}
         }
+        if self.writing() {
+            let pasted = content.text();
+            let wrapped = {
+                let e = self.target_edit();
+                smart_url_paste(&e.text, e.anchor, e.focus, pasted).map(|(w, end)| (e.anchor.min(e.focus), e.anchor.max(e.focus), w, end))
+            };
+            if let Some((lo, hi, w, end)) = wrapped {
+                let e = self.target_edit();
+                e.undo_group(|e| {
+                    e.set_selection(lo, hi);
+                    e.insert(&w);
+                    e.set_selection(end, end);
+                });
+                self.target_changed(tx);
+                return true;
+            }
+        }
+        false
     }
 
     /// Asks for an image file, then links it in the active note.
@@ -329,5 +347,50 @@ impl App {
         self.images.forget_index();
         self.focus_editor(tx);
         true
+    }
+}
+
+/// True when `s` is a single-token `http://` or `https://` URL.
+pub fn is_http_url(s: &str) -> bool {
+    let t = s.trim();
+    (t.starts_with("http://") || t.starts_with("https://")) && !t.contains(char::is_whitespace) && t.len() > 8
+}
+
+/// When pasting an `http://` / `https://` URL over a non-empty single-line text selection, wraps
+/// the selection as `[selected](url)` instead of overwriting the label.
+pub fn smart_url_paste(text: &str, a: usize, b: usize, pasted: &str) -> Option<(String, usize)> {
+    let url = pasted.trim();
+    if !is_http_url(url) {
+        return None;
+    }
+    let (lo, hi) = (a.min(b).min(text.len()), a.max(b).min(text.len()));
+    if lo >= hi || !text.is_char_boundary(lo) || !text.is_char_boundary(hi) {
+        return None;
+    }
+    let sel = &text[lo..hi];
+    if sel.contains('\n') || sel.trim().is_empty() || is_http_url(sel) {
+        return None;
+    }
+    let wrapped = format!("[{sel}]({url})");
+    let end = lo + wrapped.len();
+    Some((wrapped, end))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::smart_url_paste;
+
+    #[test]
+    fn smart_url_paste_wraps_single_line_selection() {
+        let text = "Read Quire docs here.";
+        let lo = text.find("Quire docs").unwrap();
+        let hi = lo + "Quire docs".len();
+        let (wrapped, end) = smart_url_paste(text, lo, hi, "https://quire.app/docs").unwrap();
+        assert_eq!(wrapped, "[Quire docs](https://quire.app/docs)");
+        assert_eq!(end, lo + wrapped.len());
+        assert!(smart_url_paste(text, lo, lo, "https://quire.app").is_none(), "empty selection does not wrap");
+        assert!(smart_url_paste(text, lo, hi, "plain text").is_none(), "non-URL paste does not wrap");
+        assert!(smart_url_paste("line1\nline2", 0, 11, "https://quire.app").is_none(), "multi-line selection does not wrap");
+        assert!(smart_url_paste("https://a.com", 0, 13, "https://b.com").is_none(), "URL selection replaces normally");
     }
 }

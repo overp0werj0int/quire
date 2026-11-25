@@ -610,6 +610,7 @@ fn keys(v: V) -> El {
                 left = left.child(label(msg, sans(11.5, 400.0), p.err).wrap());
             }
             let right = if is_editing {
+                let (rw, rg, rc) = super::focus_ring(p);
                 row()
                     .gap(6.0)
                     .center_y()
@@ -622,6 +623,10 @@ fn keys(v: V) -> El {
                             .radius(6.0)
                             .fill(p.soft)
                             .border(1.0, p.acc)
+                            .focusable(true)
+                            .focus_ring(rw, rg, rc)
+                            .role("button")
+                            .label(format!("Recording shortcut for {}", a.name))
                             .child(label("Press shortcut…", sans(12.0, 500.0), p.acc)),
                     )
                     .child(outline_button(p, &format!("key-clear-{id}"), "Clear", 26.0, move |s: &mut App, _: &mut Tx| s.clear_key_binding(id)))
@@ -648,7 +653,7 @@ fn keys(v: V) -> El {
                         .role("button")
                         .label(format!("Change shortcut for {}", a.name))
                         .help("Click to rebind")
-                        .control(move |s: &mut App, _: &mut Tx| s.start_key_edit(id))
+                        .control(move |s: &mut App, tx: &mut Tx| s.start_key_edit(id, tx))
                 };
                 let mut r = row().gap(6.0).center_y().child(trigger);
                 if custom {

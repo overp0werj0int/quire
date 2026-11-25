@@ -1308,14 +1308,16 @@ fn is_editor_motion_or_edit_key(ev: &KeyEvent) -> bool {
 
 /// Floating inline autocomplete popover for `[[wiki]]` note links and `#tag` prefixes in Source.
 fn ac_popover(v: V) -> Option<El> {
-    let (trig, items, active_idx) = v.s.ac_state()?;
+    let (trig, items, active_idx, total) = v.s.ac_state()?;
     let p = v.p;
     let c = Roles::new(p);
     let quiet = Roles::panel(p);
-    const POP_W: f32 = 252.0;
+    const POP_W: f32 = 264.0;
     const ROW_H: f32 = 28.0;
     const HEAD_H: f32 = 22.0;
-    let pop_h = HEAD_H + items.len() as f32 * ROW_H + 10.0;
+    const FOOT_H: f32 = 20.0;
+    let extra = total.saturating_sub(items.len());
+    let pop_h = HEAD_H + items.len() as f32 * ROW_H + if extra > 0 { FOOT_H } else { 0.0 } + 10.0;
     let doc_w = doc_width(v).max(POP_W + 24.0);
     let (x, y) = match (v.caret, v.caret_view) {
         (Some(cr), Some(vr)) if vr[2] > 0.0 && vr[3] > 0.0 => {
@@ -1331,6 +1333,7 @@ fn ac_popover(v: V) -> Option<El> {
         _ => (source_column(v).gutter.clamp(16.0, (doc_w - POP_W - 16.0).max(16.0)), (top_band(v) + 56.0).min((v.vh - pop_h - 48.0).max(24.0))),
     };
     let heading = match trig.kind {
+        crate::writer::AcKind::Wiki if trig.query.contains('#') => "Link heading",
         crate::writer::AcKind::Wiki => "Link note",
         crate::writer::AcKind::Tag => "Insert tag",
     };
@@ -1345,7 +1348,7 @@ fn ac_popover(v: V) -> Option<El> {
                 .center_y()
                 .justify_between()
                 .child(text(heading.to_uppercase()).font(sans(10.0, 600.0).tracking(0.8)).color(quiet.faint))
-                .child(text("↵ insert · Esc").font(keys(10.0)).color(quiet.faint)),
+                .child(text("Tab / ↵ insert · Esc").font(keys(10.0)).color(quiet.faint)),
         );
     for (i, item) in items.iter().enumerate() {
         let on = i == active_idx;
@@ -1374,6 +1377,17 @@ fn ac_popover(v: V) -> Option<El> {
             r = r.child(text(item.sub.clone()).font(sans(11.0, 400.0)).color(quiet.faint).truncate());
         }
         list = list.child(r);
+    }
+    if extra > 0 {
+        list = list.child(
+            row()
+                .key("ac-more")
+                .w_full()
+                .h(FOOT_H)
+                .px(8.0)
+                .center_y()
+                .child(text(format!("+{extra} more")).font(sans(10.5, 400.0)).color(quiet.faint)),
+        );
     }
     Some(
         super::reader::popup(&c)

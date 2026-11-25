@@ -552,8 +552,9 @@ impl App {
         &self.persist.settings
     }
 
-    pub fn start_key_edit(&mut self, action_id: &'static str) {
+    pub fn start_key_edit(&mut self, action_id: &'static str, tx: &mut Tx) {
         self.key_edit = Some(KeyEdit { action_id, error: None });
+        tx.focus(format!("key-rec-{action_id}"), true);
     }
 
     pub fn cancel_key_edit(&mut self) {

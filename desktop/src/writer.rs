@@ -1205,12 +1205,12 @@ pub fn ac_trigger(text: &str, caret: usize) -> Option<AcTrigger> {
         return None;
     }
 
-    // 1. Unclosed `[[query` (excluding image embeds `![[` and heading/alias suffixes `#`/`|`).
+    // 1. Unclosed `[[query` (including `[[Note#heading` and `[[#heading`, excluding `![[` and `|`).
     if let Some(open) = ln[..col].rfind("[[") {
         let embed = open > 0 && b[open - 1] == b'!';
         let escaped = open > 0 && b[open - 1] == b'\\';
         let query = &ln[open + 2..col];
-        if !embed && !escaped && !in_code[open] && !query.contains([']', '[', '|', '#']) {
+        if !embed && !escaped && !in_code[open] && !query.contains([']', '[', '|']) {
             return Some(AcTrigger {
                 kind: AcKind::Wiki,
                 start: ls + open,

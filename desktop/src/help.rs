@@ -352,10 +352,19 @@ impl App {
         (found, pick)
     }
 
-    /// Closes the help and runs the row's action, as its keys would on the page.
+    /// Closes the help and runs the row's action, switching modes first when running a
+    /// mode-specific shortcut from another mode's tab so there are no silent dead clicks.
     pub fn help_run(&mut self, r: &'static Row, tx: &mut Tx) {
         let Some(a) = action(r) else { return };
+        let help_mode = self.help_search().map_or(self.mode, |h| h.mode);
+        let cross_mode = help_mode != self.mode && !a.ctx.contains(&keymap::Ctx::Global);
+        if cross_mode && (self.active.is_none() || self.active_locked()) {
+            return;
+        }
         self.close_layer(tx);
+        if cross_mode {
+            self.show_mode(help_mode, tx);
+        }
         if crate::layer::toggles(a.id) != Some(crate::layer::Kind::Help) {
             crate::keys::handler(a.id).expect("action() found one")(self, tx);
         }

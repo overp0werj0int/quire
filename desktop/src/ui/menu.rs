@@ -274,20 +274,37 @@ fn tree(v: V, on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
     }
 }
 
-/// The editor's menu (WR-135, SHEET-032): Cut and Copy, with nothing selected greyed out, and
-/// Paste, each sent to the field as its key would be. Over the edit sheet as well.
+/// The editor's menu (WR-135, SHEET-032): Cut, Copy, Paste, Undo, Redo, Select all, and Follow
+/// link when over a link in Source. Cut/Copy/Paste stay first so Paste remains `tm-2`.
 fn edit(v: V) -> Vec<Item> {
     let selected = v.s.edit_menu_selected();
-    let send = |c: char| -> Run {
+    let send = |c: char, shift: bool| -> Run {
         // As Rune's own field menu sends them.
-        let mods = rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), ..rune::Mods::default() };
+        let mods = rune::Mods { cmd: true, ctrl: !cfg!(target_os = "macos"), shift, ..rune::Mods::default() };
         Box::new(move |_, tx| tx.send_key(rune::KeyEvent { key: rune::Key::Command(c), mods }))
     };
-    vec![
-        Item { keys: Some(keymap::cmd_label('x')), enabled: selected, ..item("Cut", send('x')) },
-        Item { keys: Some(keymap::cmd_label('c')), enabled: selected, ..item("Copy", send('c')) },
-        Item { keys: Some(keymap::cmd_label('v')), ..item("Paste", send('v')) },
-    ]
+    let mut items = vec![
+        Item { keys: Some(keymap::cmd_label('x')), enabled: selected, ..item("Cut", send('x', false)) },
+        Item { keys: Some(keymap::cmd_label('c')), enabled: selected, ..item("Copy", send('c', false)) },
+        Item { keys: Some(keymap::cmd_label('v')), ..item("Paste", send('v', false)) },
+        Item { keys: Some(keymap::cmd_label('z')), ..item("Undo", send('z', false)) },
+        Item { keys: Some(keymap::label_of("Ctrl+Shift+Z")), ..item("Redo", send('z', true)) },
+        Item { keys: Some(keymap::cmd_label('a')), ..item("Select all", send('a', false)) },
+    ];
+    let has_link = v.s.sheet().is_none()
+        && v.s.mode == crate::app::Mode::Source
+        && v.s.active.as_deref().and_then(|a| v.s.edits.get(a)).is_some_and(|e| {
+            crate::writer::link_at_caret(&e.text, e.focus.min(e.text.len())).is_some()
+        });
+    if has_link {
+        let follow_key = Some(v.s.keymap.label("writer.follow-link")).filter(|k| !k.is_empty());
+        items.push(Item {
+            key: Some("menu-follow-link"),
+            keys: follow_key,
+            ..item("Follow link", Box::new(|s, tx| super::editor::follow_link_at_caret(s, tx)))
+        });
+    }
+    items
 }
 
 /// The block menu (RD-68): what can be done to the block a right-click landed on. Each row
