@@ -570,8 +570,7 @@ impl Cx<'_> {
         let slug = slug.to_string();
         // Faint, and accent under the pointer itself; fades and colour changes take 120 ms.
         let fade = || rune::Curve::linear(0.12);
-        let (rw, rg, rc) = super::focus_ring(self.v.p);
-        let hash = super::focus::stop(el())
+        let hash = el()
             .key("anchor")
             .hover_group()
             .hover_motion(fade(), fade())
@@ -579,8 +578,7 @@ impl Cx<'_> {
             .cursor(rune::Cursor::Pointer)
             .role("button")
             .label("Copy a link to this heading")
-            .focus_ring(rw, rg, rc)
-            .control(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
+            .on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx))
             .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
             .pin(Some(-(w + r(look.b * 0.6))), Some(top), None, None);
         el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
@@ -659,25 +657,21 @@ impl Cx<'_> {
         let chip_w = r(size * 1.3) + icon_sz + r(size * 0.45) + rune::text::advance("Edit", look.mono_at(size, 2.0)).ceil();
         let in_margin = gutter >= chip_w + 16.0;
         let is_code_or_diff = matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. });
-        let (rw, rg, rc) = super::focus_ring(self.v.p);
-        let chip = super::focus::stop(
-            super::chip::Chip {
-                key: &key,
-                glyph: &icons::PENCIL,
-                size,
-                icon: icon_sz,
-                label: "Edit",
-                mono: look.mono,
-                tint: c.readable_dim(),
-                active: false,
-                fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
-            }
-            .el(c),
-        )
+        let chip = super::chip::Chip {
+            key: &key,
+            glyph: &icons::PENCIL,
+            size,
+            icon: icon_sz,
+            label: "Edit",
+            mono: look.mono,
+            tint: c.readable_dim(),
+            active: false,
+            fill: (!in_margin && !is_code_or_diff).then_some(c.panel),
+        }
+        .el(c)
         .label(tip.clone())
         .help(tip)
-        .focus_ring(rw, rg, rc)
-        .control(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
         if in_margin {
             let bridge = 10.0;
             el().pin(None, Some(top), Some(-(chip_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(chip)
