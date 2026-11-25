@@ -137,8 +137,12 @@ pub fn mini_bar_w(n: usize) -> f32 {
     2.0 * MINI_BAR_PX + n as f32 * MINI_BTN + n.saturating_sub(1) as f32 * MINI_BAR_GAP
 }
 
-/// Shared floating mini-toolbar container (the zen/preview top-right floating pill):
-/// 85% opaque fill, 1 pt border, 12 pt backdrop blur, and soft drop shadow, scaled by `k`.
+/// Shared floating mini-toolbar container (the zen/preview/map/sheet floating pill):
+/// 94% opaque fill, 1 pt border, and soft drop shadow, scaled by `k`.
+/// Intentionally omits `backdrop_blur`: these pills fade via `group_opacity`, where an
+/// in-window backdrop blur allocates full-window `Rgba16Float` + swapchain copies and
+/// splits the render pass on every hover transition (which blanks and corrupts frames on
+/// Asahi/Borealis Vulkan and disables partial-damage redraws).
 pub fn mini_bar_at(p: &Pal, key: &str, k: f32) -> El {
     row()
         .key(key)
@@ -147,9 +151,8 @@ pub fn mini_bar_at(p: &Pal, key: &str, k: f32) -> El {
         .gap(MINI_BAR_GAP * k)
         .center_y()
         .radius(10.0 * k)
-        .fill(p.bg.alpha(0.85))
+        .fill(p.bg.alpha(0.94))
         .border(k, p.line)
-        .backdrop_blur(12.0)
         .box_shadow(Shadow {
             x: 0.0,
             y: 6.0 * k,

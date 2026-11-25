@@ -760,8 +760,7 @@ fn toolbar(v: V) -> El {
     let back = super::widgets::bar_edge(el(), &Roles::new(p))
         .key("toolbar-back")
         .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(p.bg.alpha(0.88))
-        .backdrop_blur(12.0)
+        .fill(p.bg.alpha(0.94))
         .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })
         .stuck_reveal(8.0);
     let tb_top = toolbar_top(v);
