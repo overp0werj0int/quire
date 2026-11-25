@@ -64,12 +64,15 @@ impl Mode {
 pub enum PalMode {
     Files,
     Commands,
+    MoveFolder,
 }
 
 pub struct Palette {
     pub mode: PalMode,
     pub q: TextEdit,
     pub idx: usize,
+    /// Target note path when `mode == PalMode::MoveFolder`.
+    pub move_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1311,6 +1314,47 @@ impl App {
             }
         }
         self.keys_to_note(tx);
+    }
+
+    /// Closes every open tab in the Open shelf (Folder mode or Note mode).
+    pub fn close_all_tabs(&mut self, tx: &mut Tx) {
+        if self.note_mode() {
+            let all: Vec<PathBuf> = self.notes.clone();
+            for f in all {
+                self.close_note(&f);
+            }
+        } else {
+            let all: Vec<String> = self.tabs.clone();
+            for t in all {
+                self.close_tab(&t);
+            }
+        }
+        self.keys_to_note(tx);
+    }
+
+    /// Collapses every expanded folder in the vault tree.
+    pub fn collapse_all_folders(&mut self) {
+        if self.note_mode() {
+            return;
+        }
+        self.expanded.clear();
+        self.persist_later();
+    }
+
+    /// Reveals `folder` (and `note` inside it) in the sidebar file tree, opening the sidebar if needed.
+    pub fn reveal_folder_in_sidebar(&mut self, folder: &str, note: &str, tx: &mut Tx) {
+        if self.note_mode() {
+            return;
+        }
+        self.query = TextEdit::new("");
+        self.persist.sidebar.unfold(crate::sidebar::Section::Vault);
+        self.expand_ancestors(note);
+        if !folder.is_empty() {
+            self.expanded.insert(folder.to_string());
+        }
+        self.tree_reveal = Some(note.to_string());
+        self.show_left(tx);
+        self.persist_later();
     }
 
     /// Opens the active Note-mode file's parent directory as a full Folder vault, keeping the note open.
@@ -2592,7 +2636,24 @@ impl App {
     }
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {
-        self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0 }), tx);
+        self.open_layer(crate::layer::Layer::Palette(Palette { mode, q: TextEdit::new(""), idx: 0, move_path: None }), tx);
+        tx.focus("pal-input", false);
+    }
+
+    /// Opens the folder-picker palette to move `note_path` into another folder.
+    pub fn open_move_picker(&mut self, note_path: &str, tx: &mut Tx) {
+        if self.refuse_in_note_mode() || !self.files().contains_key(note_path) {
+            return;
+        }
+        self.open_layer(
+            crate::layer::Layer::Palette(Palette {
+                mode: PalMode::MoveFolder,
+                q: TextEdit::new(""),
+                idx: 0,
+                move_path: Some(note_path.to_string()),
+            }),
+            tx,
+        );
         tx.focus("pal-input", false);
     }
 

@@ -181,10 +181,14 @@ fn lock_menu_items(v: V, path: &str) -> Vec<Item> {
 fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
     let mut items = Vec::new();
     if let crate::app::Shelved::Tab(p) = t {
-        let p = p.clone();
+        let (p1, p2) = (p.clone(), p.clone());
         items.push(Item {
             key: Some("menu-tab-rename"),
-            ..item("Rename", Box::new(move |s, tx| s.rename_note_path(&p, tx)))
+            ..item("Rename", Box::new(move |s, tx| s.rename_note_path(&p1, tx)))
+        });
+        items.push(Item {
+            key: Some("menu-tab-move"),
+            ..item("Move to folder…", Box::new(move |s, tx| s.open_move_picker(&p2, tx)))
         });
     }
     let (t1, t2, t3) = (t.clone(), t.clone(), t.clone());
@@ -216,6 +220,11 @@ fn tab_menu(v: V, t: &crate::app::Shelved) -> Vec<Item> {
         enabled: v.s.shelf().len() > 1,
         ..item("Close others", Box::new(move |s, tx| s.close_other_shelved(&t3, tx)))
     });
+    items.push(Item {
+        key: Some("menu-tab-close-all"),
+        enabled: !v.s.shelf().is_empty(),
+        ..item("Close all tabs", Box::new(|s, tx| s.close_all_tabs(tx)))
+    });
     items
 }
 
@@ -236,13 +245,17 @@ fn tree(v: V, on: &MenuOn, at: (f32, f32)) -> Vec<Item> {
             ]
         }
         MenuOn::Note(n) => {
-            let (n1, n2, n3) = (n.clone(), n.clone(), n.clone());
+            let (n1, n2, n3, n4) = (n.clone(), n.clone(), n.clone(), n.clone());
             let mut items = vec![
                 item("New note here", Box::new(move |s, tx| s.new_note_in(Some(md::dir(&n1)), None, tx))),
                 item("Rename", Box::new(move |s, tx| {
                     s.open_file(&n2, None, tx);
                     s.start_rename(tx);
                 })),
+                Item {
+                    key: Some("menu-move-folder"),
+                    ..item("Move to folder…", Box::new(move |s, tx| s.open_move_picker(&n4, tx)))
+                },
             ];
             if !md::dir(&n).is_empty() {
                 items.push(item("Move to folder root", Box::new(move |s, tx| s.move_note(&n3, "", tx))));

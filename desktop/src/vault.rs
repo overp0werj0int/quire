@@ -261,6 +261,35 @@ pub enum TrashEvent {
 
 const TRASH_META: &str = ".meta.json";
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum TrashMetaEntry {
+    Full { orig: String, deleted_at: u64 },
+    Legacy(String),
+}
+
+impl TrashMetaEntry {
+    fn orig(&self) -> &str {
+        match self {
+            TrashMetaEntry::Full { orig, .. } => orig,
+            TrashMetaEntry::Legacy(s) => s,
+        }
+    }
+
+    fn deleted_at(&self) -> Option<u128> {
+        match self {
+            TrashMetaEntry::Full { deleted_at, .. } if *deleted_at > 0 => Some(*deleted_at as u128),
+            _ => None,
+        }
+    }
+}
+
+fn now_ns_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos().min(u64::MAX as u128) as u64)
+}
+
 /// Sanitizes a vault-relative path so restore never escapes the vault root.
 fn sanitize_rel(raw: &str) -> String {
     let norm = raw.replace('\\', "/");
@@ -275,13 +304,13 @@ fn sanitize_rel(raw: &str) -> String {
     }
 }
 
-fn read_trash_meta(root: &Path) -> BTreeMap<String, String> {
+fn read_trash_meta(root: &Path) -> BTreeMap<String, TrashMetaEntry> {
     let path = root.join(".trash").join(TRASH_META);
     let Ok(bytes) = std::fs::read(&path) else { return BTreeMap::new() };
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
-fn write_trash_meta(root: &Path, meta: &BTreeMap<String, String>) {
+fn write_trash_meta(root: &Path, meta: &BTreeMap<String, TrashMetaEntry>) {
     let path = root.join(".trash").join(TRASH_META);
     if meta.is_empty() {
         let _ = std::fs::remove_file(&path);
@@ -294,7 +323,10 @@ fn write_trash_meta(root: &Path, meta: &BTreeMap<String, String>) {
 
 fn record_trash_meta(root: &Path, trash_name: &str, original_rel: &str) {
     let mut meta = read_trash_meta(root);
-    meta.insert(trash_name.to_string(), sanitize_rel(original_rel));
+    meta.insert(
+        trash_name.to_string(),
+        TrashMetaEntry::Full { orig: sanitize_rel(original_rel), deleted_at: now_ns_epoch() },
+    );
     write_trash_meta(root, &meta);
 }
 
@@ -307,9 +339,9 @@ fn remove_trash_meta(root: &Path, trash_name: &str) {
 
 /// Resolves the vault-relative restore path for a `.trash` entry: exact manifest lookup first,
 /// else legacy fallback that only splits `" - "` prefixes matching an existing vault folder.
-pub fn original_rel_from_trash(root: &Path, meta: &BTreeMap<String, String>, name: &str) -> String {
-    if let Some(rel) = meta.get(name) {
-        return sanitize_rel(rel);
+pub fn original_rel_from_trash(root: &Path, meta: &BTreeMap<String, TrashMetaEntry>, name: &str) -> String {
+    if let Some(entry) = meta.get(name) {
+        return sanitize_rel(entry.orig());
     }
     let parts: Vec<&str> = name.split(" - ").collect();
     if parts.len() > 1 {
@@ -367,12 +399,14 @@ pub fn list_trash(root: &Path) -> Vec<TrashEntry> {
         if !is_dir && !ft.is_file() {
             continue;
         }
-        let deleted_at = entry
-            .metadata()
-            .ok()
-            .and_then(|m| m.modified().or_else(|_| m.created()).ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_nanos());
+        let deleted_at = meta.get(&name).and_then(TrashMetaEntry::deleted_at).unwrap_or_else(|| {
+            entry
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().or_else(|_| m.created()).ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_nanos())
+        });
         let original_rel = original_rel_from_trash(root, &meta, &name);
         let snippet = if !is_dir && name.to_lowercase().ends_with(".md") {
             trash_note_snippet(&entry.path())
@@ -1137,6 +1171,31 @@ mod tests {
         rt.state.writer.wait(std::time::Duration::from_secs(2));
         assert_eq!(std::fs::read_to_string(root.join("Beta.md")).unwrap(), "# Original Beta\nOriginal body.\n");
         assert_eq!(std::fs::read_to_string(root.join("Beta (conflict Laptop).md")).unwrap(), "# Laptop Beta\nConflict body.\n");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn trash_records_true_deletion_timestamp_and_reads_legacy_meta() {
+        let root = std::env::temp_dir().join(format!("quire-trash-ts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Drafts")).unwrap();
+        std::fs::write(root.join("Drafts/Old.md"), "# Old\n").unwrap();
+
+        let before = now_ns_epoch();
+        let mut trash = Trash::new();
+        apply(&Op::Delete { root: root.clone(), rel: "Drafts/Old.md".into() }, &mut trash).unwrap();
+        let after = now_ns_epoch();
+
+        let entries = list_trash(&root);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].original_rel, "Drafts/Old.md");
+        assert!(entries[0].deleted_at >= before as u128 && entries[0].deleted_at <= after as u128, "true deletion timestamp must be recorded in .meta.json");
+
+        // Legacy string-only .meta.json entries remain readable alongside new object entries.
+        std::fs::write(root.join(".trash/Legacy.md"), "# Legacy\n").unwrap();
+        std::fs::write(root.join(".trash/.meta.json"), r#"{"Legacy.md":"Archive/Legacy.md"}"#).unwrap();
+        let meta = read_trash_meta(&root);
+        assert_eq!(original_rel_from_trash(&root, &meta, "Legacy.md"), "Archive/Legacy.md");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

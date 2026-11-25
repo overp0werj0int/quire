@@ -88,8 +88,7 @@ pub(super) fn tree_arrows(el: El, branch: Branch, parent: Option<String>) -> El 
                 s.row_deleted(tx);
             }
             (Key::Delete, Branch::Folder { path, .. }) => {
-                s.delete_folder(path);
-                s.row_deleted(tx);
+                s.ask_delete_folder(path, (120.0, 180.0), tx);
             }
             _ => return false,
         }

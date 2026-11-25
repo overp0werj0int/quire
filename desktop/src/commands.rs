@@ -104,12 +104,23 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     }
     if has {
         v.push(cmd("Rename note", "", |s, tx| s.start_rename(tx)));
+        v.push(cmd("Move to folder…", "", |s, tx| {
+            if let Some(a) = s.active.clone() {
+                s.open_move_picker(&a, tx);
+            }
+        }));
         v.push(cmd("Delete note", "", |s, _| s.delete_note()));
         v.push(cmd("Close tab", "app.close-tab", |s, _| {
             if let Some(a) = s.active.clone() {
                 s.close_tab(&a);
             }
         }));
+    }
+    if !s.shelf().is_empty() {
+        v.push(cmd("Close all tabs", "", |s, tx| s.close_all_tabs(tx)));
+    }
+    if !s.note_mode() {
+        v.push(cmd("Collapse all folders", "", |s, _| s.collapse_all_folders()));
     }
     if !s.closed_tabs.is_empty() || !s.note_mode() {
         v.push(cmd("Reopen closed tab", "app.reopen-tab", |s, tx| s.reopen_tab(tx)));
@@ -162,7 +173,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     v.push(cmd("Restore sample notes", "", |s, tx| s.reset_sample(tx)));
     if s.note_mode() {
         // Note mode has no folder of notes to add to, search, rename or delete in.
-        const FOLDER_ONLY: [&str; 7] = ["New note", "New folder", "Open today's journal entry", "Search all notes", "Rename note", "Delete note", "Open trash…"];
+        const FOLDER_ONLY: [&str; 9] = ["New note", "New folder", "Open today's journal entry", "Search all notes", "Rename note", "Move to folder…", "Delete note", "Open trash…", "Collapse all folders"];
         v.retain(|c| !FOLDER_ONLY.contains(&c.label.as_str()));
         for c in &mut v {
             match c.label.as_str() {
@@ -180,6 +191,7 @@ pub enum Action {
     Open(String),
     Create(String),
     Cmd(Run),
+    Move { note: String, folder: String },
 }
 
 pub struct Item {
@@ -215,11 +227,11 @@ pub fn segs(s: &str, idx: &[usize]) -> Vec<(String, bool)> {
 
 pub fn pal_data(s: &App, dark: bool) -> Option<PalData> {
     let p = s.pal()?;
-    Some(pal_data_for(s, dark, p.mode, &p.q.text, p.idx))
+    Some(pal_data_for(s, dark, p.mode, &p.q.text, p.idx, p.move_path.as_deref()))
 }
 
 /// Builds palette items for a given mode, query, and index (shared with idle pre-warming).
-pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx: usize) -> PalData {
+pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx: usize, move_path: Option<&str>) -> PalData {
     let mut q = raw_q;
     if mode == PalMode::Files && q.starts_with('>') {
         mode = PalMode::Commands;
@@ -228,7 +240,58 @@ pub fn pal_data_for(s: &App, dark: bool, mut mode: PalMode, raw_q: &str, raw_idx
     let q = q.trim();
     let mut items = Vec::new();
     let total;
-    if mode == PalMode::Files {
+    if mode == PalMode::MoveFolder {
+        let note = move_path.unwrap_or_default();
+        let cur_dir = md::dir(note);
+        let mut folders: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        folders.insert(String::new());
+        if let Some(v) = &s.vault {
+            for f in &v.folders {
+                if !f.is_empty() {
+                    folders.insert(f.clone());
+                }
+            }
+            for p in v.files().keys() {
+                let mut d = md::dir(p).to_string();
+                while !d.is_empty() {
+                    folders.insert(d.clone());
+                    d = md::dir(&d).to_string();
+                }
+            }
+        }
+        let mut candidates: Vec<(String, String)> = folders
+            .into_iter()
+            .filter(|f| f.as_str() != cur_dir)
+            .map(|f| {
+                let lbl = if f.is_empty() { "Vault root".to_string() } else { f.clone() };
+                (f, lbl)
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.0.is_empty().cmp(&b.0.is_empty()).reverse().then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+        let mut list: Vec<(f32, String, String, Vec<usize>)> = if q.is_empty() {
+            candidates.into_iter().map(|(f, l)| (0.0, f, l, vec![])).collect()
+        } else {
+            candidates
+                .into_iter()
+                .filter_map(|(f, l)| md::fuzzy(q, &l).map(|(sc, idx)| (sc, f, l, idx)))
+                .collect()
+        };
+        if !q.is_empty() {
+            list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        total = list.len();
+        for (_, folder, lbl, idx) in list {
+            let sub = if folder.is_empty() { "/".to_string() } else { String::new() };
+            items.push(Item {
+                segs: segs(&lbl, &idx),
+                sub,
+                action: Action::Move { note: note.to_string(), folder },
+                locked: false,
+                unlocked: false,
+                conflict: false,
+            });
+        }
+    } else if mode == PalMode::Files {
         let files = s.files();
         let list: Vec<(String, Vec<usize>)> = if q.is_empty() {
             let rec: Vec<&String> = s.recent.iter().filter(|x| files.contains_key(*x)).collect();
@@ -307,5 +370,6 @@ pub fn run(s: &mut App, action: Action, tx: &mut Tx) {
         Action::Open(p) => s.open_file(&p, None, tx),
         Action::Create(q) => s.new_note(Some(&q), tx),
         Action::Cmd(f) => f(s, tx),
+        Action::Move { note, folder } => s.move_note(&note, &folder, tx),
     }
 }

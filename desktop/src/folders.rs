@@ -22,8 +22,15 @@ pub struct DragNote {
 /// How long a delete's toast offers Undo, in seconds.
 pub const UNDO_FOR: f64 = 6.0;
 
-/// What a delete took from the open vault, so Undo can put it back: the notes' texts, the
-/// folders, the open tabs and which one was shown. The files themselves wait in `.trash`.
+/// A note move that can be undone from the 6-second Undo toast.
+pub(crate) struct MovedNote {
+    pub from: String,
+    pub to: String,
+    pub rewritten: Vec<(String, String)>,
+}
+
+/// What a delete (or undoable move) changed in the open vault, so Undo can put it back: the notes'
+/// texts, the folders, the open tabs and which one was shown. Deleted files wait in `.trash`.
 pub struct Deleted {
     /// The note or folder's name, for the toast.
     pub name: String,
@@ -41,6 +48,8 @@ pub struct Deleted {
     /// Optional original note overwritten alongside the trash move (`(orig_rel, prev_content)`),
     /// restored cleanly when clicking Undo on "Keep this version".
     pub(crate) overwrite: Option<(String, Option<String>)>,
+    /// Optional note move recorded for one-click Undo.
+    pub(crate) moved: Option<MovedNote>,
 }
 
 /// What the tree's menu was opened on.
@@ -445,15 +454,17 @@ impl App {
         self.writer.send(Op::Rename { root, from: from.to_string(), to: to.clone() });
         // Links by note name still find it. Links that spell out the old folder follow it.
         let mut rewritten = Vec::new();
+        let mut rewritten_prev = Vec::new();
         if update {
             let (old_full, new_full) = (md::strip_md(from).to_string(), md::strip_md(&to).to_string());
             if let Some(v) = &mut self.vault {
-                let changed: Vec<(String, String)> = v.files().iter().filter_map(|(p, t)| {
+                let changed: Vec<(String, String, String)> = v.files().iter().filter_map(|(p, t)| {
                     let nt = md::rewrite_links(t, &old_full, &new_full);
-                    (nt != *t).then(|| (p.clone(), nt))
+                    (nt != *t).then(|| (p.clone(), t.clone(), nt))
                 }).collect();
-                for (p, nt) in changed {
+                for (p, old_t, nt) in changed {
                     rewritten.push(p.clone());
+                    rewritten_prev.push((p.clone(), old_t));
                     v.put(p, nt);
                 }
             }
@@ -479,6 +490,22 @@ impl App {
         if !folder.is_empty() {
             self.expanded.insert(folder.to_string());
         }
+        let dest_label = if folder.is_empty() { "Vault root" } else { folder };
+        let note_name = md::base(&to).to_string();
+        self.deleted = Some(Deleted {
+            name: note_name.clone(),
+            custom_msg: Some(format!("Moved {note_name} to {dest_label}")),
+            at: self.now.get(),
+            rel: to.clone(),
+            folder: false,
+            notes: Vec::new(),
+            folders: Vec::new(),
+            tabs: Vec::new(),
+            active: None,
+            expanded: Vec::new(),
+            overwrite: None,
+            moved: Some(MovedNote { from: from.to_string(), to: to.clone(), rewritten: rewritten_prev }),
+        });
         self.rebuild_names_pub();
         self.persist_later();
         self.sync_after_save();
@@ -618,14 +645,56 @@ impl App {
             active: self.active.clone().filter(|a| inside(a)),
             expanded: self.expanded.iter().filter(|e| inside(e)).cloned().collect(),
             overwrite: None,
+            moved: None,
         }
     }
 
-    /// Undo for the last delete: the Writer moves the note or folder back from `.trash`, and
-    /// its notes, tabs and folders come back as they were. A sync since then deleted it on the
-    /// other devices. Back here it is a new file, so the next sync uploads it again.
+    /// Undo for the last delete (or note move): restores from `.trash`, or reverses a note move.
     pub fn undo_delete(&mut self, tx: &mut Tx) {
         let Some(d) = self.deleted.take() else { return };
+        if let Some(mv) = d.moved {
+            let Some(v) = &mut self.vault else { return };
+            if !v.files().contains_key(&mv.to) || v.files().contains_key(&mv.from) {
+                self.notice = Some(format!("Could not move {} back: something else has its name", d.name));
+                return;
+            }
+            let root = v.path.clone();
+            let text = v.take(&mv.to).unwrap_or_default();
+            v.put(mv.from.clone(), text);
+            if let Some(b) = v.born.remove(&mv.to) {
+                v.born.insert(mv.from.clone(), b);
+            }
+            self.writer.send(Op::Rename { root, from: mv.to.clone(), to: mv.from.clone() });
+            if let Some(u) = self.unlocked.remove(&mv.to) {
+                self.unlocked.insert(mv.from.clone(), u);
+            }
+            if let Some(e) = self.edits.remove(&mv.to) {
+                self.edits.insert(mv.from.clone(), e);
+            }
+            for (p, old_t) in mv.rewritten {
+                let target = if p == mv.to { mv.from.clone() } else { p };
+                if self.files().contains_key(&target) {
+                    self.set_text(&target, old_t);
+                }
+            }
+            for t in self.tabs.iter_mut().chain(self.recent.iter_mut()) {
+                if t == &mv.to {
+                    *t = mv.from.clone();
+                }
+            }
+            if self.active.as_deref() == Some(mv.to.as_str()) {
+                self.active = Some(mv.from.clone());
+            }
+            let orig_dir = md::dir(&mv.from).to_string();
+            if !orig_dir.is_empty() {
+                self.expanded.insert(orig_dir);
+            }
+            self.flush_notes();
+            self.rebuild_names_pub();
+            self.persist_later();
+            self.sync_after_save();
+            return;
+        }
         let Some(v) = &mut self.vault else { return };
         if d.notes.iter().any(|(p, _, _)| v.files().contains_key(p)) || (d.folder && v.folders.contains(&d.rel)) {
             self.notice = Some(format!("Could not put back {}: something else has its name", d.name));
@@ -746,6 +815,41 @@ mod tests {
         assert_eq!(names(zed), (vec!["Deep"], vec!["one"]));
         assert_eq!((zed.folders[0].count, zed.folders[0].folders[0].path.as_str(), zed.folders[0].folders[0].count), (2, "Zed/Deep/er", 1));
         assert_eq!(root.folders[1].count, 0, "an empty folder counts none");
+    }
+
+    #[test]
+    fn undo_reverses_note_move_and_link_rewrites() {
+        let root = std::env::temp_dir().join(format!("quire-move-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Archive")).unwrap();
+        std::fs::write(root.join("Beta.md"), "# Beta\n").unwrap();
+        std::fs::write(root.join("Alpha.md"), "See [[Beta]].\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(root.clone(), tx);
+            s.open_file("Beta.md", None, tx);
+            s.move_note("Beta.md", "Archive", tx);
+            assert!(s.files().contains_key("Archive/Beta.md"));
+            assert!(!s.files().contains_key("Beta.md"));
+            assert_eq!(s.active.as_deref(), Some("Archive/Beta.md"));
+            assert!(s.deleted.as_ref().and_then(|d| d.custom_msg.as_deref()).is_some_and(|m| m.contains("Moved Beta to Archive")));
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        assert!(root.join("Archive/Beta.md").is_file());
+        assert!(!root.join("Beta.md").exists());
+
+        rt.update(|s, tx| {
+            s.undo_delete(tx);
+            assert!(s.files().contains_key("Beta.md"));
+            assert!(!s.files().contains_key("Archive/Beta.md"));
+            assert_eq!(s.active.as_deref(), Some("Beta.md"));
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        assert!(root.join("Beta.md").is_file());
+        assert!(!root.join("Archive/Beta.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The tree is built again when a note comes or goes or a folder is made, and not when a

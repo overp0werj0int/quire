@@ -369,9 +369,11 @@ The UI thread never writes to disk. Each write is an `Op`, sent to the `Writer`,
 on one background thread called `quire-writer`. The thread applies the ops in the order they
 were sent. A note is written to a temporary file and then renamed over the old one, so a note
 on disk is never half-written. `Op::Barrier` lets other code wait until the writes before it
-are done. A delete moves the note or folder to `.trash` (recording exact original relative paths in
-`.trash/.meta.json` so filenames containing `" - "` restore to their exact folder), and the thread remembers where.
-`Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`). `Op::ListTrash`,
+are done. A delete moves the note or folder to `.trash` (recording exact original relative paths and
+true deletion timestamps in `.trash/.meta.json` so filenames containing `" - "` restore to their exact
+folder and freshly deleted items always display `"just now"`), and the thread remembers where.
+`Op::Restore` moves it back, for the Undo in the delete's toast (`folders::Deleted`, which also
+supports one-click Undo of note moves via drag-and-drop or `"Move to folder…"`). `Op::ListTrash`,
 `Op::RestoreTrash`, `Op::DeleteTrashItem` and `Op::EmptyTrash` serve the browseable Trash dialog (`ui/trash.rs`, opened
 from `foot-trash` in the sidebar footer or `"Open trash…"` in the command palette) off the UI
 thread, waking the UI when results arrive; restoring keeps the dialog open while other items remain and clears any matching Undo toast.

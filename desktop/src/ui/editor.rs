@@ -885,7 +885,33 @@ pub(super) fn crumb(v: V) -> El {
                 text(dir.clone()).font(style).color(quiet.faint).truncate_head().w(0.0).grow(1.0).min_w(least).max_w(whole)
             }
         };
-        r = r.child(folder).child(label("/", style, quiet.faint));
+        let folder_el = if note_mode {
+            folder
+        } else {
+            let (dir_c, act_c) = (dir.clone(), active.clone());
+            super::focus::stop(row())
+                .key("crumb-folder")
+                .h(24.0)
+                .center_y()
+                .shrink()
+                .min_w(0.0)
+                .px(5.0)
+                .mx(-5.0)
+                .radius(5.0)
+                .hover(p.hover)
+                .no_window_drag()
+                .role("button")
+                .label(format!("Reveal folder {dir} in sidebar"))
+                .help("Reveal folder in sidebar")
+                .focus_ring(rw, rg, rc)
+                .keeps_text_selection()
+                .control(move |s: &mut App, tx| {
+                    s.close_layers(tx);
+                    s.reveal_folder_in_sidebar(&dir_c, &act_c, tx);
+                })
+                .child(folder)
+        };
+        r = r.child(folder_el).child(label("/", style, quiet.faint));
     }
     let cut = fit.as_ref().is_some_and(|(_, shown)| *shown != name);
     let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);

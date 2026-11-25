@@ -33,7 +33,7 @@ pub(super) fn palette(v: V, pal: &Palette) -> Option<Card> {
 /// Offscreen command palette built inside `Tx::prepare_text` to warm Instrument Sans font loading
 /// and command-row text layouts at exact palette width before the first `Ctrl+Shift+K` (`COLDPACE`).
 pub(super) fn prepare_commands(v: V) -> rune::El {
-    let d = commands::pal_data_for(v.s, v.dark, PalMode::Commands, "", 0);
+    let d = commands::pal_data_for(v.s, v.dark, PalMode::Commands, "", 0, None);
     let q = rune::TextEdit::new("");
     let card = palette_card(v, d, &q);
     col().w_full().items_center().px(20.0).child(card.el)
@@ -42,6 +42,11 @@ pub(super) fn prepare_commands(v: V) -> rune::El {
 fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
     let p = v.p;
     let cmds = d.mode == PalMode::Commands;
+    let moving = d.mode == PalMode::MoveFolder;
+    let badge_lbl = if moving { "move" } else if cmds { "run" } else { "open" };
+    let input_lbl = if moving { "Move to folder" } else if cmds { "Command palette" } else { "Quick switcher" };
+    let input_ph = if moving { "Choose destination folder…" } else if cmds { "Type a command…" } else { "Find a note by name…" };
+    let list_lbl = if moving { "Folders" } else if cmds { "Commands" } else { "Notes" };
     let head = row()
         .key("pal-head")
         .h(HEAD_H)
@@ -51,7 +56,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .center_y()
         .border_sides([0.0, 0.0, 1.0, 0.0], p.line)
         .border_layout()
-        .child(super::widgets::padded(if cmds { "run" } else { "open" }, sans(11.5, 500.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
+        .child(super::widgets::padded(badge_lbl, sans(11.5, 500.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
         .child(
             text_input(q, sans(15.0, 400.0))
                 .key("pal-input")
@@ -61,8 +66,8 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .grow(1.0)
                 .min_w(0.0)
                 .color(p.ink)
-                .label(if cmds { "Command palette" } else { "Quick switcher" })
-                .placeholder(if cmds { "Type a command…" } else { "Find a note by name…" }, super::styles::placeholder_ink(p))
+                .label(input_lbl)
+                .placeholder(input_ph, super::styles::placeholder_ink(p))
                 .caret(p.ink, p.sel)
                 .on_edit(pal_field)
                 .on_input_change(|s: &mut App, _| {
@@ -78,7 +83,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .w_full()
         .padding(LIST_PAD)
         .role("listbox")
-        .label(if cmds { "Commands" } else { "Notes" });
+        .label(list_lbl);
     let roles = Roles::new(p);
     for (i, it) in d.items.iter().enumerate() {
         let on = i == d.idx;
@@ -195,10 +200,12 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .border_layout()
         .clip_rounded(0.0)
         .children((!nav_k.is_empty()).then(|| hint(nav_k, "select")))
-        .children((!run_k.is_empty()).then(|| hint(run_k, if cmds { "run" } else { "open" })))
+        .children((!run_k.is_empty()).then(|| hint(run_k, if moving { "move" } else if cmds { "run" } else { "open" })))
         .children((!close_k.is_empty()).then(|| hint(close_k, "close")))
         .child(el().grow(1.0))
-        .child(if !cmds && d.total > 50 {
+        .child(if moving {
+            el()
+        } else if !cmds && d.total > 50 {
             label(format!("Showing 50 of {}", d.total), sans(11.5, 400.0), p.mute)
         } else if cmds {
             hint(km.label("app.quick-switcher"), "for notes")
@@ -219,7 +226,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
             .radius(12.0)
             .clip_rounded(12.0)
             .role("dialog")
-            .label(if cmds { "Commands" } else { "Quick switcher" })
+            .label(if moving { "Move to folder" } else if cmds { "Commands" } else { "Quick switcher" })
             .child(head)
             .child(scroller)
             .child(foot),

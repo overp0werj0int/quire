@@ -73,6 +73,7 @@ pub const STOPS: &[(&str, Pane)] = &[
 const NOTE_BUTTONS: &[&str] = &[
     "toggle-left",
     "copy-path",
+    "crumb-folder",
     "crumb-file",
     "note-mode-pill",
     "crumb-lock",
