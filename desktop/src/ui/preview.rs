@@ -572,7 +572,7 @@ impl Cx<'_> {
         let fade = || rune::Curve::linear(0.12);
         let (rw, rg, rc) = super::focus_ring(self.v.p);
         let hash = super::focus::stop(el())
-            .key(format!("page-anchor:{slug}"))
+            .key("anchor")
             .hover_group()
             .hover_motion(fade(), fade())
             .group_opacity(0.0, 1.0)

@@ -66,7 +66,6 @@ pub const STOPS: &[(&str, Pane)] = &[
     ("map-pill:", Pane::Note),
     ("map-fold:", Pane::Note),
     ("page-fold:", Pane::Note),
-    ("page-anchor:", Pane::Note),
     ("block-edit:", Pane::Note),
     ("copy-code:", Pane::Note),
     ("copy-diff:", Pane::Note),
@@ -118,6 +117,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "conflict-keep-this",
     "conflict-discard",
     "first-note",
+    "anchor",
     "marker",
 ];
 

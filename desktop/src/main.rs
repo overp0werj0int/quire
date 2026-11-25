@@ -9387,7 +9387,7 @@ mod layer_matrix_tests {
                 k.starts_with("wiki:")
                     || k.starts_with("tag:")
                     || k.starts_with("page-fold:")
-                    || k.starts_with("page-anchor:")
+                    || k == "anchor"
                     || k.starts_with("block-edit:")
             };
             if !focused(&rt).is_some_and(|k| in_note(&k)) {
