@@ -96,6 +96,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "find-replace-toggle",
     "replace-one",
     "replace-all",
+    "conflict-diff",
     "conflict-open-orig",
     "conflict-open-conflict",
     "conflict-keep-this",

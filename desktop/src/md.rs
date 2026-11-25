@@ -38,6 +38,116 @@ pub fn conflict_origin(rel: &str) -> Option<(String, String)> {
     Some((join(d, &format!("{orig_stem}.{ext}")), device.to_string()))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiffKind {
+    Context,
+    Removed,
+    Added,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffLine {
+    pub kind: DiffKind,
+    pub text: String,
+}
+
+/// Computes a line-by-line unified diff from `old` (local) to `new` (conflict/remote).
+pub fn line_diff(old: &str, new: &str) -> Vec<DiffLine> {
+    let a: Vec<&str> = old.lines().collect();
+    let b: Vec<&str> = new.lines().collect();
+    let mut prefix = 0;
+    while prefix < a.len() && prefix < b.len() && a[prefix] == b[prefix] {
+        prefix += 1;
+    }
+    let mut suffix = 0;
+    while suffix < a.len() - prefix && suffix < b.len() - prefix && a[a.len() - 1 - suffix] == b[b.len() - 1 - suffix] {
+        suffix += 1;
+    }
+    let mut out = Vec::with_capacity(a.len().max(b.len()));
+    for line in &a[..prefix] {
+        out.push(DiffLine { kind: DiffKind::Context, text: (*line).to_string() });
+    }
+    let ma = &a[prefix..a.len() - suffix];
+    let mb = &b[prefix..b.len() - suffix];
+    let (na, nb) = (ma.len(), mb.len());
+    if na == 0 && nb == 0 {
+        // identical middle
+    } else if na.saturating_mul(nb) <= 400_000 {
+        let cols = nb + 1;
+        let mut dp = vec![0u32; (na + 1) * cols];
+        for i in (0..na).rev() {
+            for j in (0..nb).rev() {
+                dp[i * cols + j] = if ma[i] == mb[j] {
+                    dp[(i + 1) * cols + (j + 1)] + 1
+                } else {
+                    dp[(i + 1) * cols + j].max(dp[i * cols + (j + 1)])
+                };
+            }
+        }
+        let (mut i, mut j) = (0, 0);
+        while i < na && j < nb {
+            if ma[i] == mb[j] {
+                out.push(DiffLine { kind: DiffKind::Context, text: ma[i].to_string() });
+                i += 1;
+                j += 1;
+            } else if dp[(i + 1) * cols + j] >= dp[i * cols + (j + 1)] {
+                out.push(DiffLine { kind: DiffKind::Removed, text: ma[i].to_string() });
+                i += 1;
+            } else {
+                out.push(DiffLine { kind: DiffKind::Added, text: mb[j].to_string() });
+                j += 1;
+            }
+        }
+        while i < na {
+            out.push(DiffLine { kind: DiffKind::Removed, text: ma[i].to_string() });
+            i += 1;
+        }
+        while j < nb {
+            out.push(DiffLine { kind: DiffKind::Added, text: mb[j].to_string() });
+            j += 1;
+        }
+    } else {
+        for line in ma {
+            out.push(DiffLine { kind: DiffKind::Removed, text: (*line).to_string() });
+        }
+        for line in mb {
+            out.push(DiffLine { kind: DiffKind::Added, text: (*line).to_string() });
+        }
+    }
+    for line in &a[a.len() - suffix..] {
+        out.push(DiffLine { kind: DiffKind::Context, text: (*line).to_string() });
+    }
+    out
+}
+
+#[cfg(test)]
+mod conflict_diff_tests {
+    use super::{DiffKind, DiffLine, line_diff};
+
+    #[test]
+    fn line_diff_marks_context_removed_and_added_lines() {
+        let old = "# Beta\nOriginal local version.\nShared footer.";
+        let new = "# Beta\nRemote version edited on Laptop.\nShared footer.";
+        let diff = line_diff(old, new);
+        assert_eq!(
+            diff,
+            vec![
+                DiffLine { kind: DiffKind::Context, text: "# Beta".into() },
+                DiffLine { kind: DiffKind::Removed, text: "Original local version.".into() },
+                DiffLine { kind: DiffKind::Added, text: "Remote version edited on Laptop.".into() },
+                DiffLine { kind: DiffKind::Context, text: "Shared footer.".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn line_diff_handles_identical_and_empty_inputs() {
+        assert_eq!(line_diff("same\nline", "same\nline").iter().all(|l| l.kind == DiffKind::Context), true);
+        let added = line_diff("", "only remote");
+        assert_eq!(added, vec![DiffLine { kind: DiffKind::Added, text: "only remote".into() }]);
+    }
+}
+
 /// Makes a name safe as a file name: path separators and colons become dashes.
 pub fn clean_name(s: &str) -> String {
     s.chars().map(|c| if matches!(c, '\\' | '/' | ':') { '-' } else { c }).collect::<String>().trim().to_string()

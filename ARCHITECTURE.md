@@ -502,10 +502,11 @@ edit from a delete:
 - Both sides changed: the local text stays, and the remote text comes down beside it as
   `<name> (conflict <device>).md`. Conflict copies carry a warning badge in the file tree and Open
   shelf (`md::conflict_origin`), a clickable `"Open"` action in the conflict notice, and an inline
-  resolution banner (`conflict-banner` in `ui/editor.rs`) on both the conflict copy (`"Open original"`,
-  `"Keep this version"` with full Undo recovery, and `"Discard conflict"`) and the original note
-  (`"Open conflict"`). Failed `"On save"` syncs schedule automatic backoff retries, and clicking
-  `"sync failed"` in `side-sync` retries at once.
+  resolution banner (`conflict-banner` in `ui/editor.rs`) on both the conflict copy (`"Compare"` /
+  `"Hide diff"` toggling an inline scrollable line-by-line `conflict-diff-view` from `md::line_diff`,
+  `"Open original"`, `"Keep this version"` with full Undo recovery, and `"Discard conflict"`) and the
+  original note (`"Open conflict"`). Failed `"On save"` syncs schedule automatic backoff retries, and
+  clicking `"sync failed"` in `side-sync` retries at once.
 - A deleted note moves to `.trash` on the other devices.
 
 The base is saved only after all disk writes of a sync succeed. If a write fails, the base is
@@ -520,7 +521,7 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 - While the app is open, the same `handle` function can also answer `POST /mcp` on
   `127.0.0.1`. That needs the access token from Settings.
 - Settings are read again for every call, so a change in the app applies at once.
-- Locked notes are refused for `read_note`, `update_note` and `delete_note`, and `delete_note` moves
+- Locked notes are refused for `read_note`, `update_note`, `rename_note` and `delete_note`, and `delete_note` moves
   files through `vault::trash_file` so `.trash/.meta.json` records their original path.
 - Writes go straight to disk, not through `App`. The app sees them through the watcher.
 

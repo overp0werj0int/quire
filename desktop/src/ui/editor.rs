@@ -155,6 +155,7 @@ pub fn body(v: V) -> El {
         .min_h(0.0)
         .h_full()
         .children(conflict_banner(v))
+        .children(conflict_diff_view(v))
         .child(main_area);
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     // The outline slides in from the right and out to it over 160 ms (WR-99).
@@ -203,11 +204,19 @@ fn conflict_banner(v: V) -> Option<El> {
     let (msg, buttons) = if let Some((orig, device)) = md::conflict_origin(active) {
         let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
         let (conf1, conf2) = (active.to_string(), active.to_string());
+        let diff_open = v.s.conflict_diff.as_deref() == Some(active);
         let msg = format!("Sync conflict copy from {device} · Original: {orig}");
         let buttons = row()
             .gap(6.0)
             .center_y()
             .flex_wrap()
+            .child(act_btn(
+                "conflict-diff",
+                if diff_open { "Hide diff" } else { "Compare" },
+                if diff_open { keep_ink } else { p.ink },
+                if diff_open { p.acc.alpha(0.55) } else { p.line },
+                Box::new(|s, _| s.toggle_conflict_diff()),
+            ))
             .child(act_btn(
                 "conflict-open-orig",
                 "Open original",
@@ -255,7 +264,7 @@ fn conflict_banner(v: V) -> Option<El> {
         ));
         (msg, buttons)
     };
-    let narrow = doc_width(v) < 760.0;
+    let narrow = doc_width(v) < 860.0;
     let banner = if narrow {
         col()
             .key("conflict-banner")
@@ -303,6 +312,92 @@ fn conflict_banner(v: V) -> Option<El> {
             .child(buttons)
     };
     Some(banner)
+}
+
+/// Inline scrollable unified diff comparing the original local note against the active sync
+/// conflict copy, shown directly below `conflict-banner` when toggled via `conflict-diff`.
+fn conflict_diff_view(v: V) -> Option<El> {
+    if !v.has_doc() || v.focus() {
+        return None;
+    }
+    let active = v.s.active.as_deref()?;
+    if v.s.conflict_diff.as_deref() != Some(active) {
+        return None;
+    }
+    let (orig, device) = md::conflict_origin(active)?;
+    let p = v.p;
+    let c = Roles::new(p);
+    let edge = p.err.alpha(if p.dark { 0.35 } else { 0.28 });
+    let mut card = col()
+        .key("conflict-diff-view")
+        .w_full()
+        .max_h(260.0)
+        .fill(c.panel)
+        .border_sides([0.0, 0.0, 1.0, 0.0], edge)
+        .border_layout()
+        .role("region")
+        .label("Conflict diff");
+
+    if v.s.note_locked(active) || v.s.note_locked(&orig) {
+        return Some(card.px(16.0).py(10.0).child(text("Unlock both notes to compare their contents.").font(sans(12.0, 400.0)).color(c.readable_dim())));
+    }
+
+    let orig_text = v.s.note_text(&orig).unwrap_or("");
+    let conf_text = v.s.note_text(active).unwrap_or("");
+    let diff = md::line_diff(orig_text, conf_text);
+    let added = diff.iter().filter(|l| l.kind == md::DiffKind::Added).count();
+    let removed = diff.iter().filter(|l| l.kind == md::DiffKind::Removed).count();
+
+    let header = row()
+        .w_full()
+        .px(16.0)
+        .py(6.0)
+        .gap(12.0)
+        .center_y()
+        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline_soft)
+        .border_layout()
+        .child(text(format!("- Local ({orig})")).font(literal(11.5)).color(c.readable_red()).truncate().shrink().min_w(0.0))
+        .child(text(format!("+ Conflict ({device})")).font(literal(11.5)).color(c.readable_green()).truncate().shrink().min_w(0.0))
+        .child(el().grow(1.0))
+        .child(label(&format!("+{added}"), literal(11.5), c.readable_green()))
+        .child(label(&format!("-{removed}"), literal(11.5), c.readable_red()));
+    card = card.child(header);
+
+    let rem_bg = crate::roles::mix(c.panel, c.red, if p.dark { 0.16 } else { 0.10 });
+    let add_bg = crate::roles::mix(c.panel, c.green, if p.dark { 0.16 } else { 0.10 });
+    let rem_ink = Roles::readable_on(c.red, rem_bg, 4.8);
+    let add_ink = Roles::readable_on(c.green, add_bg, 4.8);
+    let ctx_ink = Roles::readable_on(c.dim, c.panel, 4.8);
+
+    let mut list = col().w_full().py(4.0);
+    if added == 0 && removed == 0 {
+        list = list.child(el().px(16.0).py(6.0).child(text("Both versions have identical content.").font(sans(12.0, 400.0)).color(ctx_ink)));
+    } else {
+        for (idx, line) in diff.iter().enumerate() {
+            let (mark, bg_col, fg_col) = match line.kind {
+                md::DiffKind::Removed => ("-", Some(rem_bg), rem_ink),
+                md::DiffKind::Added => ("+", Some(add_bg), add_ink),
+                md::DiffKind::Context => (" ", None, ctx_ink),
+            };
+            let mut r = row().key(format!("conflict-diff-line:{idx}")).w_full().px(16.0).py(2.0).gap(8.0);
+            if let Some(bg_c) = bg_col {
+                r = r.fill(bg_c);
+            }
+            let body = if line.text.is_empty() { " ".to_string() } else { line.text.clone() };
+            r = r
+                .child(label(mark, literal(12.0), fg_col))
+                .child(text(body).font(literal(12.0)).color(fg_col).wrap().grow(1.0).min_w(0.0));
+            list = list.child(r);
+        }
+    }
+    let scroll = col()
+        .key("conflict-diff-scroll")
+        .grow(1.0)
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .child(list);
+    Some(card.child(scroll))
 }
 
 /// The progress bar: in both modes the share of the note's lines above the view, full at its

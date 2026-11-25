@@ -287,6 +287,8 @@ pub struct App {
     nav_jumping: bool,
     /// Trashed notes and folders inside `<vault>/.trash/`, scanned on the `Writer` thread.
     pub trash_entries: Vec<crate::vault::TrashEntry>,
+    /// Conflict copy path whose inline diff view is currently expanded under `conflict-banner`.
+    pub conflict_diff: Option<String>,
 }
 
 /// Recording state for one action row in Settings → Shortcuts.
@@ -477,6 +479,7 @@ pub fn init() -> App {
         nav_fwd: Vec::new(),
         nav_jumping: false,
         trash_entries: Vec::new(),
+        conflict_diff: None,
     };
     crate::theme::reload_omarchy();
     // The remote folder used to be one value for every notes folder. Each folder has its own now.
@@ -1714,6 +1717,7 @@ impl App {
         let changed = self.active.as_deref() != Some(path);
         let from = self.active.replace(path.to_string());
         if changed {
+            self.conflict_diff = None;
             if !self.nav_jumping
                 && let Some(prev) = from.as_ref()
                 && self.nav_back.last() != Some(prev)
@@ -1779,6 +1783,7 @@ impl App {
         // A closed note locks again.
         self.unlocked.remove(p);
         if self.active.as_deref() == Some(p) {
+            self.conflict_diff = None;
             let next = crate::sidebar::next_active(i, self.tabs.len());
             self.active = next.map(|n| self.tabs[n].clone());
             self.bump_tab(match next {
@@ -2627,6 +2632,19 @@ impl App {
             return false;
         }
         true
+    }
+
+    /// Toggles the inline line-by-line conflict diff view for the active sync conflict copy.
+    pub fn toggle_conflict_diff(&mut self) {
+        let Some(active) = self.active.clone() else {
+            self.conflict_diff = None;
+            return;
+        };
+        if self.conflict_diff.as_deref() == Some(active.as_str()) {
+            self.conflict_diff = None;
+        } else {
+            self.conflict_diff = Some(active);
+        }
     }
 
     /// Opens the original note for a sync conflict copy, or shows a notice if it was deleted.

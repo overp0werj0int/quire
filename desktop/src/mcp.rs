@@ -145,6 +145,9 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
         },
         "rename_note" => match get(arg(a, "path")) {
             Ok(p) => {
+                if crate::lock::is_locked(&files[&p]) {
+                    return fail("Note is password-locked and cannot be renamed via MCP");
+                }
                 let name = md::clean_name(md::strip_md(arg(a, "new_name")));
                 if name.is_empty() {
                     return fail("The new name is empty.");
@@ -524,6 +527,7 @@ mod tests {
         m.access = "write".into();
         m.confirm = false;
         m.tools.insert("update_note".into(), true);
+        m.tools.insert("rename_note".into(), true);
         m.tools.insert("delete_note".into(), true);
         let c = Ctx { root: dir.clone(), mcp: m, update_links: true };
 
@@ -534,6 +538,12 @@ mod tests {
         let r_upd = handle(&c, &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_note","arguments":{"path":"Locked.md","content":"overwrite","mode":"replace"}}})).unwrap();
         assert_eq!(r_upd["result"]["isError"], true, "{r_upd}");
         assert_eq!(std::fs::read_to_string(dir.join("Locked.md")).unwrap(), sealed, "ciphertext must remain untouched");
+
+        let r_ren_lock = handle(&c, &json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"rename_note","arguments":{"path":"Locked.md","new_name":"RenamedLocked"}}})).unwrap();
+        assert_eq!(r_ren_lock["result"]["isError"], true, "{r_ren_lock}");
+        assert!(r_ren_lock["result"]["content"][0]["text"].as_str().unwrap_or("").contains("password-locked"));
+        assert!(dir.join("Locked.md").is_file());
+        assert!(!dir.join("RenamedLocked.md").exists());
 
         let r_del_lock = handle(&c, &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_note","arguments":{"path":"Locked.md"}}})).unwrap();
         assert_eq!(r_del_lock["result"]["isError"], true, "{r_del_lock}");
