@@ -346,11 +346,20 @@ impl App {
         })
     }
 
+    /// Whether `r` can run from the help sheet's `help_mode` tab right now.
+    pub fn help_row_runnable(&self, help_mode: Mode, r: &'static Row) -> bool {
+        action(r).is_some_and(|a| !(help_mode != self.mode && !a.ctx.contains(&keymap::Ctx::Global) && (self.active.is_none() || self.active_locked())))
+    }
+
+    fn help_picks(&self, mode: Mode, found: &[(&'static str, Vec<&'static Row>)]) -> Vec<&'static Row> {
+        picks(found).into_iter().filter(|r| self.help_row_runnable(mode, r)).collect()
+    }
+
     /// The rows the help's query keeps, and the selected one among those that run.
     pub fn help_found(&self) -> (Vec<(&'static str, Vec<&'static Row>)>, Option<&'static Row>) {
         let (q, mode, idx) = self.help_search().map_or(("", self.mode, 0), |h| (h.q.text.as_str(), h.mode, h.idx));
         let found = filter(&self.keymap, mode, q);
-        let pick = picks(&found).get(idx).copied();
+        let pick = self.help_picks(mode, &found).get(idx).copied();
         (found, pick)
     }
 
@@ -387,8 +396,9 @@ impl App {
                 return true;
             }
             Key::Up | Key::Down if !chord && !ev.mods.shift => {
+                let mode = self.help_search().map_or(self.mode, |h| h.mode);
                 let (found, _) = self.help_found();
-                let n = picks(&found).len();
+                let n = self.help_picks(mode, &found).len();
                 if let Some(h) = self.help_search_mut()
                     && n > 0
                 {

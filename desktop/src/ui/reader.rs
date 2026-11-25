@@ -336,9 +336,9 @@ pub(super) fn help_sheet(v: V) -> Card {
     let narrow_header = v.vw < 720.0;
     let header_h = if narrow_header { 78.0 } else { 44.0 };
     let search_h = 40.0;
-    let pill_on_bg = crate::roles::mix(c.bg, v.p.act, v.p.act.a);
     let pill_off_bg = crate::roles::mix(c.bg, v.p.soft, v.p.soft.a);
-    let pill_on_ink = Roles::readable_on(v.p.acc, pill_on_bg, 4.8);
+    let pill_on_bg = crate::roles::mix(pill_off_bg, v.p.act, v.p.act.a);
+    let pill_on_ink = Roles::readable_on(v.p.acc, pill_on_bg, 5.0);
     let pill_off_ink = Roles::readable_on(c.dim, pill_off_bg, 4.8);
     let mode_pill = |m: crate::app::Mode, key: &'static str, lbl: &'static str| {
         let on = help_mode == m;
@@ -518,27 +518,24 @@ pub(super) fn help_sheet(v: V) -> Card {
                 }
             }
             let mut line = row().key(format!("r-{i}")).min_h(row_h).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
-            if let Some(act) = crate::help::action(r) {
-                let cross_blocked = help_mode != v.s.mode && !act.ctx.contains(&Ctx::Global) && (v.s.active.is_none() || v.s.active_locked());
-                if !cross_blocked {
-                    let at = n;
-                    n += 1;
-                    let on = pick.is_some_and(|p| std::ptr::eq(p, *r));
-                    let row_ref: &'static crate::help::Row = r;
-                    line = line
-                        .key(crate::help::row_key(at))
-                        .fill(if on { v.p.act } else { Color::TRANSPARENT })
-                        .role("option")
-                        .cursor(rune::Cursor::Pointer)
-                        .on_hover(move |s: &mut App| {
-                            if let Some(h) = s.help_search_mut()
-                                && h.idx != at
-                            {
-                                h.idx = at;
-                            }
-                        })
-                        .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
-                }
+            if v.s.help_row_runnable(help_mode, r) {
+                let at = n;
+                n += 1;
+                let on = pick.is_some_and(|p| std::ptr::eq(p, *r));
+                let row_ref: &'static crate::help::Row = r;
+                line = line
+                    .key(crate::help::row_key(at))
+                    .fill(if on { v.p.act } else { Color::TRANSPARENT })
+                    .role("option")
+                    .cursor(rune::Cursor::Pointer)
+                    .on_hover(move |s: &mut App| {
+                        if let Some(h) = s.help_search_mut()
+                            && h.idx != at
+                        {
+                            h.idx = at;
+                        }
+                    })
+                    .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
             }
             g = g.child(line);
         }

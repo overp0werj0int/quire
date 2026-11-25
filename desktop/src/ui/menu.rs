@@ -370,12 +370,23 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
             }));
             items.extend(fold);
             if !root && !v.s.active_locked() && crate::map::can_convert(&t, i) {
-                use crate::map::NewKind;
-                items.push(on("menu-convert-para", "Convert to paragraph", "map.paragraph", true, |s, _, tx| s.map_convert(NewKind::Paragraph, tx)));
-                items.push(on("menu-convert-heading", "Convert to heading", "map.heading-2", true, |s, _, tx| s.map_convert(NewKind::Heading(2), tx)));
-                items.push(on("menu-convert-task", "Convert to task", "map.task", true, |s, _, tx| s.map_convert(NewKind::Task, tx)));
-                items.push(on("menu-convert-bullet", "Convert to bulleted list", "map.bulleted", true, |s, _, tx| s.map_convert(NewKind::Bullet, tx)));
-                items.push(on("menu-convert-number", "Convert to numbered list", "map.numbered", true, |s, _, tx| s.map_convert(NewKind::Number, tx)));
+                use crate::blocks::Task;
+                use crate::map::{BlockKind, NewKind};
+                if !matches!(n.kind, NodeKind::Block(BlockKind::Paragraph)) {
+                    items.push(on("menu-convert-para", "Convert to paragraph", "map.paragraph", true, |s, _, tx| s.map_convert(NewKind::Paragraph, tx)));
+                }
+                if !matches!(n.kind, NodeKind::Heading { .. }) {
+                    items.push(on("menu-convert-heading", "Convert to heading", "map.heading-2", true, |s, _, tx| s.map_convert(NewKind::Heading(2), tx)));
+                }
+                if !matches!(n.kind, NodeKind::Item { ordered: false, task, .. } if task != Task::None) {
+                    items.push(on("menu-convert-task", "Convert to task", "map.task", true, |s, _, tx| s.map_convert(NewKind::Task, tx)));
+                }
+                if !matches!(n.kind, NodeKind::Item { ordered: false, task: Task::None, .. }) {
+                    items.push(on("menu-convert-bullet", "Convert to bulleted list", "map.bulleted", true, |s, _, tx| s.map_convert(NewKind::Bullet, tx)));
+                }
+                if !matches!(n.kind, NodeKind::Item { ordered: true, .. }) {
+                    items.push(on("menu-convert-number", "Convert to numbered list", "map.numbered", true, |s, _, tx| s.map_convert(NewKind::Number, tx)));
+                }
             }
             items.extend((!root && !v.s.active_locked()).then(|| on("menu-cut", "Cut", "map.cut", true, |s, _, tx| s.map_cut(tx))));
             items.push(copy);

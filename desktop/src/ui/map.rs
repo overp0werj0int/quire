@@ -340,6 +340,31 @@ pub(super) fn canvas(v: V) -> El {
             .inert()
             .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: v.p.acc, inset: true })
     });
+    let edit_hint = s.map.inline.is_some().then(|| {
+        let hud_bg = c.on_page(c.panel);
+        let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
+        let hud_ink = Roles::readable_on(c.dim, hud_bg, 4.8);
+        let shadow = rune::Shadow {
+            x: 0.0,
+            y: 1.0,
+            blur: 6.0,
+            spread: 0.0,
+            color: Color::BLACK.alpha(if v.dark { 0.24 } else { 0.08 }),
+            inset: false,
+        };
+        rune::row()
+            .key("map-edit-hint")
+            .pin(Some(12.0), None, None, Some(12.0))
+            .h(28.0)
+            .px(10.0)
+            .center_y()
+            .radius(6.0)
+            .fill(hud_bg)
+            .border(1.0, hud_edge)
+            .box_shadow(shadow)
+            .inert()
+            .child(text("Enter saves · Shift+Enter newline · Esc cancels").font(styles::sans(11.0, 400.0)).color(hud_ink))
+    });
     el().key("map-canvas")
         .grow(1.0)
         .min_w(0.0)
@@ -353,6 +378,7 @@ pub(super) fn canvas(v: V) -> El {
         .child(world)
         .child(ring.unwrap_or_else(el))
         .children(ghost_el)
+        .children(edit_hint)
         .on_layout_tx(|s: &mut App, r, tx| s.map_laid_out(r, tx))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             s.touch_activity();
@@ -534,7 +560,7 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
     let surface = c.on_page(c.raised);
     let x = p.x + p.label_pads(m.pad_x, room)[0] + W;
     let y = p.y + p.content(m.pad_b).0 + W;
-    let input = super::editor::with_edit_menu(
+    super::editor::with_edit_menu(
         rune::text_input(&e.edit, st)
             .key(map_app::FIELD)
             .label("Node text")
@@ -552,18 +578,8 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
             .fill(surface)
             .wrap_anywhere(),
         map_app::FIELD,
-    );
-    let hint_font = styles::sans(10.5, 400.0);
-    let hint = text("Enter saves · Shift+Enter newline · Esc cancels")
-        .key("map-edit-hint")
-        .font(hint_font)
-        .color(Roles::readable_on(c.dim, c.bg, 4.8))
-        .inert();
-    rune::col()
-        .pin(Some(x), Some(y), None, None)
-        .gap(4.0)
-        .child(input)
-        .child(hint)
+    )
+    .pin(Some(x), Some(y), None, None)
 }
 
 /// The add toolbar over a new node's glass, its top-left corner at `at` (MAP-087): the types the
