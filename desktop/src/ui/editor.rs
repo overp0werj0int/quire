@@ -471,7 +471,7 @@ fn doc_scroll(v: V) -> El {
                     s.focus_editor(tx);
                 }
             });
-        if reader || writer {
+        if writer || locked {
             column = column.pl(page.gutter);
         }
         let mode_t = if s.mode_swapped { super::swap() } else { rune::Transition::none() };
@@ -494,7 +494,7 @@ fn doc_scroll(v: V) -> El {
             } else if s.mode == Mode::Source {
                 source(v, page.width, page.gutter)
             } else {
-                preview::preview(v).w(page.width)
+                preview::preview(v).w_full()
             }
             .transition(mode_t),
         );

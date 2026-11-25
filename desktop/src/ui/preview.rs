@@ -298,6 +298,7 @@ pub fn preview(v: V) -> El {
     // A row is built again only when something it draws from changes.
     let set = s.settings();
     let col_geom = column(v);
+    let doc_w = super::editor::doc_width(v);
     let folds = Rc::new(s.page_folds());
     let version = {
         use std::hash::{Hash, Hasher};
@@ -308,8 +309,7 @@ pub fn preview(v: V) -> El {
             s.vault.as_ref().map(|v| &v.path),
             (set.size, &set.preview_font, &set.code_font),
             v.p as *const crate::theme::Pal as usize,
-            col_geom.width.to_bits(),
-            col_geom.gutter.to_bits(),
+            (col_geom.width.to_bits(), col_geom.gutter.to_bits(), doc_w.to_bits()),
             find.as_ref().map(|f| (&f.q, f.cur, f.place)),
             s.names_gen,
             s.images.epoch.get(),
@@ -328,6 +328,12 @@ pub fn preview(v: V) -> El {
     // The rows read the blocks this view parsed: `App::doc` hashes the whole note to find its
     // cache, and the list asks every row's key when it is made.
     let rows = doc.clone();
+    let right_free = (doc_w - col_geom.gutter - col_geom.width).max(0.0);
+    let bar_w = super::widgets::mini_bar_w(1);
+    let bridge = 10.0;
+    let in_margin = right_free >= bar_w + 16.0;
+    let gutter_l = col_geom.gutter.min(r(look.b * 4.0).max(48.0));
+    let gutter_r = if in_margin { (bar_w + bridge).min(right_free) } else { 0.0 };
     col()
         .key("preview")
         .w_full()
@@ -353,14 +359,24 @@ pub fn preview(v: V) -> El {
                     // A right-click on the row, its gap above included, opens its block's menu (RD-68).
                     let line = bl.lines.start;
                     let fade = || rune::Curve::linear(0.12);
-                    el().w_full()
+                    // The hover_group encloses the reading column plus the left margin (`#`, `+N`)
+                    // and right margin (`block-actions`), so moving the pointer from text onto a
+                    // margin control never leaves the hover area.
+                    let band = el()
+                        .ml(col_geom.gutter - gutter_l)
+                        .w(gutter_l + col_geom.width + gutter_r)
                         .hover_group()
                         .hover_motion(fade(), fade())
+                        .child(cx.top_block(bl, tone).ml(gutter_l).w(col_geom.width))
+                        .children(cx.heading_anchor(bl, fold, gutter_l))
+                        .children(fold.filter(|&(_, folded, _)| folded).map(|f| cx.fold_mark(bl, f, gutter_l)))
+                        .children((!v.s.active_locked()).then(|| cx.edit_mark(bl, in_margin)));
+                    el().w_full()
                         .pt(gap)
-                        .child(cx.top_block(bl, tone, fold))
-                        .children(fold.filter(|&(_, folded, _)| folded).map(|f| cx.fold_mark(bl, gap, f)))
-                        .children((!v.s.active_locked()).then(|| cx.edit_mark(bl, gap, col_geom.gutter)))
-                        .on_layout_tx(move |s: &mut App, rect, tx| s.row_laid_out(&key, rect, tx))
+                        .child(band)
+                        .on_layout_tx(move |s: &mut App, rect, tx| {
+                            s.row_laid_out(&key, [rect[0] + col_geom.gutter, rect[1], col_geom.width, rect[3]], tx)
+                        })
                         .on_secondary_press(move |s: &mut App, at, tx| s.open_menu(crate::layer::MenuOf::Block(line), (at.x, at.y), tx))
                 })
             },
@@ -486,9 +502,9 @@ impl Cx<'_> {
 
     /// A top-level block of the page. The block under the pointer is the one Ctrl+Shift+C and e
     /// act on (RD-100).
-    fn top_block(&self, bl: &Block, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
+    fn top_block(&self, bl: &Block, tone: Tone) -> El {
         let line = bl.lines.start;
-        self.block_with_fold(bl, tone, fold)
+        self.block(bl, tone)
             .key("block")
             .on_hover_change(move |s: &mut App, on, tx| {
                 if on {
@@ -517,13 +533,9 @@ impl Cx<'_> {
     }
 
     fn block(&self, bl: &Block, tone: Tone) -> El {
-        self.block_with_fold(bl, tone, None)
-    }
-
-    fn block_with_fold(&self, bl: &Block, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
         match &bl.kind {
             Kind::FrontMatter { title, fields } => front::card(self, title, fields),
-            Kind::Heading { level, runs, text: t, slug } => self.heading(*level, runs, t, slug, bl.pid, tone, fold),
+            Kind::Heading { level, runs, text: t, .. } => self.heading(*level, runs, t, bl.pid, tone),
             Kind::Paragraph { runs } if is_tag_line(runs) => tag_line(self, runs, tone),
             Kind::Paragraph { runs } => {
                 let mut e = self.rich_at(runs, tone, bl.pid).el(self.look.prose(tone.size, tone.lead), tone.color, self.sel()).w_full();
@@ -547,8 +559,7 @@ impl Cx<'_> {
     }
 
     /// PAGE-03, PAGE-14, PAGE-15, BLK-11 to BLK-14.
-    #[allow(clippy::too_many_arguments)]
-    fn heading(&self, level: usize, runs: &[Run], label: &str, slug: &str, pid: Option<usize>, tone: Tone, fold: Option<(usize, bool, usize)>) -> El {
+    fn heading(&self, level: usize, runs: &[Run], label: &str, pid: Option<usize>, tone: Tone) -> El {
         let look = self.look;
         let level = level.clamp(1, 6);
         let (size, lead) = page::heading_type(look.b, level);
@@ -564,18 +575,21 @@ impl Cx<'_> {
         if level == 6 {
             e = e.text_case(TextCase::Uppercase);
         }
-        if tone.quote_depth > 0 || tone.contained || slug.is_empty() {
-            return e;
+        e
+    }
+
+    /// Top-level heading `#` indicator in the left margin inside the row's `hover_group` (BLK-15,
+    /// BLK-16, BLK-102): matched to the heading's font size, clicking folds when foldable else
+    /// copies the heading link. Omitted while folded (`+{hidden}` occupies the slot).
+    fn heading_anchor(&self, bl: &Block, fold: Option<(usize, bool, usize)>, gutter_l: f32) -> Option<El> {
+        let Kind::Heading { level, slug, .. } = &bl.kind else { return None };
+        if slug.is_empty() || fold.is_some_and(|(_, folded, _)| folded) {
+            return None;
         }
-        // When folded, the `+{hidden}` pill occupies the left-gutter slot (BLK-102).
-        if fold.is_some_and(|(_, folded, _)| folded) {
-            return e;
-        }
-        // The `#` in the margin while the pointer is over the heading (BLK-15, BLK-16, BLK-102):
-        // matched to the heading's font size, clicking folds when foldable else copies the link.
-        let hs = size;
+        let look = self.look;
+        let (size, lead) = page::heading_type(look.b, (*level).clamp(1, 6));
         let lh = line(size, lead);
-        let hash_style = TextStyle::new(hs, 400.0).family(look.mono).lh(lh);
+        let hash_style = TextStyle::new(size, 400.0).family(look.mono).lh(lh);
         let w = rune::text::advance("#", hash_style).ceil();
         let gap = r(look.b * 0.6);
         let fade = || rune::Curve::linear(0.12);
@@ -588,20 +602,20 @@ impl Cx<'_> {
             .cursor(rune::Cursor::Pointer)
             .role("button")
             .child(text("#").font(hash_style).color(look.c.faint).group_color(look.c.accent))
-            .pin(Some(-(w + gap)), Some(0.0), None, None);
+            .pin(Some(gutter_l - (w + gap)), Some(0.0), None, None);
         if let Some((n, _, _)) = fold {
             let tip = self.v.s.keymap.tip("Fold section", "reader.toggle-fold");
             hash = hash.label(tip.clone()).help(tip).on_press(move |s: &mut App| s.toggle_page_fold(n));
         } else {
-            let slug = slug.to_string();
+            let slug = slug.clone();
             hash = hash.label("Copy a link to this heading").help("Copy link to heading").on_press_tx(move |s: &mut App, tx| s.copy_heading_link(&slug, tx));
         }
-        el().w_full().hover_group().hover_motion(fade(), fade()).child(e).child(hash)
+        Some(hash)
     }
 
     /// A folded heading's `+{hidden}` badge in the left margin (BLK-102, MAP-042), shown at rest
     /// in the heading indicator slot; clicking unfolds the section here and on the map.
-    fn fold_mark(&self, bl: &Block, top: f32, (n, _folded, hidden): (usize, bool, usize)) -> El {
+    fn fold_mark(&self, bl: &Block, (n, _folded, hidden): (usize, bool, usize), gutter_l: f32) -> El {
         let look = self.look;
         let c = &look.c;
         let Kind::Heading { level, .. } = bl.kind else { return el() };
@@ -625,11 +639,11 @@ impl Cx<'_> {
             .label(format!("Unfold, {hidden} hidden"))
             .help(tip)
             .child(text(format!("+{hidden}")).font(font).color(c.readable_dim()).inert());
-        let y = top + ((line(size, lead) - h) / 2.0).max(0.0);
+        let y = ((line(size, lead) - h) / 2.0).max(0.0);
         let room = r(look.b * 4.0).max(hit);
         let (rw, rg, rc) = super::focus_ring(self.v.p);
         row().key("fold")
-            .pin(Some(-(right + room)), Some(y), None, None)
+            .pin(Some(gutter_l - right - room), Some(y), None, None)
             .size(room, h)
             .justify_end()
             .center_y()
@@ -647,24 +661,18 @@ impl Cx<'_> {
     /// combined Edit + Copy floating mini-bar inside `code.rs`). Uses the shared uniform icon-only
     /// floating toolbar with tooltip (`hover_group()` + `group_opacity` so scrolling runs zero
     /// extra views).
-    fn edit_mark(&self, bl: &Block, top: f32, gutter: f32) -> El {
+    fn edit_mark(&self, bl: &Block, in_margin: bool) -> El {
         if matches!(bl.kind, Kind::Code { .. } | Kind::Diff { .. }) {
             return el();
         }
         let line = bl.lines.start;
         let key = format!("block-edit:{line}");
         let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
-        let bar_w = super::widgets::mini_bar_w(1);
-        let in_margin = gutter >= bar_w + 16.0;
         let btn = super::widgets::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None)
             .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
         let bar = super::widgets::mini_bar(self.v.p, &format!("block-actions:{line}")).child(btn);
-        if in_margin {
-            let bridge = 10.0;
-            el().pin(None, Some(top), Some(-(bar_w + bridge)), None).pl(bridge).group_opacity(0.0, 1.0).child(bar)
-        } else {
-            el().pin(None, Some(top), Some(4.0), None).group_opacity(0.0, 1.0).child(bar)
-        }
+        let right = if in_margin { 0.0 } else { 4.0 };
+        el().pin(None, Some(0.0), Some(right), None).group_opacity(0.0, 1.0).child(bar)
     }
 
     /// Three faint dots (BLK-17).

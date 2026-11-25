@@ -4217,16 +4217,21 @@ mod escape_tests {
         assert!((copy_btn.rect[2] - 24.0).abs() < 0.5 && (copy_btn.rect[3] - 24.0).abs() < 0.5, "copy icon button 24x24: {:?}", copy_btn.rect);
         assert!((code_edit.rect[2] - 24.0).abs() < 0.5 && (code_edit.rect[3] - 24.0).abs() < 0.5, "edit icon button 24x24: {:?}", code_edit.rect);
         assert!(code_edit.rect[0] >= code_bar.rect[0] - 0.5 && copy_btn.rect[0] + copy_btn.rect[2] <= code_bar.rect[0] + code_bar.rect[2] + 0.5, "Edit and Copy share code-actions pill");
-        // Clicking `#` on foldable `## Sub Heading` folds its section (showing `page-fold:` pill at rest).
+        // Moving onto `#` keeps `#` fully opaque (> 400 ms after hover) and clicking folds the section.
         let h2_a = anchors[1];
-        rt.pointer_move(h2_a[0] + h2_a[2] + 40.0, h2_a[1] + h2_a[3] / 2.0);
-        for _ in 0..10 {
+        let h2_edit = all.iter().find(|e| e.key.as_deref() == Some("block-actions:4")).expect("H2 right edit mini-bar").rect;
+        rt.pointer_move(h2_edit[0] + h2_edit[2] / 2.0, h2_edit[1] + h2_edit[3] / 2.0);
+        for _ in 0..25 {
             rt.frame(DT);
         }
+        let edit_op = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("block-actions:4")).unwrap().opacity;
+        assert!(edit_op > 0.99, "right-margin edit pill stays visible while hovered: {edit_op}");
         rt.pointer_move(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
-        for _ in 0..3 {
+        for _ in 0..25 {
             rt.frame(DT);
         }
+        let anchor_op = rt.elements().into_iter().filter(|e| e.key.as_deref() == Some("anchor")).find(|e| (e.rect[1] - h2_a[1]).abs() < 1.0).unwrap().opacity;
+        assert!(anchor_op > 0.99, "heading # stays visible while pointer is in clicking zone: {anchor_op}");
         rt.pointer_down(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
         rt.pointer_up(h2_a[0] + 4.0, h2_a[1] + h2_a[3] / 2.0);
         for _ in 0..5 {
