@@ -267,7 +267,7 @@ fn foot(v: V) -> El {
                 s.sync
                     .error
                     .as_deref()
-                    .map_or_else(|| "Sync failed · Open sync settings".to_string(), |e| format!("Sync failed: {e} · Open sync settings"))
+                    .map_or_else(|| "Sync failed · Click to retry".to_string(), |e| format!("Sync failed: {e} · Click to retry"))
             } else {
                 "Open sync settings".to_string()
             };
@@ -286,9 +286,13 @@ fn foot(v: V) -> El {
                 .help(tip)
                 .focus_ring(rw, rg, rc)
                 .keeps_text_selection()
-                .control(|s: &mut App, tx| {
-                    s.open_settings(tx);
-                    s.set_sec = crate::app::Sec::Sync;
+                .control(move |s: &mut App, tx| {
+                    if failed {
+                        s.sync_now();
+                    } else {
+                        s.open_settings(tx);
+                        s.set_sec = crate::app::Sec::Sync;
+                    }
                 })
                 .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
                 .child(text(lbl).font(nav(panel::BODY_SMALL, false)).color(if failed { p.err } else { c.faint }).truncate().shrink().min_w(0.0));

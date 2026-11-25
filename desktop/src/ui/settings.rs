@@ -339,7 +339,7 @@ fn accent_block(v: V) -> El {
     }
     let typed = s.fields.get("accent-hex").map_or_else(|| current.clone(), |e| e.text.clone());
     let bad = !typed.trim().is_empty() && theme::parse_accent(&typed).is_none();
-    let field = super::settings_sync::text_box(v, "accent-hex", current.clone(), "#7a4fba", false, bad, 120.0, |s, t| {
+    let field = super::settings_sync::text_box(v, "accent-hex", "Accent colour", current.clone(), "#7a4fba", false, bad, 120.0, |s, t| {
         let t = t.trim().to_lowercase();
         if t.is_empty() {
             s.settings_mut().accent = String::new();

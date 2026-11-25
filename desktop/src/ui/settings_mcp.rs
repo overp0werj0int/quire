@@ -73,7 +73,7 @@ pub fn mcp(v: V) -> El {
                     .key("http-top")
                     .w_full()
                     .gap(12.0)
-                    .child(col().key("port").w(110.0).gap(6.0).child(label("Port", sans(12.5, 500.0), p.ink2)).child(text_box(v, "mcp-port", port, "", false, false, f32::INFINITY, |s, t| {
+                    .child(col().key("port").w(110.0).gap(6.0).child(label("Port", sans(12.5, 500.0), p.ink2)).child(text_box(v, "mcp-port", "Port", port, "", false, false, f32::INFINITY, |s, t| {
                         let digits: String = t.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
                         s.settings_mut().mcp.port = digits;
                     })))
@@ -178,6 +178,7 @@ pub fn mcp(v: V) -> El {
                 .border_layout()
                 .role("checkbox")
                 .checked(on)
+                .label(lbl.clone())
                 .control(move |s: &mut App, _: &mut Tx| {
                     let h = &mut s.settings_mut().mcp.hidden;
                     if let Some(k) = h.iter().position(|x| *x == val) {
@@ -212,11 +213,20 @@ pub fn mcp(v: V) -> El {
     let status = if http {
         match &s.mcp_http_error {
             Some(e) => e.clone(),
-            None => format!("ready on 127.0.0.1:{} · {n_on} {} · waiting for a client", m.port, if n_on == 1 { "tool" } else { "tools" }),
+            None => {
+                let tail = match &s.mcp_last_activity {
+                    Some((tool, ts)) => format!("last call {tool} ({})", crate::sync::app::ago(*ts)),
+                    None => "waiting for a client".to_string(),
+                };
+                format!("ready on 127.0.0.1:{} · {n_on} {} · {tail}", m.port, if n_on == 1 { "tool" } else { "tools" })
+            }
         }
     } else {
         format!("ready on stdio · {n_on} {} · waiting for a client", if n_on == 1 { "tool" } else { "tools" })
     };
+    let retry_btn = http_err.then(|| {
+        outline_button(p, "mcp-retry", "Retry", 26.0, |s, _| s.retry_mcp_http())
+    });
     c.child(
         col()
             .key("client")
@@ -247,9 +257,10 @@ pub fn mcp(v: V) -> El {
                     .w_full()
                     .gap(8.0)
                     .mt(12.0)
-                    .items_start()
-                    .child(el().size(6.0, 6.0).mt(5.25).radius(3.0).fill(if http_err { p.err } else { p.acc }))
-                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(if http_err { p.err } else { p.mute }).wrap().grow(1.0).shrink().min_w(0.0)),
+                    .center_y()
+                    .child(el().size(6.0, 6.0).radius(3.0).fill(if http_err { p.err } else { p.acc }))
+                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(if http_err { p.err } else { p.mute }).wrap().grow(1.0).shrink().min_w(0.0))
+                    .children(retry_btn),
             ),
     )
 }

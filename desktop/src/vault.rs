@@ -763,13 +763,7 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
         Op::Delete { root, rel } => {
             // Move the file to `.trash` inside the folder, so it can come back.
             let src = root.join(rel);
-            let name = rel.replace('/', " - ");
-            let (stem, ext) = name.rsplit_once('.').map_or((name.as_str(), "md"), |(s, e)| (s, e));
-            let dst = free(&root.join(".trash"), &name, |n| format!("{stem} {n}.{ext}"))?;
-            std::fs::rename(&src, &dst)?;
-            if let Some(tn) = dst.file_name().map(|n| n.to_string_lossy().into_owned()) {
-                record_trash_meta(root, &tn, rel);
-            }
+            let dst = trash_file(root, rel)?;
             trash.insert(src, dst);
             Ok(())
         }
@@ -808,6 +802,20 @@ fn apply(op: &Op, trash: &mut Trash) -> std::io::Result<()> {
         Op::SaveState(p) => crate::store::save(p),
         Op::Barrier(_) | Op::SaveSyncBase { .. } | Op::ListTrash { .. } | Op::RestoreTrash { .. } | Op::DeleteTrashItem { .. } | Op::EmptyTrash { .. } => Ok(()),
     }
+}
+
+/// Moves a note file `rel` inside `root` into `<root>/.trash/` with deduplication and
+/// `.trash/.meta.json` path recording so Trash restore puts it back in its original folder.
+pub(crate) fn trash_file(root: &Path, rel: &str) -> std::io::Result<PathBuf> {
+    let src = root.join(rel);
+    let name = rel.replace('/', " - ");
+    let (stem, ext) = name.rsplit_once('.').map_or((name.as_str(), "md"), |(s, e)| (s, e));
+    let dst = free(&root.join(".trash"), &name, |n| format!("{stem} {n}.{ext}"))?;
+    std::fs::rename(&src, &dst)?;
+    if let Some(tn) = dst.file_name().map(|n| n.to_string_lossy().into_owned()) {
+        record_trash_meta(root, &tn, rel);
+    }
+    Ok(dst)
 }
 
 /// A path in `.trash` (made if missing) named `name`, or `numbered(2)`, `numbered(3)` and on
@@ -1096,6 +1104,39 @@ mod tests {
             assert!(s.trash_entries.is_empty());
         });
         assert!(!root.join(".trash/.meta.json").exists(), "manifest cleaned up after last item deleted");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn keep_conflict_version_supports_full_undo_recovery() {
+        let root = std::env::temp_dir().join(format!("quire-conflict-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Beta.md"), "# Original Beta\nOriginal body.\n").unwrap();
+        std::fs::write(root.join("Beta (conflict Laptop).md"), "# Laptop Beta\nConflict body.\n").unwrap();
+
+        let app = crate::app::init();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(root.clone(), tx);
+            s.open_file("Beta (conflict Laptop).md", None, tx);
+            s.keep_conflict_version("Beta (conflict Laptop).md", "Beta.md", tx);
+            assert_eq!(s.note_text("Beta.md"), Some("# Laptop Beta\nConflict body.\n"));
+            assert!(!s.files().contains_key("Beta (conflict Laptop).md"));
+            assert!(s.deleted.is_some(), "Undo toast must remain active after Keep this version");
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        assert_eq!(std::fs::read_to_string(root.join("Beta.md")).unwrap(), "# Laptop Beta\nConflict body.\n");
+        assert!(!root.join("Beta (conflict Laptop).md").exists());
+
+        rt.update(|s, tx| {
+            s.undo_delete(tx);
+            assert_eq!(s.note_text("Beta.md"), Some("# Original Beta\nOriginal body.\n"));
+            assert_eq!(s.note_text("Beta (conflict Laptop).md"), Some("# Laptop Beta\nConflict body.\n"));
+        });
+        rt.state.writer.wait(std::time::Duration::from_secs(2));
+        assert_eq!(std::fs::read_to_string(root.join("Beta.md")).unwrap(), "# Original Beta\nOriginal body.\n");
+        assert_eq!(std::fs::read_to_string(root.join("Beta (conflict Laptop).md")).unwrap(), "# Laptop Beta\nConflict body.\n");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

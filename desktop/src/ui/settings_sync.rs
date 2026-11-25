@@ -316,7 +316,7 @@ pub fn sync(v: V) -> El {
                 .gap(6.0)
                 .pb(16.0)
                 .child(label("Passphrase", sans(12.5, 500.0), p.ink2))
-                .child(text_box(v, "pass", pass, "At least 12 characters", true, false, 320.0, |s, t| {
+                .child(text_box(v, "pass", "Passphrase", pass, "At least 12 characters", true, false, 320.0, |s, t| {
                     s.settings_mut().sync.pass = t;
                     s.sync_changed();
                 }))
@@ -349,11 +349,14 @@ pub fn sync(v: V) -> El {
             .center_y()
             .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
             .border_layout()
-            .child(primary_button(p, "test", if s.sync.testing() { "Working…" } else { "Test connection" }, 32.0, 14.0, 13.0, |s, _| {
-                if !s.sync.testing() {
-                    test_sync(s);
-                }
-            }))
+            .child(
+                primary_button(p, "test", if s.sync.testing() { "Working…" } else { "Test connection" }, 32.0, 14.0, 13.0, |s, _| {
+                    if !s.sync.testing() && !s.sync.busy() {
+                        test_sync(s);
+                    }
+                })
+                .disabled(working),
+            )
             .children(if sy.connected && !working {
                 vec![super::widgets::outline_button(p, "sync-now", "Sync now", 32.0, |s, _| s.sync_now()).px(14.0)]
             } else {
@@ -379,7 +382,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
     let key = fd.key;
     match fd.kind {
         Kind::Text | Kind::Secret => {
-            c = c.child(text_box(v, &field_key(s, pid, key), value, fd.ph, fd.kind == Kind::Secret, bad, f32::INFINITY, move |s, t| set_cfg(s, key, t)));
+            c = c.child(text_box(v, &field_key(s, pid, key), fd.label, value, fd.ph, fd.kind == Kind::Secret, bad, f32::INFINITY, move |s, t| set_cfg(s, key, t)));
         }
         Kind::Choice => {
             let mut r = row().key("opts").w_full().flex_wrap().gap(6.0).role("radiogroup").focus_group();
@@ -395,6 +398,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                         .radius(7.0)
                         .border(1.0, if on { p.acc } else { p.line })
                         .border_layout()
+                        .label(*ol)
                         .choice(on, move |s: &mut App, _: &mut Tx| set_cfg(s, key, ov.into()))
                         .child(label(*ol, sans(12.0, 400.0), if on { p.acc } else { p.ink2 })),
                 );
@@ -404,36 +408,43 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
         Kind::Area => {
             let fk = format!("sync:{pid}:{key}");
             let edit = s.fields.get(&fk).cloned().unwrap_or_else(|| TextEdit::new(value.clone()));
+            let focused = edit.focused;
             let init = value.clone();
             let fk2 = fk.clone();
             c = c.child(
-                col().key("area")
-                    .w_full()
-                    .h(84.0)
-                    .py(8.0)
-                    .px(10.0)
-                    .radius(7.0)
-                    .fill(p.bg)
-                    .border(1.0, if bad { p.err } else { p.line })
-                    .border_layout()
-                    .scroll(rune::ScrollSpec { stick_bottom: false })
-                    .child(
-                        text_input(&edit, literal(11.5).lh(11.5 * 1.5))
-                            .key(fk.clone())
-                            .w_full()
-                            .color(p.ink)
-                            .placeholder(fd.ph, super::styles::placeholder_ink(p))
-                            .caret(p.ink, p.sel)
-                            .on_edit(move |s: &mut App| s.field(&fk, || init.clone()))
-                            .on_submit(|s: &mut App, _| {
-                                let _ = s;
-                            })
-                            .on_input_change(move |s: &mut App, _| {
-                                let t = s.fields.get(&fk2).map(|e| e.text.clone()).unwrap_or_default();
-                                set_cfg(s, key, t);
-                            })
-                            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
-                    ),
+                super::widgets::input_focus_ring_when(
+                    col()
+                        .key("area")
+                        .w_full()
+                        .h(84.0)
+                        .py(8.0)
+                        .px(10.0)
+                        .radius(7.0)
+                        .fill(p.bg)
+                        .border(1.0, if bad { p.err } else { p.line })
+                        .border_layout()
+                        .scroll(rune::ScrollSpec { stick_bottom: false }),
+                    p,
+                    focused,
+                )
+                .child(
+                    text_input(&edit, literal(11.5).lh(11.5 * 1.5))
+                        .key(fk.clone())
+                        .w_full()
+                        .color(p.ink)
+                        .label(fd.label)
+                        .placeholder(fd.ph, super::styles::placeholder_ink(p))
+                        .caret(p.ink, p.sel)
+                        .on_edit(move |s: &mut App| s.field(&fk, || init.clone()))
+                        .on_submit(|s: &mut App, _| {
+                            let _ = s;
+                        })
+                        .on_input_change(move |s: &mut App, _| {
+                            let t = s.fields.get(&fk2).map(|e| e.text.clone()).unwrap_or_default();
+                            set_cfg(s, key, t);
+                        })
+                        .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
+                ),
             );
         }
         Kind::Read => {
@@ -444,7 +455,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
 }
 
 /// A 32-point single-line field with an optional show and hide button for secrets.
-pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, bad: bool, max_w: f32, set: impl Fn(&mut App, String) + 'static) -> El {
+pub fn text_box(v: V, fk: &str, aria_label: &str, value: String, ph: &'static str, secret: bool, bad: bool, max_w: f32, set: impl Fn(&mut App, String) + 'static) -> El {
     let p = v.p;
     let s = v.s;
     let revealed = s.reveal.contains(fk);
@@ -452,36 +463,42 @@ pub fn text_box(v: V, fk: &str, value: String, ph: &'static str, secret: bool, b
     if secret && !revealed {
         edit = edit.secure();
     }
+    let focused = edit.focused;
     let fk_edit = fk.to_string();
     let fk_change = fk.to_string();
     let init = value.clone();
-    let mut b = row()
-        .key(format!("box-{fk}"))
-        .w_full()
-        .h(32.0)
-        .center_y()
-        .radius(7.0)
-        .fill(p.bg)
-        .border(1.0, if bad { p.err } else { p.line })
-        .border_layout()
-        .clip_rounded(7.0)
-        .child(
-            text_input(&edit, literal(12.5))
-                .key(fk.to_string())
-                .single_line()
-                .grow(1.0)
-                .min_w(0.0)
-                .px(10.0)
-                .color(p.ink)
-                .placeholder(ph, super::styles::placeholder_ink(p))
-                .caret(p.ink, p.sel)
-                .on_edit(move |s: &mut App| s.field(&fk_edit, || init.clone()))
-                .on_input_change(move |s: &mut App, _| {
-                    let t = s.fields.get(&fk_change).map(|e| e.text.clone()).unwrap_or_default();
-                    set(s, t);
-                })
-                .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
-        );
+    let mut b = super::widgets::input_focus_ring_when(
+        row()
+            .key(format!("box-{fk}"))
+            .w_full()
+            .h(32.0)
+            .center_y()
+            .radius(7.0)
+            .fill(p.bg)
+            .border(1.0, if bad { p.err } else { p.line })
+            .border_layout()
+            .clip_rounded(7.0),
+        p,
+        focused,
+    )
+    .child(
+        text_input(&edit, literal(12.5))
+            .key(fk.to_string())
+            .single_line()
+            .grow(1.0)
+            .min_w(0.0)
+            .px(10.0)
+            .color(p.ink)
+            .label(aria_label)
+            .placeholder(ph, super::styles::placeholder_ink(p))
+            .caret(p.ink, p.sel)
+            .on_edit(move |s: &mut App| s.field(&fk_edit, || init.clone()))
+            .on_input_change(move |s: &mut App, _| {
+                let t = s.fields.get(&fk_change).map(|e| e.text.clone()).unwrap_or_default();
+                set(s, t);
+            })
+            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
+    );
     if max_w.is_finite() {
         b = b.max_w(max_w);
     }

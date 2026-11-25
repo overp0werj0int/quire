@@ -721,26 +721,34 @@ fn undo_fit(room: f32, name: &str, key: &str) -> UndoFit {
     cut(name, free(false), 8, body).map_or(UndoFit::Short, |t| UndoFit::Named(t, false))
 }
 
-/// After a delete, the toast's place holds what went and an Undo button with its key, until
-/// the button or the key is pressed or `folders::UNDO_FOR` is up (`undo_fit`).
-pub fn undo_toast(v: V, name: &str) -> El {
+/// After a delete (or conflict overwrite), the toast's place holds what went and an Undo button
+/// with its key, until the button or the key is pressed or `folders::UNDO_FOR` is up (`undo_fit`).
+pub fn undo_toast(v: V, d: &crate::folders::Deleted) -> El {
     let c = Roles::new(v.p);
     let body = styles::popup();
     let key = v.s.keymap.label("app.undo-delete");
-    let fit = undo_fit(foot_room(v), name, &key);
-    let hint = matches!(fit, UndoFit::Named(_, true));
+    let words = |t: &str| text(t.to_string()).font(body).color(c.text);
+    let (hint, msg) = if let Some(custom) = &d.custom_msg {
+        let btn_w = 20.0 + width("Undo", body) + 8.0 + width(&key, keys(11.0));
+        let hint = width(custom, body) + 24.0 + btn_w <= foot_room(v);
+        let msg = row().key("toast-msg").shrink().min_w(0.0).center_y().child(words(custom).truncate().shrink().min_w(0.0));
+        (hint, msg)
+    } else {
+        let fit = undo_fit(foot_room(v), &d.name, &key);
+        let hint = matches!(fit, UndoFit::Named(_, true));
+        let msg = row().key("toast-msg").shrink().min_w(0.0).center_y();
+        let msg = match fit {
+            UndoFit::Named(shown, _) => msg.child(words("Moved ")).child(words(&shown)).child(words(" to the trash")),
+            // Below the short sentence's own width (a window narrower than Quire allows) it is cut.
+            UndoFit::Short => msg.child(words("Moved to the trash").truncate().shrink().min_w(0.0)),
+        };
+        (hint, msg)
+    };
     let undo = pill_button(&c, "toast-undo")
         .label(format!("Undo ({key})"))
         .on_press_tx(|s: &mut App, tx| s.undo_delete(tx))
         .child(text("Undo").font(body).color(c.accent))
         .children(hint.then(|| text(key).font(keys(11.0)).color(c.faint)));
-    let words = |t: &str| text(t.to_string()).font(body).color(c.text);
-    let msg = row().key("toast-msg").shrink().min_w(0.0).center_y();
-    let msg = match fit {
-        UndoFit::Named(shown, _) => msg.child(words("Moved ")).child(words(&shown)).child(words(" to the trash")),
-        // Below the short sentence's own width (a window narrower than Quire allows) it is cut.
-        UndoFit::Short => msg.child(words("Moved to the trash").truncate().shrink().min_w(0.0)),
-    };
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
     foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }

@@ -27,6 +27,8 @@ pub const UNDO_FOR: f64 = 6.0;
 pub struct Deleted {
     /// The note or folder's name, for the toast.
     pub name: String,
+    /// Optional custom toast message (e.g. `"Kept version in Beta"` for conflict-keep Undo).
+    pub custom_msg: Option<String>,
     /// When it went.
     pub at: f64,
     pub(crate) rel: String,
@@ -34,8 +36,11 @@ pub struct Deleted {
     notes: Vec<(String, String, Option<u128>)>,
     folders: Vec<String>,
     tabs: Vec<(usize, String)>,
-    active: Option<String>,
+    pub(crate) active: Option<String>,
     expanded: Vec<String>,
+    /// Optional original note overwritten alongside the trash move (`(orig_rel, prev_content)`),
+    /// restored cleanly when clicking Undo on "Keep this version".
+    pub(crate) overwrite: Option<(String, Option<String>)>,
 }
 
 /// What the tree's menu was opened on.
@@ -603,6 +608,7 @@ impl App {
         let name = if folder { rel.rsplit('/').next().unwrap_or(rel) } else { md::base(rel) };
         Deleted {
             name: name.to_string(),
+            custom_msg: None,
             at: self.now.get(),
             rel: rel.to_string(),
             folder,
@@ -611,6 +617,7 @@ impl App {
             tabs: self.tabs.iter().enumerate().filter(|(_, t)| inside(t)).map(|(i, t)| (i, t.clone())).collect(),
             active: self.active.clone().filter(|a| inside(a)),
             expanded: self.expanded.iter().filter(|e| inside(e)).cloned().collect(),
+            overwrite: None,
         }
     }
 
@@ -624,7 +631,8 @@ impl App {
             self.notice = Some(format!("Could not put back {}: something else has its name", d.name));
             return;
         }
-        self.writer.send(Op::Restore { root: v.path.clone(), rel: d.rel.clone() });
+        let root = v.path.clone();
+        self.writer.send(Op::Restore { root: root.clone(), rel: d.rel.clone() });
         for (p, text, born) in d.notes {
             if let Some(b) = born {
                 v.born.insert(p.clone(), b);
@@ -637,9 +645,34 @@ impl App {
             }
         }
         v.folders.sort();
+        if let Some((orig, prev)) = d.overwrite {
+            match prev {
+                Some(old_text) => {
+                    v.put(orig.clone(), old_text.clone());
+                    if let Some(e) = self.edits.get_mut(&orig) {
+                        let (a, b) = (e.anchor.min(old_text.len()), e.focus.min(old_text.len()));
+                        e.replace_text(old_text.clone());
+                        e.set_selection(a, b);
+                    }
+                    self.writer.send(Op::Write { root, rel: orig, text: old_text });
+                }
+                None => {
+                    v.take(&orig);
+                    v.born.remove(&orig);
+                    self.edits.remove(&orig);
+                    self.tabs.retain(|t| t != &orig);
+                    if self.active.as_deref() == Some(orig.as_str()) {
+                        self.active = None;
+                    }
+                    self.writer.send(Op::Delete { root, rel: orig });
+                }
+            }
+        }
         for (i, t) in d.tabs {
             let i = i.min(self.tabs.len());
-            self.tabs.insert(i, t);
+            if !self.tabs.contains(&t) {
+                self.tabs.insert(i, t);
+            }
         }
         self.expanded.extend(d.expanded);
         self.rebuild_names_pub();

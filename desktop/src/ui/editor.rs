@@ -136,7 +136,7 @@ pub fn body(v: V) -> El {
         main_area = main_area.child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {
-        Some(super::reader::undo_toast(v, &d.name))
+        Some(super::reader::undo_toast(v, d))
     } else {
         v.s.reader.toast.as_ref().map(|(msg, _)| super::reader::toast(v, msg))
     };
@@ -169,13 +169,13 @@ pub fn body(v: V) -> El {
 }
 
 /// Inline resolution banner shown above Source, Preview, and Map content whenever the active
-/// note is a sync conflict copy (`<stem> (conflict <device>).md`).
+/// note is a sync conflict copy (`<stem> (conflict <device>).md`) OR is an original note that has
+/// one or more conflict copies waiting alongside it.
 fn conflict_banner(v: V) -> Option<El> {
     if !v.has_doc() || v.focus() {
         return None;
     }
     let active = v.s.active.as_deref()?;
-    let (orig, device) = md::conflict_origin(active)?;
     let p = v.p;
     let c = Roles::new(p);
     let (rw, rg, rc) = super::focus_ring(p);
@@ -199,35 +199,62 @@ fn conflict_banner(v: V) -> Option<El> {
             .control(move |s: &mut App, tx| run(s, tx))
             .child(label(text_, sans(12.0, 500.0), color))
     };
-    let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
-    let (conf1, conf2) = (active.to_string(), active.to_string());
-    let msg = format!("Sync conflict copy from {device} · Original: {orig}");
     let keep_ink = Roles::readable_on(p.acc, p.bg, 4.5);
-    let buttons = row()
-        .gap(6.0)
-        .center_y()
-        .flex_wrap()
-        .child(act_btn(
-            "conflict-open-orig",
-            "Open original",
-            p.ink,
-            p.line,
-            Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
-        ))
-        .child(act_btn(
-            "conflict-keep-this",
-            "Keep this version",
+    let (msg, buttons) = if let Some((orig, device)) = md::conflict_origin(active) {
+        let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
+        let (conf1, conf2) = (active.to_string(), active.to_string());
+        let msg = format!("Sync conflict copy from {device} · Original: {orig}");
+        let buttons = row()
+            .gap(6.0)
+            .center_y()
+            .flex_wrap()
+            .child(act_btn(
+                "conflict-open-orig",
+                "Open original",
+                p.ink,
+                p.line,
+                Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
+            ))
+            .child(act_btn(
+                "conflict-keep-this",
+                "Keep this version",
+                keep_ink,
+                p.acc.alpha(0.55),
+                Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
+            ))
+            .child(act_btn(
+                "conflict-discard",
+                "Discard conflict",
+                c.readable_err(),
+                p.err.alpha(0.55),
+                Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
+            ));
+        (msg, buttons)
+    } else {
+        let copies: Vec<(String, String)> = v
+            .s
+            .files()
+            .keys()
+            .filter_map(|path| md::conflict_origin(path).filter(|(orig, _)| orig == active).map(|(_, dev)| (path.clone(), dev)))
+            .collect();
+        if copies.is_empty() {
+            return None;
+        }
+        let first_copy = copies[0].0.clone();
+        let msg = if copies.len() == 1 {
+            format!("Sync conflict copy from {} available", copies[0].1)
+        } else {
+            format!("{} sync conflict copies available", copies.len())
+        };
+        let buttons = row().gap(6.0).center_y().flex_wrap().child(act_btn(
+            "conflict-open-conflict",
+            "Open conflict",
             keep_ink,
             p.acc.alpha(0.55),
-            Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
-        ))
-        .child(act_btn(
-            "conflict-discard",
-            "Discard conflict",
-            c.readable_err(),
-            p.err.alpha(0.55),
-            Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
+            Box::new(move |s, tx| s.open_file(&first_copy, None, tx)),
         ));
+        (msg, buttons)
+    };
     let narrow = doc_width(v) < 760.0;
     let banner = if narrow {
         col()

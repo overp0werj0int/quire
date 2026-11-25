@@ -97,6 +97,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "replace-one",
     "replace-all",
     "conflict-open-orig",
+    "conflict-open-conflict",
     "conflict-keep-this",
     "conflict-discard",
     "first-note",

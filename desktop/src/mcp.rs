@@ -8,7 +8,7 @@
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -84,7 +84,12 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
             text(serde_json::to_string_pretty(&json!({ "notes": list, "folders": vault.folders.iter().filter(|d| visible(&ctx.mcp, &format!("{d}/x.md"))).collect::<Vec<_>>() })).unwrap_or_default())
         }
         "read_note" => match get(arg(a, "path")) {
-            Ok(p) => text(files[&p].clone()),
+            Ok(p) => {
+                if crate::lock::is_locked(&files[&p]) {
+                    return fail("Note is password-locked and cannot be read or modified via MCP");
+                }
+                text(files[&p].clone())
+            }
             Err(e) => e,
         },
         "search_notes" => {
@@ -124,6 +129,9 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
         }
         "update_note" => match get(arg(a, "path")) {
             Ok(p) => {
+                if crate::lock::is_locked(&files[&p]) {
+                    return fail("Note is password-locked and cannot be read or modified via MCP");
+                }
                 let content = arg(a, "content");
                 let new = if arg(a, "mode") == "append" {
                     let old = &files[&p];
@@ -154,6 +162,9 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
                 let mut changed = 0;
                 if ctx.update_links {
                     for (q, t) in &files {
+                        if crate::lock::is_locked(t) {
+                            continue;
+                        }
                         let nt = md::rewrite_links(t, md::base(&p), &name);
                         if nt != *t {
                             let q = if *q == p { np.clone() } else { q.clone() };
@@ -169,9 +180,10 @@ fn call(ctx: &Ctx, name: &str, a: &Value) -> Value {
         },
         "delete_note" => match get(arg(a, "path")) {
             Ok(p) => {
-                let trash = ctx.root.join(".trash");
-                let dst = trash.join(p.replace('/', " - "));
-                std::fs::create_dir_all(&trash).and_then(|_| std::fs::rename(ctx.root.join(&p), dst)).map_or_else(|e| fail(e.to_string()), |_| text(format!("Moved {p} to the folder's .trash")))
+                if crate::lock::is_locked(&files[&p]) {
+                    return fail("Note is password-locked and cannot be deleted via MCP");
+                }
+                crate::vault::trash_file(&ctx.root, &p).map_or_else(|e| fail(e.to_string()), |_| text(format!("Moved {p} to the folder's .trash")))
             }
             Err(e) => e,
         },
@@ -257,9 +269,41 @@ pub struct HttpCfg {
     pub update_links: bool,
 }
 
+/// Recent HTTP MCP tool-call activity shared with the UI thread.
+#[derive(Default)]
+pub struct Activity {
+    pub calls: AtomicU64,
+    pub last: Mutex<Option<(String, i64)>>,
+    pub waker: Mutex<Option<rune::Waker>>,
+}
+
+impl Activity {
+    fn record(&self, msg: &Value) {
+        let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
+        let label = if method == "tools/call" {
+            msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("tool").to_string()
+        } else if method == "initialize" || method == "tools/list" {
+            method.to_string()
+        } else {
+            return;
+        };
+        let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+        if let Ok(mut g) = self.last.lock() {
+            *g = Some((label, now_ms));
+        }
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if let Ok(g) = self.waker.lock()
+            && let Some(w) = g.as_ref()
+        {
+            w();
+        }
+    }
+}
+
 pub struct HttpServer {
     pub port: u16,
     pub cfg: Arc<Mutex<HttpCfg>>,
+    pub activity: Arc<Activity>,
     stop: Arc<AtomicBool>,
 }
 
@@ -270,21 +314,26 @@ impl Drop for HttpServer {
 }
 
 /// Serves `POST /mcp` on 127.0.0.1:`port` with the Streamable HTTP transport's JSON replies.
-pub fn serve_http(port: u16, cfg: HttpCfg) -> std::io::Result<HttpServer> {
+pub fn serve_http(port: u16, cfg: HttpCfg, waker: Option<rune::Waker>) -> std::io::Result<HttpServer> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
     let cfg = Arc::new(Mutex::new(cfg));
+    let activity = Arc::new(Activity::default());
+    if let Ok(mut g) = activity.waker.lock() {
+        *g = waker;
+    }
     let stop = Arc::new(AtomicBool::new(false));
-    let (c2, s2) = (cfg.clone(), stop.clone());
+    let (c2, a2, s2) = (cfg.clone(), activity.clone(), stop.clone());
     std::thread::Builder::new().name("quire-mcp-http".into()).spawn(move || {
         while !s2.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let c = c2.lock().map(|g| g.clone()).ok();
+                    let a = a2.clone();
                     if let Some(c) = c {
                         std::thread::spawn(move || {
-                            let _ = http_conn(stream, &c);
+                            let _ = http_conn(stream, &c, &a);
                         });
                     }
                 }
@@ -293,10 +342,10 @@ pub fn serve_http(port: u16, cfg: HttpCfg) -> std::io::Result<HttpServer> {
             }
         }
     })?;
-    Ok(HttpServer { port, cfg, stop })
+    Ok(HttpServer { port, cfg, activity, stop })
 }
 
-fn http_conn(mut stream: TcpStream, cfg: &HttpCfg) -> std::io::Result<()> {
+fn http_conn(mut stream: TcpStream, cfg: &HttpCfg, activity: &Activity) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     let mut buf = Vec::new();
@@ -359,10 +408,16 @@ fn http_conn(mut stream: TcpStream, cfg: &HttpCfg) -> std::io::Result<()> {
     let ctx = Ctx { root: cfg.root.clone(), mcp: cfg.mcp.clone(), update_links: cfg.update_links };
     let reply = match serde_json::from_slice::<Value>(&body) {
         Ok(Value::Array(batch)) => {
+            for m in &batch {
+                activity.record(m);
+            }
             let r: Vec<Value> = batch.iter().filter_map(|m| handle(&ctx, m)).collect();
             (!r.is_empty()).then(|| Value::Array(r))
         }
-        Ok(m) => handle(&ctx, &m),
+        Ok(m) => {
+            activity.record(&m);
+            handle(&ctx, &m)
+        }
         Err(e) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": e.to_string() } })),
     };
     match reply {
@@ -438,7 +493,7 @@ mod tests {
         std::fs::write(dir.join("A.md"), "# A").unwrap();
         let mcp = Mcp::default();
         let token = mcp.token.clone();
-        let srv = serve_http(0, HttpCfg { root: dir.clone(), mcp, update_links: true }).unwrap();
+        let srv = serve_http(0, HttpCfg { root: dir.clone(), mcp, update_links: true }, None).unwrap();
         let post = |auth: &str| {
             let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
             let mut s = TcpStream::connect(("127.0.0.1", srv.port)).unwrap();
@@ -451,7 +506,50 @@ mod tests {
         let ok = post(&format!("Bearer {token}"));
         assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
         assert!(ok.contains("read_note"));
+        assert!(srv.activity.calls.load(Ordering::SeqCst) >= 1, "HTTP activity counter increments on valid calls");
         drop(srv);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refuses_locked_notes_and_preserves_trash_metadata() {
+        let dir = std::env::temp_dir().join(format!("quire-mcp-lock-trash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Drafts")).unwrap();
+        let key = crate::lock::new_key("secret-passphrase");
+        let sealed = crate::lock::seal(&key, "# Private\nTop secret body.\n");
+        std::fs::write(dir.join("Locked.md"), &sealed).unwrap();
+        std::fs::write(dir.join("Drafts/2026 - Plan.md"), "# Plan\n").unwrap();
+        let mut m = Mcp::default();
+        m.access = "write".into();
+        m.confirm = false;
+        m.tools.insert("update_note".into(), true);
+        m.tools.insert("delete_note".into(), true);
+        let c = Ctx { root: dir.clone(), mcp: m, update_links: true };
+
+        let r_read = handle(&c, &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_note","arguments":{"path":"Locked.md"}}})).unwrap();
+        assert_eq!(r_read["result"]["isError"], true, "{r_read}");
+        assert!(r_read["result"]["content"][0]["text"].as_str().unwrap_or("").contains("password-locked"));
+
+        let r_upd = handle(&c, &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_note","arguments":{"path":"Locked.md","content":"overwrite","mode":"replace"}}})).unwrap();
+        assert_eq!(r_upd["result"]["isError"], true, "{r_upd}");
+        assert_eq!(std::fs::read_to_string(dir.join("Locked.md")).unwrap(), sealed, "ciphertext must remain untouched");
+
+        let r_del_lock = handle(&c, &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_note","arguments":{"path":"Locked.md"}}})).unwrap();
+        assert_eq!(r_del_lock["result"]["isError"], true, "{r_del_lock}");
+        assert!(dir.join("Locked.md").is_file());
+
+        // Deleting a nested note via MCP records `.trash/.meta.json` and deduplicates repeated deletes.
+        let r_del1 = handle(&c, &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"delete_note","arguments":{"path":"Drafts/2026 - Plan.md"}}})).unwrap();
+        assert!(r_del1["result"].get("isError").is_none(), "{r_del1}");
+        std::fs::write(dir.join("Drafts/2026 - Plan.md"), "# Plan v2\n").unwrap();
+        let r_del2 = handle(&c, &json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"delete_note","arguments":{"path":"Drafts/2026 - Plan.md"}}})).unwrap();
+        assert!(r_del2["result"].get("isError").is_none(), "{r_del2}");
+
+        let entries = crate::vault::list_trash(&dir);
+        assert_eq!(entries.len(), 2, "both deleted copies must survive deduplicated in .trash");
+        assert!(entries.iter().all(|e| e.original_rel == "Drafts/2026 - Plan.md"), "original_rel preserved via .meta.json: {entries:?}");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

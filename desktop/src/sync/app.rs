@@ -51,6 +51,10 @@ pub struct SyncState {
     /// that fails does not start again at once.
     last_try: Option<f64>,
     last_tick: f64,
+    /// Consecutive failures for automatic exponential backoff retry in `"On save"` mode.
+    retry_count: u32,
+    /// Compact transfer summary of the last completed sync (e.g. `"↑2 ↓1"`), if anything moved.
+    pub last_summary: Option<String>,
 }
 
 impl SyncState {
@@ -195,14 +199,38 @@ impl App {
             changed = true;
             match res {
                 Ok(out) => {
-                    let n = self.files().len();
+                    let up = out.uploaded + out.deleted_remote;
+                    let down = out.pulls.len() + out.removes.len() + out.image_pulls.len() + out.image_removes.len();
                     let place = out.place.clone();
-                    self.apply_sync(out);
+                    let n_conf = self.apply_sync(out);
+                    let n = self.files().len();
+                    let mut parts = Vec::new();
+                    if up > 0 {
+                        parts.push(format!("↑{up}"));
+                    }
+                    if down > 0 {
+                        parts.push(format!("↓{down}"));
+                    }
+                    if n_conf > 0 {
+                        parts.push(format!("{n_conf} {}", if n_conf == 1 { "conflict" } else { "conflicts" }));
+                    }
+                    let summary = (!parts.is_empty()).then(|| parts.join(" "));
                     self.sync.error = None;
+                    self.sync.retry_count = 0;
+                    self.sync.last_summary = summary.clone();
                     self.persist.settings.sync.last_sync = Some(super::sign::now_secs() * 1000);
                     self.persist_later();
                     if self.sync.manual {
-                        self.sync_status = SyncStatus::Ok { msg: format!("Synced {n} {} with {place}.", if n == 1 { "note" } else { "notes" }) };
+                        let detail = match &summary {
+                            Some(s) => format!("Synced with {place} ({s})."),
+                            None => format!("Up to date with {place} ({n} {}).", if n == 1 { "note" } else { "notes" }),
+                        };
+                        self.sync_status = SyncStatus::Ok { msg: detail };
+                    } else if let Some(s) = &summary
+                        && n_conf == 0
+                        && self.notice.is_none()
+                    {
+                        self.toast(&format!("Synced {s}"), tx);
                     }
                 }
                 Err(msg) => {
@@ -210,6 +238,12 @@ impl App {
                         self.sync_status = SyncStatus::Error { msg: msg.clone(), missing: Vec::new() };
                     }
                     self.sync.error = Some(msg);
+                    self.sync.retry_count = self.sync.retry_count.saturating_add(1);
+                    // In "On save" mode, automatically retry offline/transient failures with backoff.
+                    if self.settings().sync.when == "save" && self.sync.retry_count <= 5 {
+                        let delay = (15.0 * 2f64.powi((self.sync.retry_count - 1) as i32)).min(300.0);
+                        self.sync_soon(delay);
+                    }
                 }
             }
             // After a sync that started by itself, the settings show the live state again.
@@ -249,12 +283,12 @@ impl App {
     /// Lays a sync's outcome over the open folder. A note that changed here while the sync ran
     /// keeps its new text, and the remote text comes in beside it as a conflict copy. A note
     /// another device deleted stays if it changed here. The next sync sends both up.
-    pub(super) fn apply_sync(&mut self, mut out: Outcome) {
+    pub(super) fn apply_sync(&mut self, mut out: Outcome) -> usize {
         // A result for a folder that is no longer open is dropped. Its base is not saved, so the
         // next sync of that folder starts from the last good record.
-        let Some(root) = self.vault.as_ref().map(|v| v.path.clone()) else { return };
+        let Some(root) = self.vault.as_ref().map(|v| v.path.clone()) else { return 0 };
         if !out.root.as_os_str().is_empty() && out.root != root {
-            return;
+            return 0;
         }
         let failures_before = self.writer.failed.load(std::sync::atomic::Ordering::SeqCst);
         let base = out.base.take();
@@ -379,6 +413,7 @@ impl App {
         if any {
             self.rebuild_names_pub();
         }
+        conflicts.len()
     }
 
     /// The status bar's sync label, or None when sync is off.
@@ -394,6 +429,16 @@ impl App {
             let _ = e;
             return Some(("sync failed".into(), false, true));
         }
-        Some((sy.last_sync.map_or_else(|| "not synced yet".to_string(), |t| format!("synced {}", ago(t))), false, false))
+        let lbl = match sy.last_sync {
+            None => "not synced yet".to_string(),
+            Some(t) => {
+                let recent = (super::sign::now_secs() * 1000 - t) < 300_000;
+                match (&self.sync.last_summary, recent) {
+                    (Some(sum), true) => format!("synced {} · {sum}", ago(t)),
+                    _ => format!("synced {}", ago(t)),
+                }
+            }
+        };
+        Some((lbl, false, false))
     }
 }

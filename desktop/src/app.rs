@@ -187,6 +187,9 @@ pub struct App {
     pub mcp_http: Option<crate::mcp::HttpServer>,
     pub mcp_http_error: Option<String>,
     mcp_http_failed_port: Option<u16>,
+    /// Most recent MCP HTTP tool/client activity `(label, unix_ms)` and last seen call count.
+    pub mcp_last_activity: Option<(String, i64)>,
+    mcp_seen_calls: u64,
     /// The editor's caret as the last frame saw it: note, anchor, focus, text length.
     last_caret: Option<(String, usize, usize, usize)>,
     /// A key reached the editor or window since the last frame.
@@ -426,6 +429,8 @@ pub fn init() -> App {
         mcp_http: None,
         mcp_http_error: None,
         mcp_http_failed_port: None,
+        mcp_last_activity: None,
+        mcp_seen_calls: 0,
         last_caret: None,
         key_moved: false,
         editor_accessed: false,
@@ -769,7 +774,7 @@ impl App {
             self.mcp_copied = false;
             changed = true;
         }
-        changed |= self.sync_mcp_http();
+        changed |= self.sync_mcp_http(tx);
         changed |= self.check_link_click(tx);
         changed |= self.apply_outside_changes();
         changed |= self.poll_lock(t, tx);
@@ -959,8 +964,15 @@ impl App {
         false
     }
 
-    /// Starts, updates or stops the HTTP MCP server to match the settings.
-    fn sync_mcp_http(&mut self) -> bool {
+    /// Clears the failed MCP HTTP port lock so `sync_mcp_http` tries binding again.
+    pub fn retry_mcp_http(&mut self) {
+        self.mcp_http_failed_port = None;
+        self.mcp_http_error = None;
+    }
+
+    /// Starts, updates or stops the HTTP MCP server to match the settings, and surfaces recent
+    /// MCP client tool activity.
+    fn sync_mcp_http(&mut self, tx: &mut Tx) -> bool {
         let m = &self.persist.settings.mcp;
         let want = m.enabled && m.transport == "http" && self.folder_open();
         let port: Option<u16> = m.port.parse().ok().filter(|p| *p > 0);
@@ -988,6 +1000,16 @@ impl App {
                         *c = cfg;
                     }
                 }
+                let calls = srv.activity.calls.load(std::sync::atomic::Ordering::SeqCst);
+                if calls != self.mcp_seen_calls {
+                    self.mcp_seen_calls = calls;
+                    let last = srv.activity.last.lock().ok().and_then(|g| g.clone());
+                    if let Some((label, ts)) = last {
+                        self.mcp_last_activity = Some((label.clone(), ts));
+                        self.toast(&format!("MCP · {label}"), tx);
+                    }
+                    return true;
+                }
                 return false;
             }
             self.mcp_http = None;
@@ -995,11 +1017,12 @@ impl App {
         if self.mcp_http_error.is_some() && self.mcp_http_failed_port == Some(port) {
             return false;
         }
-        match crate::mcp::serve_http(port, cfg) {
+        match crate::mcp::serve_http(port, cfg, self.waker.clone()) {
             Ok(srv) => {
                 self.mcp_http = Some(srv);
                 self.mcp_http_error = None;
                 self.mcp_http_failed_port = None;
+                self.mcp_seen_calls = 0;
             }
             Err(e) => {
                 self.mcp_http_error = Some(format!("not running · port {port}: {e}"));
@@ -2613,7 +2636,8 @@ impl App {
             return;
         }
         let Some(text) = self.note_text(conflict_rel).map(str::to_string) else { return };
-        if self.files().contains_key(orig) {
+        let prev_orig = self.files().get(orig).cloned();
+        if prev_orig.is_some() {
             let old_len = self.note_text(orig).map_or(0, str::len);
             self.splice_note(orig, 0..old_len, &text);
         } else {
@@ -2635,8 +2659,12 @@ impl App {
         self.flush_notes();
         self.open_file(orig, None, tx);
         self.delete_path(conflict_rel);
-        self.deleted = None;
-        self.toast(&format!("Kept version in {}", md::base(orig)), tx);
+        if let Some(d) = &mut self.deleted {
+            d.custom_msg = Some(format!("Kept version in {}", md::base(orig)));
+            d.overwrite = Some((orig.to_string(), prev_orig.clone()));
+            // On Undo, stay on `orig` if it existed before, otherwise reopen the conflict copy.
+            d.active = if prev_orig.is_some() { Some(orig.to_string()) } else { Some(conflict_rel.to_string()) };
+        }
     }
 
     /// Moves a sync conflict copy to `.trash` and switches to `orig` if it exists.
