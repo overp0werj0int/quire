@@ -35,8 +35,6 @@ const BUTTON: f32 = 28.0;
 const BAR_PAD: f32 = 8.0;
 /// The sidebar's icons (SB-07).
 pub(super) const ICON: f32 = 14.0;
-/// The longest compacted key hint the search field shows, in characters (e.g. `Ctrl+⇧F`, `⌘⇧F`, `Ctrl+/`).
-const HINT_CHARS: usize = 8;
 
 pub fn sidebar(v: V) -> El {
     let p = v.p;
@@ -118,8 +116,7 @@ fn top_bar(v: V) -> El {
         .child(new_note)
 }
 
-/// The search field: a magnifier, the field, then the key of search while it is empty or a
-/// clear button while it holds text (SB-10).
+/// The search field: a magnifier, the field, and a clear button while it holds text (SB-10).
 fn search_field(v: V) -> El {
     let p = v.p;
     let c = Roles::panel(p);
@@ -169,32 +166,25 @@ fn search_field(v: V) -> El {
             }
             true
         });
-    // Compact long modifier names (e.g. `Ctrl+Shift+F` -> `Ctrl+⇧F`) so the shortcut chip fits
-    // beside "Search notes" on Linux and Windows without crowding the input.
-    let k = s.keymap.label("app.search-notes").replace("Ctrl+Shift+", "Ctrl+⇧").replace("Shift+", "⇧");
-    let end = if s.query.text.is_empty() {
-        (!k.is_empty() && k.chars().count() <= HINT_CHARS).then(|| kbd(v, k).key("search-hint").mr(5.0))
-    } else {
-        Some(
-            super::focus::stop(row())
-                .key("search-clear")
-                .size(24.0, 24.0)
-                .center()
-                .radius(parts::INNER_RADIUS)
-                .hover(c.hover)
-                .label("Clear search")
-                .help("Clear search")
-                .role("button")
-                // Inset 2 pt ring stays completely inside the 28 pt search-box without protruding.
-                .focus_ring(2.0, -2.0, rc)
-                .control(|s: &mut App, tx| {
-                    s.query = rune::TextEdit::new("");
-                    s.query.focused = true;
-                    tx.focus("search", false);
-                })
-                .child(icon(&CLOSE, ICON).color(c.faint)),
-        )
-    };
+    let end = (!s.query.text.is_empty()).then(|| {
+        super::focus::stop(row())
+            .key("search-clear")
+            .size(24.0, 24.0)
+            .center()
+            .radius(parts::INNER_RADIUS)
+            .hover(c.hover)
+            .label("Clear search")
+            .help("Clear search")
+            .role("button")
+            // Inset 2 pt ring stays completely inside the 28 pt search-box without protruding.
+            .focus_ring(2.0, -2.0, rc)
+            .control(|s: &mut App, tx| {
+                s.query = rune::TextEdit::new("");
+                s.query.focused = true;
+                tx.focus("search", false);
+            })
+            .child(icon(&CLOSE, ICON).color(c.faint))
+    });
     super::widgets::input_focus_ring_when(
         row()
             .key("search-box")

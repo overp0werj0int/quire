@@ -668,8 +668,10 @@ impl Cx<'_> {
         let line = bl.lines.start;
         let key = format!("block-edit:{line}");
         let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
-        let btn = super::widgets::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None)
-            .on_press_tx(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
+        let (rw, rg, rc) = super::focus_ring(self.v.p);
+        let btn = super::focus::stop(super::widgets::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None))
+            .focus_ring(rw, rg, rc)
+            .control(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
         let bar = super::widgets::mini_bar(self.v.p, &format!("block-actions:{line}")).child(btn);
         let right = if in_margin { 0.0 } else { 4.0 };
         el().pin(None, Some(0.0), Some(right), None).group_opacity(0.0, 1.0).child(bar)

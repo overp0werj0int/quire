@@ -2579,6 +2579,7 @@ impl App {
             self.search_tag(tag, tx);
             let first = self.results().and_then(|r| r.tagged.first().map(|p| Row::Tagged(p).key()));
             if let Some(k) = first.filter(|_| tx.by_keys()) {
+                self.query.focused = false;
                 tx.focus(k, true);
             }
             return;
@@ -2635,6 +2636,8 @@ impl App {
         self.query = TextEdit::new(format!("#{tag}"));
         let n = self.query.text.len();
         self.query.set_selection(n, n);
+        self.query.focused = true;
+        tx.focus("search", false);
     }
 
     pub fn open_palette(&mut self, mode: PalMode, tx: &mut Tx) {

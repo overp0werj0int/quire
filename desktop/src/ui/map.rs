@@ -340,31 +340,6 @@ pub(super) fn canvas(v: V) -> El {
             .inert()
             .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 2.0, color: v.p.acc, inset: true })
     });
-    let edit_hint = s.map.inline.is_some().then(|| {
-        let hud_bg = c.on_page(c.panel);
-        let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
-        let hud_ink = Roles::readable_on(c.dim, hud_bg, 4.8);
-        let shadow = rune::Shadow {
-            x: 0.0,
-            y: 1.0,
-            blur: 6.0,
-            spread: 0.0,
-            color: Color::BLACK.alpha(if v.dark { 0.24 } else { 0.08 }),
-            inset: false,
-        };
-        rune::row()
-            .key("map-edit-hint")
-            .pin(Some(12.0), None, None, Some(12.0))
-            .h(28.0)
-            .px(10.0)
-            .center_y()
-            .radius(6.0)
-            .fill(hud_bg)
-            .border(1.0, hud_edge)
-            .box_shadow(shadow)
-            .inert()
-            .child(text("Enter saves · Shift+Enter newline · Esc cancels").font(styles::sans(11.0, 400.0)).color(hud_ink))
-    });
     el().key("map-canvas")
         .grow(1.0)
         .min_w(0.0)
@@ -378,7 +353,6 @@ pub(super) fn canvas(v: V) -> El {
         .child(world)
         .child(ring.unwrap_or_else(el))
         .children(ghost_el)
-        .children(edit_hint)
         .on_layout_tx(|s: &mut App, r, tx| s.map_laid_out(r, tx))
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
             s.touch_activity();
@@ -1148,19 +1122,9 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let mono = look.mono;
     let zoom = s.map_target_zoom();
     let tip = |name: &str, id: &str| s.keymap.tip(name, id);
-    let hud_bg = c.on_page(c.panel);
-    let hud_edge = if v.dark { crate::roles::mix(c.bg, c.text, 0.14) } else { c.on_page(c.hairline_soft) };
-    let sep_color = Roles::readable_on(hud_edge, hud_bg, 3.2);
-    let hud_ink = Roles::readable_on(c.dim, hud_bg, 4.8);
-    let hud_hover = crate::roles::mix(hud_bg, c.text, if v.dark { 0.10 } else { 0.06 });
-    let shadow = rune::Shadow {
-        x: 0.0,
-        y: 1.0,
-        blur: 6.0,
-        spread: 0.0,
-        color: Color::BLACK.alpha(if v.dark { 0.24 } else { 0.08 }),
-        inset: false,
-    };
+    let hud_ink = Roles::readable_on(c.dim, v.p.bg, 4.8);
+    let sep_color = Roles::readable_on(v.p.line, v.p.bg, 3.2);
+    let hud_hover = v.p.hover;
     let (rw, rg, rc) = super::focus_ring(v.p);
     let icon_btn = |key: &'static str, glyph: &'static rune::Icon, label: &'static str, help: String, run: fn(&mut App, &mut Tx)| {
         super::focus::stop(
@@ -1209,24 +1173,39 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
             .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
     );
     let sep = el().size(1.0, 14.0).mx(2.0).fill(sep_color).inert();
-    Some(
+    let hud = super::widgets::toolbar_surface(
         rune::row()
             .key("map-zoom-hud")
-            .pin(None, None, Some(12.0), Some(12.0))
             .h(28.0)
             .px(3.0)
             .gap(1.0)
             .center_y()
-            .radius(6.0)
-            .fill(hud_bg)
-            .border(1.0, hud_edge)
-            .box_shadow(shadow)
-            .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
-            .child(reset)
-            .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
-            .child(sep)
-            .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx))),
+            .radius(6.0),
+        v.p,
+        1.0,
     )
+    .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
+    .child(reset)
+    .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
+    .child(sep)
+    .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)));
+    if v.focus() {
+        // In zen mode, bottom controls reveal on hover (and keyboard focus), matching the top
+        // zen floating pill in `titlebar::focus_bar`.
+        return Some(
+            rune::row()
+                .key("map-zoom-hud-zone")
+                .pin(None, None, Some(0.0), Some(0.0))
+                .pt(20.0)
+                .pl(20.0)
+                .pr(12.0)
+                .pb(12.0)
+                .hover_group()
+                .hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0))
+                .child(hud.group_opacity(0.0, 1.0)),
+        );
+    }
+    Some(hud.pin(None, None, Some(12.0), Some(12.0)))
 }
 
 fn color_bits(c: Color) -> [u32; 4] {

@@ -4277,6 +4277,115 @@ mod escape_tests {
         assert!(sh_bar_hover.opacity > 0.99, "sheet-actions shows on card hover: {}", sh_bar_hover.opacity);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Search field omits keycap hint; clicking a front-matter tag in Preview focuses search so
+    /// Esc clears it; Preview section and code edit buttons are keyboard-tabbable and reveal on
+    /// focus; Map mode has no toast-band smudge or map-edit-hint; zen mode hovers map-zoom-hud.
+    #[test]
+    fn batch_search_tag_focus_tabbable_edit_and_zen_map_chrome() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-batch-ui-fixes-{}", std::process::id()));
+        let md = "---\ntags:\n  - alpha\n  - beta\n---\n\n# Heading\n\nParagraph text.\n\n```rs\nlet x = 1;\n```\n";
+        let (mut rt, _) = crate::bench::open(&dir, md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        rt.set_full_keyboard_access(true);
+        rt.update(|s, _| s.persist.left_open = true);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        // 1. Search field has no keycap hint when empty.
+        assert!(rt.elements().iter().all(|e| e.key.as_deref() != Some("search-hint")), "search field must not render a keycap hint");
+
+        // 2. Clicking a front-matter tag focuses search, and Esc clears search back to regular sidebar.
+        let tag_r = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("fm-tag:alpha")).expect("front-matter alpha tag").rect;
+        rt.pointer_move(tag_r[0] + tag_r[2] / 2.0, tag_r[1] + tag_r[3] / 2.0);
+        rt.pointer_down(tag_r[0] + tag_r[2] / 2.0, tag_r[1] + tag_r[3] / 2.0);
+        rt.pointer_up(tag_r[0] + tag_r[2] / 2.0, tag_r[1] + tag_r[3] / 2.0);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let search_el = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("search")).expect("search input");
+        assert!(search_el.focused, "clicking front-matter tag focuses the search field");
+        let mut q_after_click = String::new();
+        rt.update_if(|s, _| {
+            q_after_click = s.query.text.clone();
+            false
+        });
+        assert_eq!(q_after_click, "#alpha", "tag click populates #alpha");
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let mut q_after_esc = String::new();
+        rt.update_if(|s, _| {
+            q_after_esc = s.query.text.clone();
+            false
+        });
+        assert!(q_after_esc.is_empty(), "Esc clears search after tag click: got {q_after_esc:?}");
+
+        // 3. Preview section & code edit buttons are keyboard-tabbable and reveal on focus.
+        rt.update(|s, tx| s.keys_to_note(tx));
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        let mut hit_block_edit = false;
+        let mut hit_code_edit = false;
+        for _ in 0..24 {
+            rt.key(rune::KeyEvent { key: rune::Key::Tab, mods: rune::Mods::default() });
+            rt.frame(DT);
+            rt.frame(DT);
+            let els = rt.elements();
+            if let Some(f) = els.iter().find(|e| e.focused) {
+                if f.key.as_deref() == Some("block-edit:6") {
+                    hit_block_edit = true;
+                    assert!(f.opacity > 0.99, "focused section edit button must be visible: {}", f.opacity);
+                }
+                if f.key.as_deref() == Some("block-edit:10") {
+                    hit_code_edit = true;
+                    assert!(f.opacity > 0.99, "focused code edit button must be visible: {}", f.opacity);
+                }
+            }
+        }
+        assert!(hit_block_edit, "Tab must reach regular section block-edit button");
+        assert!(hit_code_edit, "Tab must reach code block-edit button");
+
+        // 4. Map mode: no toast-band halo around Saved toast, no map-edit-hint while inline editing.
+        rt.update(|s, tx| {
+            s.enter_map(tx);
+            s.toast("Saved", tx);
+        });
+        for _ in 0..12 {
+            rt.frame(DT);
+        }
+        let map_els = rt.elements();
+        assert!(map_els.iter().any(|e| !e.exiting && e.key.as_deref() == Some("toast")), "Saved toast renders in Map mode");
+        assert!(map_els.iter().all(|e| e.exiting || e.key.as_deref() != Some("toast-band")), "Map mode omits toast-band smudge halo");
+        rt.update(|s, tx| s.map_edit(tx));
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().all(|e| e.key.as_deref() != Some("map-edit-hint")), "Map inline edit shows no keyboard help toast");
+
+        // 5. Zen mode in Map: map-zoom-hud is hidden at rest and appears on bottom-right hover.
+        rt.update(|s, tx| {
+            s.map_cancel(tx);
+            s.toggle_focus(tx);
+        });
+        rt.pointer_move(200.0, 200.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let hud_rest = rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("map-zoom-hud")).expect("map-zoom-hud in zen");
+        assert!(hud_rest.opacity < 0.05, "map-zoom-hud hidden at rest in zen mode: {}", hud_rest.opacity);
+        rt.pointer_move(hud_rest.rect[0] + hud_rest.rect[2] / 2.0, hud_rest.rect[1] + hud_rest.rect[3] / 2.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let hud_hover = rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("map-zoom-hud")).expect("map-zoom-hud hovered in zen");
+        assert!(hud_hover.opacity > 0.99, "map-zoom-hud reveals on hover in zen mode: {}", hud_hover.opacity);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
@@ -5812,7 +5921,7 @@ mod layer_matrix_tests {
         let down = |rt: &mut Runtime<App>, k: Key| key(rt, k, Mods::default());
         // Tab from where focus is until a row of the list `of` has it.
         let tab_to = |rt: &mut Runtime<App>, of: fn(&str) -> bool| {
-            for _ in 0..20 {
+            for _ in 0..120 {
                 down(rt, Key::Tab);
                 if let Some(k) = focused(rt).filter(|k| of(k)) {
                     return k;
@@ -8985,8 +9094,8 @@ mod layer_matrix_tests {
         look(&mut rt, Key::Home, "side-scroll", "the tree's first row");
         rt.update(|s, tx| s.search_tag("many", tx));
         settle(&mut rt);
-        key(&mut rt, Key::Function(6), Mods { shift: true, ..Mods::default() });
-        assert!(focused(&rt).is_some_and(|k| k.starts_with("res-")), "Shift+F6 puts the keyboard on a result: {:?}", focused(&rt));
+        key(&mut rt, Key::Down, Mods::default());
+        assert!(focused(&rt).is_some_and(|k| k.starts_with("res-")), "Down from search puts the keyboard on a result: {:?}", focused(&rt));
         look(&mut rt, Key::End, "results-scroll", "the last result");
         look(&mut rt, Key::Home, "results-scroll", "the first result");
         // Esc clears the search to the field, and the next gives the note the keyboard.
@@ -9101,12 +9210,15 @@ mod layer_matrix_tests {
         // Reachable from the keyboard alone: Tab from the reader reaches every stop, and the
         // panel tabs' arrows, Enter and the search field's Down reach the rest.
         let mut rt = garden(&dir, Mode::Preview);
+        let wants = ["search", "new-note", "label-shelf", "tab:", "label-vault", "file:", "foot-tags", "foot-settings", "block-edit:", "ol-", "bl-"];
         let mut reached = Vec::new();
-        for _ in 0..40 {
+        for _ in 0..120 {
             key(&mut rt, Key::Tab, Mods::default());
             reached.extend(focused(&rt));
+            if wants.iter().all(|w| reached.iter().any(|k| k.starts_with(w))) {
+                break;
+            }
         }
-        let wants = ["search", "new-note", "label-shelf", "tab:", "label-vault", "file:", "foot-tags", "foot-settings", "ol-", "bl-"];
         for want in wants {
             if !reached.iter().any(|k| k.starts_with(want)) {
                 fails.push(format!("Tab never reaches {want}"));

@@ -613,10 +613,20 @@ fn width(t: &str, style: rune::TextStyle) -> f32 {
 }
 
 /// A toast (RD-98): a pill at the bottom centre of the note area, `TOAST_LIFT` above its bottom
-/// edge, over `toast_band`.
+/// edge, over `toast_band` in scrolling modes. Shares the floating toolbar surface.
 pub fn toast(v: V, msg: &str) -> El {
     let c = Roles::new(v.p);
-    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).px(14.0).py(7.0).child(text(msg.to_string()).font(styles::popup()).color(c.text).truncate().shrink().min_w(0.0)))
+    foot_row(
+        v,
+        "toast-row",
+        TOAST_LIFT,
+        super::widgets::toolbar_surface(el(), v.p, 1.0)
+            .key("toast")
+            .radius(999.0)
+            .px(14.0)
+            .py(7.0)
+            .child(text(msg.to_string()).font(styles::popup()).color(c.text).truncate().shrink().min_w(0.0)),
+    )
 }
 
 /// Where the notice sits: in the toast's place, or just above the toast while one shows.
@@ -677,73 +687,21 @@ pub fn find_placed(v: V) -> Option<El> {
     Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.place_match(n, r, view, roof, band, tx)))
 }
 
-/// Estimated screen width of the active foot pill(s) (toast, undo toast, or notice) so Map mode
-/// scopes `toast-band` around the pill instead of fading the entire canvas bottom strip.
-fn foot_pill_w(v: V) -> f32 {
-    let body = styles::popup();
-    let room = foot_room(v);
-    let toast_w = if let Some(d) = &v.s.deleted {
-        let key = v.s.keymap.label("app.undo-delete");
-        let fit = undo_fit(room, &d.name, &key);
-        let hint = matches!(fit, UndoFit::Named(_, true));
-        let btn_w = 20.0 + width("Undo", body) + if hint { 8.0 + width(&key, keys(11.0)) } else { 0.0 };
-        let msg_w = match fit {
-            UndoFit::Named(shown, _) => width("Moved ", body) + width(&shown, body) + width(" to the trash", body),
-            UndoFit::Short => width("Moved to the trash", body),
-        };
-        (14.0 + msg_w + 6.0 + btn_w + 4.0).ceil().min(room)
-    } else if let Some((msg, _)) = &v.s.reader.toast {
-        (width(msg, body) + 28.0).ceil().min(room)
-    } else {
-        0.0
-    };
-    let notice_w = v.s.notice.as_deref().map_or(0.0, |m| {
-        let (w, _) = notice_fit(v, m);
-        let open_w = if notice_open_target(v).is_some() { 6.0 + 20.0 + width("Open", body) } else { 0.0 };
-        (14.0 + w + open_w + 6.0 + 20.0 + width("Dismiss", body) + 4.0).ceil().min(room)
-    });
-    toast_w.max(notice_w)
-}
-
-/// While a pill shows at the note area's foot, the page fades out under it, in both modes, so
-/// no line of the note reads behind or beside it: the page's colour from the note area's bottom
-/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). In Map mode the
-/// band scopes horizontally around the active pill rather than spanning the full canvas width.
+/// While a pill shows at the note area's foot in Source or Preview, the page fades out under it
+/// so no line of the note reads behind or beside it: the page's colour from the note area's bottom
+/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). Map mode omits the
+/// band so the toast floats cleanly over the canvas without a smoky smudge around it.
 /// Presses go through it to the page, and it fades in and out over 140 ms. As it appears or
 /// grows, what the user is on comes above it (`App::band_laid_out`).
 pub fn toast_band(v: V) -> Option<El> {
+    if super::mapping(v.s) {
+        return None;
+    }
     let h = band_h(v)?;
     let (caret, find_at, roof) = (v.caret, v.find_at, super::editor::match_roof(v));
     let bg = Roles::new(v.p).bg;
     let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
     let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
-    if super::mapping(v.s) {
-        let left = if v.left_over() { super::sidebar::W } else { 0.0 };
-        let right = if v.right_over() { super::outline::PANEL_W } else { 0.0 };
-        let max_w = (foot_room(v) + 32.0).max(0.0);
-        let pill_w = foot_pill_w(v);
-        let side_fade = 44.0f32;
-        let band_w = (pill_w + 2.0 * side_fade + 32.0).min(max_w).max(pill_w);
-        let fade_x = side_fade.min(band_w * 0.35);
-        let fill = el().w_full().h_full().linear_gradient(std::f32::consts::PI, stops).inert();
-        let band = el()
-            .key("toast-band")
-            .w(band_w)
-            .h(h)
-            .clip_fade_linear(fade_x, 0.0, fade_x, 0.0)
-            .inert()
-            .transition(rune::Transition::opacity().springs(fade))
-            .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, roof, tx))
-            .child(fill);
-        return Some(
-            row()
-                .key("toast-band-row")
-                .pin(Some(left), None, Some(right), Some(0.0))
-                .justify_center()
-                .inert()
-                .child(band),
-        );
-    }
     Some(
         el().key("toast-band")
             .pin(Some(0.0), None, Some(0.0), Some(0.0))
@@ -825,7 +783,7 @@ pub fn undo_toast(v: V, d: &crate::folders::Deleted) -> El {
         .child(text("Undo").font(body).color(c.accent))
         .children(hint.then(|| text(key).font(keys(11.0)).color(c.faint)));
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
-    foot_row(v, "toast-row", TOAST_LIFT, popup(&c).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+    foot_row(v, "toast-row", TOAST_LIFT, super::widgets::toolbar_surface(el(), v.p, 1.0).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
 fn notice_open_target(v: V) -> Option<String> {
@@ -879,7 +837,7 @@ pub(super) fn notice(v: V, msg: &str) -> El {
         .child(text("Dismiss").font(body).color(v.p.mute));
     // The text's first line centres on the button's 24 px.
     let words = row().py(4.0).child(text(msg.to_string()).font(body).color(c.readable_err()).wrap().w(w));
-    let pill = super::widgets::floating(row(), &c)
+    let pill = super::widgets::toolbar_surface(row(), v.p, 1.0)
         .key("notice")
         .radius(if h > PILL_H { PILL_H / 2.0 } else { 999.0 })
         .pl(14.0)

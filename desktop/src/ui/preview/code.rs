@@ -109,8 +109,9 @@ fn action_bar(cx: &Cx, bar_key: &str, copy_key: &str, code: String, at: usize) -
     let mut bar = mini_bar(p, bar_key);
     if !cx.v.s.active_locked() {
         let edit_tip = cx.v.s.keymap.tip("Edit block", "reader.edit-block");
-        let edit_btn = mini_button(p, &format!("block-edit:{at}"), &icons::PENCIL, &edit_tip, None)
-            .on_press_tx(move |s: &mut crate::app::App, tx| s.open_sheet_at(Some(at), crate::sheet::Scope::Block, tx));
+        let edit_btn = crate::ui::focus::stop(mini_button(p, &format!("block-edit:{at}"), &icons::PENCIL, &edit_tip, None))
+            .focus_ring(rw, rg, rc)
+            .control(move |s: &mut crate::app::App, tx| s.open_sheet_at(Some(at), crate::sheet::Scope::Block, tx));
         bar = bar.child(edit_btn);
     }
     bar.child(copy_btn).group_opacity(if is_copied { 1.0 } else { 0.0 }, 1.0)
