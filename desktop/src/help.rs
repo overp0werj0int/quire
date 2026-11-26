@@ -259,7 +259,7 @@ const MAP: &[Group] = &[
 /// A mode's groups, and how many of them make the left column on a wide window (WR-163).
 pub fn groups(mode: Mode) -> (&'static [Group], usize) {
     match mode {
-        Mode::Preview => (READER, READER.len()),
+        Mode::Preview => (READER, 3),
         Mode::Source => (WRITER, 2),
         Mode::Map => (MAP, 3),
     }
@@ -312,11 +312,11 @@ pub fn picks(found: &[(&'static str, Vec<&'static Row>)]) -> Vec<&'static Row> {
     found.iter().flat_map(|(_, rows)| rows.iter().copied()).filter(|r| action(r).is_some()).collect()
 }
 
-/// The help sheet's search: its query, which mode's sheet it displays, and which runnable row is selected.
+/// The help sheet's search: its query, which mode's sheet it displays, and which runnable row is selected (if any).
 pub struct Search {
     pub q: TextEdit,
     pub mode: Mode,
-    pub idx: usize,
+    pub idx: Option<usize>,
 }
 
 impl Default for Search {
@@ -327,7 +327,7 @@ impl Default for Search {
 
 impl Search {
     pub fn for_mode(mode: Mode) -> Self {
-        Self { q: TextEdit::default(), mode, idx: 0 }
+        Self { q: TextEdit::default(), mode, idx: None }
     }
 }
 
@@ -357,9 +357,9 @@ impl App {
 
     /// The rows the help's query keeps, and the selected one among those that run.
     pub fn help_found(&self) -> (Vec<(&'static str, Vec<&'static Row>)>, Option<&'static Row>) {
-        let (q, mode, idx) = self.help_search().map_or(("", self.mode, 0), |h| (h.q.text.as_str(), h.mode, h.idx));
+        let (q, mode, idx) = self.help_search().map_or(("", self.mode, None), |h| (h.q.text.as_str(), h.mode, h.idx));
         let found = filter(&self.keymap, mode, q);
-        let pick = self.help_picks(mode, &found).get(idx).copied();
+        let pick = idx.and_then(|i| self.help_picks(mode, &found).get(i).copied());
         (found, pick)
     }
 
@@ -391,19 +391,32 @@ impl App {
             Key::Escape if query => {
                 if let Some(h) = self.help_search_mut() {
                     h.q = TextEdit::new("");
-                    h.idx = 0;
+                    h.idx = None;
                 }
                 return true;
             }
             Key::Up | Key::Down if !chord && !ev.mods.shift => {
                 let mode = self.help_search().map_or(self.mode, |h| h.mode);
+                let cur = self.help_search().and_then(|h| h.idx);
+                if ev.key == Key::Up && cur.is_none() {
+                    return self.scroll_help(Key::Up, tx);
+                }
                 let (found, _) = self.help_found();
                 let n = self.help_picks(mode, &found).len();
                 if let Some(h) = self.help_search_mut()
                     && n > 0
                 {
-                    h.idx = if ev.key == Key::Down { (h.idx + 1).min(n - 1) } else { h.idx.saturating_sub(1) };
-                    tx.scroll_into_view(row_key(h.idx));
+                    let next = match (ev.key.clone(), h.idx) {
+                        (Key::Down, None) => Some(0),
+                        (Key::Down, Some(i)) => Some((i + 1).min(n - 1)),
+                        (Key::Up, Some(0)) => None,
+                        (Key::Up, Some(i)) => Some(i - 1),
+                        _ => None,
+                    };
+                    h.idx = next;
+                    if let Some(i) = next {
+                        tx.scroll_into_view(row_key(i));
+                    }
                 }
                 return true;
             }

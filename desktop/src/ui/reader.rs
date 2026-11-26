@@ -320,58 +320,60 @@ pub(super) fn help_sheet(v: V) -> Card {
     let empty = crate::help::Search::for_mode(v.s.mode);
     let search = v.s.help_search().unwrap_or(&empty);
     let help_mode = search.mode;
-    let (row_h, row_gap, keys_w, col_w) = match help_mode {
-        crate::app::Mode::Source => (26.0, 7.0, 210.0, 490.0),
-        crate::app::Mode::Map => (24.0, 6.0, 220.0, 510.0),
-        crate::app::Mode::Preview => (24.0, 2.0, 210.0, 520.0),
-    };
+    // Fixed two-column geometry across all three modes so switching Source / Preview / Map never
+    // resizes the modal.
+    const ROW_H: f32 = 24.0;
+    const ROW_GAP: f32 = 4.0;
+    const KEYS_W: f32 = 220.0;
+    const COL_W: f32 = 510.0;
+    const COL_GAP: f32 = 40.0;
     let (all, left) = crate::help::groups(help_mode);
     let (found, pick) = v.s.help_found();
-    // The writer's and the map's sheets set their groups in two columns on a wide window
-    // (WR-163): the first `left` groups on the left. A query keeps the columns of the groups
-    // it keeps.
-    let cols = if left < all.len() && v.vw > 1040.0 { 2 } else { 1 };
-    let content = col_w * cols as f32 + 40.0 * (cols - 1) as f32;
+    let cols = if v.vw > 1040.0 { 2 } else { 1 };
+    let content = COL_W * cols as f32 + COL_GAP * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
     let narrow_header = v.vw < 720.0;
-    let header_h = if narrow_header { 78.0 } else { 44.0 };
+    let header_h = if narrow_header { 80.0 } else { 44.0 };
     let search_h = 40.0;
-    let pill_off_bg = crate::roles::mix(c.bg, v.p.soft, v.p.soft.a);
-    let pill_on_bg = crate::roles::mix(pill_off_bg, v.p.act, v.p.act.a);
-    let pill_on_ink = Roles::readable_on(v.p.acc, pill_on_bg, 5.0);
-    let pill_off_ink = Roles::readable_on(c.dim, pill_off_bg, 4.8);
+    let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
     let mode_pill = |m: crate::app::Mode, key: &'static str, lbl: &'static str| {
         let on = help_mode == m;
         let (rw, rg, rc) = super::focus_ring(v.p);
+        let label = text(lbl).font(sans(11.5, if on { 500.0 } else { 400.0 }));
+        let label = if on { label.color(v.p.ink) } else { label.color(help_muted).group_color(v.p.ink) };
         row()
             .key(key)
-            .h(24.0)
+            .h(22.0)
             .px(8.0)
             .center()
             .radius(5.0)
-            .fill(if on { v.p.act } else { Color::TRANSPARENT })
-            .hover(if on { v.p.act } else { v.p.hover })
-            .border(1.0, if on { v.p.acc.alpha(0.45) } else { Color::TRANSPARENT })
+            .fill(if on { v.p.hover } else { Color::TRANSPARENT })
+            .hover(v.p.hover)
+            .hover_group()
+            .border(1.0, if on { v.p.line } else { Color::TRANSPARENT })
             .border_layout()
-            .role("radio")
-            .checked(on)
             .label(format!("{lbl} shortcuts"))
             .focus_ring(rw, rg, rc)
-            .control(move |s: &mut App, _| {
+            .choice(on, move |s: &mut App, tx| {
                 if let Some(h) = s.help_search_mut() {
                     h.mode = m;
-                    h.idx = 0;
+                    h.idx = None;
+                }
+                if !tx.by_keys() {
+                    tx.focus(crate::reader::HELP_SEARCH, false);
                 }
             })
-            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(if on { pill_on_ink } else { pill_off_ink }))
+            .child(label)
     };
     let mode_pills = row()
         .key("help-modes")
         .gap(2.0)
         .padding(2.0)
         .radius(7.0)
-        .fill(v.p.soft)
+        .border(1.0, v.p.line)
+        .border_layout()
         .role("radiogroup")
+        .focus_group()
         .label("Shortcut mode")
         .child(mode_pill(crate::app::Mode::Source, "help-mode-source", "Source"))
         .child(mode_pill(crate::app::Mode::Preview, "help-mode-preview", "Preview"))
@@ -422,7 +424,7 @@ pub(super) fn help_sheet(v: V) -> Card {
             .child(
                 row()
                     .w_full()
-                    .h(28.0)
+                    .h(30.0)
                     .gap(8.0)
                     .center_y()
                     .child(mode_pills)
@@ -448,7 +450,6 @@ pub(super) fn help_sheet(v: V) -> Card {
             .child(cap(keymap::label_of("Esc"), v.p))
             .child(close_btn)
     };
-    let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
     // The search (RD-105): it filters the rows as it is typed, Up and Down pick one, and Enter
     // runs what the row's keys run.
     let hint = |k: &str, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(v.p, k.to_string(), true)).child(text(what.to_string()).font(sans(11.5, 400.0)).color(help_muted));
@@ -475,7 +476,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .on_edit(help_field)
                 .on_input_change(|s: &mut App, _| {
                     if let Some(h) = s.help_search_mut() {
-                        h.idx = 0;
+                        h.idx = None;
                     }
                 })
                 // The field takes its editing keys before the window's: the sheet's go first.
@@ -484,13 +485,13 @@ pub(super) fn help_sheet(v: V) -> Card {
         .child(hint("\u{2191}\u{2193}", "select"))
         .children(pick.and_then(crate::help::action).map(|a| hint("\u{21b5}", a.name)));
     let card = col().key("help-body").w(w).px(24.0).py(18.0).gap(18.0);
-    let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(col_w.min(w - 48.0)).gap(18.0)).collect();
+    let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(COL_W.min(w - 48.0)).gap(18.0)).collect();
     let mut n = 0;
     for (title, rows) in &found {
         let gi = all.iter().position(|(t, _)| t == title).unwrap_or(0);
-        let mut g = col().key(format!("help-{title}")).w_full().gap(row_gap).child(caption(title, false, v.p).mb(6.0));
+        let mut g = col().key(format!("help-{title}")).w_full().gap(ROW_GAP).child(caption(title, false, v.p).mb(6.0));
         for (i, r) in rows.iter().enumerate() {
-            let mut keys = row().gap(4.0).w(keys_w).flex_wrap().center_y();
+            let mut keys = row().gap(4.0).w(KEYS_W).flex_wrap().center_y();
             let mut shown: Vec<String> = Vec::new();
             for (idx, id) in r.ids.iter().enumerate() {
                 if idx == 1 && crate::help::is_range(r.ids[0], id) {
@@ -517,7 +518,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                     shown.push(lbl);
                 }
             }
-            let mut line = row().key(format!("r-{i}")).min_h(row_h).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
+            let mut line = row().key(format!("r-{i}")).min_h(ROW_H).py(2.0).w_full().center_y().mx(-6.0).px(6.0).radius(6.0).child(keys).child(text(r.what.to_string()).font(sans(12.5, 400.0)).color(c.text));
             if v.s.help_row_runnable(help_mode, r) {
                 let at = n;
                 n += 1;
@@ -526,15 +527,9 @@ pub(super) fn help_sheet(v: V) -> Card {
                 line = line
                     .key(crate::help::row_key(at))
                     .fill(if on { v.p.act } else { Color::TRANSPARENT })
+                    .hover(if on { v.p.act } else { v.p.hover })
                     .role("option")
                     .cursor(rune::Cursor::Pointer)
-                    .on_hover(move |s: &mut App| {
-                        if let Some(h) = s.help_search_mut()
-                            && h.idx != at
-                        {
-                            h.idx = at;
-                        }
-                    })
                     .on_press_tx(move |s: &mut App, tx| s.help_run(row_ref, tx));
             }
             g = g.child(line);
@@ -543,7 +538,7 @@ pub(super) fn help_sheet(v: V) -> Card {
         let slot = std::mem::replace(&mut columns[k], el());
         columns[k] = slot.child(g);
     }
-    let mut body = row().key("help-cols").gap(40.0).items_start();
+    let mut body = row().key("help-cols").gap(COL_GAP).items_start();
     if found.is_empty() {
         body = body.child(text("No shortcut matches.").key("help-none").font(sans(12.5, 400.0)).color(help_muted));
     } else {
@@ -552,12 +547,13 @@ pub(super) fn help_sheet(v: V) -> Card {
         }
     }
     let live = v.s.reader.help_scroll.clone();
-    // The card fits the window, 24 px clear of each edge, and its rows scroll inside it, fading
-    // at the card's edges as Settings' page does.
+    let scroll_h = (v.vh - 48.0 - header_h - search_h).min(620.0).max(80.0);
+    // Fixed-size card (2 columns + padding on wide windows, 24 px clear of edges on shorter ones)
+    // so switching between Source / Preview / Map never resizes the modal.
     let scroll = col()
         .key(crate::reader::HELP_SCROLL)
         .w(w)
-        .max_h((v.vh - 48.0 - header_h - search_h).max(80.0))
+        .h(scroll_h)
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(super::widgets::SCROLL_FADE)
         .on_scroll_offset(move |at| {
@@ -687,28 +683,21 @@ pub fn find_placed(v: V) -> Option<El> {
     Some(el().key(key).pin(Some(0.0), Some(0.0), None, None).w(0.0).h(0.0).on_layout_tx(move |s: &mut App, _, tx| s.place_match(n, r, view, roof, band, tx)))
 }
 
-/// While a pill shows at the note area's foot in Source or Preview, the page fades out under it
-/// so no line of the note reads behind or beside it: the page's colour from the note area's bottom
-/// edge to 16 px above the top pill, then a 32 px fade above that (`band_h`). Map mode omits the
-/// band so the toast floats cleanly over the canvas without a smoky smudge around it.
-/// Presses go through it to the page, and it fades in and out over 140 ms. As it appears or
-/// grows, what the user is on comes above it (`App::band_laid_out`).
+/// Invisible layout/reveal anchor at the note area's foot in Source and Preview while a toast or
+/// notice shows (`band_h`): lifts the caret and find matches above the pill (`App::band_laid_out`)
+/// without painting any fog or curtain behind the pill, so only the floating pill and its small
+/// elevation shadow appear over the page.
 pub fn toast_band(v: V) -> Option<El> {
     if super::mapping(v.s) {
         return None;
     }
     let h = band_h(v)?;
     let (caret, find_at, roof) = (v.caret, v.find_at, super::editor::match_roof(v));
-    let bg = Roles::new(v.p).bg;
-    let stops = [(0.0, bg.alpha(0.0)), (BAND_FADE / h, bg), (1.0, bg)];
-    let fade = rune::SpringPair::new(rune::Spring::new(0.14, 0.0), rune::Spring::new(0.14, 0.0));
     Some(
         el().key("toast-band")
             .pin(Some(0.0), None, Some(0.0), Some(0.0))
             .h(h)
-            .linear_gradient(std::f32::consts::PI, stops)
             .inert()
-            .transition(rune::Transition::opacity().springs(fade))
             .on_layout_tx(move |s: &mut App, r, tx| s.band_laid_out(r, caret, find_at, roof, tx)),
     )
 }

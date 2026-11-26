@@ -4387,6 +4387,72 @@ mod escape_tests {
         assert!(hud_hover.opacity > 0.99, "map-zoom-hud reveals on hover in zen mode: {}", hud_hover.opacity);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Help modal uses a fixed two-column size across Source / Preview / Map, styles its mode
+    /// radiogroup with a neutral outer border and single selected item outline, and opens with
+    /// no pre-selected row.
+    #[test]
+    fn help_modal_fixed_size_neutral_tabs_and_no_default_selection() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-help-fixed-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Hello\n\nBody.\n", crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+        rt.update(|s, tx| s.toggle_help(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let mut idx = Some(99);
+        rt.update_if(|s, _| {
+            idx = s.help_search().and_then(|h| h.idx);
+            false
+        });
+        assert_eq!(idx, None, "help opens with no row pre-selected");
+        let card_rect = |rt: &Runtime<crate::app::App>| {
+            rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some("help-card")).expect("help-card").rect
+        };
+        let r_source = card_rect(&rt);
+        assert!(rt.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some("help-col-1")), "Source uses 2 columns");
+        // Switch to Preview and Map: card width and height stay identical.
+        for (btn_key, name) in [("help-mode-preview", "Preview"), ("help-mode-map", "Map")] {
+            let (x, y) = rt.find(btn_key).unwrap_or_else(|| panic!("{btn_key} present"));
+            rt.pointer_move(x, y);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            for _ in 0..10 {
+                rt.frame(DT);
+            }
+            let r = card_rect(&rt);
+            assert!(
+                (r[2] - r_source[2]).abs() < 0.5 && (r[3] - r_source[3]).abs() < 0.5,
+                "{name} help-card size {r:?} must match Source {r_source:?}"
+            );
+            assert!(rt.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some("help-col-1")), "{name} uses 2 columns");
+        }
+        // Pressing Down selects the first runnable row; Up returns to None.
+        rt.key(KeyEvent { key: Key::Down, mods: Mods::default() });
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            idx = s.help_search().and_then(|h| h.idx);
+            false
+        });
+        assert_eq!(idx, Some(0), "Down selects first row");
+        rt.key(KeyEvent { key: Key::Up, mods: Mods::default() });
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            idx = s.help_search().and_then(|h| h.idx);
+            false
+        });
+        assert_eq!(idx, None, "Up from row 0 clears selection");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
