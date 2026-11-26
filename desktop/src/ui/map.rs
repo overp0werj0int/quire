@@ -1111,8 +1111,9 @@ fn drop_mark(t: &Tree, l: &Laid, at: crate::map::Add, c: &Roles, zoom: f32) -> E
 }
 
 /// Quiet bottom-right canvas zoom pill (`map-zoom-hud`, MAP-064): `−`, clickable tabular-mono
-/// zoom percentage (resets to 100%), `+`, and `Fit`, with WCAG AA contrast on every theme.
-/// Mounted in `doc-area` after `toast-band` so bottom-right controls stay visible while a toast shows.
+/// zoom percentage (edits zoom inline), `+`, dedicated `100%` reset button, and `Fit`, with WCAG
+/// AA contrast on every theme. Mounted in `doc-area` after `toast-band` so bottom-right controls
+/// stay visible while a toast shows.
 pub(super) fn zoom_hud(v: V) -> Option<El> {
     let s = v.s;
     let [cw, _] = s.map_size();
@@ -1123,6 +1124,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let c = &look.c;
     let mono = look.mono;
     let zoom = s.map_target_zoom();
+    let pct_num = (zoom * 100.0).round() as i32;
     let tip = |name: &str, id: &str| s.keymap.tip(name, id);
     let hud_ink = Roles::readable_on(c.dim, v.p.bg, 4.8);
     let sep_color = Roles::readable_on(v.p.line, v.p.bg, 3.2);
@@ -1139,38 +1141,85 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
             v.p,
         )
     };
-    let pct = format!("{}%", (zoom * 100.0).round() as i32);
+    let pct = format!("{pct_num}%");
     let pct_font = styles::note(mono, 11.0, normal_lh(mono, 11.0)).features("'tnum' 1");
-    let reset = super::tokens::FocusRing::Standard.apply(
-        super::focus::stop(
+    let pct_slot = if let Some(ze) = &s.map.zoom_edit {
+        super::tokens::FocusRing::Input.apply_when(
             rune::row()
-                .key("zoom-reset")
+                .key("zoom-pct-box")
                 .h(super::components::MINI_BTN)
-                .min_w(42.0)
-                .px(5.0)
+                .w(46.0)
+                .px(4.0)
                 .center()
                 .radius(super::components::MINI_BTN_RADIUS)
-                .hover(hud_hover)
-                .hover_group()
-                .hover_motion(super::tokens::motion::hover_fade(), super::tokens::motion::hover_fade())
-                .cursor(rune::Cursor::Pointer)
-                .role("button")
-                .label(format!("Zoom {pct}, reset to 100%"))
-                .help(tip("Zoom 100%", "app.zoom-reset"))
-                .control(|s: &mut App, tx: &mut Tx| {
-                    s.map_zoom_reset(tx);
-                    s.keys_to_note(tx);
-                })
-                .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
-        ),
-        v.p,
-    );
+                .fill(v.p.bg)
+                .border(1.0, v.p.line)
+                .border_layout()
+                .child(
+                    super::focus::stop(rune::text_input(&ze.edit, pct_font))
+                        .key(map_app::ZOOM_FIELD)
+                        .single_line()
+                        .w_full()
+                        .color(c.text)
+                        .caret(c.text, c.selection)
+                        .label("Zoom percentage")
+                        .on_edit(|s: &mut App| match &mut s.map.zoom_edit {
+                            Some(z) => &mut z.edit,
+                            None => &mut s.map.spare,
+                        })
+                        .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut Tx| match ev.key {
+                            rune::Key::Enter if ev.mods == rune::Mods::default() => {
+                                s.map_zoom_edit_commit(tx);
+                                true
+                            }
+                            rune::Key::Escape => {
+                                s.map_zoom_edit_cancel(tx);
+                                true
+                            }
+                            rune::Key::Tab => {
+                                s.map_zoom_edit_commit(tx);
+                                true
+                            }
+                            _ => false,
+                        }),
+                ),
+            v.p,
+            ze.edit.focused,
+        )
+    } else {
+        super::tokens::FocusRing::Standard.apply(
+            super::focus::stop(
+                rune::row()
+                    .key("zoom-pct")
+                    .h(super::components::MINI_BTN)
+                    .min_w(46.0)
+                    .px(5.0)
+                    .center()
+                    .radius(super::components::MINI_BTN_RADIUS)
+                    .hover(hud_hover)
+                    .hover_group()
+                    .hover_motion(super::tokens::motion::hover_fade(), super::tokens::motion::hover_fade())
+                    .cursor(rune::Cursor::Pointer)
+                    .role("button")
+                    .label(format!("Zoom {pct}, edit percentage"))
+                    .help("Edit zoom percentage")
+                    .control(|s: &mut App, tx: &mut Tx| s.map_zoom_edit_start(tx))
+                    .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
+            ),
+            v.p,
+        )
+    };
+    let mut reset = icon_btn("zoom-reset", &super::icons::RESET, "Reset zoom to 100%", tip("Zoom 100%", "app.zoom-reset"), |s, tx| s.map_zoom_reset(tx));
+    if pct_num == 100 {
+        reset = reset.opacity(super::tokens::state::DISABLED_CONTENT);
+    }
     let sep = el().size(1.0, 14.0).mx(2.0).fill(sep_color).inert();
     let hud = super::components::mini_bar(v.p, "map-zoom-hud")
         .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
-        .child(reset)
+        .child(pct_slot)
         .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
         .child(sep)
+        .child(reset)
         .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)));
     if v.focus() {
         // In zen mode, bottom controls reveal on hover (and keyboard focus), matching the top
@@ -1186,7 +1235,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
                 .pb(12.0)
                 .hover_group()
                 .hover_motion(zen_s, zen_s)
-                .child(hud.group_opacity(0.0, 1.0)),
+                .child(hud.group_opacity(if s.map.zoom_edit.is_some() { 1.0 } else { 0.0 }, 1.0)),
         );
     }
     Some(hud.pin(None, None, Some(12.0), Some(12.0)))

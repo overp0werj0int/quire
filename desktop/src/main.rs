@@ -4252,30 +4252,41 @@ mod escape_tests {
             rt.frame(DT);
         }
         assert!(rt.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some("copy")), "code block restored on unfold");
-        // Open Edit Sheet: verify top-right floating mini-bar and equidistant corner paddings.
+        // Open Edit Sheet: verify dedicated header/body/footer, generous body vertical padding,
+        // and top-right corner hover zone (body hover keeps sheet-actions hidden).
         rt.update(|s, tx| s.open_sheet_at(Some(0), crate::sheet::Scope::Block, tx));
         for _ in 0..10 {
             rt.frame(DT);
         }
         let sh_els = rt.elements();
         let pop = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-pop")).expect("sheet-pop").rect;
-        let title = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-title")).expect("sheet-title").rect;
-        let kbd = sh_els.iter().find(|e| e.key.as_deref() == Some("kbd") && e.rect[1] > pop[1]).expect("footer kbd").rect;
-        let left_gap = kbd[0] - pop[0];
-        let bot_gap = (pop[1] + pop[3]) - (kbd[1] + kbd[3]);
-        let top_gap = title[1] - pop[1];
-        assert!((bot_gap - left_gap).abs() < 0.5, "bottom kbd gap {bot_gap} must equal left gap {left_gap}");
-        assert!((top_gap - (left_gap - 2.0)).abs() < 0.5, "top title gap {top_gap} compensates for 2pt leading vs left {left_gap}");
+        let header = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-header")).expect("sheet-header").rect;
+        let body = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-body")).expect("sheet-body").rect;
+        let editor = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-scroll")).expect("sheet-scroll").rect;
+        let footer = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-footer")).expect("sheet-footer").rect;
+        assert!((header[3] - 48.0).abs() < 1.0, "sheet-header is 48 pt: {header:?}");
+        assert!(body[1] >= header[1] + header[3] - 0.5 && footer[1] >= body[1] + body[3] - 0.5, "header -> body -> footer stack cleanly");
+        assert!(editor[1] - body[1] >= 23.5, "sheet-body has generous 24 pt top padding: body={body:?}, editor={editor:?}");
+        assert!((footer[3] - 45.0).abs() < 1.0, "sheet-footer is 45 pt (1 pt hairline + 12 + 20 + 12): {footer:?}");
         let sh_bar = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions mini-bar");
         assert!((sh_bar.rect[3] - 28.0).abs() < 0.5, "sheet-actions matches 28 pt zoom HUD scale: {:?}", sh_bar.rect);
         assert!(sh_bar.opacity < 0.05, "sheet-actions hidden until hover: {}", sh_bar.opacity);
-        assert!(sh_bar.rect[1] < pop[1] + 40.0 && sh_bar.rect[0] > pop[0] + pop[2] / 2.0, "sheet-actions sits top-right: {:?} in {pop:?}", sh_bar.rect);
-        rt.pointer_move(pop[0] + 40.0, pop[1] + 40.0);
-        for _ in 0..12 {
+        assert!(sh_bar.rect[1] < pop[1] + 48.0 && sh_bar.rect[0] > pop[0] + pop[2] / 2.0, "sheet-actions sits top-right in header: {:?} in {pop:?}", sh_bar.rect);
+        // Hovering the body/card away from the corner zone must keep sheet-actions hidden.
+        rt.pointer_move(body[0] + 40.0, body[1] + 40.0);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let sh_bar_body = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions on body hover");
+        assert!(sh_bar_body.opacity < 0.05, "sheet-actions stays hidden on body hover: {}", sh_bar_body.opacity);
+        // Hovering the top-right corner zone reveals sheet-actions.
+        let zone = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions-zone")).expect("sheet-actions-zone").rect;
+        rt.pointer_move(zone[0] + zone[2] / 2.0, zone[1] + zone[3] / 2.0);
+        for _ in 0..25 {
             rt.frame(DT);
         }
         let sh_bar_hover = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions hovered");
-        assert!(sh_bar_hover.opacity > 0.99, "sheet-actions shows on card hover: {}", sh_bar_hover.opacity);
+        assert!(sh_bar_hover.opacity > 0.99, "sheet-actions shows on corner zone hover: {}", sh_bar_hover.opacity);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4451,6 +4462,190 @@ mod escape_tests {
             false
         });
         assert_eq!(idx, None, "Up from row 0 clears selection");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Help mode pills stay focused on Left/Right arrows, drop focus to `help-search` on Enter,
+    /// and slide horizontally; Settings tabs slide vertically; Map zoom HUD supports inline
+    /// percentage editing and a dedicated 100% reset button.
+    #[test]
+    fn help_enter_modal_slides_and_minizoom_edit() {
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-ui-polish-{}", std::process::id()));
+        let (mut rt, _) = crate::bench::open(&dir, "# Root\n\n## Alpha\n\n## Beta\n", crate::app::Mode::Source);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.set_viewport((1280.0, 800.0), 1.0);
+        for _ in 0..8 {
+            rt.frame(DT);
+        }
+
+        let focused_key = |rt: &mut Runtime<crate::app::App>| -> Option<String> {
+            let mut out = None;
+            rt.update_if(|_, tx| {
+                out = tx.focused().map(str::to_string);
+                false
+            });
+            out
+        };
+
+        // 1. Help mode pills: arrows switch with horizontal slide_dir and keep focus in help-modes;
+        // Enter drops focus into help-search.
+        rt.update(|s, tx| s.toggle_help(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update(|_, tx| tx.focus("help-mode-source", true));
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Right, mods: Mods::default() });
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let mut h_state = (Mode::Source, 0u64, 0i8);
+        rt.update_if(|s, _| {
+            if let Some(h) = s.help_search() {
+                h_state = (h.mode, h.slide_gen, h.slide_dir);
+            }
+            false
+        });
+        assert_eq!(h_state, (Mode::Preview, 1, 1), "Right arrow slides Help forward to Preview");
+        assert_eq!(focused_key(&mut rt).as_deref(), Some("help-mode-preview"), "Right arrow keeps focus on mode pill");
+        rt.key(KeyEvent { key: Key::Left, mods: Mods::default() });
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            if let Some(h) = s.help_search() {
+                h_state = (h.mode, h.slide_gen, h.slide_dir);
+            }
+            false
+        });
+        assert_eq!(h_state, (Mode::Source, 2, -1), "Left arrow slides Help backward to Source");
+        assert_eq!(focused_key(&mut rt).as_deref(), Some("help-mode-source"), "Left arrow keeps focus on mode pill");
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        assert_eq!(focused_key(&mut rt).as_deref(), Some(crate::reader::HELP_SEARCH), "Enter on Help mode pill drops focus to help-search");
+
+        // 2. Settings vertical tabs: moving down slides +1, moving up slides -1, and set-scroll stays present.
+        rt.update(|s, tx| {
+            s.close_layer(tx);
+            s.open_settings(tx);
+        });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        let mut set_state = (crate::app::Sec::Appearance, 0u64, 0i8);
+        rt.update_if(|s, _| {
+            set_state = (s.set_sec, s.set_gen, s.set_slide);
+            false
+        });
+        assert_eq!(set_state.2, 0, "Settings opens without sliding");
+        let (x, y) = rt.find("nav-Editor").expect("nav-Editor tab");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            set_state = (s.set_sec, s.set_gen, s.set_slide);
+            false
+        });
+        assert_eq!(set_state, (crate::app::Sec::Editor, 1, 1), "switching down slides +1");
+        assert!(rt.find("set-scroll").is_some(), "set-scroll remains present inside set-stage");
+        let (x, y) = rt.find("nav-Appearance").expect("nav-Appearance tab");
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            set_state = (s.set_sec, s.set_gen, s.set_slide);
+            false
+        });
+        assert_eq!(set_state, (crate::app::Sec::Appearance, 2, -1), "switching up slides -1");
+
+        // 3. Map minizoom inline percentage edit + dedicated 100% reset button.
+        rt.update(|s, tx| {
+            s.close_layer(tx);
+            s.show_mode(Mode::Map, tx);
+        });
+        for _ in 0..12 {
+            rt.frame(DT);
+        }
+        assert!(rt.find("zoom-pct").is_some(), "zoom-pct button present in map-zoom-hud");
+        assert!(rt.find("zoom-reset").is_some(), "dedicated zoom-reset button present in map-zoom-hud");
+        let (zx, zy) = rt.find("zoom-pct").unwrap();
+        rt.pointer_move(zx, zy);
+        rt.pointer_down(zx, zy);
+        rt.pointer_up(zx, zy);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        assert_eq!(focused_key(&mut rt).as_deref(), Some(crate::map_app::ZOOM_FIELD), "clicking zoom-pct focuses inline input");
+        rt.key(KeyEvent { key: Key::Text("150".into()), mods: Mods::default() });
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        let mut z_now = 0.0f32;
+        rt.update_if(|s, _| {
+            z_now = s.map_target_zoom();
+            false
+        });
+        assert!((z_now - 1.5).abs() < 0.01, "typing 150 + Enter sets zoom to 150%, got {z_now}");
+        assert_eq!(focused_key(&mut rt).as_deref(), Some(crate::focus::NOTE), "Enter returns focus to map");
+
+        // Typing out-of-range value clamps to 400%.
+        rt.update(|s, tx| s.map_zoom_edit_start(tx));
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Text("999".into()), mods: Mods::default() });
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            z_now = s.map_target_zoom();
+            false
+        });
+        assert!((z_now - crate::map_app::ZOOM_MAX).abs() < 0.01, "999 clamps to 400%, got {z_now}");
+
+        // Esc cancels without changing zoom.
+        rt.update(|s, tx| s.map_zoom_edit_start(tx));
+        for _ in 0..4 {
+            rt.frame(DT);
+        }
+        rt.key(KeyEvent { key: Key::Text("50".into()), mods: Mods::default() });
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            z_now = s.map_target_zoom();
+            false
+        });
+        assert!((z_now - crate::map_app::ZOOM_MAX).abs() < 0.01, "Esc cancels without changing zoom, got {z_now}");
+        assert_eq!(focused_key(&mut rt).as_deref(), Some(crate::focus::NOTE), "Esc returns focus to map");
+
+        // Clicking dedicated zoom-reset resets to 100%.
+        let (rx, ry) = rt.find("zoom-reset").expect("zoom-reset button");
+        rt.pointer_move(rx, ry);
+        rt.pointer_down(rx, ry);
+        rt.pointer_up(rx, ry);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        rt.update_if(|s, _| {
+            z_now = s.map_target_zoom();
+            false
+        });
+        assert!((z_now - 1.0).abs() < 0.01, "zoom-reset restores 100%, got {z_now}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -133,6 +133,23 @@ pub(crate) fn tab_transition(dir: i8) -> (rune::Transition, rune::Transition) {
     (enter, exit)
 }
 
+/// Fast, directional vertical slide transition for switching stacked tabs such as Settings
+/// sections (`dir > 0` enters from the bottom edge while the previous page exits through the top
+/// edge; `dir < 0` reverses it).
+pub(crate) fn slide_transition_v(dir: i8) -> (rune::Transition, rune::Transition) {
+    if dir == 0 {
+        return (rune::Transition::none(), rune::Transition::none());
+    }
+    let enter_edge = if dir > 0 { rune::Edge::Bottom } else { rune::Edge::Top };
+    let exit_edge = enter_edge.opposite();
+    let spring = tokens::motion::tab_spring();
+    let springs = rune::SpringPair::new(spring, spring);
+    let mut enter = rune::Transition::move_edge(enter_edge).springs(springs);
+    enter.removal = rune::Effect { offset_fraction: exit_edge.direction(), ..rune::Effect::IDENTITY };
+    let exit = rune::Transition::move_edge(exit_edge).springs(springs);
+    (enter, exit)
+}
+
 /// Where a text's baseline sits below its box top, for CSS `align-items: baseline` rows.
 pub fn baseline(style: TextStyle) -> f32 {
     let (asc, desc) = theme::metrics(style.family);

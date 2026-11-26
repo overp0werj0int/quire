@@ -34,12 +34,7 @@ pub(super) fn settings(v: V) -> Card {
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .hover_group()
                 .role("tab")
-                .control(move |s: &mut App, _: &mut Tx| {
-                    if s.set_sec != id {
-                        s.set_sec = id;
-                        s.key_edit = None;
-                    }
-                })
+                .control(move |s: &mut App, _: &mut Tx| s.set_settings_sec(id))
                 .focus_selected(on)
                 .child(label(lbl, sans(13.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).group_color(p.ink)),
         );
@@ -64,22 +59,39 @@ pub(super) fn settings(v: V) -> Card {
         Sec::Mcp => settings_mcp::mcp(v),
         Sec::Keys => keys(v),
     };
+    let scroll = col()
+        .key("set-scroll")
+        .shrink()
+        .min_h(0.0)
+        .w_full()
+        .scroll(ScrollSpec { stick_bottom: false })
+        .scroll_margin(SCROLL_FADE)
+        .child(faded("set", v.p.bg, col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body)));
+    let (set_enter, set_exit) = super::slide_transition_v(s.set_slide);
+    let page = col()
+        .key(format!("set-page:{}", s.set_gen))
+        .shrink()
+        .min_h(0.0)
+        .w_full()
+        .fill(p.bg)
+        .transition(set_enter)
+        .child_exit(rune::Transition::none())
+        .child(scroll);
+    let stage = col()
+        .key("set-stage")
+        .shrink()
+        .min_h(0.0)
+        .w_full()
+        .clip_soft(0.0)
+        .child_exit(set_exit)
+        .child(page);
     let content = col()
         .key("set-content")
         .grow(1.0)
         .min_w(0.0)
         .h_full()
         .child(head)
-        .child(
-            col()
-                .key("set-scroll")
-                .shrink()
-                .min_h(0.0)
-                .w_full()
-                .scroll(ScrollSpec { stick_bottom: false })
-                .scroll_margin(SCROLL_FADE)
-                .child(faded("set", v.p.bg, col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body))),
-        );
+        .child(stage);
     // The shadow sits on an outer box: a rounded clip would cut it off.
     let panel = dialog_frame(p, "settings-frame", Some(size::DIALOG_W_SETTINGS))
         .max_h(max_h(v))

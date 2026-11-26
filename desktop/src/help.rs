@@ -317,6 +317,10 @@ pub struct Search {
     pub q: TextEdit,
     pub mode: Mode,
     pub idx: Option<usize>,
+    /// Incremented whenever the active mode tab changes so the sheet slides between pages.
+    pub slide_gen: u64,
+    /// Horizontal slide direction (`+1` right-to-left, `-1` left-to-right, `0` no slide).
+    pub slide_dir: i8,
 }
 
 impl Default for Search {
@@ -327,7 +331,22 @@ impl Default for Search {
 
 impl Search {
     pub fn for_mode(mode: Mode) -> Self {
-        Self { q: TextEdit::default(), mode, idx: None }
+        Self { q: TextEdit::default(), mode, idx: None, slide_gen: 0, slide_dir: 0 }
+    }
+
+    pub fn set_mode(&mut self, mode: Mode) {
+        if self.mode == mode {
+            return;
+        }
+        let order = |m: Mode| match m {
+            Mode::Source => 0u8,
+            Mode::Preview => 1,
+            Mode::Map => 2,
+        };
+        self.slide_dir = if order(mode) > order(self.mode) { 1 } else { -1 };
+        self.slide_gen += 1;
+        self.mode = mode;
+        self.idx = None;
     }
 }
 

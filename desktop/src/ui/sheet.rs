@@ -10,7 +10,7 @@ use super::icons;
 use super::layer::Card;
 use super::styles::sans;
 use super::reader::cap;
-use super::tokens::{motion, space};
+use super::tokens::{motion, radius, space};
 use crate::app::App;
 use crate::keymap::Ctx;
 use crate::page::r;
@@ -19,14 +19,13 @@ use crate::sheet::{EDITOR, Scope, Sheet};
 use crate::theme;
 
 const PAD_X: f32 = space::PAD_DIALOG;
-const PAD_T: f32 = PAD_X - 2.0;
-const PAD_B: f32 = space::PAD_DIALOG;
-const GAP: f32 = space::PX_10;
+const HEADER_H: f32 = 48.0;
+const BODY_PY: f32 = space::PX_24;
+const BODY_GAP: f32 = space::GAP_SECTION;
+const FOOTER_H: f32 = 45.0;
 const FADE: f32 = space::SCROLL_FADE_DIALOG;
 /// Matches the 20 pt height of the footer's `kbd` key caps.
 const KEY_ROW: f32 = 20.0;
-/// The title row's height: one line of bodySmall.
-const TITLE: f32 = 18.0;
 
 /// The edit sheet, a card in the middle of the window over the reader (`super::layer`).
 pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
@@ -83,7 +82,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     let shown = sh.pick.before.is_some() as u8 + sh.pick.after.is_some() as u8;
 
     // SHEET-019: the card grows with its text to 70% of the window, then the editor scrolls.
-    let chrome = PAD_T + PAD_B + TITLE + GAP + KEY_ROW + 14.0 + shown as f32 * (ctx_h + GAP);
+    let chrome = HEADER_H + FOOTER_H + 2.0 * BODY_PY + shown as f32 * (ctx_h + BODY_GAP);
     let limit = (r(0.7 * v.vh) - chrome).max(90.0);
     let ink = crate::writer::Ink::new(&c);
     let (spans, strikes, hangs) = s.sheet_spans(&sh.edit.text, e, &ink);
@@ -140,10 +139,18 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
             mini_bar(v.p, "sheet-actions").child(cancel_btn).child(save_btn)
         }
     };
-    let bar_top = (PAD_T + (TITLE - MINI_BAR_H) / 2.0).max(8.0);
-    let actions = actions
-        .pin(None, Some(bar_top), Some(12.0), None)
-        .group_opacity(if armed || sh.problem.is_some() { 1.0 } else { 0.0 }, 1.0);
+    let bar_top = (HEADER_H - MINI_BAR_H) / 2.0;
+    let zen_s = motion::zen_spring();
+    let actions_zone = row()
+        .key("sheet-actions-zone")
+        .pin(None, Some(0.0), Some(0.0), None)
+        .pt(bar_top)
+        .pb(bar_top)
+        .pl(space::PX_24)
+        .pr(space::PX_12)
+        .hover_group()
+        .hover_motion(zen_s, zen_s)
+        .child(actions.group_opacity(if armed || sh.problem.is_some() { 1.0 } else { 0.0 }, 1.0));
 
     let foot = match sh.problem {
         Some(p) => row()
@@ -172,23 +179,47 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         }
     };
 
-    let mut card = col().key("sheet-card").w(w).px(PAD_X).pt(PAD_T).pb(PAD_B).gap(GAP).child(title);
+    let header = row()
+        .key("sheet-header")
+        .w_full()
+        .h(HEADER_H)
+        .px(PAD_X)
+        .center_y()
+        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
+        .border_layout()
+        .child(title);
+    let mut body = col().key("sheet-body").w_full().px(PAD_X).py(BODY_PY).gap(BODY_GAP);
     if let Some(i) = sh.pick.before {
-        card = card.child(context("sheet-before", i, true));
+        body = body.child(context("sheet-before", i, true));
     }
-    card = card.child(editor);
+    body = body.child(editor);
     if let Some(i) = sh.pick.after {
-        card = card.child(context("sheet-after", i, false));
+        body = body.child(context("sheet-after", i, false));
     }
-    card = card.child(foot.mt(14.0 - GAP));
+    let footer = row()
+        .key("sheet-footer")
+        .w_full()
+        .min_h(FOOTER_H)
+        .px(PAD_X)
+        .py(space::PX_12)
+        .center_y()
+        .border_sides([1.0, 0.0, 0.0, 0.0], c.hairline)
+        .border_layout()
+        .child(foot);
+    let card = col()
+        .key("sheet-card")
+        .w(w)
+        .radius(radius::DIALOG)
+        .clip_rounded(radius::DIALOG)
+        .child(header)
+        .child(body)
+        .child(footer);
     let label = if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" };
     let card = dialog_frame(v.p, "sheet-pop", None)
         .role("dialog")
         .label(label)
-        .hover_group()
-        .hover_motion(motion::hover_fade(), motion::hover_fade())
         .child(card)
-        .child(actions);
+        .child(actions_zone);
 
     // SHEET-015: the scrim takes every click and wheel, and only moving the window stays live.
     let drag = row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0));

@@ -139,6 +139,8 @@ pub struct MapState {
     /// A drag just dropped, so the press its release makes is not a click.
     pub dropped: bool,
     pub inline: Option<Inline>,
+    /// Inline zoom percentage editor inside `map-zoom-hud`.
+    pub zoom_edit: Option<ZoomEdit>,
     /// What the field edits for the moment between its edit ending and its view going.
     pub spare: TextEdit,
     /// True while keyboard focus sits on the map canvas (`note-keys` or `map-inline-edit`).
@@ -152,6 +154,16 @@ pub struct MapState {
     /// clipboard backend cleanly fall back to `last_copied` after 50 ms.
     pub(crate) pending_paste: Option<f64>,
 }
+
+/// Inline zoom percentage input inside `map-zoom-hud`.
+pub struct ZoomEdit {
+    pub edit: TextEdit,
+    /// True once the input has held keyboard focus, so losing it commits and closes.
+    pub held: bool,
+}
+
+/// Element key of the inline zoom percentage input in `map-zoom-hud`.
+pub const ZOOM_FIELD: &str = "zoom-pct-input";
 
 /// The field over a node while its text is edited in place (MAP-016 to MAP-019, MAP-021).
 pub struct Inline {
@@ -227,6 +239,7 @@ impl Default for MapState {
             node_drag: None,
             dropped: false,
             inline: None,
+            zoom_edit: None,
             spare: TextEdit::new(""),
             canvas_focused: true,
             drawer_return_pan: None,
@@ -578,6 +591,7 @@ impl App {
     pub fn map_move(&mut self, pan: [f32; 2], zoom: f32, tx: &mut Tx) {
         let before = self.map_signature();
         self.map.glide = None;
+        self.map.zoom_edit = None;
         self.map.throw.stop();
         self.map.drawer_return_pan = None;
         if let Some(e) = &mut self.map.inline {
@@ -603,6 +617,7 @@ impl App {
     fn map_glide(&mut self, to: ([f32; 2], f32), tx: &mut Tx) {
         let to = (to.0, to.1.clamp(ZOOM_MIN, ZOOM_MAX));
         let from = self.map_camera();
+        self.map.zoom_edit = None;
         self.map.throw.stop();
         if crate::motion::reduced() || from == to {
             self.set_camera(to.0, to.1);
@@ -615,7 +630,7 @@ impl App {
 
     /// Before each frame: a camera glide's next step. True when it mounts something new.
     pub(crate) fn poll_map(&mut self, t: f64, tx: &mut Tx) -> bool {
-        let mut committed = self.place_due() | self.poll_field(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
+        let mut committed = self.place_due() | self.poll_field(tx) | self.poll_zoom_edit(tx) | self.poll_drag(t, tx) | self.poll_relayout(t, tx);
         let node_menu = matches!(self.menu(), Some(m) if matches!(m.of, crate::layer::MenuOf::Node(_)));
         let focused = node_menu || tx.focused().is_none_or(|k| k == crate::focus::NOTE || k == FIELD);
         if self.map.canvas_focused != focused {
@@ -685,8 +700,15 @@ impl App {
     /// free canvas. A selected node off screen is centred instead. Glides smoothly (snapping
     /// under reduced motion) and chains from any in-flight glide target.
     pub fn map_zoom_step(&mut self, f: f32, tx: &mut Tx) {
+        let (_, z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
+        self.map_zoom_to(z * f, tx);
+    }
+
+    /// Glides to an absolute zoom level (clamped to `ZOOM_MIN..=ZOOM_MAX`) keeping the selected
+    /// node anchored on screen.
+    pub fn map_zoom_to(&mut self, target: f32, tx: &mut Tx) {
         let ([px, py], z) = self.map.glide.as_ref().map_or_else(|| self.map_camera(), |g| g.to);
-        let nz = (z * f).clamp(ZOOM_MIN, ZOOM_MAX);
+        let nz = target.clamp(ZOOM_MIN, ZOOM_MAX);
         let sel = self.map_selected();
         let Some(p) = self.map_laid().at[sel] else { return };
         let (wx, wy) = (p.x + p.w / 2.0, p.y + p.h / 2.0);
@@ -702,6 +724,61 @@ impl App {
             e.edit_return_cam = None;
         }
         self.map_glide(cam, tx);
+    }
+
+    /// Starts inline editing of the zoom percentage inside `map-zoom-hud`.
+    pub fn map_zoom_edit_start(&mut self, tx: &mut Tx) {
+        let pct = format!("{}", (self.map_target_zoom() * 100.0).round() as i32);
+        let n = pct.len();
+        let mut edit = TextEdit::new(pct);
+        edit.set_selection(0, n);
+        edit.focused = true;
+        self.map.zoom_edit = Some(ZoomEdit { edit, held: false });
+        tx.focus(ZOOM_FIELD, false);
+    }
+
+    /// Applies the typed zoom percentage (clamped to `10..=400%`) and returns focus to the map.
+    pub fn map_zoom_edit_commit(&mut self, tx: &mut Tx) {
+        self.map_zoom_edit_apply(tx);
+        self.keys_to_note(tx);
+    }
+
+    /// Cancels inline zoom editing without changing zoom and returns focus to the map.
+    pub fn map_zoom_edit_cancel(&mut self, tx: &mut Tx) {
+        self.map.zoom_edit = None;
+        self.keys_to_note(tx);
+    }
+
+    fn map_zoom_edit_apply(&mut self, tx: &mut Tx) -> bool {
+        let Some(z) = self.map.zoom_edit.take() else { return false };
+        let raw = z.edit.text.trim().trim_end_matches('%').trim();
+        if let Ok(pct) = raw.parse::<f32>()
+            && pct.is_finite()
+            && pct > 0.0
+        {
+            self.map_zoom_to(pct / 100.0, tx);
+        }
+        true
+    }
+
+    fn poll_zoom_edit(&mut self, tx: &mut Tx) -> bool {
+        if self.map.zoom_edit.is_none() {
+            return false;
+        }
+        if self.mode != Mode::Map || self.active_locked() {
+            self.map.zoom_edit = None;
+            return true;
+        }
+        if tx.focused() == Some(ZOOM_FIELD) {
+            if let Some(z) = &mut self.map.zoom_edit {
+                z.held = true;
+            }
+            return false;
+        }
+        if self.map.zoom_edit.as_ref().is_some_and(|z| z.held) {
+            return self.map_zoom_edit_apply(tx);
+        }
+        false
     }
 
     /// What the map draws, `[x0, y0, x1, y1]`: every shown node with its fold circle, its
@@ -2217,6 +2294,7 @@ impl App {
         self.map.glide = None;
         self.map.relayout = None;
         self.map.node_drag = None;
+        self.map.zoom_edit = None;
         self.map.drawer_return_pan = None;
     }
 

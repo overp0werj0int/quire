@@ -309,13 +309,15 @@ pub(super) fn help_sheet(v: V) -> Card {
         on: help_mode == m,
         run: Box::new(move |s: &mut App, tx: &mut Tx| {
             if let Some(h) = s.help_search_mut() {
-                h.mode = m;
-                h.idx = None;
+                h.set_mode(m);
             }
             if !tx.by_keys() {
                 tx.focus(crate::reader::HELP_SEARCH, false);
             }
         }),
+        on_enter: Some(Box::new(|_, tx: &mut Tx| {
+            tx.focus(crate::reader::HELP_SEARCH, false);
+        })),
     };
     let mode_pills = super::components::pill_group(
         v.p,
@@ -503,10 +505,26 @@ pub(super) fn help_sheet(v: V) -> Card {
             live.set(st);
         })
         .child(faded("help", c.bg, card.child(body)));
+    let (help_enter, help_exit) = super::tab_transition(search.slide_dir);
+    let page = col()
+        .key(format!("help-page:{}", search.slide_gen))
+        .w(w)
+        .h(scroll_h)
+        .fill(c.bg)
+        .transition(help_enter)
+        .child_exit(rune::Transition::none())
+        .child(scroll);
+    let stage = col()
+        .key("help-stage")
+        .w(w)
+        .h(scroll_h)
+        .clip_soft(0.0)
+        .child_exit(help_exit)
+        .child(page);
     let card = dialog_frame(v.p, "help-card", None)
         .role("dialog")
         .label("Keyboard help")
-        .child(col().w(w).radius(radius::DIALOG).clip_rounded(radius::DIALOG).child(header).child(search_row).child(scroll));
+        .child(col().w(w).radius(radius::DIALOG).clip_rounded(radius::DIALOG).child(header).child(search_row).child(stage));
     Card { el: card, plane: Some(col().center()) }
 }
 

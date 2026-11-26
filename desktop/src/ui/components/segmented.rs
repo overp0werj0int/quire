@@ -1,6 +1,6 @@
 //! Unified segmented control and compact pill-group selector (`SZ-06`, `LK-01`, `LK-14`).
 
-use rune::{Color, El, TextStyle, Tx, row, text};
+use rune::{Color, El, Key, KeyEvent, Mods, TextStyle, Tx, row, text};
 
 use super::{Control, label};
 use crate::app::App;
@@ -74,6 +74,9 @@ pub struct PillItem {
     pub aria_label: String,
     pub on: bool,
     pub run: Box<dyn Fn(&mut App, &mut Tx)>,
+    /// Optional follow-up action run after `run` when the user presses Enter on the pill
+    /// (for example, dropping focus from the mode selector into the search field).
+    pub on_enter: Option<Box<dyn Fn(&mut App, &mut Tx)>>,
 }
 
 pub fn pill_group(p: &Pal, key: &str, aria_label: &str, items: Vec<PillItem>) -> El {
@@ -90,7 +93,9 @@ pub fn pill_group(p: &Pal, key: &str, aria_label: &str, items: Vec<PillItem>) ->
         .label(aria_label);
     for it in items {
         let on = it.on;
-        let run = it.run;
+        let run = std::rc::Rc::new(it.run);
+        let run_enter = run.clone();
+        let on_enter = it.on_enter;
         let lbl = text(it.label).font(sans(styles::scale::SMALL, if on { 500.0 } else { 400.0 }));
         let lbl = if on { lbl.color(p.ink) } else { lbl.color(muted).group_color(p.ink) };
         let pill = FocusRing::Standard
@@ -109,7 +114,25 @@ pub fn pill_group(p: &Pal, key: &str, aria_label: &str, items: Vec<PillItem>) ->
                     .label(it.aria_label),
                 p,
             )
-            .choice(on, move |s, tx| run(s, tx))
+            .role("radio")
+            .checked(on)
+            .focusable(true)
+            .focus_selected(on)
+            .on_press_tx(move |s: &mut App, tx| {
+                s.touch_activity();
+                run(s, tx);
+            })
+            .on_key(move |s: &mut App, ev: &KeyEvent, tx| {
+                let enter = ev.key == Key::Enter && ev.mods == Mods::default();
+                if enter {
+                    s.touch_activity();
+                    run_enter(s, tx);
+                    if let Some(ref f) = on_enter {
+                        f(s, tx);
+                    }
+                }
+                enter
+            })
             .child(lbl);
         group = group.child(pill);
     }

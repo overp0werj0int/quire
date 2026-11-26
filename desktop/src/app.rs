@@ -155,6 +155,10 @@ pub struct App {
     /// A layer replaced another in this change: the one leaving goes at once (`ui::view`).
     pub(crate) layer_swap: bool,
     pub set_sec: Sec,
+    /// Incremented whenever the active settings section changes so the body slides vertically.
+    pub(crate) set_gen: u64,
+    /// Vertical slide direction for settings section switches (`+1` down, `-1` up, `0` none).
+    pub(crate) set_slide: i8,
     pub focus: bool,
     pub renaming: Option<TextEdit>,
     pub creating: Option<TextEdit>,
@@ -409,6 +413,8 @@ pub fn init() -> App {
         handed: None,
         layer_swap: false,
         set_sec: Sec::Appearance,
+        set_gen: 0,
+        set_slide: 0,
         focus: false,
         renaming: None,
         creating: None,
@@ -2525,7 +2531,19 @@ impl App {
     }
 
     pub fn open_settings(&mut self, tx: &mut Tx) {
+        self.set_slide = 0;
         self.open_layer(crate::layer::Layer::Settings, tx);
+    }
+
+    pub fn set_settings_sec(&mut self, sec: Sec) {
+        if self.set_sec == sec {
+            return;
+        }
+        let pos = |target: Sec| SECS.iter().position(|(id, _)| *id == target).unwrap_or(0);
+        self.set_slide = if pos(sec) > pos(self.set_sec) { 1 } else { -1 };
+        self.set_gen += 1;
+        self.set_sec = sec;
+        self.key_edit = None;
     }
 
     pub fn open_search(&mut self, tx: &mut Tx) {
