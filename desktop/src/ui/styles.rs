@@ -104,11 +104,71 @@ pub fn sans(size: f32, weight: f32) -> TextStyle {
 /// A popup's message (RD-98): the toast, its Undo and the notice. Menus are navigation and
 /// take `nav`; a tooltip names a key and takes `tooltip`; a key name inside a popup takes `keys`.
 pub fn popup() -> TextStyle {
-    sans(13.0, 400.0)
+    body()
 }
 
 /// Every caption's size, in both families: omarky's caption size.
-pub const CAPTION: f32 = 10.0;
+pub const CAPTION: f32 = scale::CAPTION;
+
+/// Named chrome type scale (LK-07, LK-08): six steps plus the palette command field.
+pub mod scale {
+    pub const CAPTION: f32 = 10.0;
+    pub const SMALL: f32 = 11.5;
+    pub const CONTROL: f32 = 12.5;
+    pub const BODY: f32 = 13.0;
+    pub const ROW_TITLE: f32 = 14.0;
+    pub const PALETTE_INPUT: f32 = 15.0;
+    pub const TITLE: f32 = 17.0;
+}
+
+/// Dialog and section heading (17 pt semibold Instrument Sans).
+pub fn title() -> TextStyle {
+    sans(scale::TITLE, 600.0)
+}
+
+/// Settings row title and command palette row label (14 pt medium Instrument Sans).
+pub fn row_title() -> TextStyle {
+    sans(scale::ROW_TITLE, 500.0)
+}
+
+/// Dialog body text and toast/notice popup text (13 pt regular Instrument Sans).
+pub fn body() -> TextStyle {
+    sans(scale::BODY, 400.0)
+}
+
+/// Single-line text field content (13 pt regular Instrument Sans).
+pub fn field() -> TextStyle {
+    sans(scale::BODY, 400.0)
+}
+
+/// Command palette search input (15 pt regular Instrument Sans).
+pub fn palette_input() -> TextStyle {
+    sans(scale::PALETTE_INPUT, 400.0)
+}
+
+/// Controls and buttons (12.5 pt regular or medium Instrument Sans).
+pub fn control() -> TextStyle {
+    sans(scale::CONTROL, 400.0)
+}
+
+pub fn control_medium() -> TextStyle {
+    sans(scale::CONTROL, 500.0)
+}
+
+/// Secondary descriptions under row titles and dialog headings (12.5 pt at 1.45 leading).
+pub fn desc() -> TextStyle {
+    sans(scale::CONTROL, 400.0).lh(scale::CONTROL * 1.45)
+}
+
+/// Small UI labels, hints, badges and secondary metadata (11.5 pt regular Instrument Sans).
+pub fn small() -> TextStyle {
+    sans(scale::SMALL, 400.0)
+}
+
+/// Readable error text colour on `p.bg` (`>= 5.0:1` across every theme, LK-09).
+pub fn error_ink(p: &Pal) -> Color {
+    Roles::new(p).readable_err()
+}
 
 /// A caption's capitals: bold, 1 px apart, at `CAPTION`, in the panel family in navigation
 /// (`nav`) and in Instrument Sans elsewhere, with no colour. The panel tabs take it with their
@@ -140,7 +200,7 @@ pub fn note(family: Family, size: f32, lh: f32) -> TextStyle {
     TextStyle::new(size, 400.0).family(family).lh(lh)
 }
 
-/// Whether every ASCII character of `family` is exactly 0.6 em wide, so `widgets::label` can
+/// Whether every ASCII character of `family` is exactly 0.6 em wide, so `components::label` can
 /// give a run its CSS width.
 pub fn fixed_advance(family: Family) -> bool {
     matches!(family, Family::Named("IBM Plex Mono" | "Courier Prime" | "Spline Sans Mono"))
@@ -194,7 +254,7 @@ mod tests {
                     }
                     continue;
                 }
-                if ["styles.rs", "preview.rs", "chip.rs"].contains(&rel.as_str()) {
+                if ["styles.rs", "preview.rs"].contains(&rel.as_str()) {
                     continue;
                 }
                 let src = std::fs::read_to_string(&path).unwrap();

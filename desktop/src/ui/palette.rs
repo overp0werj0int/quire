@@ -4,14 +4,14 @@ use crate::roles::Roles;
 use rune::{Color, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, icon, rich, row, text, text_input};
 
 use super::V;
+use super::components::{dialog_frame, faded_h, kbd, key_hint, label, tag_badge};
 use super::icons::{LOCK, WARNING};
-use super::widgets::label;
 use super::layer::Card;
+use super::tokens::{radius, size, space};
 use crate::app::{App, PalMode, Palette};
 use crate::commands::{self, pal_data};
 use crate::keymap::Ctx;
 use super::styles::{keys, sans};
-use crate::theme;
 
 const HEAD_H: f32 = 53.0;
 const FOOT_H: f32 = 35.0;
@@ -51,14 +51,14 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .key("pal-head")
         .h(HEAD_H)
         .w_full()
-        .gap(12.0)
+        .gap(space::GAP_GROUP)
         .px(18.0)
         .center_y()
         .border_sides([0.0, 0.0, 1.0, 0.0], p.line)
         .border_layout()
-        .child(super::widgets::padded(badge_lbl, sans(11.5, 500.0), p.acc, 7.0, 3.0, 0.0).radius(5.0).fill(p.soft))
+        .child(tag_badge(p, badge_lbl))
         .child(
-            text_input(q, sans(15.0, 400.0))
+            text_input(q, super::styles::palette_input())
                 .key("pal-input")
                 .single_line()
                 .px(2.0)
@@ -125,7 +125,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .gap(8.0)
                 .px(12.0)
                 .center_y()
-                .radius(7.0)
+                .radius(radius::CONTROL)
                 .fill(if on { p.act } else { Color::TRANSPARENT })
                 .role("option")
                 .checked(on)
@@ -141,10 +141,10 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .children(lock_badge)
                 .children(conflict_badge)
                 .child(rich(t.clone(), spans).font(sans(14.0, 400.0)).color(p.ink).truncate().grow(1.0).shrink().min_w(0.0).help_when_truncated(t))
-                // The note's folder, or the command's key cap (`widgets::kbd`, `SCROLLFADE`).
+                // The note's folder, or the command's key cap (`components::kbd`, `SCROLLFADE`).
                 .children((!it.sub.is_empty()).then(|| {
                     if cmds {
-                        super::widgets::kbd(p, it.sub.clone(), true)
+                        kbd(p, it.sub.clone(), true)
                     } else {
                         text(it.sub.clone()).font(keys(11.5)).color(p.mute).truncate_head().shrink().min_w(0.0).max_w(SUB_W).help_when_truncated(it.sub.clone())
                     }
@@ -173,10 +173,10 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
         .min_h(0.0)
         .scroll(ScrollSpec { stick_bottom: false })
         .scroll_margin(PAL_FADE)
-        .child(super::widgets::faded_h("pal", p.bg, PAL_FADE, list));
+        .child(faded_h("pal", p.bg, PAL_FADE, list));
 
     // A key cap in the shared `<kbd>` style, then what it does (C14, SCROLLFADE).
-    let hint = |k: String, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(p, k, true)).child(label(what.to_string(), sans(11.5, 400.0), p.mute));
+    let hint = |k: String, what: &str| key_hint(p, k, what, p.mute);
     let km = &v.s.keymap;
     let prev_k = km.label("palette.previous");
     let next_k = km.label("palette.next");
@@ -214,24 +214,23 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .gap(5.0)
                 .center_y()
                 .child(label("type", sans(11.5, 400.0), p.mute))
-                .child(super::widgets::kbd(p, ">", true))
+                .child(kbd(p, ">", true))
                 .child(label("for commands", sans(11.5, 400.0), p.mute))
         });
 
-    let [a, b] = theme::palette_shadows();
-    let panel = el().key("palette-frame").w_full().max_w(600.0).radius(12.0).fill(p.bg).border(1.0, Roles::new(p).hairline).box_shadow(a).box_shadow(b).child(
+    let panel = dialog_frame(p, "palette-frame", Some(size::DIALOG_W_PALETTE)).child(
         col()
             .key("palette")
             .w_full()
-            .radius(12.0)
-            .clip_rounded(12.0)
+            .radius(radius::DIALOG)
+            .clip_rounded(radius::DIALOG)
             .role("dialog")
             .label(if moving { "Move to folder" } else if cmds { "Commands" } else { "Quick switcher" })
             .child(head)
             .child(scroller)
             .child(foot),
     );
-    Card { el: panel, plane: Some(col().items_center().pt(top).px(20.0).pb(LAYER_BOTTOM)) }
+    Card { el: panel, plane: Some(col().items_center().pt(top).px(space::DIALOG_MARGIN).pb(LAYER_BOTTOM)) }
 }
 
 /// The palette's field, for its edit hook, which can still run in the frame the palette
@@ -280,6 +279,14 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
                 return false;
             }
             "palette.close" => {
+                // IX-03: Esc clears a non-empty filter first; the next Esc closes the palette.
+                if let Some(p) = s.pal_mut()
+                    && !p.q.text.is_empty()
+                {
+                    p.q = rune::TextEdit::new("");
+                    p.idx = 0;
+                    return true;
+                }
                 s.dismiss(tx);
                 return true;
             }
@@ -288,6 +295,13 @@ fn on_pal_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
     // Esc with Shift/Ctrl/Alt still dismisses when palette.close is bound to Esc (MODESC2).
     if matches!(ev.key, Key::Escape) && !ev.mods.logo && s.keymap.chords("palette.close").contains(&"Esc") {
+        if let Some(p) = s.pal_mut()
+            && !p.q.text.is_empty()
+        {
+            p.q = rune::TextEdit::new("");
+            p.idx = 0;
+            return true;
+        }
         s.dismiss(tx);
         return true;
     }
@@ -328,6 +342,20 @@ mod tests {
             assert!(on_pal_key(s, &ctrl_n, tx));
         });
         assert_eq!(rt.state.pal().unwrap().idx, 1);
+
+        // IX-03: Esc clears a non-empty query first, then closes the palette on the next Esc.
+        rt.update(|s, _| {
+            if let Some(p) = s.pal_mut() {
+                p.q = rune::TextEdit::new("al");
+            }
+        });
+        let esc = KeyEvent { key: Key::Escape, mods: rune::Mods::default() };
+        rt.update(|s, tx| assert!(on_pal_key(s, &esc, tx)));
+        assert!(rt.state.pal().is_some(), "first Esc keeps palette open when clearing query");
+        assert!(rt.state.pal().unwrap().q.text.is_empty(), "first Esc clears the query");
+        assert_eq!(rt.state.pal().unwrap().idx, 0, "clearing query resets selection to 0");
+        rt.update(|s, tx| assert!(on_pal_key(s, &esc, tx)));
+        assert!(rt.state.pal().is_none(), "second Esc closes the palette");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

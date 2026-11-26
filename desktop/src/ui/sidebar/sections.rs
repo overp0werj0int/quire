@@ -7,7 +7,7 @@ use rune::{El, Phase, ScrollSpec, col, el, icon};
 use super::super::V;
 use super::super::panel;
 use super::super::icons::CHEVRON_DOWN;
-use super::super::widgets::Control;
+use super::super::components::Control;
 use super::parts::{GAP, LABEL_H, ROW_H, label_row};
 use super::{BAR_PAD, BUTTON, shelf, tree};
 use crate::app::App;

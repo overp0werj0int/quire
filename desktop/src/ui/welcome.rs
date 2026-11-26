@@ -2,7 +2,8 @@
 
 use rune::{Color, El, ScrollSpec, col, el, row, text, text_input};
 
-use super::widgets::{Control, MARK, MARK_ON_INK, dots, label, primary_button};
+use super::components::Button;
+use super::components::{Control, MARK, MARK_ON_INK, dots, label};
 use super::{V, baseline_shift};
 use crate::app::App;
 use crate::store::tilde;
@@ -55,29 +56,19 @@ pub fn welcome(v: V) -> El {
                 .padding(16.0)
                 .border(1.0, p.line)
                 .border_layout()
-                .radius(10.0)
+                .radius(super::tokens::radius::FIELD)
                 .child(label("Folder name", sans(12.5, 500.0), p.ink2))
                 .child(
-                    super::widgets::input_focus_ring(
-                        row()
-                            .key("new-vault-box")
-                            .h(38.0)
-                            .px(12.0)
-                            .center_y()
-                            .border(1.0, p.line)
-                            .border_layout()
-                            .radius(8.0)
-                            .fill(p.bg),
-                        p,
-                    )
-                    .child(
-                        text_input(edit, sans(14.0, 400.0))
-                            .key("new-vault")
-                            .single_line()
-                            .grow(1.0)
-                            .color(p.ink)
-                            .label("Folder name")
-                            .placeholder("My notes", super::styles::placeholder_ink(p))
+                    super::components::input_frame(p, "new-vault-box", super::components::InputSize::Dialog, false, edit.focused)
+                        .px(super::tokens::space::PAD_INPUT_X)
+                        .child(
+                            text_input(edit, super::styles::field())
+                                .key("new-vault")
+                                .single_line()
+                                .grow(1.0)
+                                .color(p.ink)
+                                .label("Folder name")
+                                .placeholder("My notes", super::styles::placeholder_ink(p))
                                 .caret(p.ink, p.sel)
                                 .on_edit(|s: &mut App| s.creating.get_or_insert_with(|| rune::TextEdit::new("")))
                                 .on_input_key(|s: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| {
@@ -104,25 +95,11 @@ pub fn welcome(v: V) -> El {
                         .key("create-buttons")
                         .gap(8.0)
                         .justify_end()
-                        .child(
-                            row()
-                                .key("cancel")
-                                .h(32.0)
-                                .px(14.0)
-                                .center()
-                                .radius(8.0)
-                                .border(1.0, p.line)
-                                .border_layout()
-                                .hover(p.hover)
-                                .role("button")
-                                .label("Cancel")
-                                .control(|s: &mut App, tx| {
-                                    s.creating = None;
-                                    tx.focus("create", tx.by_keys());
-                                })
-                                .child(label("Cancel", sans(13.0, 400.0), p.ink2)),
-                        )
-                        .child(primary_button(p, "create-go", "Create", 32.0, 16.0, 13.0, |s, tx| s.create_vault(tx))),
+                        .child(Button::outline(p, "cancel", "Cancel").on_press(|s: &mut App, tx| {
+                            s.creating = None;
+                            tx.focus("create", tx.by_keys());
+                        }))
+                        .child(Button::primary(p, "create-go", "Create").on_press(|s, tx| s.create_vault(tx))),
                 )
         }
     };
@@ -178,7 +155,7 @@ fn card(v: V, key: &str, title: &str, desc: &str, run: fn(&mut App, &mut rune::T
         .center_y()
         .border(1.0, p.line)
         .border_layout()
-        .radius(10.0)
+        .radius(super::tokens::radius::FIELD)
         .fill(p.bg)
         .hover_group()
         .role("button")
@@ -193,5 +170,5 @@ fn card(v: V, key: &str, title: &str, desc: &str, run: fn(&mut App, &mut rune::T
         )
         .child(label("→", sans(15.0, 400.0), p.mute))
         // The hover border: CSS changes the border colour; this ring fades in over it.
-        .child(el().key("ring").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(10.0).border(1.0, p.mark).fill(Color::TRANSPARENT).group_opacity(0.0, 1.0))
+        .child(el().key("ring").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(super::tokens::radius::FIELD).border(1.0, p.mark).fill(Color::TRANSPARENT).group_opacity(0.0, 1.0))
 }

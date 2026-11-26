@@ -164,7 +164,7 @@ The editing actions also act in the sheet, because the sheet's editor is the wri
 - **KEY-82** [quire] [verify: -] palette.previous (palette): `Up`. Moves to the previous row.
 - **KEY-83** [quire] [verify: -] palette.run (palette): `Enter`. Opens the note or runs the command on the current row.
 - **KEY-84** [quire] [verify: -] palette.back-to-notes (palette): `Backspace`. On an empty commands query, goes back to the note list.
-- **KEY-85** [quire] [verify: -] palette.close (palette): `Esc`. Closes the palette.
+- **KEY-85** [quire] [verify: -] palette.close (palette): `Esc`. Clears a non-empty filter query first, then closes the palette.
 
 ## Field
 

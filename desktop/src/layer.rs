@@ -33,6 +33,8 @@ pub struct TrashModal {
     pub armed_empty: bool,
     /// First click on a row's "Delete" arms permanent deletion of that trash entry.
     pub armed_delete: Option<String>,
+    /// When the current armed destructive state began; lapses after `ARMED_LAPSE_SECS` (`IX-05`).
+    pub armed_at: Option<std::time::Instant>,
 }
 
 pub enum Layer {

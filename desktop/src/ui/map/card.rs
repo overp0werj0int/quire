@@ -14,7 +14,7 @@ use crate::ui::icons;
 use crate::ui::preview::code as pcode;
 use crate::ui::preview::table::Grid;
 use crate::ui::preview::{Cx, LOADING, Pic, Tone};
-use crate::ui::widgets::{MINI_BAR_H, MINI_BTN, mini_bar_at, mini_bar_w, mini_button_at};
+use crate::ui::components::{MINI_BAR_H, MINI_BTN, mini_bar_at, mini_bar_w, mini_button_at};
 
 /// Code and diff cards show this many lines (MAP-049).
 const CODE_LINES: usize = 12;

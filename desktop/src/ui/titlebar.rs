@@ -4,49 +4,41 @@
 use rune::{El, Tx, el, row};
 
 use super::V;
+use super::components::{IconButton, IconButtonSize, ToggleKind};
 use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, LAYOUT_RIGHT, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, icon_of};
-use super::widgets::{Control, dots, icon_button, label, toggle_button};
+use super::components::{DOTS_W, dots, label};
 use crate::app::{App, Mode};
 use crate::layer::Kind;
 use super::styles::sans;
 
-/// The title bar's height: omarky's header, 40 points. Its buttons are 24 and their icons 15,
-/// each about the golden ratio (1.618) of the next size down, all centred 20 points down.
-pub const BAR_H: f32 = 40.0;
-const BUTTON: f32 = 24.0;
-/// Every icon in the bar is drawn at this one size. A glyph that looks heavier or lighter than
-/// its neighbours is fixed in its own drawing, not by a size of its own.
-const ICON: f32 = 15.0;
+/// The title bar's height: omarky's header, 40 points.
+pub const BAR_H: f32 = super::tokens::size::TITLEBAR_H;
+const BUTTON: f32 = super::tokens::size::CONTROL_BAR;
 
 /// An icon button sized for the bar, keyboard-focusable with a focus ring while preserving
 /// editor/preview focus on pointer clicks via the bar's `preserve_focus_on_press(true)` (`KBDA11Y`).
 fn bar_button(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    let (rw, rg, rc) = super::focus_ring(p);
-    super::focus::stop(icon_button(p, key, glyph, ICON, help).size(BUTTON, BUTTON))
-        .role("button")
-        .focus_ring(rw, rg, rc)
+    IconButton::new(p, key, glyph, help)
+        .size(IconButtonSize::Bar)
+        .focus_stop()
         .keeps_text_selection()
-        .control(run)
+        .on_press(run)
 }
 
 fn bar_toggle(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str, on: bool, run: impl Fn(&mut App, &mut Tx) + 'static) -> El {
-    let (rw, rg, rc) = super::focus_ring(p);
-    super::focus::stop(toggle_button(p, key, glyph, ICON, help, on).size(BUTTON, BUTTON))
-        .focus_ring(rw, rg, rc)
+    IconButton::new(p, key, glyph, help)
+        .size(IconButtonSize::Bar)
+        .toggle(ToggleKind::Switch(on))
+        .focus_stop()
         .keeps_text_selection()
-        .control(run)
+        .on_press(run)
 }
 
 fn bar_button_disabled(p: &crate::theme::Pal, key: &str, glyph: &'static rune::Icon, help: &str) -> El {
-    row()
-        .key(key)
-        .size(BUTTON, BUTTON)
-        .center()
-        .radius(6.0)
+    IconButton::new(p, key, glyph, help)
+        .size(IconButtonSize::Bar)
         .disabled(true)
-        .label(help)
-        .help(help)
-        .child(rune::icon(glyph, ICON).color(p.mute.alpha(0.38)))
+        .el()
 }
 
 /// A title bar button's press, which stays live over a drawer: the drawer closes, then the
@@ -60,9 +52,9 @@ pub(super) fn act(f: fn(&mut App, &mut Tx)) -> impl Fn(&mut App, &mut Tx) + 'sta
 }
 
 /// The corner's leading padding, gap after the window dots (when shown), and total width.
-const CORNER_PL: f32 = if super::widgets::DOTS_W > 0.0 { 14.0 } else { 8.0 };
-const CORNER_GAP: f32 = if super::widgets::DOTS_W > 0.0 { 10.0 } else { 0.0 };
-const CORNER_W: f32 = CORNER_PL + super::widgets::DOTS_W + CORNER_GAP + BUTTON + 8.0;
+const CORNER_PL: f32 = if DOTS_W > 0.0 { 14.0 } else { 8.0 };
+const CORNER_GAP: f32 = if DOTS_W > 0.0 { 10.0 } else { 0.0 };
+const CORNER_W: f32 = CORNER_PL + DOTS_W + CORNER_GAP + BUTTON + 8.0;
 
 /// The window's top-left corner: the window dots and the sidebar toggle. It lies over the
 /// window, outside the sidebar, which leaves room for it at its top, as the title bar does when
@@ -88,7 +80,7 @@ pub fn corner(v: V) -> El {
         .center_y()
         .window_drag()
         .preserve_focus_on_press(true)
-        .children((super::widgets::DOTS_W > 0.0).then(|| dots(p)))
+        .children((DOTS_W > 0.0).then(|| dots(p)))
         .child(bar_toggle(p, "toggle-left", &SIDEBAR_LEFT, &sidebar_tip, v.left_visible() || v.left_over(), |s: &mut App, tx| s.toggle_left(tx)).no_window_drag())
 }
 
@@ -115,7 +107,7 @@ fn bar(v: V) -> El {
     }
 
     let right = actions(v, row().key("right-zone").h(BAR_H).pl(6.0).pr(8.0).gap(4.0).center_y());
-    let slide = rune::Spring::new(0.16, 0.0);
+    let slide = super::tokens::motion::drawer_spring();
 
     // A press on the bar's buttons, or a drag of the window by it, leaves the keyboard where
     // it was: the caret stays in the note. The rename field still takes focus.
@@ -198,13 +190,20 @@ fn actions(v: V, mut r: El) -> El {
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     }
     if v.has_doc() {
-        r = r.child(el().key("bar-sep").w(1.0).h(16.0).fill(p.line));
+        r = r.child(super::components::bar_sep(p, "bar-sep", 16.0));
         // Source, Preview and Map, the shown one marked (MAP-064).
         let mut modes = row().key("modes").gap(4.0).center_y().role("radiogroup").label("Mode");
         for (m, key, glyph, name) in [(Mode::Source, "mode-source", &CODE, "Source"), (Mode::Preview, "mode-preview", &EYE, "Preview"), (Mode::Map, "mode-map", &MAP, "Map")] {
             let on = s.mode == m;
             let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(m)) };
-            modes = modes.child(bar_toggle(p, key, glyph, &help, on, act(crate::commands::show(m))).role("radio"));
+            modes = modes.child(
+                IconButton::new(p, key, glyph, help)
+                    .size(IconButtonSize::Bar)
+                    .toggle(ToggleKind::Radio(on))
+                    .focus_stop()
+                    .keeps_text_selection()
+                    .on_press(act(crate::commands::show(m))),
+            );
         }
         r = r.child(modes);
         let help = tip(crate::commands::zen_name(s), if zen { "app.escape" } else { "app.focus-mode" });
@@ -238,7 +237,7 @@ fn focus_bar(v: V) -> El {
     // wider pill's, the preview's, in both modes, so the hint does not move when the mode does.
     // The pill's right margin and the gap before the window's trailing room are 10 and 8.
     let right = PILL_ROOM + 10.0 + 8.0 + v.trailing + 16.0;
-    let left = 14.0 + 52.0 + 16.0;
+    let left = 14.0 + super::components::DOTS_W + 16.0;
     let full = format!("{count} · Esc to leave zen mode");
     let w = rune::text::measure(&full, &[], sans(12.0, 400.0), None).0;
     let (words, left) = if w <= v.vw - 2.0 * right {
@@ -269,8 +268,8 @@ fn focus_bar(v: V) -> El {
             // The title bar's buttons on a floating pill in the top-right corner.
             actions(
                 v,
-                super::widgets::toolbar_surface(
-                    row().key("zen-actions").h(32.0).px(4.0).gap(4.0).center_y().radius(10.0),
+                super::components::toolbar_surface(
+                    row().key("zen-actions").h(super::tokens::size::CONTROL_DIALOG).px(4.0).gap(4.0).center_y().radius(super::tokens::radius::FIELD),
                     p,
                     1.0,
                 )
@@ -279,5 +278,6 @@ fn focus_bar(v: V) -> El {
             ),
         )
         .child(el().w(v.trailing));
-    el().key("titlebar").h(BAR_H).w_full().window_drag().preserve_focus_on_press(true).hover_group().hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0)).child(hint).child(inner)
+    let zen = super::tokens::motion::zen_spring();
+    el().key("titlebar").h(BAR_H).w_full().window_drag().preserve_focus_on_press(true).hover_group().hover_motion(zen, zen).child(hint).child(inner)
 }

@@ -19,14 +19,14 @@ pub const CAPTION_GAP: f32 = 10.0;
 /// (`ui::focus_ring`). A side list keeps it clear at both ends, at rest and as a row scrolls in
 /// to take focus (RING).
 pub const RING_ROOM: f32 = 5.0;
-/// The row shade's inset from each side of the panel.
-pub const INSET: f32 = 10.0;
-/// A row's text starts here, plus `INDENT` a level.
-pub const TEXT_X: f32 = 22.0;
+/// The row shade's inset from each side of the panel (aligned with sidebar, SP-01).
+pub const INSET: f32 = super::tokens::space::PX_8;
+/// A row's text starts here, plus `INDENT` a level (`INSET + 8`, aligned with sidebar, SP-01).
+pub const TEXT_X: f32 = INSET + super::tokens::space::PX_8;
 pub const INDENT: f32 = 14.0;
 /// A row's text ends this far from the panel's right edge.
-pub const RIGHT: f32 = 18.0;
-const RADIUS: f32 = 6.0;
+pub const RIGHT: f32 = super::tokens::space::PX_16;
+const RADIUS: f32 = super::tokens::radius::CONTROL;
 
 /// A row is its text's line plus 12 px.
 pub fn row_h(size: f32) -> f32 {

@@ -66,7 +66,7 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
             let fade = if crate::motion::reduced() {
                 rune::Transition::none()
             } else {
-                let s = rune::Spring::new(0.08, 0.0);
+                let s = super::tokens::motion::modal_spring();
                 rune::Transition::opacity().springs(rune::SpringPair::new(s, s))
             };
             out.push(plane.key(key).pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).paint_order(paint).fill(v.p.scrim).transition(fade).child(el));
@@ -83,7 +83,8 @@ fn layer(v: V, l: &Layer, out: &mut Vec<El>) {
 /// The scrim behind a drawer: the layers' colour over the page, under the title bar, which
 /// stays live. It fades in and out with the drawer's slide.
 fn page_scrim(v: V, paint: i16) -> El {
-    let fade = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+    let s = super::tokens::motion::drawer_spring();
+    let fade = rune::SpringPair::new(s, s);
     rune::el()
         .key("drawer-scrim")
         .pin(Some(0.0), Some(super::titlebar::BAR_H), Some(0.0), Some(0.0))

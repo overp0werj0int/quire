@@ -18,7 +18,7 @@ use super::V;
 use super::panel;
 use super::styles::nav;
 use super::icons::{CLOSE, GEAR, PLUS, SEARCH, TAG, TRASH};
-use super::widgets::Control;
+use super::components::Control;
 use crate::app::App;
 use crate::roles::Roles;
 
@@ -65,7 +65,7 @@ pub fn sidebar(v: V) -> El {
 /// Subtle scroll-edge fade shared by sidebar lists (`side-scroll`, `results-scroll`,
 /// `shelf-scroll`) so short drawers soften cropped rows instead of hard-clipping (`SCROLLFADE`).
 pub(super) fn scroll_fade() -> rune::ScrollFade {
-    rune::ScrollFade::strength(14.0).full_at(1.0).linear()
+    rune::ScrollFade::strength(super::tokens::space::SCROLL_FADE_PANEL).full_at(1.0).linear()
 }
 
 /// A list that scrolls in the room left to it. A focused row's ring reaches RING_ROOM past the
@@ -86,24 +86,14 @@ pub(super) fn scroll(key: &str, body: El) -> El {
 /// The top bar: the search field and the "+" button (SB-09).
 fn top_bar(v: V) -> El {
     let p = v.p;
-    let c = Roles::panel(p);
-    let (rw, rg, rc) = super::focus_ring(p);
-    let new_note = super::focus::stop(row())
-        .key("new-note")
-        .size(BUTTON, BUTTON)
-        .center()
-        .radius(6.0)
-        .fill(c.hover)
-        .hover(c.selected)
-        .border(1.0, p.line)
-        .border_layout()
-        .role("button")
-        .label("New note")
-        .help(v.s.keymap.tip("New note", "app.new-note"))
-        .focus_ring(rw, rg, rc)
+    let new_note = super::components::IconButton::new(p, "new-note", &PLUS, v.s.keymap.tip("New note", "app.new-note"))
+        .size(super::components::IconButtonSize::Panel)
+        .zone(super::tokens::Zone::Panel)
+        .outlined()
+        .aria_label("New note")
+        .focus_stop()
         .keeps_text_selection()
-        .control(|s: &mut App, tx| s.new_note(None, tx))
-        .child(icon(&PLUS, ICON).color(c.text));
+        .on_press(|s: &mut App, tx| s.new_note(None, tx));
     row()
         .key("side-top")
         .w_full()
@@ -122,7 +112,6 @@ fn search_field(v: V) -> El {
     let c = Roles::panel(p);
     let s = v.s;
     let first = s.results().and_then(|r| r.first().map(|row| row.key()));
-    let (_, _, rc) = super::focus_ring(p);
     let field = super::focus::stop(text_input(&s.query, nav(parts::ROW_TEXT, false)))
         .key("search")
         .single_line()
@@ -167,49 +156,33 @@ fn search_field(v: V) -> El {
             true
         });
     let end = (!s.query.text.is_empty()).then(|| {
-        super::focus::stop(row())
-            .key("search-clear")
-            .size(24.0, 24.0)
-            .center()
-            .radius(parts::INNER_RADIUS)
-            .hover(c.hover)
-            .label("Clear search")
-            .help("Clear search")
-            .role("button")
-            // Inset 2 pt ring stays completely inside the 28 pt search-box without protruding.
-            .focus_ring(2.0, -2.0, rc)
-            .control(|s: &mut App, tx| {
+        super::components::IconButton::new(p, "search-clear", &CLOSE, "Clear search")
+            .size(super::components::IconButtonSize::Mini)
+            .zone(super::tokens::Zone::Panel)
+            .tint(c.faint, c.text)
+            .ring(super::tokens::FocusRing::Inset)
+            .focus_stop()
+            .on_press(|s: &mut App, tx| {
                 s.query = rune::TextEdit::new("");
                 s.query.focused = true;
                 tx.focus("search", false);
             })
-            .child(icon(&CLOSE, ICON).color(c.faint))
     });
-    super::widgets::input_focus_ring_when(
-        row()
-            .key("search-box")
-            .grow(1.0)
-            .min_w(0.0)
-            .h(BUTTON)
-            .pl(8.0)
-            .pr(2.0)
-            .gap(7.0)
-            .center_y()
-            .radius(parts::RADIUS)
-            .fill(c.shelf)
-            .border(1.0, p.line)
-            .border_layout(),
-        p,
-        s.query.focused,
-    )
-    .child(icon(&SEARCH, ICON).color(c.faint))
+    super::components::input_frame(p, "search-box", super::components::InputSize::Panel, false, s.query.focused)
+        .grow(1.0)
+        .min_w(0.0)
+        .pl(super::tokens::space::PX_8)
+        .pr(super::tokens::space::PAD_TRACK)
+        .gap(super::tokens::space::GAP_FIELD)
+        .fill(c.shelf)
+        .child(icon(&SEARCH, ICON).color(c.faint))
         .child(field)
         .children(end)
 }
 
 /// A key's name in a chip, as the field's hint (SB-10) and the filled result's (SB-65).
 pub(super) fn kbd(v: V, k: String) -> El {
-    super::widgets::kbd(v.p, k, true)
+    super::components::kbd(v.p, k, true)
 }
 
 /// The footer: the tags button on the left, ambient sync status in the middle when configured,
@@ -222,33 +195,27 @@ fn foot(v: V) -> El {
     // The tags show as the search for "#" (SB-74, SB-75).
     let tags = (!s.note_mode()).then(|| {
         let on = s.query.text.trim_start().starts_with('#');
-        foot_button(v, "foot-tags", &TAG, "Tags".to_string(), on, |s: &mut App, tx| s.toggle_tags(tx)).role("switch").checked(on)
+        super::components::IconButton::new(p, "foot-tags", &TAG, "Tags")
+            .size(super::components::IconButtonSize::Panel)
+            .zone(super::tokens::Zone::Panel)
+            .toggle(super::components::ToggleKind::PanelSwitch(on))
+            .focus_stop()
+            .keeps_text_selection()
+            .on_press(|s: &mut App, tx| s.toggle_tags(tx))
     });
     let trash = (!s.note_mode()).then(|| {
         let count = s.trash_entries.len();
         let on = s.layer_is(crate::layer::Kind::Trash);
         let tip = if count > 0 { format!("Trash ({count})") } else { "Trash".to_string() };
-        let mut btn = super::focus::stop(row())
-            .key("foot-trash")
-            .min_w(BUTTON)
-            .h(BUTTON)
-            .px(if count > 0 { 6.0 } else { 0.0 })
-            .gap(4.0)
-            .center()
-            .radius(6.0)
-            .fill(if on { c.selected } else { rune::Color::TRANSPARENT })
-            .hover(c.hover)
-            .role("button")
-            .label("Trash")
-            .help(tip)
-            .focus_ring(rw, rg, rc)
+        super::components::IconButton::new(p, "foot-trash", &TRASH, tip)
+            .size(super::components::IconButtonSize::Panel)
+            .zone(super::tokens::Zone::Panel)
+            .toggle(super::components::ToggleKind::PanelActive(on))
+            .aria_label("Trash")
+            .count(Some(count))
+            .focus_stop()
             .keeps_text_selection()
-            .control(|s: &mut App, tx| s.open_trash(tx))
-            .child(icon(&TRASH, ICON).color(if on { c.text } else { c.dim }));
-        if count > 0 {
-            btn = btn.child(text(count.to_string()).font(nav(10.5, false)).color(if on { c.text } else { c.faint }));
-        }
-        btn
+            .on_press(|s: &mut App, tx| s.open_trash(tx))
     });
     let middle = match s.sync_label() {
         Some((lbl, busy, failed)) => {
@@ -284,13 +251,20 @@ fn foot(v: V) -> El {
                         s.set_sec = crate::app::Sec::Sync;
                     }
                 })
-                .child(el().size(6.0, 6.0).radius(3.0).fill(dot))
-                .child(text(lbl).font(nav(panel::BODY_SMALL, false)).color(if failed { p.err } else { c.faint }).truncate().shrink().min_w(0.0));
+                .child(super::components::status_dot(dot))
+                .child(text(lbl).font(nav(panel::BODY_SMALL, false)).color(if failed { super::styles::error_ink(p) } else { c.faint }).truncate().shrink().min_w(0.0));
             row().grow(1.0).shrink().min_w(0.0).justify_center().center_y().child(sync)
         }
         None => el().grow(1.0),
     };
-    let settings = foot_button(v, "foot-settings", &GEAR, s.keymap.tip("Settings", "app.settings"), false, |s: &mut App, tx| s.open_settings(tx)).role("button");
+    let settings_tip = s.keymap.tip("Settings", "app.settings");
+    let settings = super::components::IconButton::new(p, "foot-settings", &GEAR, settings_tip)
+        .size(super::components::IconButtonSize::Panel)
+        .zone(super::tokens::Zone::Panel)
+        .aria_label("Settings")
+        .focus_stop()
+        .keeps_text_selection()
+        .on_press(|s: &mut App, tx| s.open_settings(tx));
     row()
         .key("side-foot")
         .w_full()
@@ -304,26 +278,4 @@ fn foot(v: V) -> El {
         .children(trash)
         .child(middle)
         .child(settings)
-}
-
-/// A footer button: an icon in a 28 pt target, the hover fill under the pointer, the selected
-/// fill while `on`.
-fn foot_button(v: V, key: &str, glyph: &'static rune::Icon, help: String, on: bool, run: impl Fn(&mut App, &mut rune::Tx) + 'static) -> El {
-    let p = v.p;
-    let c = Roles::panel(p);
-    let (rw, rg, rc) = super::focus_ring(p);
-    let name = help.split(" (").next().unwrap_or_default().to_string();
-    super::focus::stop(row())
-        .key(key)
-        .size(BUTTON, BUTTON)
-        .center()
-        .radius(6.0)
-        .fill(if on { c.selected } else { rune::Color::TRANSPARENT })
-        .hover(c.hover)
-        .label(name)
-        .help(help)
-        .focus_ring(rw, rg, rc)
-        .keeps_text_selection()
-        .control(run)
-        .child(icon(glyph, ICON).color(if on { c.text } else { c.dim }))
 }

@@ -5,14 +5,14 @@ use rune::{El, Live, ScrollSpec, col, row, text};
 
 use super::{V, lists, panel, styles};
 use super::editor::{CaretLink, group, link_at_caret};
-use super::widgets::label;
+use super::components::{label, name_tip};
 use crate::app::{App, Mode};
 use crate::keys::mod_click;
 use crate::md;
 use crate::roles::Roles;
 
 /// The panel's width, and the side padding of its counts and footer.
-pub(super) const PANEL_W: f32 = 236.0;
+pub(super) const PANEL_W: f32 = super::tokens::size::OUTLINE_W;
 const PANEL_X: f32 = 16.0;
 
 /// Section caption matching the left sidebar's OPEN / NOTES headings (10 pt Instrument Sans 600).
@@ -140,19 +140,10 @@ pub fn outline(v: V) -> El {
                 .w_full()
                 .gap(6.0)
                 .center_y()
-                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(super::widgets::name_tip(bp)))
-                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(super::widgets::name_tip(bp)));
+                .child(text(md::base(bp)).font(name_style).color(c.dim).group_color(c.text).truncate().shrink().min_w(0.0).help_when_truncated(name_tip(bp)))
+                .child(text(md::dir(bp)).font(small).color(c.faint).truncate().grow(1.0).shrink().min_w(0.0).mt(shift).help_when_truncated(name_tip(bp)));
             if bl.count > 1 {
-                head = head.child(
-                    row()
-                        .key(format!("bl-count-{i}"))
-                        .h(16.0)
-                        .px(5.0)
-                        .center()
-                        .radius(8.0)
-                        .fill(c.hover)
-                        .child(text(bl.count.to_string()).font(small).color(c.faint)),
-                );
+                head = head.child(super::components::count_pill(v.p, format!("bl-count-{i}"), bl.count));
             }
             let mut item_col = col().w_full().gap(2.0).child(head);
             if !bl.snippet.is_empty() {
@@ -191,7 +182,7 @@ pub fn outline(v: V) -> El {
         .grow(1.0)
         .min_h(0.0)
         .scroll(ScrollSpec { stick_bottom: false })
-        .scroll_fade(rune::ScrollFade::strength(14.0).full_at(1.0).linear())
+        .scroll_fade(rune::ScrollFade::strength(super::tokens::space::SCROLL_FADE_PANEL).full_at(1.0).linear())
         .scroll_margin(panel::RING_ROOM)
         .child(list);
     super::focus::pane(col(), crate::focus::Pane::Outline)
@@ -200,7 +191,7 @@ pub fn outline(v: V) -> El {
         .h_full()
         .min_h(0.0)
         .fill(c.wash)
-        .border_sides([0.0, 0.0, 0.0, 1.0], c.hairline_soft)
+        .border_sides([0.0, 0.0, 0.0, 1.0], v.p.line)
         .border_layout()
         .child(scroll)
         .child(counts(v))
@@ -240,7 +231,7 @@ fn counts(v: V) -> El {
     } else {
         // In preview there is no status footer beneath counts; match side-foot's 41 pt height
         // and top hairline so the left and right panels align across the window's foot.
-        r = r.h(41.0).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
+        r = r.h(super::tokens::size::FOOTER_H).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout();
     }
     r
 }
@@ -267,7 +258,7 @@ fn footer(v: V, line_col: Option<(usize, usize)>) -> Option<El> {
     };
     let mut r = row()
         .key("status")
-        .h(41.0)
+        .h(super::tokens::size::FOOTER_H)
         .w_full()
         .gap(12.0)
         .px(PANEL_X)

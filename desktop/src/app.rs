@@ -232,7 +232,7 @@ pub struct App {
     pub images: crate::images::Images,
     /// Files are dragged over the note.
     pub drop_over: bool,
-    /// The Settings switch whose target the pointer is in, by key (`widgets::switch`).
+    /// The Settings switch whose target the pointer is in, by key (`components::switch`).
     pub hover_switch: Option<String>,
     /// Locked notes open for reading and editing, by path. The plain text lives only here and
     /// in the note's editor. The folder copy in `vault.files` stays sealed.
@@ -2089,6 +2089,7 @@ impl App {
         if let Some(Layer::Trash(m)) = self.layers.iter_mut().find_map(|o| matches!(o.layer, Layer::Trash(_)).then_some(&mut o.layer)) {
             m.armed_empty = false;
             m.armed_delete = None;
+            m.armed_at = None;
         }
         self.writer.send(Op::RestoreTrash { root, trash_name: trash_name.to_string() });
     }
@@ -2098,14 +2099,19 @@ impl App {
         if self.refuse_in_note_mode() {
             return;
         }
+        let lapse = std::time::Duration::from_secs(crate::ui::tokens::motion::ARMED_LAPSE_SECS);
         let armed = self.layers.iter_mut().find_map(|o| match &mut o.layer {
             Layer::Trash(m) => {
+                let fresh = m.armed_at.is_some_and(|t| t.elapsed() < lapse);
                 m.armed_empty = false;
-                if m.armed_delete.as_deref() == Some(trash_name) {
+                if fresh && m.armed_delete.as_deref() == Some(trash_name) {
                     m.armed_delete = None;
+                    m.armed_at = None;
                     Some(true)
                 } else {
                     m.armed_delete = Some(trash_name.to_string());
+                    m.armed_at = Some(std::time::Instant::now());
+                    tx.wake_after(lapse);
                     Some(false)
                 }
             }
@@ -2124,14 +2130,19 @@ impl App {
         if self.refuse_in_note_mode() || self.trash_entries.is_empty() {
             return;
         }
+        let lapse = std::time::Duration::from_secs(crate::ui::tokens::motion::ARMED_LAPSE_SECS);
         let armed = self.layers.iter_mut().find_map(|o| match &mut o.layer {
             Layer::Trash(m) => {
+                let fresh = m.armed_at.is_some_and(|t| t.elapsed() < lapse);
                 m.armed_delete = None;
-                if m.armed_empty {
+                if fresh && m.armed_empty {
                     m.armed_empty = false;
+                    m.armed_at = None;
                     Some(true)
                 } else {
                     m.armed_empty = true;
+                    m.armed_at = Some(std::time::Instant::now());
+                    tx.wake_after(lapse);
                     Some(false)
                 }
             }
@@ -2146,16 +2157,29 @@ impl App {
         }
     }
 
-    /// Drains completed trash scans/restores/empties from the `Writer` thread.
+    /// Drains completed trash scans/restores/empties from the `Writer` thread and disarms
+    /// expired Trash delete confirmations (`IX-05`).
     fn poll_trash(&mut self, tx: &mut Tx) -> bool {
+        let mut changed = false;
+        let lapse = std::time::Duration::from_secs(crate::ui::tokens::motion::ARMED_LAPSE_SECS);
+        for o in &mut self.layers {
+            if let Layer::Trash(m) = &mut o.layer
+                && let Some(t) = m.armed_at
+                && t.elapsed() >= lapse
+            {
+                m.armed_empty = false;
+                m.armed_delete = None;
+                m.armed_at = None;
+                changed = true;
+            }
+        }
         let events: Vec<crate::vault::TrashEvent> = match self.writer.trash_events.lock() {
             Ok(mut q) => std::mem::take(&mut *q),
-            Err(_) => return false,
+            Err(_) => return changed,
         };
         if events.is_empty() {
-            return false;
+            return changed;
         }
-        let mut changed = false;
         for ev in events {
             let cur_root = self.vault.as_ref().filter(|v| v.scope == Scope::Folder).map(|v| v.path.clone());
             match ev {

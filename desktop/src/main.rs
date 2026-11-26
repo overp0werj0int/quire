@@ -369,7 +369,7 @@ pub(crate) mod scroll_tests {
                 rt.frame(DT);
             }
             let sizes: std::collections::BTreeSet<u32> = rt.elements().iter().filter(|e| e.role == "icon" && e.path.contains("/titlebar/")).map(|e| e.rect[2].round() as u32).collect();
-            assert_eq!(sizes.into_iter().collect::<Vec<_>>(), [15], "{mode:?}");
+            assert_eq!(sizes.into_iter().collect::<Vec<_>>(), [14], "{mode:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -533,7 +533,7 @@ pub(crate) mod scroll_tests {
                 seen.insert(k.to_string());
             }
             if k.starts_with("dir:") {
-                assert_eq!(e.rect[3], 27.0, "{k} keeps its height");
+                assert_eq!(e.rect[3], crate::ui::tokens::size::CONTROL_PANEL, "{k} keeps its height");
             }
             if k.starts_with("tab:") {
                 assert_eq!(e.rect[3], 35.0, "{k}, a tab of two rows, keeps its height");
@@ -2803,7 +2803,7 @@ mod writer_chrome_tests {
     }
 
     /// RAD: the formatting toolbar and the find bar, on one row, take one corner and one edge
-    /// (`widgets::bar_edge`): the toolbar's backdrop, shown while the note scrolls under it,
+    /// (`components::bar_edge`): the toolbar's backdrop, shown while the note scrolls under it,
     /// has the find bar's radius.
     #[test]
     fn the_toolbar_and_the_find_bar_look_alike() {
@@ -2818,8 +2818,8 @@ mod writer_chrome_tests {
         let back = info(&rt, "toolbar-back").expect("the toolbar's backdrop");
         let find = info(&rt, "find-bar").expect("the find bar");
         assert!(back.opacity > 0.9, "the backdrop shows while the note is under the toolbar: {}", back.opacity);
-        assert_eq!(back.radius, crate::ui::widgets::BAR_RADIUS, "the toolbar's corner");
-        assert_eq!(find.radius, crate::ui::widgets::BAR_RADIUS, "the find bar's corner");
+        assert_eq!(back.radius, crate::ui::tokens::radius::CONTROL, "the toolbar's corner");
+        assert_eq!(find.radius, crate::ui::tokens::radius::CONTROL, "the find bar's corner");
         assert!((back.rect[3] - find.rect[3]).abs() < 0.5, "one height: {:?} and {:?}", back.rect, find.rect);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4213,7 +4213,7 @@ mod escape_tests {
         assert!(anchors[0][3] > anchors[1][3] && anchors[1][3] > anchors[2][3], "H1 > H2 > H3 anchor height: {anchors:?}");
         // Preview code block groups Edit and Copy into one 28 pt floating mini-bar (same scale as map-zoom-hud).
         let code_bar = all.iter().find(|e| e.key.as_deref() == Some("code-actions")).expect("code-actions mini-bar");
-        assert!((code_bar.rect[3] - 28.0).abs() < 0.5 && (code_bar.rect[3] - crate::ui::widgets::MINI_BAR_H).abs() < 0.5, "code mini-bar height: {:?}", code_bar.rect);
+        assert!((code_bar.rect[3] - 28.0).abs() < 0.5 && (code_bar.rect[3] - crate::ui::components::MINI_BAR_H).abs() < 0.5, "code mini-bar height: {:?}", code_bar.rect);
         let copy_btn = all.iter().find(|e| e.key.as_deref() == Some("copy")).expect("copy button");
         let code_edit = all.iter().find(|e| e.key.as_deref() == Some("block-edit:6")).expect("code edit button");
         assert!((copy_btn.rect[2] - 24.0).abs() < 0.5 && (copy_btn.rect[3] - 24.0).abs() < 0.5, "copy icon button 24x24: {:?}", copy_btn.rect);
@@ -6800,7 +6800,7 @@ mod layer_matrix_tests {
         // Far down, the vault keeps its label and two rows; far up, the shelf its label and a tab.
         drag(&mut rt, 2000.0);
         let vault = rect(&rt, "vault").unwrap();
-        assert!(vault[3] >= 24.0 + 2.0 * 27.0, "the vault keeps its least height: {vault:?}");
+        assert!(vault[3] >= 24.0 + 2.0 * crate::ui::tokens::size::CONTROL_PANEL, "the vault keeps its least height: {vault:?}");
         drag(&mut rt, -2000.0);
         let up = rect(&rt, "shelf").unwrap();
         assert!(up[3] >= 24.0 + 35.0 && up[3] <= 84.0, "the shelf keeps its label and a tab: {up:?}");
@@ -7650,9 +7650,9 @@ mod layer_matrix_tests {
         assert_eq!((inner[0][1], inner[0][1] + inner[0][3]), (row("dir:Box|Inner")[1], row("file:Box|Inner|c.md")[1]), "through the gap to the next row");
         let c = guides_in(&rt, "file:Box|Inner|c.md");
         assert_eq!(c.iter().map(|g| g[0]).collect::<Vec<_>>(), [22.0, 43.0], "a row two levels in has both guides");
-        assert_eq!(c[1][1] + c[1][3], row("file:Box|Inner|c.md")[1] + 27.0, "Inner's guide ends with its last row");
+        assert_eq!(c[1][1] + c[1][3], row("file:Box|Inner|c.md")[1] + crate::ui::tokens::size::CONTROL_PANEL, "Inner's guide ends with its last row");
         let b = guides_in(&rt, "file:Box|b.md");
-        assert_eq!((b.len(), b[0][1] + b[0][3]), (1, row("file:Box|b.md")[1] + 27.0), "Box's guide ends with its last row");
+        assert_eq!((b.len(), b[0][1] + b[0][3]), (1, row("file:Box|b.md")[1] + crate::ui::tokens::size::CONTROL_PANEL), "Box's guide ends with its last row");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -14,7 +14,7 @@ use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, T
 use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
 pub(super) use layouts::layouts;
 pub(super) use lightbox::lightbox;
-use super::widgets::Control;
+use super::components::Control;
 use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Run;
@@ -562,12 +562,12 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
 /// zoom, so it keeps Source's size at every zoom. A press keeps the keyboard in the field, which
 /// neither commits nor closes.
 /// The add toolbar's width: 5 buttons of `MINI_BTN` (24), a separator of 5 (1 + 2×2), 5 gaps of 1
-/// and 3 of padding at each end (same scale as `map-zoom-hud`).
-const KIND_BAR_W: f32 = 136.0;
+/// and `MINI_BAR_PX` (2) of padding at each end (same scale as `map-zoom-hud`).
+const KIND_BAR_W: f32 = 134.0;
 
 fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
+    use super::components::{MINI_BAR_GAP, MINI_BAR_PX, MINI_BAR_RADIUS, MINI_BTN, MINI_BTN_RADIUS, MINI_DISABLED_ALPHA, MINI_ICON, toolbar_surface};
     use super::icons::{BULLETS, HEADING, NUMBERS, PARAGRAPH, TASK};
-    use super::widgets::{MINI_BAR_GAP, MINI_BAR_RADIUS, MINI_BTN, MINI_BTN_RADIUS, MINI_ICON};
     use crate::map::NewKind;
     let p = v.p;
     let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
@@ -575,7 +575,7 @@ fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
         let b = rune::row().key(key).size(MINI_BTN * k, MINI_BTN * k).center().radius(MINI_BTN_RADIUS * k).role("radio").checked(on).label(help.clone()).help(help);
         let glyph = rune::icon(glyph, MINI_ICON * k);
         if !new.kinds.has(kind) {
-            return b.disabled(true).child(glyph.color(p.mute.alpha(0.35)));
+            return b.disabled(true).child(glyph.color(p.mute.alpha(MINI_DISABLED_ALPHA)));
         }
         let b = if on { b.fill(p.hover).border(k, p.line).child(glyph.color(p.ink)) } else { b.hover(p.hover).hover_group().child(glyph.color(p.mute).group_color(p.ink)) };
         b.cursor(rune::Cursor::Pointer).on_press_tx(move |s: &mut App, tx: &mut Tx| run(s, tx))
@@ -587,12 +587,12 @@ fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
     let heading = level.map_or(NewKind::Heading(1), NewKind::Heading);
     let heading_tip = level.map_or_else(|| "Heading".to_string(), |l| tip(&format!("Heading {l}"), &format!("mapedit.heading-{l}")));
     let is = |kind: NewKind| new.kind == kind;
-    super::widgets::toolbar_surface(
+    toolbar_surface(
         rune::row()
             .key("map-kinds")
             .pin(Some(x + W), Some(y + W), None, None)
             .h(map_app::KIND_BAR_H * k)
-            .px(3.0 * k)
+            .px(MINI_BAR_PX * k)
             .gap(MINI_BAR_GAP * k)
             .center_y()
             .radius(MINI_BAR_RADIUS * k),
@@ -1127,73 +1127,55 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let hud_ink = Roles::readable_on(c.dim, v.p.bg, 4.8);
     let sep_color = Roles::readable_on(v.p.line, v.p.bg, 3.2);
     let hud_hover = v.p.hover;
-    let (rw, rg, rc) = super::focus_ring(v.p);
     let icon_btn = |key: &'static str, glyph: &'static rune::Icon, label: &'static str, help: String, run: fn(&mut App, &mut Tx)| {
-        super::focus::stop(
-            rune::row()
-                .key(key)
-                .size(super::widgets::MINI_BTN, super::widgets::MINI_BTN)
-                .center()
-                .radius(super::widgets::MINI_BTN_RADIUS)
-                .hover(hud_hover)
-                .hover_group()
-                .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-                .cursor(rune::Cursor::Pointer)
-                .role("button")
+        super::tokens::FocusRing::Standard.apply(
+            super::focus::stop(super::components::mini_button(v.p, key, glyph, &help, Some((hud_ink, c.text))))
+                .hover_motion(super::tokens::motion::hover_fade(), super::tokens::motion::hover_fade())
                 .label(label)
-                .help(help)
-                .focus_ring(rw, rg, rc)
                 .control(move |s: &mut App, tx: &mut Tx| {
                     run(s, tx);
                     s.keys_to_note(tx);
-                })
-                .child(rune::icon(glyph, super::widgets::MINI_ICON).color(hud_ink).group_color(c.text)),
+                }),
+            v.p,
         )
     };
     let pct = format!("{}%", (zoom * 100.0).round() as i32);
     let pct_font = styles::note(mono, 11.0, normal_lh(mono, 11.0)).features("'tnum' 1");
-    let reset = super::focus::stop(
-        rune::row()
-            .key("zoom-reset")
-            .h(super::widgets::MINI_BTN)
-            .min_w(42.0)
-            .px(5.0)
-            .center()
-            .radius(super::widgets::MINI_BTN_RADIUS)
-            .hover(hud_hover)
-            .hover_group()
-            .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
-            .cursor(rune::Cursor::Pointer)
-            .role("button")
-            .label(format!("Zoom {pct}, reset to 100%"))
-            .help(tip("Zoom 100%", "app.zoom-reset"))
-            .focus_ring(rw, rg, rc)
-            .control(|s: &mut App, tx: &mut Tx| {
-                s.map_zoom_reset(tx);
-                s.keys_to_note(tx);
-            })
-            .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
+    let reset = super::tokens::FocusRing::Standard.apply(
+        super::focus::stop(
+            rune::row()
+                .key("zoom-reset")
+                .h(super::components::MINI_BTN)
+                .min_w(42.0)
+                .px(5.0)
+                .center()
+                .radius(super::components::MINI_BTN_RADIUS)
+                .hover(hud_hover)
+                .hover_group()
+                .hover_motion(super::tokens::motion::hover_fade(), super::tokens::motion::hover_fade())
+                .cursor(rune::Cursor::Pointer)
+                .role("button")
+                .label(format!("Zoom {pct}, reset to 100%"))
+                .help(tip("Zoom 100%", "app.zoom-reset"))
+                .control(|s: &mut App, tx: &mut Tx| {
+                    s.map_zoom_reset(tx);
+                    s.keys_to_note(tx);
+                })
+                .child(text(pct).font(pct_font).color(hud_ink).group_color(c.text)),
+        ),
+        v.p,
     );
     let sep = el().size(1.0, 14.0).mx(2.0).fill(sep_color).inert();
-    let hud = super::widgets::toolbar_surface(
-        rune::row()
-            .key("map-zoom-hud")
-            .h(super::widgets::MINI_BAR_H)
-            .px(3.0)
-            .gap(super::widgets::MINI_BAR_GAP)
-            .center_y()
-            .radius(super::widgets::MINI_BAR_RADIUS),
-        v.p,
-        1.0,
-    )
-    .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
-    .child(reset)
-    .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
-    .child(sep)
-    .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)));
+    let hud = super::components::mini_bar(v.p, "map-zoom-hud")
+        .child(icon_btn("zoom-out", &super::icons::MINUS, "Zoom out", tip("Zoom out", "map.zoom-out"), |s, tx| s.map_zoom_step(0.8, tx)))
+        .child(reset)
+        .child(icon_btn("zoom-in", &super::icons::PLUS, "Zoom in", tip("Zoom in", "map.zoom-in"), |s, tx| s.map_zoom_step(1.25, tx)))
+        .child(sep)
+        .child(icon_btn("zoom-fit", &super::icons::FIT, "Fit to view", tip("Fit to view", "map.fit"), |s, tx| s.map_fit(tx)));
     if v.focus() {
         // In zen mode, bottom controls reveal on hover (and keyboard focus), matching the top
         // zen floating pill in `titlebar::focus_bar`.
+        let zen_s = super::tokens::motion::zen_spring();
         return Some(
             rune::row()
                 .key("map-zoom-hud-zone")
@@ -1203,7 +1185,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
                 .pr(12.0)
                 .pb(12.0)
                 .hover_group()
-                .hover_motion(rune::Spring::new(0.25, 0.0), rune::Spring::new(0.25, 0.0))
+                .hover_motion(zen_s, zen_s)
                 .child(hud.group_opacity(0.0, 1.0)),
         );
     }

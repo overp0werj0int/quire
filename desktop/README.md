@@ -26,7 +26,7 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 
 - Edits the `.md` files of a folder. Saves each note half a second after you stop typing, and on quit.
 - Shows source with live Markdown highlighting, or a rendered preview (`Ctrl+P`).
-- Has a floating formatting toolbar at the top of the note in source mode. It stays in view, and the note scrolls under it. The buttons are bold, italic, strikethrough, heading, link, note link, lists, task, quote, code and image. `Ctrl+B`, `Ctrl+I` and `Ctrl+K` do the same as the first buttons. Turn off Settings, Editor, **Formatting toolbar** to hide it.
+- Has a floating formatting toolbar at the top of the note in source mode. It stays in view, and the note scrolls under it. The buttons are bold, italic, strikethrough, heading, link, note link, lists, task, quote, code and image. `Ctrl+B`, `Ctrl+I` and `Ctrl+L` do the same as the first buttons. Turn off Settings, Editor, **Formatting toolbar** to hide it.
 - Hides everything but the text in zen mode. Use `Ctrl+.` or the zen mode button in the title bar.
 - Fits a narrow window. Below 680 points the sidebar button opens the sidebar over the page, and below 1100 points the outline button does the same for the outline. A press outside, Esc or the button closes it. So does switching between source and preview, or another note. A shortcut such as `Ctrl+F` closes it and then acts.
 - Locks a note with its own password: use the lock button at the end of the toolbar, or "Lock note with a password…" in the command palette. Quire encrypts the note with AES-256-GCM and a key from the password. The file on disk, search, the link index and sync see only the encrypted text. To read the note, enter the password. Each save encrypts the note again. The note locks again when you close its tab or select the lock button. "Remove password" in the command palette saves it as plain text again. If you forget the password, nobody can open the note. `../SYNC.md` describes the format.
@@ -41,13 +41,13 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 
 - Links notes with `[[Note name]]`. `Ctrl`-click a link to follow it. A link to a missing note creates the note.
 - Rewrites links in other notes when you rename a note.
-- Finds tags (`#tag`), searches every note (`Ctrl+Shift+G`), and lists headings and backlinks.
-- Opens any note with the quick switcher (`Ctrl+O`) and runs any command from the palette (`Ctrl+Shift+K`).
-- Has two keymaps: omarky's, the default, and the keys Quire used before. Settings, Shortcuts picks one and lists every key.
+- Finds tags (`#tag`), searches every note (`Ctrl+Shift+F`), and lists headings and backlinks.
+- Opens any note with the quick switcher (`Ctrl+Shift+O`) and runs any command from the palette (`Ctrl+K`).
+- Lists every shortcut in Settings, Shortcuts and lets you filter and rebind any key (saved in `keybindings.json`).
 
 ### Folders
 
-- Shows the folder in the sidebar: the search field and "+" at the top, the open notes on the darker Open shelf, the folder's notes under its label, and the tags and settings buttons at the foot. A click on the Open or folder label folds that list to one row, and dragging the bar between them moves the split. Quire remembers both, the same for every folder.
+- Shows the folder in the sidebar: the search field and "+" at the top, the open notes on the darker Open shelf, the folder's notes under its label, and the tags, trash, sync status (when configured) and settings buttons at the foot. A click on the Open or folder label folds that list to one row, and dragging the bar between them moves the split. Quire remembers both, the same for every folder.
 - Makes folders: right-click the folder's label in the sidebar or a folder, or use "New folder" in the command palette.
 - Creates a note inside a folder: use the `+` on the folder's row, right-click the folder, or type `Folder/Name` in the quick switcher. A path creates the folders it names.
 - Moves a note into a folder when you drag it onto the folder. Drop it on the folder's label or on the tree's empty space to move it to the root. Links that spell out the old folder follow the note.
@@ -61,10 +61,10 @@ The script puts the binary in `~/.local/bin/quire`, the icon in `~/.local/share/
 - Sets notes in iA Writer Quattro S, with code in iA Writer Mono S, at 14 px. Settings, Editor picks the source-mode font (Quattro S, Duospace, Mono S, IBM Plex Mono, Courier Prime or Spline Sans Mono), the code font and the size, from 9 to 32 px. Settings, Appearance picks the preview's font: Quattro S, Newsreader or Instrument Sans.
 - Sets the sidebar, the menus, key names and tooltips in iA Writer Quattro S. For the system's monospace font instead, set `"panel_font": "mono"` under `settings` in `state.json` (`~/.config/quire/state.json` on Linux); `"quattro"` is the default. Settings has no row for it.
 - Has 14 themes in Settings, Appearance: 6 for light mode and 8 for dark mode. You pick one for each mode, and "Match system" switches between them.
-- Works Settings from the keyboard. Tab and Shift+Tab move through the controls in reading order, with a ring in the accent on the one in focus. Space or Return presses it. The arrow keys move through a set of choices, such as the themes or a segmented control, and pick one. Esc closes Settings.
+- Works Settings from the keyboard. Tab and Shift+Tab move through the controls in reading order, with a ring in the text colour on the one in focus (while selection uses the accent). Space or Return presses it. The arrow keys move through a set of choices, such as the themes or a segmented control, and pick one. Esc closes Settings.
 - Works every menu from the keyboard. Up and Down move through it, a letter jumps to an item, Enter or Space picks one and Esc closes it. Right-click the folder's label in the sidebar, or press `Shift+F10` on it, for its menu. `Shift+F10` or the Menu key opens the editor's menu below the caret.
 - Works the sidebar's lists from the keyboard: the file tree, the Open list, the search results, the tags, and the outline's headings and backlinks. Tab enters a list at its current row and the next Tab leaves it. Up, Down, Home and End move. In the tree, Right opens a folder and Left closes it or goes to its folder. Enter opens the note, folder, heading, match or tag, and `Shift+F10` or the Menu key opens a tree row's menu. Esc gives the keyboard back to the note. A click on a row leaves the keyboard where it was.
-- Reaches every control from the keyboard. Tab reaches the search field, "+" (New note), the Open and folder labels (Enter or Space folds the list under one), the tags and settings buttons, and the formatting toolbar (one stop, Left and Right inside it). `F6` and `Shift+F6` move between the sidebar, the note and the outline. Down in the search field moves into the results. While a control in a side panel or the toolbar has focus, no key reaches the note behind it, and when that control goes away the keyboard goes back to the note.
+- Reaches every control from the keyboard. Tab reaches the search field, "+" (New note), the Open and folder labels (Enter or Space folds the list under one), the tags, trash, sync status and settings buttons, and the formatting toolbar (one stop, Left and Right inside it). `F6` and `Shift+F6` move between the sidebar, the note and the outline. Down in the search field moves into the results. While a control in a side panel or the toolbar has focus, no key reaches the note behind it, and when that control goes away the keyboard goes back to the note.
 - Opens one thing over the page at a time: a menu, a drawer, a dialog or the palette. It holds the keyboard while it is open, and when it closes the keyboard goes back where it was.
 - Lets you pick the accent colour from 9 swatches, or type a `#rrggbb` value. An accent that is too dark to read on a dark theme gets lighter for text.
 - On Omarchy, offers the current Omarchy theme in both lists and follows theme switches while Quire runs. Without a pick, "Match system" uses the Omarchy theme.
@@ -94,7 +94,7 @@ Access is read-only by default. Each tool has its own switch, and hidden folders
 
 ## Sync
 
-Settings, Sync & backup connects a notes folder to a bucket. **Test connection** reads the remote folder and reports what it holds. After it passes, Quire syncs when the folder opens, after you save, every 5 minutes, or only when you select **Sync now**, as you choose. The status bar shows the last sync. Select it to open the sync settings.
+Settings, Sync & backup connects a notes folder to a bucket. **Test connection** reads the remote folder and reports what it holds. After it passes, Quire syncs when the folder opens, after you save, every 5 minutes, or only when you select **Sync now**, as you choose. The sidebar footer shows the last sync. Select it to open the sync settings.
 
 - Each notes folder has its own **Remote folder**. Without a value, it is `quire/<folder name>/`.
 - Notes, images up to 50 MB and folders sync. A file that you delete on one device moves to `.trash` on the others.
@@ -122,6 +122,7 @@ Use `./dev` while you work. It checks and tests an edit in seconds, and it leave
 ```
 
 - To see what the app does with a click or a key, without opening a window, run `tests/probe.py` (`tests/probe.py --help`). It replays input headless and prints focus, an element's place, the page's scroll position or the saved notes, once or sampled over time.
+- Shared desktop UI tokens, text styles and components live in `src/ui/tokens.rs`, `src/ui/styles.rs` and `src/ui/components/` (documented in `../design/system/`).
 - Check first. Run `./dev check` after each edit, `./dev test` with a filter for what you changed, and the full suite and `./dev app` only for the last pass.
 - `./dev` compiles this crate unoptimized with the Cranelift backend on a nightly toolchain, in its own profile (`fast`) and its own folder (`target/fast`). Dependencies stay on LLVM. Install the toolchain once:
 

@@ -13,7 +13,7 @@ use rune::{Color, El, Family, LinkPaint, Span, TextCase, TextHighlight, TextStyl
 
 use super::V;
 use super::icons;
-use super::widgets::Control;
+use super::components::Control;
 use crate::app::App;
 use crate::blocks::{Alert, Block, Doc, Footnote, GalleryItem, Kind, Link, Run};
 use crate::md::Img;
@@ -87,7 +87,7 @@ pub fn column(v: V) -> page::Column {
     let set = v.s.settings();
     let prose = theme::pick(&theme::PROSE_FONTS, &set.preview_font);
     let left = if v.left_visible() { super::sidebar::DOCKED_W } else { 0.0 };
-    let right = if v.right_visible() { 236.0 } else { 0.0 };
+    let right = if v.right_visible() { super::OUTLINE_W } else { 0.0 };
     page::column(v.vw - left - right, set.size as f32, page::avg_char(prose.family), v.s.wide(), left - right)
 }
 
@@ -329,7 +329,7 @@ pub fn preview(v: V) -> El {
     // cache, and the list asks every row's key when it is made.
     let rows = doc.clone();
     let right_free = (doc_w - col_geom.gutter - col_geom.width).max(0.0);
-    let bar_w = super::widgets::mini_bar_w(1);
+    let bar_w = super::components::mini_bar_w(1);
     let bridge = 10.0;
     let in_margin = right_free >= bar_w + 16.0;
     let gutter_l = col_geom.gutter.min(r(look.b * 4.0).max(48.0));
@@ -669,10 +669,10 @@ impl Cx<'_> {
         let key = format!("block-edit:{line}");
         let tip = self.v.s.keymap.tip("Edit block", "reader.edit-block");
         let (rw, rg, rc) = super::focus_ring(self.v.p);
-        let btn = super::focus::stop(super::widgets::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None))
+        let btn = super::focus::stop(super::components::mini_button(self.v.p, &key, &icons::PENCIL, &tip, None))
             .focus_ring(rw, rg, rc)
             .control(move |s: &mut App, tx| s.open_sheet_at(Some(line), crate::sheet::Scope::Block, tx));
-        let bar = super::widgets::mini_bar(self.v.p, &format!("block-actions:{line}")).child(btn);
+        let bar = super::components::mini_bar(self.v.p, &format!("block-actions:{line}")).child(btn);
         let right = if in_margin { 0.0 } else { 4.0 };
         el().pin(None, Some(0.0), Some(right), None).group_opacity(0.0, 1.0).child(bar)
     }

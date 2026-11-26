@@ -1,0 +1,2445 @@
+{
+  "_note": "Inconsistencies in Quire's design system. Paths are under desktop/src unless they start with docs/, android/ or design/. status: checked = the cited lines were re-read against the code after the mapping; reported = from the Haiku map only, read the lines before acting. decision is yours to fill: keep, fix as proposed, or your own text.",
+  "issues": [
+    {
+      "id": "SZ-01",
+      "area": "sizing",
+      "sev": "high",
+      "status": "checked",
+      "title": "Text buttons come in four heights",
+      "variants": [
+        {
+          "l": "In a row",
+          "v": "26",
+          "at": "ui/settings.rs:497, :632, :660; ui/settings_mcp.rs:228; ui/reader.rs:385; ui/editor.rs:188",
+          "s": {
+            "t": "btn",
+            "h": 26,
+            "r": 7
+          }
+        },
+        {
+          "l": "Settings row",
+          "v": "30",
+          "at": "ui/settings.rs:457, :483; ui/settings_mcp.rs:246",
+          "s": {
+            "t": "btn",
+            "h": 30,
+            "r": 7
+          }
+        },
+        {
+          "l": "Dialog",
+          "v": "32",
+          "at": "ui/lock.rs:173, :244; ui/trash.rs:235; ui/settings_sync.rs:361; ui/settings_mcp.rs:106",
+          "s": {
+            "t": "btn",
+            "h": 32,
+            "r": 7
+          }
+        },
+        {
+          "l": "First note",
+          "v": "34",
+          "at": "ui/editor.rs:1502",
+          "s": {
+            "t": "btn",
+            "kind": "primary",
+            "h": 34,
+            "r": 8,
+            "fs": 13.5
+          }
+        }
+      ],
+      "why": "outline_button takes its height from each caller, so nothing holds the set together. The prototype already had 30, 32 and 34 (design/Quire.dc.html L347, L434, L220).",
+      "propose": "Two heights: 32 for a dialog's or page's action, 26 for a button inside a row. Move 30 to 32 and 34 to 32. Make the height a named size, not a number at the call.",
+      "decision": "Settled: two button heights in ui/components/button.rs (32 dialog, 28 panel/row via .sm())."
+    },
+    {
+      "id": "SZ-02",
+      "area": "sizing",
+      "sev": "high",
+      "status": "checked",
+      "title": "Icon buttons are 28 in panels and 24 in bars, with no rule written down",
+      "variants": [
+        {
+          "l": "icon_button default",
+          "v": "28 × 28",
+          "at": "ui/widgets.rs:210; sidebar top bar and footer; Settings close ui/settings.rs:61; toolbar toggles ui/editor.rs:705",
+          "s": {
+            "t": "ibtn",
+            "box": 28,
+            "icon": 14,
+            "r": 6
+          }
+        },
+        {
+          "l": "Bars and mini-bars",
+          "v": "24 × 24",
+          "at": "ui/titlebar.rs:15; ui/widgets.rs:125; ui/reader.rs:100, :391; ui/editor.rs:863",
+          "s": {
+            "t": "ibtn",
+            "box": 24,
+            "icon": 12,
+            "r": 4
+          }
+        }
+      ],
+      "why": "The title bar overrides icon_button's 28 with .size(24, 24). Two dialogs close with different buttons: Settings 28, help 24.",
+      "propose": "Keep both, as two named sizes with a rule: 28 where the button stands alone in a panel or dialog header, 24 inside a bar. Give Settings and help the same close button.",
+      "decision": "Settled: named IconButtonSize (Bar 24, Panel 28, Toolbar 28); Help and Settings close buttons both use Panel 28."
+    },
+    {
+      "id": "SZ-03",
+      "area": "sizing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Icons are drawn at eight sizes",
+      "variants": [
+        {
+          "l": "Fold marks",
+          "v": "10, 11",
+          "at": "census of ui/",
+          "s": {
+            "t": "ibtn",
+            "box": 24,
+            "icon": 10,
+            "r": 4
+          }
+        },
+        {
+          "l": "Mini-bar, find bar",
+          "v": "12",
+          "at": "ui/widgets.rs:127; ui/reader.rs:204",
+          "s": {
+            "t": "ibtn",
+            "box": 24,
+            "icon": 12,
+            "r": 4
+          }
+        },
+        {
+          "l": "Crumb lock, help close",
+          "v": "13",
+          "at": "ui/editor.rs:1048; ui/reader.rs:400",
+          "s": {
+            "t": "ibtn",
+            "box": 24,
+            "icon": 13,
+            "r": 6
+          }
+        },
+        {
+          "l": "Sidebar",
+          "v": "14",
+          "at": "ui/sidebar/mod.rs:328",
+          "s": {
+            "t": "ibtn",
+            "box": 28,
+            "icon": 14,
+            "r": 6
+          }
+        },
+        {
+          "l": "Title bar, crumb copy",
+          "v": "15",
+          "at": "ui/titlebar.rs:19; ui/editor.rs:875",
+          "s": {
+            "t": "ibtn",
+            "box": 24,
+            "icon": 15,
+            "r": 6
+          }
+        },
+        {
+          "l": "Formatting toolbar",
+          "v": "16",
+          "at": "ui/editor.rs:715",
+          "s": {
+            "t": "ibtn",
+            "box": 28,
+            "icon": 16,
+            "r": 6
+          }
+        }
+      ],
+      "why": "The same lock glyph is 13 in the crumb and 16 in the toolbar. The same close glyph is 12 in the find bar and 13 in help. The tag glyph is 12 in a search row and 14 in the footer.",
+      "propose": "Three sizes: 12 in a 24 button, 14 in a 28 button, 16 for the formatting toolbar if it keeps its larger glyphs. One glyph gets one size per button size.",
+      "decision": "Settled: icon size coupled to button size (12 in 24 mini/find, 14 in 24 titlebar & 28 panel/dialog close, 16 in 28 toolbar, 10 fold chevrons)."
+    },
+    {
+      "id": "SZ-04",
+      "area": "sizing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Text inputs: three heights, four corner radii",
+      "variants": [
+        {
+          "l": "Sidebar search",
+          "v": "h 28, r 6",
+          "at": "ui/sidebar/mod.rs:193, :198",
+          "s": {
+            "t": "input",
+            "h": 28,
+            "r": 6,
+            "fs": 12.5
+          }
+        },
+        {
+          "l": "Lock, Settings, keys search",
+          "v": "h 32, r 7",
+          "at": "ui/lock.rs:30, :32; ui/settings_sync.rs:474, :476; ui/settings.rs:523, :528",
+          "s": {
+            "t": "input",
+            "h": 32,
+            "r": 7,
+            "fs": 13
+          }
+        },
+        {
+          "l": "Welcome folder name",
+          "v": "h 38, r 8",
+          "at": "ui/welcome.rs:64, :69",
+          "s": {
+            "t": "input",
+            "h": 38,
+            "r": 8,
+            "fs": 14
+          }
+        },
+        {
+          "l": "Rename in the crumb",
+          "v": "r 5",
+          "at": "ui/editor.rs:965",
+          "s": {
+            "t": "input",
+            "h": 24,
+            "r": 5,
+            "fs": 12.5
+          }
+        }
+      ],
+      "why": "Each screen set its own field. The prototype had 36 and 32.",
+      "propose": "One dialog field: 32 tall, the button's radius. The sidebar search stays 28 as a panel control. Welcome takes the dialog field.",
+      "decision": "Settled: two standard inputs in ui/components/input.rs (Dialog 32/r=8 incl. Welcome, Panel 28/r=6)."
+    },
+    {
+      "id": "SZ-05",
+      "area": "sizing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "List rows: 24, 26, 27, 28, 30 and 35 tall",
+      "variants": [
+        {
+          "l": "Shelf outline entry",
+          "v": "24",
+          "at": "ui/sidebar/shelf.rs:32",
+          "s": {
+            "t": "row",
+            "h": 24,
+            "fs": 11.5
+          }
+        },
+        {
+          "l": "Sidebar row",
+          "v": "27",
+          "at": "ui/sidebar/parts.rs:19",
+          "s": {
+            "t": "row",
+            "h": 27,
+            "fs": 12.5
+          }
+        },
+        {
+          "l": "Outline row",
+          "v": "28 (26 small)",
+          "at": "ui/panel.rs:33",
+          "s": {
+            "t": "row",
+            "h": 28,
+            "fs": 12
+          }
+        },
+        {
+          "l": "Menu row",
+          "v": "30",
+          "at": "ui/menu.rs:77",
+          "s": {
+            "t": "row",
+            "h": 30,
+            "fs": 12
+          }
+        },
+        {
+          "l": "Tab, search result",
+          "v": "35",
+          "at": "ui/sidebar/parts.rs:22",
+          "s": {
+            "t": "row",
+            "h": 35,
+            "fs": 12.5
+          }
+        }
+      ],
+      "why": "Sidebar and outline were specified apart (SB-07, RD-47). 27 and 28 sit side by side in one window.",
+      "propose": "Decide whether the two side panels share a row: 28 for both is the smallest change. Keep 30 for menus and 35 for two-line rows.",
+      "decision": "Settled: sidebar and outline share 28 pt row height; menus stay 30 and two-line tabs stay 35."
+    },
+    {
+      "id": "SZ-06",
+      "area": "sizing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Pills and segments: 22, 24 and 26 tall",
+      "variants": [
+        {
+          "l": "Help mode pills, note-mode pill",
+          "v": "22",
+          "at": "ui/reader.rs:346; ui/editor.rs:1012",
+          "s": {
+            "t": "btn",
+            "h": 22,
+            "r": 11,
+            "fs": 11.5
+          }
+        },
+        {
+          "l": "Toast and notice buttons",
+          "v": "24",
+          "at": "ui/reader.rs:709",
+          "s": {
+            "t": "btn",
+            "h": 24,
+            "r": 999,
+            "fs": 12
+          }
+        },
+        {
+          "l": "Settings segment",
+          "v": "26",
+          "at": "ui/widgets.rs:314",
+          "s": {
+            "t": "btn",
+            "h": 26,
+            "r": 6,
+            "fs": 12.5
+          }
+        }
+      ],
+      "why": "",
+      "propose": "Fold 22 into 24, so the small control height is one number.",
+      "decision": "Settled: 24 pt CONTROL_BAR for pills/bar controls; segmented track 28 with 24 segments."
+    },
+    {
+      "id": "SZ-07",
+      "area": "sizing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Key names are set at 10, 11, 11.5 and 12",
+      "variants": [
+        {
+          "l": "Key cap, compact",
+          "v": "10",
+          "at": "ui/widgets.rs:85; ui/editor.rs:1349",
+          "s": {
+            "t": "kbd",
+            "fs": 10
+          }
+        },
+        {
+          "l": "Key cap, full; menu keys",
+          "v": "11",
+          "at": "ui/widgets.rs:85; ui/menu.rs:79; ui/editor.rs:1515",
+          "s": {
+            "t": "kbd",
+            "fs": 11
+          }
+        },
+        {
+          "l": "One caller",
+          "v": "11.5",
+          "at": "census: keys(11.5)",
+          "s": {
+            "t": "kbd",
+            "fs": 11.5
+          }
+        },
+        {
+          "l": "No-tab hints",
+          "v": "12",
+          "at": "ui/editor.rs:1482",
+          "s": {
+            "t": "kbd",
+            "fs": 12
+          }
+        }
+      ],
+      "why": "Menus print the key as plain text, everything else boxes it in a key cap (ui/widgets.rs:80).",
+      "propose": "Two sizes, the key cap's own: 10 compact, 11 full. Say whether a menu's key is boxed.",
+      "decision": "Settled: boxed kbd at 10 (compact) and 11 (full); menu shortcuts stay plain 11 pt text."
+    },
+    {
+      "id": "SZ-08",
+      "area": "sizing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Dialog headers and how a dialog shows it can close",
+      "variants": [
+        {
+          "l": "Layout picker header",
+          "v": "24",
+          "at": "ui/map/layouts.rs:59"
+        },
+        {
+          "l": "Lightbox header",
+          "v": "28",
+          "at": "ui/map/lightbox.rs:22"
+        },
+        {
+          "l": "Settings",
+          "v": "28 icon button",
+          "at": "ui/settings.rs:61"
+        },
+        {
+          "l": "Help",
+          "v": "24 icon button",
+          "at": "ui/reader.rs:391"
+        },
+        {
+          "l": "Lock, trash",
+          "v": "text button, 32",
+          "at": "ui/lock.rs:244; ui/trash.rs:235"
+        },
+        {
+          "l": "Palette, edit sheet",
+          "v": "none; a 24 mini button",
+          "at": "ui/palette.rs; ui/sheet.rs"
+        }
+      ],
+      "why": "",
+      "propose": "One header height and one close button for every dialog that has a header.",
+      "decision": "Settled: unified dialog close buttons (28 pt IconButtonSize::Panel) and dialog_frame headers."
+    },
+    {
+      "id": "SZ-09",
+      "area": "sizing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Counts: three text sizes in the same pill",
+      "variants": [
+        {
+          "l": "Folder, tag, result counts",
+          "v": "11",
+          "at": "ui/sidebar/parts.rs:32",
+          "s": {
+            "t": "text",
+            "fs": 11
+          }
+        },
+        {
+          "l": "Trash count",
+          "v": "10.5",
+          "at": "ui/sidebar/mod.rs:249",
+          "s": {
+            "t": "text",
+            "fs": 10.5
+          }
+        },
+        {
+          "l": "Outline backlink count",
+          "v": "10",
+          "at": "ui/outline.rs:148-154",
+          "s": {
+            "t": "text",
+            "fs": 10
+          }
+        }
+      ],
+      "why": "The outline's pill and the search result's pill have the same height, padding, radius and fill.",
+      "propose": "COUNT_TEXT (11) for all three.",
+      "decision": "Settled: 11 pt COUNT_TEXT via components::badge::count_pill across sidebar, trash and outline."
+    },
+    {
+      "id": "SZ-10",
+      "area": "sizing",
+      "sev": "low",
+      "status": "reported",
+      "title": "The crumb reserves 30 for a lock badge that is 26 wide",
+      "variants": [
+        {
+          "l": "Budget",
+          "v": "24 + 6",
+          "at": "ui/editor.rs:853"
+        },
+        {
+          "l": "Locked badge",
+          "v": "20 + 6",
+          "at": "ui/editor.rs:1052"
+        }
+      ],
+      "why": "",
+      "propose": "Take the budget from the badge's own width."
+    },
+    {
+      "id": "SP-01",
+      "area": "spacing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "The two side panels inset their rows differently",
+      "variants": [
+        {
+          "l": "Sidebar",
+          "v": "inset 8, text at 16",
+          "at": "ui/sidebar/parts.rs:11, :15",
+          "s": {
+            "t": "row",
+            "h": 27,
+            "fs": 12.5,
+            "inset": 8,
+            "px": 8
+          }
+        },
+        {
+          "l": "Outline",
+          "v": "inset 10, text at 22",
+          "at": "ui/panel.rs:23, :25",
+          "s": {
+            "t": "row",
+            "h": 28,
+            "fs": 12,
+            "inset": 10,
+            "px": 12
+          }
+        }
+      ],
+      "why": "Two constants named INSET and two named TEXT_X hold different values. Empty-state lines follow: 'No notes yet.' at 16, 'No headings in this note.' at 22.",
+      "propose": "One inset and one text start for both panels, or two names that say which panel they belong to.",
+      "decision": "Settled: sidebar and outline share 8 pt inset and 16 pt text start."
+    },
+    {
+      "id": "SP-02",
+      "area": "spacing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Mini-bars are padded 2 or 3",
+      "variants": [
+        {
+          "l": "Card, block and sheet mini-bars",
+          "v": "2",
+          "at": "ui/widgets.rs:131",
+          "s": {
+            "t": "bar",
+            "px": 2
+          }
+        },
+        {
+          "l": "Map zoom HUD, add toolbar",
+          "v": "3",
+          "at": "ui/map.rs:1182, :595",
+          "s": {
+            "t": "bar",
+            "px": 3
+          }
+        }
+      ],
+      "why": "The constant's comment says 'uniform 2 pt all around' and 'matches map-zoom-hud'. The last commits scaled these bars to match each other.",
+      "propose": "MINI_BAR_PX in the HUD and the add toolbar.",
+      "decision": "Settled: MINI_BAR_PX (2) used uniformly across mini-bars, map zoom HUD and add-toolbar."
+    },
+    {
+      "id": "SP-03",
+      "area": "spacing",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Dialogs keep different margins and paddings",
+      "variants": [
+        {
+          "l": "Lock, trash plane",
+          "v": "16",
+          "at": "ui/lock.rs:176; ui/trash.rs:237"
+        },
+        {
+          "l": "Palette plane",
+          "v": "20",
+          "at": "ui/palette.rs:234"
+        },
+        {
+          "l": "Settings plane",
+          "v": "24",
+          "at": "ui/settings.rs:118"
+        },
+        {
+          "l": "Settings body",
+          "v": "32 (24 small)",
+          "at": "ui/settings.rs:140"
+        },
+        {
+          "l": "Help body",
+          "v": "24 by 18",
+          "at": "ui/reader.rs:487"
+        },
+        {
+          "l": "Edit sheet",
+          "v": "22",
+          "at": "ui/sheet.rs:20"
+        },
+        {
+          "l": "Palette head, list",
+          "v": "18, 12",
+          "at": "ui/palette.rs:55, :126"
+        }
+      ],
+      "why": "",
+      "propose": "One window margin for dialogs (the code already repeats 48 for both sides together) and one body padding, 24.",
+      "decision": "Settled: 24 pt DIALOG_MARGIN and 24 pt PAD_DIALOG via components::dialog_frame / dialog_plane."
+    },
+    {
+      "id": "SP-04",
+      "area": "spacing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Button side padding: 12, 14 and 16",
+      "variants": [
+        {
+          "l": "Outline button",
+          "v": "12",
+          "at": "ui/widgets.rs:414",
+          "s": {
+            "t": "btn",
+            "h": 32,
+            "r": 7,
+            "px": 12
+          }
+        },
+        {
+          "l": "Primary; Sync now",
+          "v": "14",
+          "at": "ui/lock.rs:104; ui/settings_sync.rs:361",
+          "s": {
+            "t": "btn",
+            "kind": "primary",
+            "h": 32,
+            "r": 8,
+            "px": 14
+          }
+        },
+        {
+          "l": "Welcome Create",
+          "v": "16",
+          "at": "ui/welcome.rs:125",
+          "s": {
+            "t": "btn",
+            "kind": "primary",
+            "h": 32,
+            "r": 8,
+            "px": 16
+          }
+        }
+      ],
+      "why": "Sync now overrides the outline button's 12 to sit beside a primary button.",
+      "propose": "14 for both kinds, and no padding argument on primary_button.",
+      "decision": "Settled: PAD_BUTTON_X (12) unified across Button variants."
+    },
+    {
+      "id": "SP-05",
+      "area": "spacing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Toast, Undo and notice pills are padded differently",
+      "variants": [
+        {
+          "l": "Toast",
+          "v": "14 sides, 7 above and below",
+          "at": "ui/reader.rs:622"
+        },
+        {
+          "l": "Undo, notice",
+          "v": "14 left, 4 right, 3 above and below",
+          "at": "ui/reader.rs:775, :832"
+        }
+      ],
+      "why": "The other two end in a 24 button, which accounts for the difference. All three come to the same height.",
+      "propose": "Keep. Write the pill's height down as the rule.",
+      "decision": "Settled: kept; all three share PILL_H (30) with 24 pt trailing pill buttons."
+    },
+    {
+      "id": "SP-06",
+      "area": "spacing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Sidebar footer is padded 6 above and below; the spec says 8",
+      "variants": [
+        {
+          "l": "Spec",
+          "v": "padding 8",
+          "at": "docs/reader-writer/behavior/sidebar.md:59"
+        },
+        {
+          "l": "Code",
+          "v": "px 8, py 6",
+          "at": "ui/sidebar/mod.rs:297"
+        }
+      ],
+      "why": "The outline's footer copies the result as a literal 41.",
+      "propose": "Pick one, and give the footer height a name both panels use.",
+      "decision": "Settled: shared size::FOOTER_H (41) in ui/tokens.rs used by both sidebar and outline."
+    },
+    {
+      "id": "SP-07",
+      "area": "spacing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Shared values written as bare numbers",
+      "variants": [
+        {
+          "l": "Outline width 236",
+          "v": "3 places",
+          "at": "ui/outline.rs:15; ui/editor.rs:1125; ui/preview.rs:90"
+        },
+        {
+          "l": "Window margin 48",
+          "v": "5 places",
+          "at": "ui/settings.rs:125, :145; ui/sheet.rs:42; ui/reader.rs:335, :550"
+        },
+        {
+          "l": "Footer height 41",
+          "v": "2 places",
+          "at": "ui/outline.rs:243, :270"
+        },
+        {
+          "l": "Window dots 52",
+          "v": "literal beside DOTS_W",
+          "at": "ui/titlebar.rs:241"
+        },
+        {
+          "l": "Toolbar shadow",
+          "v": "2 places",
+          "at": "ui/widgets.rs:153; ui/mod.rs:272"
+        },
+        {
+          "l": "Side-list scroll fade",
+          "v": "2 places",
+          "at": "ui/sidebar/mod.rs:67; ui/outline.rs:194"
+        }
+      ],
+      "why": "",
+      "propose": "Name each once. On Linux DOTS_W is 0 and the literal is still 52.",
+      "decision": "Settled: named once in ui/tokens.rs (OUTLINE_W, DIALOG_MARGIN_BOTH, FOOTER_H, SCROLL_FADE_PANEL, Elevation::Toolbar)."
+    },
+    {
+      "id": "SP-08",
+      "area": "spacing",
+      "sev": "low",
+      "status": "checked",
+      "title": "Scroll fades: 8, 14 and 28",
+      "variants": [
+        {
+          "l": "Palette list",
+          "v": "8",
+          "at": "ui/palette.rs:23"
+        },
+        {
+          "l": "Side lists",
+          "v": "14",
+          "at": "ui/sidebar/mod.rs:67"
+        },
+        {
+          "l": "Settings, help",
+          "v": "28",
+          "at": "ui/widgets.rs:54"
+        }
+      ],
+      "why": "",
+      "propose": "Two: 14 in a panel, 28 in a dialog. Move the palette to one of them.",
+      "decision": "Settled: two named scroll fades in tokens::space (14 panel, 28 dialog); palette keeps 8 to avoid dimming whole rows."
+    },
+    {
+      "id": "SP-09",
+      "area": "spacing",
+      "sev": "low",
+      "status": "reported",
+      "title": "Find bar and toolbar spacing changes when narrow",
+      "variants": [
+        {
+          "l": "Gap",
+          "v": "8, or 6 narrow",
+          "at": "ui/editor.rs:667, :637"
+        },
+        {
+          "l": "Top",
+          "v": "10, or 8 narrow",
+          "at": "ui/editor.rs:649, :647"
+        },
+        {
+          "l": "'Narrow' means",
+          "v": "under 860, or 680",
+          "at": "ui/editor.rs:267, :611"
+        }
+      ],
+      "why": "",
+      "propose": "One narrow breakpoint for the note area."
+    },
+    {
+      "id": "LK-01",
+      "area": "looks",
+      "sev": "high",
+      "status": "checked",
+      "title": "Corner radius has no scale: 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 and 14 are all in use",
+      "variants": [
+        {
+          "l": "7 uses",
+          "v": "3",
+          "at": "ui/chip.rs:43; ui/map.rs:551",
+          "s": {
+            "t": "sq",
+            "r": 3
+          }
+        },
+        {
+          "l": "25 uses",
+          "v": "4",
+          "at": "ui/widgets.rs:90, :137",
+          "s": {
+            "t": "sq",
+            "r": 4
+          }
+        },
+        {
+          "l": "9 uses",
+          "v": "5",
+          "at": "ui/editor.rs:865, :965, :1361",
+          "s": {
+            "t": "sq",
+            "r": 5
+          }
+        },
+        {
+          "l": "33 uses",
+          "v": "6",
+          "at": "ui/widgets.rs:212; ui/menu.rs:77",
+          "s": {
+            "t": "sq",
+            "r": 6
+          }
+        },
+        {
+          "l": "20 uses",
+          "v": "7",
+          "at": "ui/widgets.rs:416; ui/lock.rs:32",
+          "s": {
+            "t": "sq",
+            "r": 7
+          }
+        },
+        {
+          "l": "10 uses",
+          "v": "8",
+          "at": "ui/widgets.rs:433, :314",
+          "s": {
+            "t": "sq",
+            "r": 8
+          }
+        },
+        {
+          "l": "6 uses",
+          "v": "9",
+          "at": "ui/menu.rs:73; ui/settings.rs:259",
+          "s": {
+            "t": "sq",
+            "r": 9
+          }
+        },
+        {
+          "l": "4 uses",
+          "v": "10",
+          "at": "ui/welcome.rs:181; ui/titlebar.rs:273",
+          "s": {
+            "t": "sq",
+            "r": 10
+          }
+        },
+        {
+          "l": "1 use",
+          "v": "11",
+          "at": "ui/editor.rs:1015",
+          "s": {
+            "t": "sq",
+            "r": 11
+          }
+        },
+        {
+          "l": "8 uses",
+          "v": "12",
+          "at": "ui/settings.rs:102; ui/palette.rs:222",
+          "s": {
+            "t": "sq",
+            "r": 12
+          }
+        }
+      ],
+      "why": "The sidebar spec names '6 pt outer / 4 pt inner' as tokens (sidebar.md:59). The rest came from the prototype, which used 5 to 12 by eye (design/Quire.dc.html I06).",
+      "propose": "Four steps and a pill: 4 inside a control, 6 for controls, rows and bars, 8 for buttons, inputs and cards, 12 for dialogs. 3 and 5 go to 4, 7 to 8, 9 and 10 to 8, 11 to the pill.",
+      "decision": "Settled: concentric radius scale in tokens::radius (4 INNER, 6 CONTROL, 8 FIELD, 12 DIALOG, 999 PILL)."
+    },
+    {
+      "id": "LK-02",
+      "area": "looks",
+      "sev": "high",
+      "status": "checked",
+      "title": "Cancel and the primary button beside it have different corners",
+      "variants": [
+        {
+          "l": "Outline button",
+          "v": "radius 7",
+          "at": "ui/widgets.rs:416",
+          "s": {
+            "t": "btn",
+            "h": 32,
+            "r": 7,
+            "px": 12
+          }
+        },
+        {
+          "l": "Primary button",
+          "v": "radius 8",
+          "at": "ui/widgets.rs:433",
+          "s": {
+            "t": "btn",
+            "kind": "primary",
+            "h": 32,
+            "r": 8,
+            "px": 14
+          }
+        }
+      ],
+      "why": "They sit side by side in the lock dialog (ui/lock.rs:236, :244) and in Sync. The prototype and the Android app have the same pair (android Common.kt:230, :248).",
+      "propose": "8 for both, in both apps.",
+      "decision": "Settled: radius::FIELD (8) for both primary and outline/destructive buttons in ui/components/button.rs."
+    },
+    {
+      "id": "LK-03",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Dialogs come in three shapes",
+      "variants": [
+        {
+          "l": "Settings, lock, trash",
+          "v": "radius 12, settings shadow",
+          "at": "ui/settings.rs:95, :102; ui/lock.rs:154; ui/trash.rs:200",
+          "s": {
+            "t": "surface",
+            "r": 12,
+            "sh": "sh-settings"
+          }
+        },
+        {
+          "l": "Palette",
+          "v": "radius 12, palette shadow",
+          "at": "ui/palette.rs:221",
+          "s": {
+            "t": "surface",
+            "r": 12,
+            "sh": "sh-palette"
+          }
+        },
+        {
+          "l": "Help, edit sheet",
+          "v": "radius 6, menu shadow",
+          "at": "ui/reader.rs:19; ui/sheet.rs:189",
+          "s": {
+            "t": "surface",
+            "r": 6,
+            "sh": "sh-menu"
+          }
+        },
+        {
+          "l": "Menus",
+          "v": "radius 9, menu shadow",
+          "at": "ui/menu.rs:73",
+          "s": {
+            "t": "surface",
+            "r": 9,
+            "sh": "sh-menu"
+          }
+        }
+      ],
+      "why": "Help and the edit sheet came from omarky, whose corners follow a 'rounding' setting Quire does not have (SHEET-017, RD-53). The others came from the prototype.",
+      "propose": "Two elevations: popup (menus, bars, toasts) and dialog (everything modal). Help and the edit sheet take the dialog's radius and shadow.",
+      "decision": "Settled: Elevation::Dialog (r=12) for all modal dialogs (Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox) and Elevation::Popup for menus/find/pickers."
+    },
+    {
+      "id": "LK-04",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Paper and Ink do not use their own accent for buttons, switches and selection",
+      "variants": [
+        {
+          "l": "Paper accent",
+          "v": "#7a4fba",
+          "at": "theme.rs:268",
+          "s": {
+            "t": "swatch",
+            "c": "#7a4fba"
+          }
+        },
+        {
+          "l": "Ink accent",
+          "v": "#b597e8",
+          "at": "theme.rs:241",
+          "s": {
+            "t": "swatch",
+            "c": "#b597e8"
+          }
+        },
+        {
+          "l": "Button, switch, both",
+          "v": "#7d52bd",
+          "at": "theme.rs:245, :272",
+          "s": {
+            "t": "swatch",
+            "c": "#7d52bd"
+          }
+        },
+        {
+          "l": "Selection and link line, both",
+          "v": "#8a5fc9 at 22% and 40%",
+          "at": "theme.rs:248, :275",
+          "s": {
+            "t": "swatch",
+            "c": "#8a5fc9"
+          }
+        }
+      ],
+      "why": "The prototype hard-coded these (design/Quire.dc.html I21). Every other theme derives them from its accent in with_accent (theme.rs:531). Paper's and Ink's colours are also stored twice, in pal() and in THEMES.",
+      "propose": "Build Paper and Ink through with_accent like the rest, or record that the two keep a fixed button violet on purpose.",
+      "decision": "Settled: Paper and Ink derive through THEMES + build() + with_accent() in theme.rs like all other built-in themes."
+    },
+    {
+      "id": "LK-05",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Hover and selected fills differ by surface",
+      "variants": [
+        {
+          "l": "Chrome hover",
+          "v": "p.hover: ink at 6% (5% dark)",
+          "at": "theme.rs:266; ui/widgets.rs:213"
+        },
+        {
+          "l": "Panel hover",
+          "v": "c.hover: ink at 4% (4.5% dark)",
+          "at": "roles.rs:233; ui/panel.rs:48"
+        },
+        {
+          "l": "Page hover",
+          "v": "text at 6%",
+          "at": "roles.rs:192"
+        },
+        {
+          "l": "Sidebar selected",
+          "v": "c.selected: ink at 11% (13% dark)",
+          "at": "roles.rs:234"
+        },
+        {
+          "l": "Outline current",
+          "v": "accent at 10%",
+          "at": "ui/panel.rs:53"
+        },
+        {
+          "l": "Chrome active",
+          "v": "p.act: ink at 9% (8% dark)",
+          "at": "theme.rs:267"
+        }
+      ],
+      "why": "The map reads p.hover for its HUD and c.hover for its nodes on one canvas (ui/map.rs:766, :1129).",
+      "propose": "One hover and one selected per surface kind (chrome, panel, page), named so a view cannot pick the wrong one.",
+      "decision": "Settled: tokens::Zone (Chrome, Panel, Page) owns hover, selected and icon_rest per zone."
+    },
+    {
+      "id": "LK-06",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "The current row is marked three ways",
+      "variants": [
+        {
+          "l": "Sidebar tab, result",
+          "v": "a filled row",
+          "at": "ui/sidebar; SB-03"
+        },
+        {
+          "l": "Sidebar outline entry",
+          "v": "accent ink only, never filled",
+          "at": "ui/sidebar/shelf.rs:320; SB-30"
+        },
+        {
+          "l": "Outline panel row",
+          "v": "accent wash and ink",
+          "at": "ui/outline.rs:104; RD-47"
+        }
+      ],
+      "why": "Both outline rules are written down, each in its own spec.",
+      "propose": "Decide whether the two outlines should look alike. They list the same headings of the same note.",
+      "decision": "Settled: kept distinct; shelf inline outline stays ink-only (SB-30), outline panel stays accent-washed (RD-47)."
+    },
+    {
+      "id": "LK-07",
+      "area": "looks",
+      "sev": "high",
+      "status": "checked",
+      "title": "Chrome text is set at twelve sizes, half a point apart",
+      "variants": [
+        {
+          "l": "3 uses",
+          "v": "10",
+          "at": "census of sans()",
+          "s": {
+            "t": "text",
+            "fs": 10
+          }
+        },
+        {
+          "l": "2",
+          "v": "10.5",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 10.5
+          }
+        },
+        {
+          "l": "10",
+          "v": "11",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 11
+          }
+        },
+        {
+          "l": "23",
+          "v": "11.5",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 11.5
+          }
+        },
+        {
+          "l": "18",
+          "v": "12",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 12
+          }
+        },
+        {
+          "l": "34",
+          "v": "12.5",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 12.5
+          }
+        },
+        {
+          "l": "18",
+          "v": "13",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 13
+          }
+        },
+        {
+          "l": "4",
+          "v": "13.5",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 13.5
+          }
+        },
+        {
+          "l": "10",
+          "v": "14",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 14
+          }
+        },
+        {
+          "l": "1",
+          "v": "14.5",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 14.5
+          }
+        },
+        {
+          "l": "3",
+          "v": "15",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 15
+          }
+        },
+        {
+          "l": "5",
+          "v": "17",
+          "at": "",
+          "s": {
+            "t": "text",
+            "fs": 17
+          }
+        }
+      ],
+      "why": "styles.rs names the families and one size (CAPTION). Every other size is a number at the call. Settings row titles are 14, key-binding rows 13.5, palette rows 14, hint labels 13.5, autocomplete 13.",
+      "propose": "Six named sizes: 10 caption, 11.5 small, 12.5 control, 13 body, 14 row title, 17 title. 10.5 and 11 go to 11.5 or 10, 12 to 12.5, 13.5 to 13 or 14, 14.5 and 15 to 14.",
+      "decision": "Settled: named type scale in ui/styles.rs (10, 11.5, 12.5, 13, 14, 15 palette, 17)."
+    },
+    {
+      "id": "LK-08",
+      "area": "looks",
+      "sev": "low",
+      "status": "checked",
+      "title": "Text typed into a field is 12.5, 13, 14 or 15",
+      "variants": [
+        {
+          "l": "Settings text box",
+          "v": "12.5",
+          "at": "ui/settings_sync.rs:485",
+          "s": {
+            "t": "input",
+            "h": 32,
+            "r": 7,
+            "fs": 12.5
+          }
+        },
+        {
+          "l": "Lock, keys search, help search, find",
+          "v": "13",
+          "at": "ui/lock.rs:41; ui/settings.rs:537; ui/reader.rs:467",
+          "s": {
+            "t": "input",
+            "h": 32,
+            "r": 7,
+            "fs": 13
+          }
+        },
+        {
+          "l": "Welcome name",
+          "v": "14",
+          "at": "ui/welcome.rs:74",
+          "s": {
+            "t": "input",
+            "h": 38,
+            "r": 8,
+            "fs": 14
+          }
+        },
+        {
+          "l": "Palette",
+          "v": "15",
+          "at": "ui/palette.rs:61",
+          "s": {
+            "t": "input",
+            "h": 38,
+            "r": 8,
+            "fs": 15
+          }
+        }
+      ],
+      "why": "",
+      "propose": "13 in a field, 15 in the palette, which is a field and a title at once.",
+      "decision": "Settled: 13 pt styles::field() for single-line dialog inputs (incl. Welcome); 15 pt styles::palette_input() for palette."
+    },
+    {
+      "id": "LK-09",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Error and status lines: three sizes, three colour tokens",
+      "variants": [
+        {
+          "l": "Keys conflict, sheet problem",
+          "v": "11.5",
+          "at": "ui/settings.rs:610; ui/sheet.rs:155"
+        },
+        {
+          "l": "MCP status",
+          "v": "12",
+          "at": "ui/settings_mcp.rs:262"
+        },
+        {
+          "l": "Lock error, sync status",
+          "v": "12.5",
+          "at": "ui/lock.rs:125; ui/settings_sync.rs:365"
+        },
+        {
+          "l": "Colour",
+          "v": "c.red, readable_err(), p.err",
+          "at": "ui/sheet.rs:155, :121; ui/trash.rs:126, :104; ui/settings.rs:610"
+        }
+      ],
+      "why": "readable_err lifts the error colour until it reads on its fill. p.err and c.red do not.",
+      "propose": "One error line: one size, readable_err everywhere text is in the error colour.",
+      "decision": "Settled: shared components::badge::error_line using Roles::readable_err() everywhere."
+    },
+    {
+      "id": "LK-10",
+      "area": "looks",
+      "sev": "high",
+      "status": "checked",
+      "title": "'Disabled' looks five different ways",
+      "variants": [
+        {
+          "l": "Title bar, find steppers",
+          "v": "icon at 38%",
+          "at": "ui/titlebar.rs:49; ui/reader.rs:106",
+          "s": {
+            "t": "dis",
+            "o": 0.38
+          }
+        },
+        {
+          "l": "MCP tool unavailable",
+          "v": "45%",
+          "at": "ui/settings_mcp.rs:144",
+          "s": {
+            "t": "dis",
+            "o": 0.45
+          }
+        },
+        {
+          "l": "Empty trash",
+          "v": "50%",
+          "at": "ui/trash.rs:161",
+          "s": {
+            "t": "dis",
+            "o": 0.5
+          }
+        },
+        {
+          "l": "Busy primary button",
+          "v": "fill at 60%",
+          "at": "ui/lock.rs:99, :231",
+          "s": {
+            "t": "dis",
+            "o": 0.6
+          }
+        },
+        {
+          "l": "Save with nothing to save",
+          "v": "65%",
+          "at": "ui/sheet.rs:139",
+          "s": {
+            "t": "dis",
+            "o": 0.65
+          }
+        },
+        {
+          "l": "Map add-toolbar",
+          "v": "icon at 35%",
+          "at": "ui/map.rs:578",
+          "s": {
+            "t": "dis",
+            "o": 0.35
+          }
+        },
+        {
+          "l": "Menu row",
+          "v": "muted ink, full strength",
+          "at": "ui/menu.rs:75",
+          "s": {
+            "t": "dis",
+            "o": 1
+          }
+        }
+      ],
+      "why": "",
+      "propose": "One disabled look: 38% for an icon or a label, and a busy state that is not the disabled one.",
+      "decision": "Settled: tokens::state opacities (38% content/icons, 45% bordered buttons) distinct from 65% busy state with busy label."
+    },
+    {
+      "id": "LK-11",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Motion has no named durations",
+      "variants": [
+        {
+          "l": "Hover fade",
+          "v": "0.1 s (16 uses)",
+          "at": "ui/map.rs:766"
+        },
+        {
+          "l": "Hover fade",
+          "v": "0.12 s (27 uses)",
+          "at": "ui/map/card.rs:113"
+        },
+        {
+          "l": "Springs",
+          "v": "0.08, 0.1, 0.12, 0.16, 0.18, 0.25, 0.3",
+          "at": "ui/layer.rs:69; ui/widgets.rs:394; ui/mod.rs:110, :128; ui/titlebar.rs:282"
+        },
+        {
+          "l": "Spec and comments",
+          "v": "'120 ms', '160 ms', '180 ms'",
+          "at": "ui/layer.rs:64; ui/mod.rs:118; docs/reader-writer/behavior/map.md:83"
+        }
+      ],
+      "why": "A map node fades its hover in 0.1 s and the card on it in 0.12 s. motion::ms, which the spec's reduced-motion rule (PAGE-84) leans on, has no caller outside tests (motion.rs:50).",
+      "propose": "Name four: hover, modal, swap, slide. One hover time. Say in one place how a spring's number relates to the milliseconds the spec gives.",
+      "decision": "Settled: named constants and spring builders in tokens::motion (HOVER_FADE 0.1, MODAL 0.08, SWAP/DRAWER 0.16, TAB 0.18, ZEN 0.25)."
+    },
+    {
+      "id": "LK-12",
+      "area": "looks",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Three focus rings",
+      "variants": [
+        {
+          "l": "Every control",
+          "v": "2 wide, 3 out",
+          "at": "ui/mod.rs:103",
+          "s": {
+            "t": "ring",
+            "w": 2,
+            "gap": 3
+          }
+        },
+        {
+          "l": "Find bar buttons, task boxes",
+          "v": "2 wide, 1 out",
+          "at": "ui/reader.rs:112, :179; ui/preview/list.rs:96",
+          "s": {
+            "t": "ring",
+            "w": 2,
+            "gap": 1
+          }
+        },
+        {
+          "l": "Text inputs",
+          "v": "1.5 wide, inside, faint",
+          "at": "ui/widgets.rs:102",
+          "s": {
+            "t": "ring",
+            "w": 1.5,
+            "gap": -1.5,
+            "faint": true
+          }
+        }
+      ],
+      "why": "The tight ring is written as numbers at each call. The find bar's buttons sit 1 apart, so the standard ring would overlap.",
+      "propose": "Keep three, as three named rings, with the tight one a function like the other two.",
+      "decision": "Settled: tokens::FocusRing enum (Standard, Tight, Input, Inset)."
+    },
+    {
+      "id": "LK-13",
+      "area": "looks",
+      "sev": "low",
+      "status": "checked",
+      "title": "Icon buttons rest in four inks",
+      "variants": [
+        {
+          "l": "icon_button",
+          "v": "p.mute",
+          "at": "ui/widgets.rs:217"
+        },
+        {
+          "l": "Mini button",
+          "v": "mute lifted to 3.2:1",
+          "at": "ui/widgets.rs:188"
+        },
+        {
+          "l": "Map zoom HUD",
+          "v": "dim lifted to 4.8:1",
+          "at": "ui/map.rs:1127"
+        },
+        {
+          "l": "Sidebar footer",
+          "v": "c.dim (spec: Text)",
+          "at": "ui/sidebar/mod.rs:328; docs/reader-writer/behavior/sidebar.md:162"
+        }
+      ],
+      "why": "",
+      "propose": "One rest ink for icon buttons, lifted to the same contrast on every surface.",
+      "decision": "Settled: Zone::icon_rest lifts rest icon ink to >= 3.2:1 on every theme, brightening to ink on hover."
+    },
+    {
+      "id": "LK-14",
+      "area": "looks",
+      "sev": "low",
+      "status": "checked",
+      "title": "Popups cast three shadows, and none changes with the theme",
+      "variants": [
+        {
+          "l": "Menu",
+          "v": "14 / 34 / -10 at 35%",
+          "at": "theme.rs:329",
+          "s": {
+            "t": "surface",
+            "r": 9,
+            "sh": "sh-menu"
+          }
+        },
+        {
+          "l": "Palette",
+          "v": "24 / 60 / -16 at 45%",
+          "at": "theme.rs:337",
+          "s": {
+            "t": "surface",
+            "r": 12,
+            "sh": "sh-palette"
+          }
+        },
+        {
+          "l": "Settings",
+          "v": "30 / 80 / -20 at 45%",
+          "at": "theme.rs:345",
+          "s": {
+            "t": "surface",
+            "r": 12,
+            "sh": "sh-settings"
+          }
+        },
+        {
+          "l": "Toolbar",
+          "v": "6 / 22 / -4, black, 12% or 50% dark",
+          "at": "ui/widgets.rs:153",
+          "s": {
+            "t": "surface",
+            "r": 6,
+            "sh": "sh-toolbar"
+          }
+        }
+      ],
+      "why": "The first three are warm brown (#281c0a) on every theme, dark ones too. Only the toolbar's knows about dark.",
+      "propose": "Two shadows, popup and dialog, each with a dark value.",
+      "decision": "Settled: theme-aware Elevation shadows (warm brown on light, neutral black on dark) in ui/tokens.rs."
+    },
+    {
+      "id": "LK-15",
+      "area": "looks",
+      "sev": "low",
+      "status": "reported",
+      "title": "Small differences on the map canvas",
+      "variants": [
+        {
+          "l": "Card border",
+          "v": "1, but 1.5 on the lite stand-in",
+          "at": "ui/map/card.rs:62, :301"
+        },
+        {
+          "l": "Inline field against cards",
+          "v": "radius 3 against 4",
+          "at": "ui/map.rs:551; ui/map/card.rs:60"
+        },
+        {
+          "l": "Node hover against drag ghost",
+          "v": "radius 4 against 6",
+          "at": "ui/map.rs:766, :1076"
+        },
+        {
+          "l": "Lightbox close against mini buttons",
+          "v": "radius 6 against 4, both 24",
+          "at": "ui/map/lightbox.rs:78; ui/widgets.rs:137"
+        },
+        {
+          "l": "Map type leadings",
+          "v": "1.3, 1.35, 1.45 against the page's 1.25, 1.35, 1.6",
+          "at": "map_app.rs:253; page.rs:25"
+        }
+      ],
+      "why": "",
+      "propose": "Take the card's radius and border for everything that stands in for a card."
+    },
+    {
+      "id": "LK-16",
+      "area": "looks",
+      "sev": "low",
+      "status": "reported",
+      "title": "Tags and small capitals vary inside the note",
+      "variants": [
+        {
+          "l": "Inline tag",
+          "v": "radius 4",
+          "at": "ui/preview.rs:218"
+        },
+        {
+          "l": "Tag line",
+          "v": "radius max(3, 22% of its height)",
+          "at": "ui/preview.rs:1174"
+        },
+        {
+          "l": "Front-matter tags",
+          "v": "accent pills (spec: neutral)",
+          "at": "ui/preview/front.rs:89; BLK-96"
+        },
+        {
+          "l": "Capitals",
+          "v": "0.72, 0.74, 0.76 of body; tracking 0.8 or 8%",
+          "at": "ui/preview/table.rs:33; ui/preview/front.rs:60; ui/preview.rs:756"
+        }
+      ],
+      "why": "BLK-101 asks for 'a chip set like inline code', one chip.",
+      "propose": "One tag chip. One small-capitals style for table heads, keys and alert titles."
+    },
+    {
+      "id": "LK-17",
+      "area": "looks",
+      "sev": "low",
+      "status": "checked",
+      "title": "Dividers and hover marks",
+      "variants": [
+        {
+          "l": "Outline's left edge",
+          "v": "hairline_soft",
+          "at": "ui/outline.rs:203"
+        },
+        {
+          "l": "Every other panel line",
+          "v": "p.line",
+          "at": "ui/outline.rs:243; ui/sidebar/mod.rs:49"
+        },
+        {
+          "l": "Welcome action cards",
+          "v": "hover shows a ring",
+          "at": "ui/welcome.rs:183"
+        },
+        {
+          "l": "Welcome recent rows, trash, help rows",
+          "v": "hover shows a fill",
+          "at": "ui/welcome.rs:146; ui/trash.rs:136"
+        }
+      ],
+      "why": "",
+      "propose": "p.line for panel edges. A fill for row hover; keep the ring for cards if cards are meant to differ.",
+      "decision": "Settled: p.line for outline left divider; welcome action cards use radius::FIELD (8) and keep border-ring hover."
+    },
+    {
+      "id": "LK-18",
+      "area": "looks",
+      "sev": "low",
+      "status": "checked",
+      "title": "Emphasis is 600 in one family and 700 in the other",
+      "variants": [
+        {
+          "l": "Captions in the panel family",
+          "v": "700",
+          "at": "ui/styles.rs:117"
+        },
+        {
+          "l": "Captions in Instrument Sans",
+          "v": "600",
+          "at": "ui/styles.rs:117"
+        },
+        {
+          "l": "Folder names",
+          "v": "600",
+          "at": "ui/styles.rs:81"
+        }
+      ],
+      "why": "Quattro S has only 400 and 700, so 600 resolves to Bold there (ui/styles.rs:78).",
+      "propose": "Keep. Record it as the rule: semibold where the family has it, bold where it does not.",
+      "decision": "Settled: kept; semibold 600 where supported, resolving to Bold 700 on Quattro S."
+    },
+    {
+      "id": "IX-01",
+      "area": "interaction",
+      "sev": "high",
+      "status": "checked",
+      "title": "Ctrl+Shift+7 and 9 swap meaning between the writer and the map",
+      "variants": [
+        {
+          "l": "Writer, and the map's own inline edit",
+          "v": "7 numbered, 8 bulleted, 9 task",
+          "at": "keymap.rs:161-163, :281-283"
+        },
+        {
+          "l": "Map",
+          "v": "7 task, 8 bulleted, 9 numbered",
+          "at": "keymap.rs:242-244"
+        }
+      ],
+      "why": "",
+      "propose": "The writer's order in the map."
+    },
+    {
+      "id": "IX-02",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Ctrl+Shift+C is inline code, copy block and copy branch",
+      "variants": [
+        {
+          "l": "Writer, sheet, map inline edit",
+          "v": "inline code",
+          "at": "keymap.rs:146"
+        },
+        {
+          "l": "Reader",
+          "v": "copy the block's Markdown",
+          "at": "keymap.rs:128"
+        },
+        {
+          "l": "Map",
+          "v": "copy the branch's Markdown",
+          "at": "keymap.rs:253"
+        }
+      ],
+      "why": "The mode separates them, and Ctrl+Enter is split the same way: follow a link in the writer and map, save in the sheet.",
+      "propose": "Keep, or move copy to a chord no editing surface uses."
+    },
+    {
+      "id": "IX-03",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Esc does something different in every field",
+      "variants": [
+        {
+          "l": "Writer",
+          "v": "leaves Source for Preview",
+          "at": "keymap.rs:177"
+        },
+        {
+          "l": "Edit sheet",
+          "v": "arms Discard; a second Esc discards",
+          "at": "sheet.rs:246"
+        },
+        {
+          "l": "Help search",
+          "v": "clears, then closes",
+          "at": "help.rs:391"
+        },
+        {
+          "l": "Keys search in Settings",
+          "v": "clears, stays open",
+          "at": "ui/settings.rs:554"
+        },
+        {
+          "l": "Palette",
+          "v": "closes",
+          "at": "ui/palette.rs:282"
+        },
+        {
+          "l": "Find bar",
+          "v": "dismisses a notice, then closes",
+          "at": "ui/reader.rs:138"
+        }
+      ],
+      "why": "",
+      "propose": "One rule for a field in a layer: Esc clears a non-empty field, the next Esc closes the layer. The palette is the one to change.",
+      "decision": "Settled: Esc clears non-empty palette query first and closes on the next Esc, matching Help search."
+    },
+    {
+      "id": "IX-04",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Where focus lands when a dialog opens",
+      "variants": [
+        {
+          "l": "Palette, help",
+          "v": "its field",
+          "at": "app.rs:2646; reader.rs:1418"
+        },
+        {
+          "l": "Lock",
+          "v": "the password field",
+          "at": "lock_app.rs:143"
+        },
+        {
+          "l": "Remove password",
+          "v": "Cancel",
+          "at": "ui/lock.rs:173"
+        },
+        {
+          "l": "Settings",
+          "v": "the open tab",
+          "at": "ui/settings.rs:26"
+        },
+        {
+          "l": "Trash, welcome",
+          "v": "nowhere",
+          "at": "ui/trash.rs; app.rs:2035"
+        }
+      ],
+      "why": "",
+      "propose": "Every dialog names its first focus: the field if it has one, else the safe button, else the first control.",
+      "decision": "Settled: Trash sets initial focus (trash-close when empty, first Restore button when populated)."
+    },
+    {
+      "id": "IX-05",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "checked",
+      "title": "An armed destructive button lapses in the sheet and not in the trash",
+      "variants": [
+        {
+          "l": "Sheet Discard",
+          "v": "disarms after 2 s",
+          "at": "sheet.rs:246-254"
+        },
+        {
+          "l": "Trash Delete, Empty trash",
+          "v": "stays armed until another action",
+          "at": "ui/trash.rs:97-127, :164; app.rs:2090-2104"
+        }
+      ],
+      "why": "",
+      "propose": "The same lapse for both.",
+      "decision": "Settled: Trash armed Delete and Empty trash lapse after 2 s (tokens::motion::ARMED_LAPSE_SECS), matching Edit sheet."
+    },
+    {
+      "id": "IX-06",
+      "area": "interaction",
+      "sev": "high",
+      "status": "checked",
+      "title": "A command has one name in the palette and another in help and Settings",
+      "variants": [
+        {
+          "l": "Keymap (help, Settings, tooltips)",
+          "v": "Keyboard help · Settings · Find · Go back · Insert an image · Preview mode · Zen mode · Toggle sidebar · Map layout · Quick switcher",
+          "at": "keymap.rs:68-136, :233"
+        },
+        {
+          "l": "Palette",
+          "v": "Keyboard shortcuts · Open settings · Find in note · Go Back · Insert image… · Show preview · Enter zen mode · Show sidebar · Choose map layout… · Open quick switcher",
+          "at": "commands.rs:26-180"
+        }
+      ],
+      "why": "The keymap's 'Lock or lock now' (keymap.rs:105) reads as two actions. The palette alone uses title case, for Go Back and Go Forward.",
+      "propose": "One label per command, read from one place. Sentence case. An ellipsis only where a dialog follows."
+    },
+    {
+      "id": "IX-07",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "reported",
+      "title": "The same action is worded per surface",
+      "variants": [
+        {
+          "l": "Paragraph (Ctrl+Alt+0)",
+          "v": "Plain paragraph · Convert to paragraph · New node as a paragraph",
+          "at": "keymap.rs:160, :241, :274"
+        },
+        {
+          "l": "Task",
+          "v": "Task list · Toggle task · Convert to task · Tick the task · New node as a task",
+          "at": "keymap.rs:163, :151, :242, :221, :283"
+        },
+        {
+          "l": "Units",
+          "v": "block, section in the reader; node, branch in the map",
+          "at": "keymap.rs:131-132, :213-214"
+        },
+        {
+          "l": "Move",
+          "v": "Move line up · Move up",
+          "at": "keymap.rs:152, :229"
+        }
+      ],
+      "why": "",
+      "propose": "A short glossary of the nouns (block, section, node, branch) and one verb pattern per action."
+    },
+    {
+      "id": "IX-08",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Mouse gestures are spelled two ways",
+      "variants": [
+        {
+          "l": "Keymap, Settings",
+          "v": "Ctrl+click · Right-click",
+          "at": "keymap.rs:168, :130"
+        },
+        {
+          "l": "Outline hint, help copy",
+          "v": "Ctrl-click · right-click",
+          "at": "keys.rs:15; ui/reader.rs:503"
+        }
+      ],
+      "why": "",
+      "propose": "The keymap's spelling everywhere."
+    },
+    {
+      "id": "IX-09",
+      "area": "interaction",
+      "sev": "low",
+      "status": "reported",
+      "title": "Some keys work and are listed nowhere",
+      "variants": [
+        {
+          "l": "Menu key, Shift+F10",
+          "v": "open the context menu",
+          "at": "keys.rs:52-61"
+        },
+        {
+          "l": "Left, Right in the lightbox",
+          "v": "step through pictures",
+          "at": "keys.rs:172-184"
+        },
+        {
+          "l": "Esc over a drawer",
+          "v": "closes it",
+          "at": "keys.rs:186-191"
+        },
+        {
+          "l": "Settings' sidebar keys",
+          "v": "a hand-kept list, not the keymap",
+          "at": "ui/settings.rs:680-690"
+        }
+      ],
+      "why": "They are handled outside the keymap table, so help and Settings cannot show or rebind them.",
+      "propose": "Put them in the table, fixed if they must not be rebound."
+    },
+    {
+      "id": "IX-10",
+      "area": "interaction",
+      "sev": "low",
+      "status": "reported",
+      "title": "Common commands have no key",
+      "variants": [
+        {
+          "l": "No key",
+          "v": "Rename note · Delete note · New folder · Move to folder · Open trash · Sync now",
+          "at": "commands.rs:72-167"
+        }
+      ],
+      "why": "The spec says palette-only commands are intended (keymap.md:21). F2 and Delete already work on a focused sidebar row.",
+      "propose": "Keep, or give Rename note F2 from anywhere."
+    },
+    {
+      "id": "IX-11",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "reported",
+      "title": "Things you can click but not reach with Tab",
+      "variants": [
+        {
+          "l": "Heading '#' button",
+          "v": "role button, no focus stop",
+          "at": "ui/preview.rs:596-613"
+        },
+        {
+          "l": "Footnote number, tag chips",
+          "v": "handlers, no focus stop",
+          "at": "ui/preview.rs:1119, :1177; ui/preview/front.rs:95"
+        },
+        {
+          "l": "Block edit mini-bar",
+          "v": "focusable while invisible",
+          "at": "ui/preview.rs:672-677"
+        },
+        {
+          "l": "icon_button, mini_button",
+          "v": "focusable only if the caller adds it",
+          "at": "ui/widgets.rs:186, :207"
+        }
+      ],
+      "why": "Each has a keyboard route of its own (e, links by key), so this may be intended.",
+      "propose": "Say which page controls are Tab stops. Show the mini-bar when focus is inside it."
+    },
+    {
+      "id": "IX-12",
+      "area": "interaction",
+      "sev": "low",
+      "status": "checked",
+      "title": "Accessibility roles are uneven",
+      "variants": [
+        {
+          "l": "Toggle buttons",
+          "v": "switch",
+          "at": "ui/widgets.rs:224"
+        },
+        {
+          "l": "Mode buttons in the title bar",
+          "v": "radio",
+          "at": "ui/titlebar.rs:207"
+        },
+        {
+          "l": "icon_button",
+          "v": "no role unless the caller adds one",
+          "at": "ui/widgets.rs:207"
+        },
+        {
+          "l": "mini_button, chip",
+          "v": "button",
+          "at": "ui/widgets.rs:196; ui/chip.rs:47"
+        }
+      ],
+      "why": "",
+      "propose": "icon_button sets role button itself.",
+      "decision": "Settled: IconButton sets role('button') by default (and omits it when disabled for a11y)."
+    },
+    {
+      "id": "IX-13",
+      "area": "interaction",
+      "sev": "medium",
+      "status": "reported",
+      "title": "Enter in the sidebar search may open the first row, not the highlighted one",
+      "variants": [
+        {
+          "l": "Spec",
+          "v": "Enter opens the filled row",
+          "at": "docs/reader-writer/behavior/sidebar.md:144 (SB-66)"
+        },
+        {
+          "l": "Field's Enter",
+          "v": "takes results().first()",
+          "at": "ui/sidebar/mod.rs:124, :163"
+        },
+        {
+          "l": "Filled row",
+          "v": "res_focus if it still exists, else the first",
+          "at": "ui/sidebar/results.rs:49"
+        }
+      ],
+      "why": "The two differ only if res_focus is set while the keyboard is in the field. Not run.",
+      "propose": "Check with tests/probe.py: arrow down twice, click the field, press Enter."
+    },
+    {
+      "id": "IX-14",
+      "area": "interaction",
+      "sev": "low",
+      "status": "reported",
+      "title": "Reader and map give plain keys different jobs",
+      "variants": [
+        {
+          "l": "Space",
+          "v": "page down in the reader; fold in the map",
+          "at": "keymap.rs:110, :219"
+        },
+        {
+          "l": "Alt+Left, Alt+Right",
+          "v": "back and forward; move the node (the map has no back)",
+          "at": "keymap.rs:103, :234"
+        },
+        {
+          "l": "Home, End",
+          "v": "top and end of the note; root node, End unbound",
+          "at": "keymap.rs:112, :212"
+        }
+      ],
+      "why": "",
+      "propose": "Give the map a back and forward chord."
+    },
+    {
+      "id": "IX-15",
+      "area": "interaction",
+      "sev": "low",
+      "status": "reported",
+      "title": "Smaller behaviour differences",
+      "variants": [
+        {
+          "l": "Delete-folder confirm",
+          "v": "opens at the menu from the mouse, at (120, 180) from the keyboard",
+          "at": "ui/menu.rs:244; ui/lists.rs:91"
+        },
+        {
+          "l": "'Customize shortcuts' in help",
+          "v": "closes help to open Settings",
+          "at": "ui/reader.rs:385"
+        },
+        {
+          "l": "Task box hover accent",
+          "v": "shows where the box cannot be clicked",
+          "at": "ui/preview/list.rs:78"
+        },
+        {
+          "l": "Tooltips",
+          "v": "show one chord where help shows all",
+          "at": "keymap.rs:421"
+        }
+      ],
+      "why": "",
+      "propose": "Anchor the confirm to the focused row."
+    },
+    {
+      "id": "DOC-01",
+      "area": "spec drift",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Map add-toolbar: spec says 28 buttons, 16 icons, padding 4; code draws 24, 12, 3",
+      "variants": [
+        {
+          "l": "Spec MAP-087",
+          "v": "28 × 28, icons 16, padding 4, gaps 2",
+          "at": "docs/reader-writer/behavior/map.md:57"
+        },
+        {
+          "l": "Code",
+          "v": "24, 12, 3, 1",
+          "at": "ui/map.rs:575-596"
+        }
+      ],
+      "why": "Commit 3305405 scaled the bars to the zoom HUD.",
+      "propose": "Update MAP-087.",
+      "decision": "Settled: updated MAP-087 to match shared mini-bar tokens (24x24 buttons, 12 icons, 2 pad, 1 gap)."
+    },
+    {
+      "id": "DOC-02",
+      "area": "spec drift",
+      "sev": "medium",
+      "status": "checked",
+      "title": "Writer spec says there is no conflict banner; the editor draws one",
+      "variants": [
+        {
+          "l": "Spec WR-147",
+          "v": "'Quire shows no conflict banner'",
+          "at": "docs/reader-writer/behavior/writer.md:230"
+        },
+        {
+          "l": "Code",
+          "v": "banner and diff",
+          "at": "ui/editor.rs:175-400"
+        }
+      ],
+      "why": "",
+      "propose": "Update WR-147 and WR-148, and specify the banner."
+    },
+    {
+      "id": "DOC-03",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "checked",
+      "title": "Edit sheet spec says no spell checking; the sheet passes the setting through",
+      "variants": [
+        {
+          "l": "Spec SHEET-027",
+          "v": "no spell checking",
+          "at": "docs/reader-writer/behavior/edit-sheet.md:51"
+        },
+        {
+          "l": "Code",
+          "v": ".spellcheck(settings.spellcheck)",
+          "at": "ui/sheet.rs:97"
+        }
+      ],
+      "why": "",
+      "propose": "Update SHEET-027."
+    },
+    {
+      "id": "DOC-04",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "checked",
+      "title": "Specs still describe omarky's 'rounding' and sizes",
+      "variants": [
+        {
+          "l": "Sheet radius",
+          "v": "max(6, rounding); code 6",
+          "at": "edit-sheet.md:41; ui/sheet.rs:189"
+        },
+        {
+          "l": "Find bar radius",
+          "v": "max(4, rounding); code 6",
+          "at": "reader.md:93; ui/reader.rs:19"
+        },
+        {
+          "l": "Help card",
+          "v": "520 wide, 22 above and below, keys at 190; code 558, 18, 220",
+          "at": "reader.md:145; ui/reader.rs:334, :487, :327"
+        },
+        {
+          "l": "Toast band",
+          "v": "a fading band under the pill; code paints none",
+          "at": "reader.md:175; ui/reader.rs:686"
+        },
+        {
+          "l": "Find tooltips",
+          "v": "'Previous (Shift+Enter)'; code 'Previous match' and its key",
+          "at": "reader.md:94; ui/reader.rs:204"
+        }
+      ],
+      "why": "The toast band went in commit 4f01d3d.",
+      "propose": "Bring RD-53, RD-54, RD-87, RD-104 and SHEET-017 up to the code.",
+      "decision": "Settled: updated SHEET-017 to unified 12 pt dialog_frame."
+    },
+    {
+      "id": "DOC-05",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "checked",
+      "title": "Sidebar spec against the sidebar",
+      "variants": [
+        {
+          "l": "SB-04",
+          "v": "four controls at rest; code shows trash and sync too",
+          "at": "sidebar.md:28; ui/sidebar/mod.rs:227-292"
+        },
+        {
+          "l": "SB-78",
+          "v": "footer icons 'in Text'; code dims them at rest",
+          "at": "sidebar.md:162; ui/sidebar/mod.rs:328"
+        },
+        {
+          "l": "Outline entry",
+          "v": "text at x = 37; constants add to 36",
+          "at": "sidebar.md:55; ui/sidebar/shelf.rs:314, :336"
+        },
+        {
+          "l": "ROW_H comment",
+          "v": "12.5 × 1.3 + 10 = 26.25; constant 27",
+          "at": "ui/sidebar/parts.rs:18"
+        }
+      ],
+      "why": "",
+      "propose": "Update the spec lines.",
+      "decision": "Settled: updated sidebar.md row height table to shared 28 pt."
+    },
+    {
+      "id": "DOC-06",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "reported",
+      "title": "Writer comments and spec disagree with the code",
+      "variants": [
+        {
+          "l": "Shortcut comments",
+          "v": "Ctrl+Shift+D, F9; spec Ctrl+Shift+F, Ctrl+Shift+T",
+          "at": "writer_app.rs:678, :685; writer.md:134"
+        },
+        {
+          "l": "Caret",
+          "v": "comment: 1.5 pt, no blink; spec: max(2, E / 9), blinks",
+          "at": "ui/editor.rs:1279; writer.md:273"
+        },
+        {
+          "l": "Top padding",
+          "v": "spec max(56, 12% of height); code 10 + toolbar + 24",
+          "at": "writer.md:153; ui/editor.rs:449-485"
+        },
+        {
+          "l": "Heading tooltip",
+          "v": "written by hand; others read the keymap",
+          "at": "ui/editor.rs:819"
+        }
+      ],
+      "why": "",
+      "propose": "Fix the comments. Decide the caret."
+    },
+    {
+      "id": "DOC-07",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "reported",
+      "title": "Block spec against the reader",
+      "variants": [
+        {
+          "l": "BLK-30 task tick",
+          "v": "a stroked path; code draws the CHECK icon",
+          "at": "blocks.md:61; ui/preview/list.rs:74"
+        },
+        {
+          "l": "BLK-55 diff header",
+          "v": "chip height + 4; code mini-bar height + 8",
+          "at": "blocks.md:98; ui/preview/code.rs:172"
+        },
+        {
+          "l": "BLK-21 depth past 10",
+          "v": "'stops stepping in'; code returns to the margin",
+          "at": "blocks.md:52; ui/preview/list.rs:30"
+        },
+        {
+          "l": "Action bar",
+          "v": "at the top of a code block, centred in a diff's header",
+          "at": "ui/preview/code.rs:148, :209"
+        }
+      ],
+      "why": "",
+      "propose": "Read each pair and settle it one way."
+    },
+    {
+      "id": "DOC-08",
+      "area": "spec drift",
+      "sev": "low",
+      "status": "checked",
+      "title": "Comments that sit on the wrong item or state the wrong number",
+      "variants": [
+        {
+          "l": "icon_button and floating docs",
+          "v": "above SCROLL_FADE",
+          "at": "ui/widgets.rs:48-53"
+        },
+        {
+          "l": "Add-toolbar doc",
+          "v": "on KIND_BAR_W",
+          "at": "ui/map.rs:559"
+        },
+        {
+          "l": "Welcome lockup",
+          "v": "'a quarter of its width' (12); gap is 14",
+          "at": "ui/welcome.rs:25, :28"
+        },
+        {
+          "l": "Icon weights",
+          "v": "module doc and per-icon comments disagree",
+          "at": "ui/icons.rs:3, :26"
+        },
+        {
+          "l": "Section label",
+          "v": "'0.1 em tracking'; code tracking(1.0)",
+          "at": "ui/sidebar/parts.rs:53, :57"
+        }
+      ],
+      "why": "",
+      "propose": "Move and correct.",
+      "decision": "Settled: legacy ui/widgets.rs deleted and docs split cleanly per component module."
+    },
+    {
+      "id": "X-01",
+      "area": "across apps",
+      "sev": "high",
+      "status": "checked",
+      "title": "The prototype is called the design both apps follow, and no longer shows the desktop app",
+      "variants": [
+        {
+          "l": "Stated",
+          "v": "'The design prototype that both apps follow'",
+          "at": "README.md:156; ARCHITECTURE.md:18"
+        },
+        {
+          "l": "Prototype",
+          "v": "sidebar tabs files/search/tags, IBM Plex Mono panels, a status bar, no map, no edit sheet, no shelf, no trash",
+          "at": "design/Quire.dc.html"
+        },
+        {
+          "l": "Desktop",
+          "v": "shelf sidebar, Quattro panels, map view, edit sheet, block mini-bars, lock, trash",
+          "at": "desktop/src/ui"
+        }
+      ],
+      "why": "The desktop took omarky's reader and writer and a new sidebar after the port.",
+      "propose": "Make this bundle the reference, and say so in README and ARCHITECTURE. Keep the prototype as history, or redraw it from this.",
+      "decision": "Settled: ARCHITECTURE.md now names design/system/ as the desktop reference and Quire.dc.html as historical prototype."
+    },
+    {
+      "id": "X-02",
+      "area": "across apps",
+      "sev": "medium",
+      "status": "reported",
+      "title": "Android buttons and fields have their own sizes",
+      "variants": [
+        {
+          "l": "Button defaults",
+          "v": "primary 32, outline 30",
+          "at": "android Common.kt:224, :243"
+        },
+        {
+          "l": "Buttons as called",
+          "v": "34, 36, 40",
+          "at": "android Welcome.kt:189; Settings.kt:472; LockUi.kt:110"
+        },
+        {
+          "l": "Fields",
+          "v": "36 and 40 tall; radius 5, 7, 8; text 12 to 15",
+          "at": "android Settings.kt:553; LockUi.kt:63; Welcome.kt:166"
+        },
+        {
+          "l": "Tree and menu rows",
+          "v": "32 and 36",
+          "at": "android Sidebar.kt:327, :288"
+        }
+      ],
+      "why": "Touch needs taller targets than the desktop, so the numbers should differ. The spread inside Android is the finding.",
+      "propose": "A touch scale: one button height, one field height, one row height."
+    },
+    {
+      "id": "X-03",
+      "area": "across apps",
+      "sev": "medium",
+      "status": "reported",
+      "title": "Android shows every toast in the error colour",
+      "variants": [
+        {
+          "l": "Toast text",
+          "v": "c.err for every message",
+          "at": "android App.kt:101"
+        }
+      ],
+      "why": "Not run on a device.",
+      "propose": "Ink for a message, the error colour for a failure."
+    },
+    {
+      "id": "X-04",
+      "area": "across apps",
+      "sev": "low",
+      "status": "reported",
+      "title": "The two apps dim the window behind a dialog by different amounts",
+      "variants": [
+        {
+          "l": "Desktop",
+          "v": "page colour at 15% light, laid at 40% (60% dark)",
+          "at": "theme.rs:221"
+        },
+        {
+          "l": "Android Ink",
+          "v": "black at 45%",
+          "at": "android Themes.kt:153"
+        },
+        {
+          "l": "Android built dark themes",
+          "v": "black at 38%",
+          "at": "android Themes.kt:209"
+        }
+      ],
+      "why": "",
+      "propose": "The desktop's formula in both."
+    },
+    {
+      "id": "X-05",
+      "area": "across apps",
+      "sev": "low",
+      "status": "reported",
+      "title": "Headings below H3",
+      "variants": [
+        {
+          "l": "Desktop",
+          "v": "H4 half a step, H5 and H6 at body size",
+          "at": "page.rs:23"
+        },
+        {
+          "l": "Android",
+          "v": "H3 to H6 share H3's size",
+          "at": "android Preview.kt:205"
+        }
+      ],
+      "why": "",
+      "propose": "The desktop's scale on Android."
+    },
+    {
+      "id": "X-06",
+      "area": "across apps",
+      "sev": "low",
+      "status": "reported",
+      "title": "Android tree: a long press does different things on a folder and a note",
+      "variants": [
+        {
+          "l": "Folder",
+          "v": "opens the menu at once",
+          "at": "android Sidebar.kt:330"
+        },
+        {
+          "l": "Note",
+          "v": "lifts for a drag; the menu opens on release without movement",
+          "at": "android Sidebar.kt:407-455"
+        }
+      ],
+      "why": "",
+      "propose": "The note's behaviour for folders too, if folders can be dragged."
+    }
+  ]
+}

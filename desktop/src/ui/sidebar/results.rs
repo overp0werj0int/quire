@@ -12,7 +12,7 @@ use super::super::lists;
 use super::super::panel;
 use super::super::styles::nav;
 use super::super::icons::TAG;
-use super::super::widgets::name_tip;
+use super::super::components::name_tip;
 use super::parts::{COUNT_TEXT, GAP, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TAB_TITLE_LH, TEXT_X, caption_style, section_label, two_rows};
 use super::tree::last_part;
 use super::kbd;
@@ -148,16 +148,7 @@ fn note_row(v: V, key: &str, path: &str, (name, marks): (String, Vec<Span>), lin
             .gap(6.0)
             .center_y()
             .child(title_text.grow(1.0).shrink().min_w(0.0))
-            .child(
-                row()
-                    .key(format!("search-count:{}", path.replace('/', "|")))
-                    .h(16.0)
-                    .px(5.0)
-                    .center()
-                    .radius(8.0)
-                    .fill(c.hover)
-                    .child(text(n.to_string()).font(nav(COUNT_TEXT, false)).color(c.faint)),
-            ),
+            .child(super::super::components::count_pill(v.p, format!("search-count:{}", path.replace('/', "|")), n)),
         None => title_text.w_full(),
     };
     let open = s.tabs.iter().any(|t| t == path);

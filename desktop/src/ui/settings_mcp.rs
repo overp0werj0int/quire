@@ -1,13 +1,12 @@
 //! Settings: MCP. `quire mcp --folder <path>` is the stdio server an AI app starts; the HTTP
 //! transport runs inside this window while it is open.
 
-use rune::{El, Tx, col, el, icon, row, text};
+use rune::{El, Tx, col, el, row, text};
 
 use super::V;
+use super::components::{Button, Control, checkbox_box, choice_pill, label, literal_field, seg, settings_seg, settings_seg_literal, status_dot, switch, tag_badge};
 use super::settings::{block, row_};
-use super::settings_sync::text_box;
-use super::icons::CHECK;
-use super::widgets::{Control, label, outline_button, seg, settings_seg, settings_seg_literal, switch};
+use super::tokens::{radius, space, state};
 use crate::app::App;
 use crate::store::{MCP_TOOLS, new_token};
 use super::styles::{literal, sans};
@@ -73,13 +72,13 @@ pub fn mcp(v: V) -> El {
                     .key("http-top")
                     .w_full()
                     .gap(12.0)
-                    .child(col().key("port").w(110.0).gap(6.0).child(label("Port", sans(12.5, 500.0), p.ink2)).child(text_box(v, "mcp-port", "Port", port, "", false, false, f32::INFINITY, |s, t| {
+                    .child(col().key("port").w(110.0).gap(6.0).child(label("Port", sans(12.5, 500.0), p.ink2)).child(literal_field(v, "mcp-port", "Port", port, "", false, false, f32::INFINITY, |s, t| {
                         let digits: String = t.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
                         s.settings_mut().mcp.port = digits;
                     })))
                     .child(
                         col().key("addr").grow(1.0).min_w(0.0).gap(6.0).child(label("Address", sans(12.5, 500.0), p.ink2)).child(
-                            row().key("addr-box").h(32.0).w_full().px(10.0).center_y().radius(7.0).fill(p.code).child(text(url(v)).font(literal(12.0)).color(p.ink2).truncate().shrink().min_w(0.0)),
+                            row().key("addr-box").h(super::tokens::size::CONTROL_DIALOG).w_full().px(10.0).center_y().radius(super::tokens::radius::FIELD).fill(p.code).child(text(url(v)).font(literal(12.0)).color(p.ink2).truncate().shrink().min_w(0.0)),
                         ),
                     ),
             )
@@ -103,7 +102,7 @@ pub fn mcp(v: V) -> El {
                             .w_full()
                             .gap(8.0)
                             .child(token_box(v, &token))
-                            .child(outline_button(p, "regen", "Regenerate", 32.0, |s, _| {
+                            .child(Button::outline(p, "regen", "Regenerate").on_press(|s, _| {
                                 s.settings_mut().mcp.token = new_token();
                                 s.fields.remove("mcp-token");
                             })),
@@ -131,17 +130,14 @@ pub fn mcp(v: V) -> El {
         if on {
             n_on += 1;
         }
-        let mut bx = row().key("box").size(16.0, 16.0).center().radius(4.0).border(1.5, if on { p.button } else { p.mark }).border_layout();
-        if on {
-            bx = bx.fill(p.button).child(icon(&CHECK, 11.0).color(p.on_acc));
-        }
+        let bx = checkbox_box(p, on);
         let mut r = row()
             .key(format!("tool-{id}"))
             .w_full()
-            .gap(12.0)
+            .gap(space::GAP_GROUP)
             .py(7.0)
             .center_y()
-            .opacity(if avail { 1.0 } else { 0.45 })
+            .opacity(if avail { 1.0 } else { state::DISABLED_BORDERED })
             .role("checkbox")
             .checked(on)
             .label(id)
@@ -153,47 +149,36 @@ pub fn mcp(v: V) -> El {
             })
             .child(bx)
             .child(label(id, literal(12.5), p.ink).w(128.0))
-            .child(text(desc).font(sans(12.5, 400.0)).color(p.ink2).grow(1.0).shrink().min_w(0.0).truncate());
+            .child(text(desc).font(super::styles::control()).color(p.ink2).grow(1.0).shrink().min_w(0.0).truncate());
         if write {
-            r = r.child(super::widgets::padded("writes", sans(11.0, 500.0), p.acc, 6.0, 2.0, 0.0).radius(4.0).fill(p.soft));
+            r = r.child(tag_badge(p, "writes"));
         }
         tools = tools.child(r);
     }
-    c = c.child(block(v, "tools-block", "Tools", Some("What connected apps are allowed to call.")).pb(10.0).child(tools));
+    c = c.child(block(v, "tools-block", "Tools", Some("What connected apps are allowed to call.")).pb(space::PX_10).child(tools));
 
     let hidden = &m.hidden;
-    let mut folders = row().key("mcp-folders").w_full().flex_wrap().gap(6.0).mt(12.0);
+    let mut folders = row().key("mcp-folders").w_full().flex_wrap().gap(space::GAP_FIELD).mt(space::PX_12);
     let mut list = vec![(String::new(), "root notes".to_string())];
     list.extend(s.folder_list().into_iter().map(|f| (f.clone(), format!("{f}/"))));
     for (i, (val, lbl)) in list.into_iter().enumerate() {
         let on = !hidden.contains(&val);
         folders = folders.child(
-            row()
-                .key(format!("mf-{i}"))
-                .h(28.0)
-                .px(10.0)
-                .center()
-                .radius(7.0)
-                .border(1.0, if on { p.acc } else { p.line })
-                .border_layout()
-                .role("checkbox")
-                .checked(on)
-                .label(lbl.clone())
-                .control(move |s: &mut App, _: &mut Tx| {
-                    let h = &mut s.settings_mut().mcp.hidden;
-                    if let Some(k) = h.iter().position(|x| *x == val) {
-                        h.remove(k);
-                    } else {
-                        h.push(val.clone());
-                    }
-                })
-                .child({
-                    let mut t = rune::rich(lbl.clone(), Vec::new()).font(literal(12.0)).color(if on { p.acc } else { p.mute });
-                    if !on {
-                        t = t.strike(0, lbl.len(), Some(p.mute));
-                    }
-                    t
-                }),
+            choice_pill(p, format!("mf-{i}"), lbl.clone(), on, false, move |s: &mut App, _: &mut Tx| {
+                let h = &mut s.settings_mut().mcp.hidden;
+                if let Some(k) = h.iter().position(|x| *x == val) {
+                    h.remove(k);
+                } else {
+                    h.push(val.clone());
+                }
+            })
+            .child({
+                let mut t = rune::rich(lbl.clone(), Vec::new()).font(literal(12.0)).color(if on { p.acc } else { p.mute });
+                if !on {
+                    t = t.strike(0, lbl.len(), Some(p.mute));
+                }
+                t
+            }),
         );
     }
     c = c.child(block(v, "visible", "Folders apps can see", Some("Hidden folders don't show up in listings or search results.")).child(folders));
@@ -225,7 +210,7 @@ pub fn mcp(v: V) -> El {
         format!("ready on stdio · {n_on} {} · waiting for a client", if n_on == 1 { "tool" } else { "tools" })
     };
     let retry_btn = http_err.then(|| {
-        outline_button(p, "mcp-retry", "Retry", 26.0, |s, _| s.retry_mcp_http())
+        Button::outline(p, "mcp-retry", "Retry").sm().on_press(|s, _| s.retry_mcp_http())
     });
     c.child(
         col()
@@ -243,60 +228,28 @@ pub fn mcp(v: V) -> El {
                     .center_y()
                     .justify_between()
                     .child(col().key("text").min_w(0.0).child(label("Client configuration", sans(14.0, 500.0), p.ink)).child(super::settings::desc_text(v, "Paste this into the AI app's MCP settings.")))
-                    .child(outline_button(p, "copy", if copied { "Copied" } else { "Copy" }, 30.0, move |s, tx| {
+                    .child(Button::outline(p, "copy", if copied { "Copied" } else { "Copy" }).on_press(move |s, tx| {
                         tx.copy(cfg_copy.clone());
                         s.mcp_copied = true;
                         tx.wake_after(std::time::Duration::from_millis(1600));
                         s.mcp_copied_at = Some(std::time::Instant::now());
                     })),
             )
-            .child(el().key("cfg").w_full().mt(12.0).radius(8.0).fill(p.code).scroll_x().child(text(cfg).font(literal(11.5).lh(11.5 * 1.6)).color(p.ink2).py(12.0).px(14.0)))
+            .child(el().key("cfg").w_full().mt(space::PX_12).radius(radius::FIELD).fill(p.code).scroll_x().child(text(cfg).font(literal(11.5).lh(11.5 * 1.6)).color(p.ink2).py(space::PX_12).px(14.0)))
             .child(
                 row()
                     .key("mcp-status")
                     .w_full()
-                    .gap(8.0)
-                    .mt(12.0)
+                    .gap(space::GAP_CONTROL)
+                    .mt(space::PX_12)
                     .center_y()
-                    .child(el().size(6.0, 6.0).radius(3.0).fill(if http_err { p.err } else { p.acc }))
-                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(if http_err { p.err } else { p.mute }).wrap().grow(1.0).shrink().min_w(0.0))
+                    .child(status_dot(if http_err { p.err } else { p.acc }))
+                    .child(text(status).font(sans(12.0, 400.0).lh(17.0)).color(if http_err { super::styles::error_ink(p) } else { p.mute }).wrap().grow(1.0).shrink().min_w(0.0))
                     .children(retry_btn),
             ),
     )
 }
 
 fn token_box(v: V, token: &str) -> El {
-    let p = v.p;
-    let s = v.s;
-    let revealed = s.reveal.contains("mcp-token");
-    let shown = if revealed { token.to_string() } else { "•".repeat(token.chars().count()) };
-    row()
-        .key("token-box")
-        .grow(1.0)
-        .min_w(0.0)
-        .h(32.0)
-        .center_y()
-        .radius(7.0)
-        .fill(p.bg)
-        .border(1.0, p.line)
-        .border_layout()
-        .clip_rounded(7.0)
-        .child(text(shown).font(literal(12.5)).color(p.ink).selectable(revealed).truncate().grow(1.0).shrink().min_w(0.0).px(10.0))
-        .child(
-            row()
-                .key("reveal")
-                .h_full()
-                .px(10.0)
-                .center()
-                .border_sides([0.0, 0.0, 0.0, 1.0], p.line)
-                .border_layout()
-                .hover_group()
-                .role("button")
-                .control(|s: &mut App, _: &mut Tx| {
-                    if !s.reveal.remove("mcp-token") {
-                        s.reveal.insert("mcp-token".into());
-                    }
-                })
-                .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
-        )
+    super::components::secret_display(v, "token-box", "mcp-token", token)
 }

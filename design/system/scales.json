@@ -1,0 +1,83 @@
+{
+  "_note": "Quire desktop, as built. Every token names where its value lives in desktop/src. Hand-kept; build.py merges it with the themes it reads from theme.rs into tokens.json and tokens.css.",
+  "radius": [
+    ["r-inner", 4, "ui/tokens.rs", "controls inside a control-radius bar, row or field; key caps; inline tags"],
+    ["r-control", 6, "ui/tokens.rs", "icon buttons, panel rows, floating bars, menu rows, segments, sidebar search"],
+    ["r-field", 8, "ui/tokens.rs", "text buttons (primary, outline, destructive), dialog inputs, segmented tracks, cards, menus"],
+    ["r-dialog", 12, "ui/tokens.rs", "modal dialogs (Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox)"],
+    ["r-pill", 999, "ui/tokens.rs", "toasts, notices, count pills, switches"]
+  ],
+  "size": [
+    ["h-titlebar", 40, "ui/tokens.rs", "title bar"],
+    ["h-control-bar", 24, "ui/tokens.rs", "title bar, find bar, mini-bar buttons and mode pills"],
+    ["h-control-panel", 28, "ui/tokens.rs", "panel icon buttons, row buttons, sidebar search, switch, mini-bar"],
+    ["h-control-dialog", 32, "ui/tokens.rs", "dialog buttons and single-line dialog inputs"],
+    ["icon-mini", 12, "ui/components/icon_button.rs", "icons in 24 pt mini-bar and find-bar buttons"],
+    ["icon-bar", 14, "ui/components/icon_button.rs", "icons in 24 pt title-bar and 28 pt panel/dialog-close buttons"],
+    ["icon-toolbar", 16, "ui/components/icon_button.rs", "formatting toolbar icons in 28 pt buttons"],
+    ["h-mini-bar", 28, "ui/tokens.rs", "floating mini-bar, map zoom HUD, map add-toolbar"],
+    ["h-seg", 28, "ui/components/segmented.rs", "Settings segment (CONTROL_PANEL) inside 32 pt track; pill_group pills use 24 (CONTROL_BAR)"],
+    ["switch-w", 50, "ui/tokens.rs", "switch track width"],
+    ["switch-h", 28, "ui/tokens.rs", "switch track height"],
+    ["h-menu-row", 30, "ui/tokens.rs", "menu row"],
+    ["h-panel-row", 28, "ui/sidebar/parts.rs", "shared sidebar and outline single-line row"],
+    ["h-side-tab", 35, "ui/sidebar/parts.rs", "sidebar two-line row (open tab, search result)"],
+    ["h-side-label", 24, "ui/sidebar/parts.rs", "sidebar section label"],
+    ["h-footer", 41, "ui/tokens.rs", "shared sidebar and outline footer height"],
+    ["w-outline", 236, "ui/tokens.rs", "docked outline panel width"],
+    ["w-dialog-sm", 400, "ui/tokens.rs", "narrow modal dialog max width (Lock)"],
+    ["w-dialog-md", 460, "ui/tokens.rs", "medium modal dialog max width (Trash)"],
+    ["w-palette", 600, "ui/tokens.rs", "command palette and quick switcher max width"],
+    ["w-settings", 780, "ui/tokens.rs", "Settings dialog max width"]
+  ],
+  "space": [
+    ["sp-micro", 1, "ui/tokens.rs", "between adjacent list rows or mini-bar buttons"],
+    ["sp-track", 2, "ui/tokens.rs", "track inset inside segmented controls, mini-bars and switches"],
+    ["sp-tight", 4, "ui/tokens.rs", "between icon and count, or tight bar controls"],
+    ["sp-field", 6, "ui/tokens.rs", "between a field label and its input, or dialog title and description"],
+    ["sp-control", 8, "ui/tokens.rs", "panel row inset, row padding, gap between adjacent buttons"],
+    ["sp-input-x", 10, "ui/tokens.rs", "horizontal padding inside single-line inputs and menu rows"],
+    ["sp-button-x", 12, "ui/tokens.rs", "horizontal padding inside text buttons and form-group gaps"],
+    ["sp-section", 16, "ui/tokens.rs", "panel text start and section gaps inside dialogs"],
+    ["sp-dialog", 24, "ui/tokens.rs", "modal dialog padding and minimum window margin per side"],
+    ["sp-dialog-wide", 32, "ui/tokens.rs", "wide body padding in Settings"],
+    ["scroll-fade-panel", 14, "ui/tokens.rs", "edge fade height for scrolling side panels"],
+    ["scroll-fade-dialog", 28, "ui/tokens.rs", "edge fade height for scrolling modal sheets"]
+  ],
+  "type": [
+    ["fs-caption", 10, "ui/styles.rs", "section labels, capitals, 1 px tracking"],
+    ["fs-kbd-compact", 10, "ui/components/kbd.rs", "compact key caps"],
+    ["fs-kbd", 11, "ui/components/kbd.rs", "full key caps, menu shortcuts, count pills"],
+    ["fs-small", 11.5, "ui/styles.rs", "tooltips, sidebar outline entries, small hints"],
+    ["fs-nav", 12, "ui/panel.rs", "menu rows, outline top-level rows"],
+    ["fs-control", 12.5, "ui/styles.rs", "buttons, segments, descriptions, sidebar rows"],
+    ["fs-body", 13, "ui/styles.rs", "dialog body, single-line fields, toast, notice, find field"],
+    ["fs-row-title", 14, "ui/styles.rs", "Settings row titles, palette rows"],
+    ["fs-palette-input", 15, "ui/styles.rs", "command palette input"],
+    ["fs-title", 17, "ui/styles.rs", "dialog and section titles"]
+  ],
+  "motion": [
+    ["hover-fade", "0.1 s linear", "ui/tokens.rs", "hover colour fade"],
+    ["modal-fade", "spring 0.08", "ui/tokens.rs", "modal dialog and scrim fade"],
+    ["swap", "spring 0.16, from 40%", "ui/tokens.rs", "in-place mode swap"],
+    ["drawer", "spring 0.16", "ui/tokens.rs", "sidebar and outline drawers"],
+    ["tab-slide", "spring 0.18", "ui/tokens.rs", "switching note tabs"],
+    ["zen-reveal", "spring 0.25", "ui/tokens.rs", "zen title bar and map HUD"],
+    ["toast", "1.6 s", "reader.rs", "how long a toast stays"],
+    ["undo", "6 s", "folders.rs", "how long Undo stays"],
+    ["armed-lapse", "2 s", "ui/tokens.rs", "how long an armed destructive button stays armed (sheet and trash)"]
+  ],
+  "focus": [
+    ["ring", "2 wide, 3 out, ink", "ui/tokens.rs", "standard focus glass on controls Tab reaches"],
+    ["ring-tight", "2 wide, 1 out, ink", "ui/tokens.rs", "closely spaced find-bar buttons and task boxes"],
+    ["ring-input", "1.5 wide, 1 inside, readable faint", "ui/tokens.rs", "single-line text inputs"],
+    ["ring-inset", "2 wide, 2 inside, ink", "ui/tokens.rs", "controls seated inside a bordered input box"]
+  ],
+  "shadow": [
+    ["sh-seg", "0 1px 2px rgba(40,28,10,.14), 0 0 0 1px rgba(40,28,10,.05)", "ui/tokens.rs", "raised segment (neutral black on dark themes)"],
+    ["sh-popup", "0 0 0 1px rgba(30,20,5,.10), 0 14px 34px -10px rgba(40,28,10,.30)", "ui/tokens.rs", "menus, find bar, layout picker (neutral black on dark themes)"],
+    ["sh-dialog", "0 0 0 1px rgba(30,20,5,.10), 0 24px 60px -16px rgba(40,28,10,.38)", "ui/tokens.rs", "all modal dialogs: Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox"],
+    ["sh-knob", "0 1px 2px rgba(0,0,0,.25)", "ui/tokens.rs", "switch knob"],
+    ["sh-toolbar", "0 6px 22px -4px rgba(0,0,0,.12)", "ui/tokens.rs", "mini-bars, toolbar, toast; alpha .5 on dark themes"]
+  ]
+}

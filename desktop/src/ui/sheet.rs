@@ -5,11 +5,12 @@
 use rune::{Key, KeyEvent, ScrollFade, ScrollSpec, TextHighlight, Tx, col, el, row, text, text_input};
 
 use super::V;
+use super::components::{Control, MINI_BAR_H, dialog_frame, dots, mini_bar, mini_bar_w, mini_button};
 use super::icons;
 use super::layer::Card;
 use super::styles::sans;
-use super::reader::{cap, popup};
-use super::widgets::{Control, MINI_BAR_H, mini_bar, mini_bar_w, mini_button};
+use super::reader::cap;
+use super::tokens::{motion, space};
 use crate::app::App;
 use crate::keymap::Ctx;
 use crate::page::r;
@@ -17,13 +18,11 @@ use crate::roles::Roles;
 use crate::sheet::{EDITOR, Scope, Sheet};
 use crate::theme;
 
-const PAD_X: f32 = 22.0;
-/// Slightly tighter top padding so the title's visible cap-top matches `PAD_X` from the left edge.
-const PAD_T: f32 = 20.0;
-/// Matches `PAD_X` so the bottom `kbd` cap sits equidistant from the bottom and left edges.
-const PAD_B: f32 = 22.0;
-const GAP: f32 = 10.0;
-const FADE: f32 = 28.0;
+const PAD_X: f32 = space::PAD_DIALOG;
+const PAD_T: f32 = PAD_X - 2.0;
+const PAD_B: f32 = space::PAD_DIALOG;
+const GAP: f32 = space::PX_10;
+const FADE: f32 = space::SCROLL_FADE_DIALOG;
 /// Matches the 20 pt height of the footer's `kbd` key caps.
 const KEY_ROW: f32 = 20.0;
 /// The title row's height: one line of bodySmall.
@@ -39,7 +38,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     // SHEET-016, SHEET-028: the editor's gutter, the reading column and the editor's measure.
     let gutter = super::editor::hang_gutter(e);
     let colw = super::preview::column(v).width;
-    let w = (v.vw - 48.0).min(colw + 2.0 * gutter + 2.0 * PAD_X);
+    let w = (v.vw - space::DIALOG_MARGIN_BOTH).min(colw + 2.0 * gutter + 2.0 * PAD_X);
     let inner = w - 2.0 * PAD_X;
     let avg = crate::page::avg_char(theme::editor_font(&s.settings().font).family);
     let measure = (inner - 2.0 * gutter).min(r(avg * e * 66.0)).max(0.0);
@@ -136,7 +135,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
                 .focus_ring(rw, rg, rc)
                 .control(|s, tx| s.sheet_save(tx));
             if !dirty {
-                save_btn = save_btn.opacity(0.65);
+                save_btn = save_btn.opacity(super::tokens::state::DISABLED_CONTENT);
             }
             mini_bar(v.p, "sheet-actions").child(cancel_btn).child(save_btn)
         }
@@ -152,7 +151,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
             .min_h(KEY_ROW)
             .w_full()
             .center_y()
-            .child(text(p).font(sans(11.5, 400.0)).color(c.red).wrap().shrink().min_w(0.0).grow(1.0)),
+            .child(super::components::error_line(v.p, p).grow(1.0)),
         None => {
             let (cancel, tone) = if armed { ("again to discard your edit", c.text) } else { ("cancels", c.faint) };
             let mut hints = row()
@@ -183,19 +182,16 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     }
     card = card.child(foot.mt(14.0 - GAP));
     let label = if sh.scope == Scope::Section { "Edit the section" } else { "Edit the block" };
-    let fade = || rune::Curve::linear(0.12);
-    let card = popup(&c)
-        .key("sheet-pop")
-        .radius(6.0)
+    let card = dialog_frame(v.p, "sheet-pop", None)
         .role("dialog")
         .label(label)
         .hover_group()
-        .hover_motion(fade(), fade())
+        .hover_motion(motion::hover_fade(), motion::hover_fade())
         .child(card)
         .child(actions);
 
     // SHEET-015: the scrim takes every click and wheel, and only moving the window stays live.
-    let drag = row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(super::widgets::dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0));
+    let drag = row().key("sheet-drag").pin(Some(0.0), Some(0.0), Some(0.0), None).h(super::titlebar::BAR_H).window_drag().child(dots(v.p).ml(14.0).mt(super::titlebar::BAR_H / 2.0 - 6.0));
     Card { el: card, plane: Some(col().center().child(drag)) }
 }
 

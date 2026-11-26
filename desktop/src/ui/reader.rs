@@ -4,19 +4,17 @@
 use rune::{Color, El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
+use super::components::{Button, Control, SCROLL_FADE, bar_edge, dialog_frame, faded, input_focus_ring_when, key_hint, popup_frame, status_dot};
 use super::layer::Card;
-use super::chip::Chip;
-use super::panel::BODY;
 use super::styles::{self, caption, keys, sans};
+use super::tokens::{FocusRing, radius, size, space};
 use super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CHEVRON_UP, CLOSE, SEARCH};
-use super::widgets::Control;
 use crate::app::App;
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
-use crate::theme;
 
-pub(super) fn popup(c: &Roles) -> El {
-    super::widgets::floating(el(), c).radius(6.0)
+pub(super) fn popup(p: &crate::theme::Pal) -> El {
+    popup_frame(el(), p).radius(radius::CONTROL)
 }
 
 /// The find bar's size, and its room from the note area's right edge.
@@ -91,27 +89,15 @@ pub fn find_bar(v: V) -> El {
         crate::reader::FindState::Matches(n) => (format!("{} / {n}", f.cur.min(n - 1) + 1), quiet.faint, true),
     };
     let tip = |name: &str, id: &str| s.keymap.tip(name, id);
-    let mono = theme::pick(&theme::CODE_FONTS, &s.settings().code_font).family;
-    let (_, _, rc) = super::focus_ring(v.p);
-    let button = |key: &'static str, glyph: &'static rune::Icon, size: f32, help: String, enabled: bool, run: fn(&mut App, &mut Tx)| {
-        if !enabled {
-            return row()
-                .key(key)
-                .size(24.0, 24.0)
-                .center()
-                .radius(3.0)
-                .disabled(true)
-                .label(help.clone())
-                .help(help)
-                .child(icon(glyph, size).color(quiet.faint.alpha(0.38)));
-        }
-        // Tight 1 pt outer gap keeps the 2 pt ring clear of both 36 pt narrow and 40 pt wide bar borders.
-        super::focus::stop(Chip { key, glyph, size: BODY, icon: size, label: "", mono, tint: quiet.faint, active: false, fill: None }.el(&c))
-            .label(help.clone())
-            .help(help)
-            .focus_ring(2.0, 1.0, rc)
+    let button = |key: &'static str, glyph: &'static rune::Icon, help: String, enabled: bool, run: fn(&mut App, &mut Tx)| {
+        super::components::IconButton::new(v.p, key, glyph, help)
+            .size(super::components::IconButtonSize::Mini)
+            .tint(quiet.faint, c.text)
+            .ring(super::tokens::FocusRing::Tight)
+            .disabled(!enabled)
+            .focus_stop()
             .keeps_text_selection()
-            .control(run)
+            .on_press(run)
     };
     let field = text_input(&f.q, sans(13.0, 400.0))
         .key("find-input")
@@ -132,7 +118,7 @@ pub fn find_bar(v: V) -> El {
     let is_source = s.mode == crate::app::Mode::Source && !s.active_locked();
     let show_replace = s.show_replace_row();
     let has_matches = matches!(state, crate::reader::FindState::Matches(_));
-    let mut bar = super::widgets::input_focus_ring_when(super::widgets::bar_edge(popup(&c), &c), v.p, f.q.focused || (show_replace && f.replace.focused))
+    let mut bar = input_focus_ring_when(bar_edge(popup(v.p), &c), v.p, f.q.focused || (show_replace && f.replace.focused))
         .key("find-bar")
         .paint_order(40)
         .on_key(|s: &mut App, ev: &KeyEvent, tx| {
@@ -158,28 +144,30 @@ pub fn find_bar(v: V) -> El {
         .center_y();
     if is_source {
         let glyph = if show_replace { &CHEVRON_DOWN } else { &CHEVRON_RIGHT };
-        top_row = top_row.child(button("find-replace-toggle", glyph, 11.0, tip("Find and replace", "writer.replace"), true, |s, tx| s.toggle_replace(tx)));
+        top_row = top_row.child(button("find-replace-toggle", glyph, tip("Find and replace", "writer.replace"), true, |s, tx| s.toggle_replace(tx)));
     }
     let opt_toggle = |key: &'static str, lbl: &'static str, help: &'static str, on: bool, run: fn(&mut App, &mut Tx)| {
         let fill = if on { v.p.act } else { Color::TRANSPARENT };
         let ink = if on { Roles::readable_on(v.p.acc, c.bg, 4.5) } else { quiet.faint };
-        super::focus::stop(row())
-            .key(key)
-            .size(24.0, 24.0)
-            .center()
-            .radius(4.0)
-            .fill(fill)
-            .hover(if on { v.p.act } else { v.p.hover })
-            .border(1.0, if on { v.p.acc.alpha(0.5) } else { Color::TRANSPARENT })
-            .border_layout()
-            .role("switch")
-            .checked(on)
-            .label(help)
-            .help(help)
-            .focus_ring(2.0, 1.0, rc)
-            .keeps_text_selection()
-            .control(run)
-            .child(text(lbl).font(sans(11.5, if on { 600.0 } else { 500.0 })).color(ink))
+        FocusRing::Tight.apply(
+            super::focus::stop(row())
+                .key(key)
+                .size(size::CONTROL_BAR, size::CONTROL_BAR)
+                .center()
+                .radius(radius::INNER)
+                .fill(fill)
+                .hover(if on { v.p.act } else { v.p.hover })
+                .border(1.0, if on { v.p.acc.alpha(0.5) } else { Color::TRANSPARENT })
+                .border_layout()
+                .role("switch")
+                .checked(on)
+                .label(help)
+                .help(help)
+                .keeps_text_selection()
+                .control(run)
+                .child(text(lbl).font(sans(styles::scale::SMALL, if on { 600.0 } else { 500.0 })).color(ink)),
+            v.p,
+        )
     };
     top_row = top_row
         .child(icon(&SEARCH, 14.0).color(quiet.faint))
@@ -201,43 +189,21 @@ pub fn find_bar(v: V) -> El {
                 .gap(8.0)
                 .center_y()
                 .preserve_focus_on_press(true)
-                .child(button("find-prev", &CHEVRON_UP, 12.0, tip("Previous match", "find.previous"), steppers_enabled, |s, tx| s.find_step(false, tx)))
-                .child(button("find-next", &CHEVRON_DOWN, 12.0, tip("Next match", "find.next"), steppers_enabled, |s, tx| s.find_step(true, tx)))
-                .child(button("find-close", &CLOSE, 12.0, tip("Close find", "find.close"), true, |s, tx| s.close_find(tx))),
+                .child(button("find-prev", &CHEVRON_UP, tip("Previous match", "find.previous"), steppers_enabled, |s, tx| s.find_step(false, tx)))
+                .child(button("find-next", &CHEVRON_DOWN, tip("Next match", "find.next"), steppers_enabled, |s, tx| s.find_step(true, tx)))
+                .child(button("find-close", &CLOSE, tip("Close find", "find.close"), true, |s, tx| s.close_find(tx))),
         );
     let mut stack = col().w_full().h_full().child(top_row);
     if show_replace {
         let rep_btn = |key: &'static str, lbl: &'static str, run: fn(&mut App, &mut Tx)| {
-            if !has_matches {
-                return row()
-                    .key(key)
-                    .h(24.0)
-                    .px(8.0)
-                    .center()
-                    .radius(4.0)
-                    .border(1.0, c.hairline_soft)
-                    .border_layout()
-                    .disabled(true)
-                    .label(lbl)
-                    .child(text(lbl).font(sans(11.5, 500.0)).color(quiet.faint.alpha(0.45)));
-            }
-            super::focus::stop(row())
-                .key(key)
-                .h(24.0)
-                .px(8.0)
-                .center()
-                .radius(4.0)
-                .border(1.0, c.hairline)
-                .border_layout()
-                .hover(v.p.hover)
-                .role("button")
-                .label(lbl)
-                .focus_ring(2.0, 1.0, rc)
+            Button::outline(v.p, key, lbl)
+                .bar()
+                .disabled(!has_matches)
+                .focus_stop()
                 .keeps_text_selection()
-                .control(run)
-                .child(text(lbl).font(sans(11.5, 500.0)).color(c.text))
+                .on_press(run)
         };
-        let rep_field = text_input(&f.replace, sans(13.0, 400.0))
+        let rep_field = text_input(&f.replace, styles::field())
             .key("replace-input")
             .single_line()
             .grow(1.0)
@@ -307,9 +273,9 @@ fn on_find_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// A key cap (RD-91): delegates to the shared `<kbd>` helper (`widgets::kbd`, `SCROLLFADE`).
+/// A key cap (RD-91): delegates to the shared `<kbd>` helper (`components::kbd`, `SCROLLFADE`).
 pub(super) fn cap(t: String, p: &crate::theme::Pal) -> El {
-    super::widgets::kbd(p, t, false)
+    super::components::kbd(p, t, false)
 }
 
 /// The help sheet (RD-86 to RD-91, RD-105; in the writer WR-158 to WR-166).
@@ -333,71 +299,45 @@ pub(super) fn help_sheet(v: V) -> Card {
     let content = COL_W * cols as f32 + COL_GAP * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
     let narrow_header = v.vw < 720.0;
-    let header_h = if narrow_header { 80.0 } else { 44.0 };
+    let header_h = if narrow_header { 84.0 } else { 48.0 };
     let search_h = 40.0;
     let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
-    let mode_pill = |m: crate::app::Mode, key: &'static str, lbl: &'static str| {
-        let on = help_mode == m;
-        let (rw, rg, rc) = super::focus_ring(v.p);
-        let label = text(lbl).font(sans(11.5, if on { 500.0 } else { 400.0 }));
-        let label = if on { label.color(v.p.ink) } else { label.color(help_muted).group_color(v.p.ink) };
-        row()
-            .key(key)
-            .h(22.0)
-            .px(8.0)
-            .center()
-            .radius(5.0)
-            .fill(if on { v.p.hover } else { Color::TRANSPARENT })
-            .hover(v.p.hover)
-            .hover_group()
-            .border(1.0, if on { v.p.line } else { Color::TRANSPARENT })
-            .border_layout()
-            .label(format!("{lbl} shortcuts"))
-            .focus_ring(rw, rg, rc)
-            .choice(on, move |s: &mut App, tx| {
-                if let Some(h) = s.help_search_mut() {
-                    h.mode = m;
-                    h.idx = None;
-                }
-                if !tx.by_keys() {
-                    tx.focus(crate::reader::HELP_SEARCH, false);
-                }
-            })
-            .child(label)
+    let mode_item = |m: crate::app::Mode, key: &'static str, lbl: &'static str| super::components::PillItem {
+        key,
+        label: lbl,
+        aria_label: format!("{lbl} shortcuts"),
+        on: help_mode == m,
+        run: Box::new(move |s: &mut App, tx: &mut Tx| {
+            if let Some(h) = s.help_search_mut() {
+                h.mode = m;
+                h.idx = None;
+            }
+            if !tx.by_keys() {
+                tx.focus(crate::reader::HELP_SEARCH, false);
+            }
+        }),
     };
-    let mode_pills = row()
-        .key("help-modes")
-        .gap(2.0)
-        .padding(2.0)
-        .radius(7.0)
-        .border(1.0, v.p.line)
-        .border_layout()
-        .role("radiogroup")
-        .focus_group()
-        .label("Shortcut mode")
-        .child(mode_pill(crate::app::Mode::Source, "help-mode-source", "Source"))
-        .child(mode_pill(crate::app::Mode::Preview, "help-mode-preview", "Preview"))
-        .child(mode_pill(crate::app::Mode::Map, "help-mode-map", "Map"));
+    let mode_pills = super::components::pill_group(
+        v.p,
+        "help-modes",
+        "Shortcut mode",
+        vec![
+            mode_item(crate::app::Mode::Source, "help-mode-source", "Source"),
+            mode_item(crate::app::Mode::Preview, "help-mode-preview", "Preview"),
+            mode_item(crate::app::Mode::Map, "help-mode-map", "Map"),
+        ],
+    );
     let version_lbl = text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
         .key("help-version")
         .font(sans(11.0, 400.0))
         .color(super::styles::caption_ink(v.p));
-    let customize_btn = super::widgets::outline_button(v.p, "help-customize", "Customize shortcuts", 26.0, |s: &mut App, tx: &mut Tx| {
+    let customize_btn = super::components::Button::outline(v.p, "help-customize", "Customize shortcuts").sm().on_press(|s: &mut App, tx: &mut Tx| {
         s.open_settings(tx);
         s.set_sec = crate::app::Sec::Keys;
     });
-    let close_btn = row()
-        .key("help-close")
-        .size(24.0, 24.0)
-        .center()
-        .radius(6.0)
-        .hover(v.p.hover)
-        .hover_group()
-        .role("button")
-        .label("Close help")
-        .help(km.tip("Close help", "help.close"))
-        .control(|s: &mut App, tx| s.close_layer(tx))
-        .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink));
+    let close_btn = super::components::IconButton::close(v.p, "help-close", km.tip("Close help", "help.close"))
+        .aria_label("Close help")
+        .on_press(|s: &mut App, tx| s.close_layer(tx));
     let header = if narrow_header {
         col()
             .key("help-header")
@@ -405,7 +345,7 @@ pub(super) fn help_sheet(v: V) -> Card {
             .h(header_h)
             .pl(20.0)
             .pr(14.0)
-            .py(6.0)
+            .py(8.0)
             .gap(6.0)
             .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
             .border_layout()
@@ -452,7 +392,7 @@ pub(super) fn help_sheet(v: V) -> Card {
     };
     // The search (RD-105): it filters the rows as it is typed, Up and Down pick one, and Enter
     // runs what the row's keys run.
-    let hint = |k: &str, what: &str| row().gap(5.0).center_y().child(super::widgets::kbd(v.p, k.to_string(), true)).child(text(what.to_string()).font(sans(11.5, 400.0)).color(help_muted));
+    let hint = |k: &str, what: &str| key_hint(v.p, k, what, help_muted);
     let search_row = row()
         .key("help-search-row")
         .w(w)
@@ -547,7 +487,7 @@ pub(super) fn help_sheet(v: V) -> Card {
         }
     }
     let live = v.s.reader.help_scroll.clone();
-    let scroll_h = (v.vh - 48.0 - header_h - search_h).min(620.0).max(80.0);
+    let scroll_h = (v.vh - space::DIALOG_MARGIN_BOTH - header_h - search_h).min(620.0).max(80.0);
     // Fixed-size card (2 columns + padding on wide windows, 24 px clear of edges on shorter ones)
     // so switching between Source / Preview / Map never resizes the modal.
     let scroll = col()
@@ -555,25 +495,18 @@ pub(super) fn help_sheet(v: V) -> Card {
         .w(w)
         .h(scroll_h)
         .scroll(ScrollSpec { stick_bottom: false })
-        .scroll_margin(super::widgets::SCROLL_FADE)
+        .scroll_margin(SCROLL_FADE)
         .on_scroll_offset(move |at| {
             let (by_hand, _, t) = rune::scroll_watch_state();
             let mut st = live.get();
             st.on_offset([at.offset[1], at.max[1], at.viewport[1], at.viewport[0]], by_hand, t);
             live.set(st);
         })
-        .child(super::widgets::faded("help", c.bg, card.child(body)));
-    // Keep clip_rounded on the inner wrapper so popup(&c)'s outer drop shadow renders outside
-    // the card bounds, matching Settings and the Command Palette. On dark themes, raise the card
-    // edge above the dark scrim (`RASTERCR`).
-    let mut card = popup(&c)
-        .key("help-card")
+        .child(faded("help", c.bg, card.child(body)));
+    let card = dialog_frame(v.p, "help-card", None)
         .role("dialog")
         .label("Keyboard help")
-        .child(col().w(w).radius(6.0).clip_rounded(6.0).child(header).child(search_row).child(scroll));
-    if v.p.dark {
-        card = card.border(1.0, crate::roles::mix(c.bg, c.text, 0.20));
-    }
+        .child(col().w(w).radius(radius::DIALOG).clip_rounded(radius::DIALOG).child(header).child(search_row).child(scroll));
     Card { el: card, plane: Some(col().center()) }
 }
 
@@ -616,7 +549,7 @@ pub fn toast(v: V, msg: &str) -> El {
         v,
         "toast-row",
         TOAST_LIFT,
-        super::widgets::toolbar_surface(el(), v.p, 1.0)
+        super::components::toolbar_surface(el(), v.p, 1.0)
             .key("toast")
             .radius(999.0)
             .px(14.0)
@@ -772,7 +705,7 @@ pub fn undo_toast(v: V, d: &crate::folders::Deleted) -> El {
         .child(text("Undo").font(body).color(c.accent))
         .children(hint.then(|| text(key).font(keys(11.0)).color(c.faint)));
     let pill = row().gap(6.0).center_y().shrink().min_w(0.0).child(msg).child(undo);
-    foot_row(v, "toast-row", TOAST_LIFT, super::widgets::toolbar_surface(el(), v.p, 1.0).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
+    foot_row(v, "toast-row", TOAST_LIFT, super::components::toolbar_surface(el(), v.p, 1.0).key("toast").radius(999.0).pl(14.0).pr(4.0).py(3.0).child(pill))
 }
 
 fn notice_open_target(v: V) -> Option<String> {
@@ -826,7 +759,7 @@ pub(super) fn notice(v: V, msg: &str) -> El {
         .child(text("Dismiss").font(body).color(v.p.mute));
     // The text's first line centres on the button's 24 px.
     let words = row().py(4.0).child(text(msg.to_string()).font(body).color(c.readable_err()).wrap().w(w));
-    let pill = super::widgets::toolbar_surface(row(), v.p, 1.0)
+    let pill = super::components::toolbar_surface(row(), v.p, 1.0)
         .key("notice")
         .radius(if h > PILL_H { PILL_H / 2.0 } else { 999.0 })
         .pl(14.0)
@@ -862,7 +795,7 @@ pub fn reloaded(v: V) -> El {
         .gap(5.0)
         .ml(8.0)
         .center_y()
-        .child(el().size(6.0, 6.0).radius(3.0).fill(accent))
+        .child(status_dot(accent))
         .child(text("reloaded").font(sans(11.0, 400.0)).color(accent))
 }
 

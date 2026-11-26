@@ -1,7 +1,7 @@
 //! The window's view.
 
 pub(crate) mod editor;
-mod chip;
+pub mod components;
 mod focus;
 mod layer;
 mod lists;
@@ -21,9 +21,9 @@ mod settings_mcp;
 pub mod settings_sync;
 mod sidebar;
 pub(crate) mod titlebar;
+pub mod tokens;
 mod trash;
 mod welcome;
-pub mod widgets;
 
 pub use editor::follow_link_at_caret;
 pub(crate) use map::Sizer as MapSizer;
@@ -100,14 +100,14 @@ impl V<'_> {
 /// accent at most 1 point outside its edge, so focus sits clear of it in another colour, and
 /// the two never look alike.
 pub(crate) fn focus_ring(p: &Pal) -> (f32, f32, rune::Color) {
-    (2.0, 3.0, p.ink)
+    tokens::FocusRing::Standard.spec(p)
 }
 
 /// How one thing gives way to another in its place: the old one goes at once and the new one
 /// comes in at 40% and rises to full over 160 ms. So the two never show together, and the place
 /// never looks empty (WR-109). Under reduced motion the new one shows whole at once.
 pub(crate) fn swap() -> rune::Transition {
-    let mut t = rune::Transition::opacity().springs(rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::NONE));
+    let mut t = rune::Transition::opacity().springs(rune::SpringPair::new(tokens::motion::swap_spring(), rune::Spring::NONE));
     t.insertion = rune::Effect::opacity(SWAP_FROM);
     t
 }
@@ -125,7 +125,7 @@ pub(crate) fn tab_transition(dir: i8) -> (rune::Transition, rune::Transition) {
     }
     let enter_edge = if dir > 0 { rune::Edge::Trailing } else { rune::Edge::Leading };
     let exit_edge = enter_edge.opposite();
-    let spring = rune::Spring::new(0.18, 0.0);
+    let spring = tokens::motion::tab_spring();
     let springs = rune::SpringPair::new(spring, spring);
     let mut enter = rune::Transition::move_edge(enter_edge).springs(springs);
     enter.removal = rune::Effect { offset_fraction: exit_edge.direction(), ..rune::Effect::IDENTITY };
@@ -190,7 +190,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     // Tooltips in the panel family, so a name and its key read as one line (KT). The system
     // look otherwise, which on macOS replaces AppKit's own tooltips with Rune's.
     // Wide enough that a long note name shows whole in two or three lines (C7).
-    cx.help_look(rune::HelpLook::system(dark).font(styles::tooltip()).max_width(Some(widgets::TIP_WRAP)));
+    cx.help_look(rune::HelpLook::system(dark).font(styles::tooltip()).max_width(Some(components::TIP_WRAP)));
 
     let focus = v.focus();
     let win_bg = if v.is_vault() && !focus { p.side } else { p.bg };
@@ -209,7 +209,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             // The sidebar runs the full height; the title bar and the page share the rest. Zen
             // mode's bar spans the window from the frame it shows, so its pill never rides the
             // page's widening as the sidebar goes.
-            let slide = rune::Spring::new(0.16, 0.0);
+            let slide = tokens::motion::drawer_spring();
             let slide_pair = rune::SpringPair::new(slide, slide);
             let side = v.left_visible().then(|| sidebar::sidebar(v).transition(rune::Transition::move_edge(rune::Edge::Leading).springs(slide_pair)));
             let bar = if focus { el().key("titlebar-room").h(titlebar::BAR_H) } else { titlebar::titlebar(v) };
@@ -268,8 +268,8 @@ pub(crate) fn prepare_cold(s: &App, cx: &mut Cx<App>) -> El {
 /// to the pointer: their buttons close the drawer and act (`titlebar`), so both drawers answer
 /// them by one rule.
 fn drawer(v: V) -> Option<layer::Card> {
-    let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
-    let shadow = |x: f32| rune::Shadow { x, y: 0.0, blur: 22.0, spread: -4.0, color: rune::Color::BLACK.alpha(if v.p.dark { 0.5 } else { 0.12 }), inset: false };
+    let slide = rune::SpringPair::new(tokens::motion::drawer_spring(), tokens::motion::drawer_spring());
+    let shadow = |x: f32| tokens::drawer_shadow(v.p, x);
     let (panel, edge) = if v.left_over() {
         let panel = el().key("sidebar-over").pin(Some(0.0), Some(0.0), None, Some(0.0)).fill(v.p.side).box_shadow(shadow(6.0)).label("Sidebar").child(sidebar::sidebar(v));
         (panel, rune::Edge::Leading)

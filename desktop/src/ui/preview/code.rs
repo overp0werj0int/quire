@@ -51,7 +51,7 @@ pub(in crate::ui) fn badge_size(b: f32) -> f32 {
 /// Top inset for the badge / floating bar and top padding for the code body (BLK-44, BLK-51).
 /// Keeps at least 4 pt of vertical clearance between the floating mini-bar and line 1 at every zoom.
 pub(in crate::ui) fn top_clearance(b: f32) -> (f32, f32) {
-    let bar_h = crate::ui::widgets::MINI_BAR_H;
+    let bar_h = crate::ui::components::MINI_BAR_H;
     let top = 4f32.max(r(b * 0.3));
     let pad_top = r(b * 1.25).max(top + bar_h + 4.0);
     (top, pad_top)
@@ -93,7 +93,7 @@ pub(in crate::ui) fn copied(cx: &Cx, at: usize) -> bool {
 /// Floating top-right action bar for a code or diff block: Edit (when unlocked) and Copy,
 /// using the shared uniform icon-only mini-bar with tooltips (BLK-51).
 fn action_bar(cx: &Cx, bar_key: &str, copy_key: &str, code: String, at: usize) -> El {
-    use crate::ui::widgets::{Control, mini_bar, mini_button};
+    use crate::ui::components::{Control, mini_bar, mini_button};
     let p = cx.v.p;
     let c = &cx.look.c;
     let (rw, rg, rc) = crate::ui::focus_ring(p);
@@ -169,7 +169,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
     let count = count_style(cx);
     let copy_key = format!("copy-diff:{at}");
     let copied = copied(cx, at);
-    let head_h = r(b * 2.1).max(crate::ui::widgets::MINI_BAR_H + 8.0);
+    let head_h = r(b * 2.1).max(crate::ui::components::MINI_BAR_H + 8.0);
     let head = row()
         .key("head")
         .w_full()
@@ -206,7 +206,7 @@ pub(super) fn diff(cx: &Cx, lang: &str, src: &str, lines: &[DiffLine], added: us
         }
         body = body.child(rw);
     }
-    let bar_top = ((head_h - crate::ui::widgets::MINI_BAR_H) / 2.0).max(2.0);
+    let bar_top = ((head_h - crate::ui::components::MINI_BAR_H) / 2.0).max(2.0);
     let pad_r = r(pad_x * 0.4) + r(pad_x * 0.5);
     let bar = action_bar(cx, "diff-actions", &copy_key, expand_tabs(src), at).pin(None, Some(bar_top), Some(pad_r - 6.0), None);
     let inner = col().w_full().radius(4.0).clip_rounded(4.0).fill(c.panel).border(1.0, c.on_page(c.hairline_soft)).child(head).child(el().key("scroll").w_full().scroll_x().child(body));
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn codeclear_top_padding_clears_copy_chip() {
-        let bar_h = crate::ui::widgets::MINI_BAR_H;
+        let bar_h = crate::ui::components::MINI_BAR_H;
         for b in [9.0, 10.0, 14.0, 18.0, 20.0, 28.0] {
             let (top, pad_top) = super::top_clearance(b);
             assert!(pad_top >= top + bar_h + 4.0, "b={b}: pad_top {pad_top} < top {top} + bar_h {bar_h} + 4");

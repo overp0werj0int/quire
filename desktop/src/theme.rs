@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use rune::{Color, Family, Shadow};
+use rune::{Color, Family};
 
 pub const SANS: Family = Family::Named("Instrument Sans");
 pub const SERIF: Family = Family::Named("Newsreader");
@@ -210,76 +210,11 @@ fn named(t: &ThemeDef) -> Named {
     Named { green, red, yellow, blue, magenta, cyan, orange: orange.or(yellow), strong: None, panel: None }
 }
 
-/// Paper's or Ink's named colours, from their THEMES rows.
-fn named_of(id: &str) -> Named {
-    THEMES.iter().find(|t| t.id == id).map(named).unwrap_or_default()
-}
-
 /// The modal scrim over a page of colour `bg`: a dark neutral of the page's hue, the page's
 /// colour at 15% of its light, laid at 40% over a light page and 60% over a dark one. It darkens what is behind a dialog without
 /// putting it out, where the page colour at 72% (omarky's help sheet) only faded it.
 pub fn scrim(bg: Color, dark: bool) -> Color {
     bg.mix(Color::BLACK, 0.85).alpha(if dark { 0.6 } else { 0.4 })
-}
-
-pub fn pal(dark: bool) -> &'static Pal {
-    static L: OnceLock<Pal> = OnceLock::new();
-    static D: OnceLock<Pal> = OnceLock::new();
-    if dark {
-        D.get_or_init(|| Pal {
-            dark: true,
-            desk: hex("#0f0e0d"),
-            bg: hex("#1f1d1a"),
-            side: hex("#181715"),
-            ink: hex("#e9e3d8"),
-            ink2: hex("#bdb5a7"),
-            mute: hex("#948c7f"),
-            mark: hex("#5f584e"),
-            line: hex("#322e28"),
-            hover: rgba("#fff0d2", 0.05),
-            act: rgba("#fff0d2", 0.08),
-            acc: hex("#b597e8"),
-            soft: hex("#2f2839"),
-            code: hex("#27241f"),
-            err: hex("#e8907c"),
-            button: hex("#7d52bd"),
-            button_hover: hex("#6c44a8"),
-            white: Color::WHITE,
-            link_line: rgba("#8a5fc9", 0.4),
-            on_acc: Color::WHITE,
-            sel: rgba("#8a5fc9", 0.22),
-            sel_editor: rgba("#8a5fc9", 0.26),
-            scrim: scrim(hex("#1f1d1a"), true),
-            named: named_of("ink"),
-        })
-    } else {
-        L.get_or_init(|| Pal {
-            dark: false,
-            desk: hex("#dcd6ca"),
-            bg: hex("#f8f5ef"),
-            side: hex("#efebe3"),
-            ink: hex("#2a2723"),
-            ink2: hex("#5b554d"),
-            mute: hex("#776f64"),
-            mark: hex("#b2a999"),
-            line: hex("#e1dbcf"),
-            hover: rgba("#463214", 0.06),
-            act: rgba("#463214", 0.09),
-            acc: hex("#7a4fba"),
-            soft: hex("#ebe3f5"),
-            code: hex("#efe9de"),
-            err: hex("#b0432f"),
-            button: hex("#7d52bd"),
-            button_hover: hex("#6c44a8"),
-            white: Color::WHITE,
-            link_line: rgba("#8a5fc9", 0.4),
-            on_acc: Color::WHITE,
-            sel: rgba("#8a5fc9", 0.22),
-            sel_editor: rgba("#8a5fc9", 0.26),
-            scrim: scrim(hex("#f8f5ef"), false),
-            named: named_of("paper"),
-        })
-    }
 }
 
 static SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
@@ -315,43 +250,6 @@ pub fn metrics(family: Family) -> (f32, f32) {
         Family::Named("Spline Sans Mono") => (0.964, 0.237),
         _ => (1.025, 0.275),
     }
-}
-
-/// `0 1px 2px rgba(40,28,10,.14), 0 0 0 1px rgba(40,28,10,.05)`: the raised segment.
-pub fn seg_shadows() -> [Shadow; 2] {
-    [
-        Shadow { x: 0.0, y: 1.0, blur: 2.0, spread: 0.0, color: rgba("#281c0a", 0.14), inset: false },
-        Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: rgba("#281c0a", 0.05), inset: false },
-    ]
-}
-
-/// `0 0 0 1px rgba(30,20,5,.10), 0 14px 34px -10px rgba(40,28,10,.35)`: the folder menu.
-pub fn menu_shadows() -> [Shadow; 2] {
-    [
-        Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: rgba("#1e1405", 0.10), inset: false },
-        Shadow { x: 0.0, y: 14.0, blur: 34.0, spread: -10.0, color: rgba("#281c0a", 0.35), inset: false },
-    ]
-}
-
-/// `0 0 0 1px rgba(30,20,5,.10), 0 24px 60px -16px rgba(40,28,10,.45)`: the palette.
-pub fn palette_shadows() -> [Shadow; 2] {
-    [
-        Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: rgba("#1e1405", 0.10), inset: false },
-        Shadow { x: 0.0, y: 24.0, blur: 60.0, spread: -16.0, color: rgba("#281c0a", 0.45), inset: false },
-    ]
-}
-
-/// `0 0 0 1px rgba(30,20,5,.08), 0 30px 80px -20px rgba(40,28,10,.45)`: the settings sheet.
-pub fn settings_shadows() -> [Shadow; 2] {
-    [
-        Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: rgba("#1e1405", 0.08), inset: false },
-        Shadow { x: 0.0, y: 30.0, blur: 80.0, spread: -20.0, color: rgba("#281c0a", 0.45), inset: false },
-    ]
-}
-
-/// `0 1px 2px rgba(0,0,0,.25)`: a switch knob.
-pub fn knob_shadow() -> Shadow {
-    Shadow { x: 0.0, y: 1.0, blur: 2.0, spread: 0.0, color: rgba("#000000", 0.25), inset: false }
 }
 
 // ---------- Omarchy ----------
@@ -574,18 +472,19 @@ fn build(t: &ThemeDef) -> Pal {
     with_accent(&base, acc)
 }
 
-/// The palette of a theme id. Paper and Ink are the design's palettes, unchanged. `omarchy`
-/// is the current Omarchy theme. An unknown id gives Paper or Ink.
+/// The palette of a theme id. Every built-in theme (Paper and Ink included) is derived once from
+/// `THEMES` through `build` and `with_accent`. `omarchy` is the current Omarchy theme. An unknown
+/// id falls back to Paper or Ink.
 pub fn theme_pal(id: &str, dark: bool) -> &'static Pal {
     static BUILT: OnceLock<Vec<Pal>> = OnceLock::new();
+    let built = BUILT.get_or_init(|| THEMES.iter().map(build).collect());
+    let fallback = || {
+        let key = if dark { "ink" } else { "paper" };
+        THEMES.iter().position(|t| t.id == key).map_or(&built[0], |i| &built[i])
+    };
     match id {
-        "paper" => pal(false),
-        "ink" => pal(true),
-        "omarchy" => omarchy().unwrap_or_else(|| pal(dark)),
-        _ => {
-            let built = BUILT.get_or_init(|| THEMES.iter().map(build).collect());
-            THEMES.iter().position(|t| t.id == id).map_or_else(|| pal(dark), |i| &built[i])
-        }
+        "omarchy" => omarchy().unwrap_or_else(fallback),
+        _ => THEMES.iter().position(|t| t.id == id).map_or_else(fallback, |i| &built[i]),
     }
 }
 

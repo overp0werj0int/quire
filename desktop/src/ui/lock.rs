@@ -1,87 +1,26 @@
 //! Locked notes on screen: the panel that asks for the password, and the dialog that sets one.
 
-use crate::roles::Roles;
-use rune::{El, TextEdit, Tx, col, el, icon, row, text_input};
+use rune::{El, Tx, col, el, icon, row};
 
 use super::V;
+use super::components::{Button, dialog_frame, dialog_plane, error_line, label, password_field};
 use super::layer::Card;
 use super::icons::LOCK;
-use super::widgets::{Control, label, outline_button, primary_button};
+use super::styles::{self, sans};
+use super::tokens::{size, space};
 use crate::app::App;
 use crate::layer::LockDialog;
-use super::styles::sans;
-use crate::theme;
 
 /// Key of the lock panel's password field.
 pub const PASS: &str = "unlock-pass";
 
-/// A password field kept in `App::fields` with a show/hide toggle. Enter runs `submit`.
 fn password(v: V, key: &'static str, ph: &'static str, bad: bool, submit: fn(&mut App, &mut Tx)) -> El {
-    let p = v.p;
-    let revealed = v.s.reveal.contains(key);
-    let mut edit = v.s.fields.get(key).cloned().unwrap_or_else(|| TextEdit::new(""));
-    if !revealed {
-        edit = edit.secure();
-    }
-    super::widgets::input_focus_ring_when(
-        row()
-            .key(format!("box-{key}"))
-            .w_full()
-            .h(32.0)
-            .center_y()
-            .radius(7.0)
-            .fill(p.bg)
-            .border(1.0, if bad { p.err } else { p.line })
-            .border_layout()
-            .clip_rounded(7.0),
-        p,
-        edit.focused,
-    )
-    .child(
-        text_input(&edit, sans(13.0, 400.0))
-            .key(key)
-            .single_line()
-            .grow(1.0)
-            .min_w(0.0)
-            .px(10.0)
-            .color(p.ink)
-            .placeholder(ph, super::styles::placeholder_ink(p))
-            .caret(p.ink, p.sel)
-            .label(ph)
-            .on_edit(move |s: &mut App| s.field(key, String::new))
-            .on_input_change(move |s: &mut App, _| {
-                if key == PASS {
-                    s.unlock_error = None;
-                } else {
-                    s.clear_lock_dialog_error();
-                }
-            })
-            .on_submit(submit)
-            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
-    )
-    .child(
-        row()
-            .key(format!("reveal-{key}"))
-            .h_full()
-            .px(10.0)
-            .center()
-            .border_sides([0.0, 0.0, 0.0, 1.0], p.line)
-            .border_layout()
-            .hover(p.hover)
-            .hover_group()
-            .role("button")
-            .label(if revealed { "Hide password" } else { "Show password" })
-            .help(if revealed { "Hide password" } else { "Show password" })
-            .control(move |s: &mut App, _: &mut Tx| {
-                if !s.reveal.remove(key) {
-                    s.reveal.insert(key.into());
-                }
-                if let Some(e) = s.fields.get_mut(key) {
-                    e.set_secure(!s.reveal.contains(key));
-                }
-            })
-            .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
-    )
+    let on_change: fn(&mut App) = if key == PASS {
+        |s| s.unlock_error = None
+    } else {
+        |s| s.clear_lock_dialog_error()
+    };
+    password_field(v, key, ph, bad, on_change, submit)
 }
 
 /// In place of a locked note's text: the password field and the Unlock button.
@@ -89,20 +28,10 @@ pub fn panel(v: V) -> El {
     let p = v.p;
     let err = v.s.unlock_error.clone();
     let busy = v.s.lock_busy() == Some(crate::lock_app::LockJobKind::Unlocking);
-    let submit_btn = if busy {
-        row()
-            .key("unlock")
-            .h(32.0)
-            .px(14.0)
-            .center()
-            .radius(7.0)
-            .fill(p.button.alpha(0.6))
-            .disabled(true)
-            .label("Unlocking…")
-            .child(label("Unlocking…", sans(13.0, 500.0), p.on_acc).key("lock-busy"))
-    } else {
-        primary_button(p, "unlock", "Unlock", 32.0, 14.0, 13.0, |s, tx| s.unlock(tx))
-    };
+    let submit_btn = Button::primary(p, "unlock", if busy { "Unlocking…" } else { "Unlock" })
+        .busy(busy)
+        .busy_label_key("lock-busy")
+        .on_press(|s, tx| s.unlock(tx));
     let mut c = col()
         .key("lock-panel")
         .w_full()
@@ -122,7 +51,7 @@ pub fn panel(v: V) -> El {
                 .child(submit_btn),
         );
     if let Some(e) = err {
-        c = c.child(label(e, sans(12.5, 400.0), p.err).wrap());
+        c = c.child(super::components::error_line(p, e));
     }
     // The column of the note is wider than the panel; the panel sits at its left edge.
     row().key("lock-wrap").w_full().child(c)
@@ -132,48 +61,33 @@ pub fn panel(v: V) -> El {
 pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
     let p = v.p;
     if matches!(dlg, LockDialog::ConfirmRemove) {
-        let remove = row()
-            .key("remove-pass-ok")
-            .h(32.0)
-            .px(14.0)
-            .center()
-            .radius(7.0)
-            .border(1.0, p.err)
-            .border_layout()
-            .hover(p.hover)
-            .role("button")
-            .label("Remove password")
-            .child(label("Remove password", sans(12.5, 500.0), p.err))
-            .control(|s: &mut App, tx| s.confirm_remove_password(tx));
-        let panel = col()
-            .key("remove-pass-dialog")
-            .w_full()
-            .max_w(400.0)
-            .padding(24.0)
-            .gap(16.0)
-            .radius(12.0)
-            .fill(p.bg)
-            .border(1.0, Roles::new(p).hairline)
-            .box_shadow(theme::settings_shadows()[0])
-            .box_shadow(theme::settings_shadows()[1])
+        let remove = Button::destructive(p, "remove-pass-ok", "Remove password")
+            .on_press(|s: &mut App, tx| s.confirm_remove_password(tx));
+        let panel = dialog_frame(p, "remove-pass-dialog", Some(size::DIALOG_W_SM))
             .role("alertdialog")
             .label("Remove password?")
             .child(
                 col()
-                    .gap(6.0)
-                    .child(label("Remove password?", sans(17.0, 600.0), p.ink))
-                    .child(label("This note will be saved as plain text on disk and will no longer require a password to read.", sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
-            )
-            .child(
-                row()
                     .w_full()
-                    .gap(8.0)
-                    .mt(4.0)
-                    .child(el().grow(1.0))
-                    .child(outline_button(p, "remove-pass-cancel", "Cancel", 32.0, |s, tx| s.close_layer(tx)).autofocus())
-                    .child(remove),
+                    .padding(space::PAD_DIALOG)
+                    .gap(space::GAP_SECTION)
+                    .child(
+                        col()
+                            .gap(space::GAP_FIELD)
+                            .child(label("Remove password?", styles::title(), p.ink))
+                            .child(label("This note will be saved as plain text on disk and will no longer require a password to read.", styles::desc(), p.mute).wrap()),
+                    )
+                    .child(
+                        row()
+                            .w_full()
+                            .gap(space::GAP_CONTROL)
+                            .mt(space::PX_4)
+                            .child(el().grow(1.0))
+                            .child(Button::outline(p, "remove-pass-cancel", "Cancel").autofocus().on_press(|s, tx| s.close_layer(tx)))
+                            .child(remove),
+                    ),
             );
-        return Card { el: panel, plane: Some(col().center().px(16.0)) };
+        return Card { el: panel, plane: Some(dialog_plane()) };
     }
     let (changing, err) = match dlg {
         LockDialog::Set(e) => (false, e.as_deref()),
@@ -187,62 +101,51 @@ pub(super) fn dialog(v: V, dlg: &LockDialog) -> Card {
         "Quire encrypts the note with this password. If you forget it, nobody can open the note."
     };
     let field = |key: &'static str, title: &str, ph: &'static str, submit: fn(&mut App, &mut Tx)| {
-        col().w_full().gap(6.0).child(label(title, sans(12.5, 500.0), p.ink2)).child(password(v, key, ph, err.is_some(), submit))
+        col().w_full().gap(space::GAP_FIELD).child(label(title, styles::control_medium(), p.ink2)).child(password(v, key, ph, err.is_some(), submit))
     };
     let focus_repeat: fn(&mut App, &mut Tx) = |s, tx| {
         s.field("lock-repeat", String::new).focused = true;
         tx.focus("lock-repeat", false);
     };
-    let mut panel = col()
-        .key("lock-dialog")
+    let mut inner = col()
         .w_full()
-        .max_w(400.0)
-        .padding(24.0)
-        .gap(16.0)
-        .radius(12.0)
-        .fill(p.bg)
-        .border(1.0, Roles::new(p).hairline)
-        .box_shadow(theme::settings_shadows()[0])
-        .box_shadow(theme::settings_shadows()[1])
-        .role("dialog")
-        .label(title)
+        .padding(space::PAD_DIALOG)
+        .gap(space::GAP_SECTION)
         .child(
             col()
-                .gap(6.0)
-                // Match the lock panel and modal heading scale (`TYPOPOLISH`).
-                .child(label(title, sans(17.0, 600.0), p.ink))
-                .child(label(desc, sans(12.5, 400.0).lh(12.5 * 1.45), p.mute).wrap()),
+                .gap(space::GAP_FIELD)
+                .child(label(title, styles::title(), p.ink))
+                .child(label(desc, styles::desc(), p.mute).wrap()),
         )
         .child(field("lock-pass", if changing { "New password" } else { "Password" }, "At least 8 characters", focus_repeat))
         .child(field("lock-repeat", if changing { "Repeat new password" } else { "Repeat password" }, "The same password again", |s, tx| s.lock_note(tx)));
     if let Some(e) = err {
-        panel = panel.child(label(e, sans(12.5, 400.0), p.err).wrap());
+        inner = inner.child(error_line(p, e));
     }
     let busy = v.s.lock_busy() == Some(crate::lock_app::LockJobKind::Locking);
-    let ok_label = if changing { "Change" } else { "Lock" };
-    let busy_label = if changing { "Changing…" } else { "Locking…" };
-    let lock_btn = if busy {
-        row()
-            .key("lock-ok")
-            .h(32.0)
-            .px(14.0)
-            .center()
-            .radius(7.0)
-            .fill(p.button.alpha(0.6))
-            .disabled(true)
-            .label(busy_label)
-            .child(label(busy_label, sans(13.0, 500.0), p.on_acc).key("lock-busy"))
+    let ok_label = if busy {
+        if changing { "Changing…" } else { "Locking…" }
+    } else if changing {
+        "Change"
     } else {
-        primary_button(p, "lock-ok", ok_label, 32.0, 14.0, 13.0, |s, tx| s.lock_note(tx))
+        "Lock"
     };
-    panel = panel.child(
+    let lock_btn = Button::primary(p, "lock-ok", ok_label)
+        .busy(busy)
+        .busy_label_key("lock-busy")
+        .on_press(|s, tx| s.lock_note(tx));
+    inner = inner.child(
         row()
             .w_full()
-            .gap(8.0)
-            .mt(4.0)
+            .gap(space::GAP_CONTROL)
+            .mt(space::PX_4)
             .child(el().grow(1.0))
-            .child(outline_button(p, "lock-cancel", "Cancel", 32.0, |s, tx| s.cancel_lock(tx)))
+            .child(Button::outline(p, "lock-cancel", "Cancel").on_press(|s, tx| s.cancel_lock(tx)))
             .child(lock_btn),
     );
-    Card { el: panel, plane: Some(col().center().px(16.0)) }
+    let panel = dialog_frame(p, "lock-dialog", Some(size::DIALOG_W_SM))
+        .role("dialog")
+        .label(title)
+        .child(inner);
+    Card { el: panel, plane: Some(dialog_plane()) }
 }

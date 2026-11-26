@@ -10,19 +10,19 @@
 //! or Shift+F10 in the editor), its first item shows marked; the pointer and the
 //! keys share one highlight.
 
-use rune::{Color, El, col, el, row, text};
+use rune::{El, col, el, row, text};
 
 use super::V;
 use super::layer::Card;
 use super::panel;
 use super::styles::{keys, literal, nav};
-use super::widgets::{Control, floating, label};
+use super::components::{label, popup_frame};
+use super::tokens::{radius, size, space};
 use crate::app::App;
 use crate::folders::MenuOn;
 use crate::keymap;
 use crate::layer::{Menu, MenuOf};
 use crate::md;
-use crate::roles::Roles;
 
 type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
 
@@ -68,13 +68,13 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, head_h: f
     // Wide enough for the longest row's name and key, at about 7.2 points a character.
     let need = |it: &Item| 30.0 + 7.2 * (it.label.len() + it.keys.as_ref().map_or(0, |k| k.len() + 2)) as f32;
     let w = items.iter().map(need).fold(min_w, f32::max).ceil();
-    let h = 10.0 + head_h + 30.0 * items.len() as f32;
+    let h = 10.0 + head_h + size::MENU_ROW * items.len() as f32;
     let (x, y) = menu_pos(v.vw, v.vh, at, w, h);
-    let mut panel = floating(col(), &Roles::new(p)).key(key).absolute(x, y).w(w).padding(5.0).radius(9.0).role("menu").focus_group().children(head);
+    let mut panel = popup_frame(col(), p).key(key).absolute(x, y).w(w).padding(5.0).radius(radius::FIELD).role("menu").focus_group().children(head);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
         let key = it.key.map_or_else(|| format!("tm-{i}"), str::to_string);
-        let mut r = row().key(key).w_full().h(30.0).px(10.0).gap(14.0).center_y().radius(6.0).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
+        let mut r = row().key(key).w_full().h(size::MENU_ROW).px(space::PAD_INPUT_X).gap(14.0).center_y().radius(radius::CONTROL).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
         if let Some(k) = it.keys {
             r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
         }
@@ -412,25 +412,22 @@ fn confirm_delete_folder(v: V, folder: &str, at: (f32, f32)) -> El {
     let x = at.0.min(v.vw - w - 8.0).max(8.0);
     let y = at.1.min(v.vh - h - 8.0).max(8.0);
     let f = folder.to_string();
-    let button = |key: &str, t: &str, color: Color| {
-        row().key(key).h(30.0).px(12.0).center_y().radius(6.0).hover(p.hover).role("button").label(t).child(label(t, nav(panel::BODY, true), color))
-    };
-    floating(col(), &Roles::new(p))
+    popup_frame(col(), p)
         .key("tree-menu")
         .absolute(x, y)
         .w(w)
-        .padding(12.0)
-        .gap(10.0)
-        .radius(9.0)
+        .padding(space::PX_12)
+        .gap(space::PX_10)
+        .radius(radius::FIELD)
         .role("alertdialog")
         .label(msg.clone())
         .child(label(msg, nav(panel::BODY, false).lh(18.0), p.ink).wrap())
         .child(
             row()
-                .gap(4.0)
+                .gap(space::GAP_CONTROL)
                 .child(el().grow(1.0))
-                .child(button("tm-cancel", "Cancel", p.ink2).control(|s: &mut App, tx| s.close_layer(tx)))
-                .child(button("tm-delete", "Delete", p.err).control(move |s: &mut App, tx| {
+                .child(super::components::Button::outline(p, "tm-cancel", "Cancel").sm().on_press(|s: &mut App, tx| s.close_layer(tx)))
+                .child(super::components::Button::destructive(p, "tm-delete", "Delete").sm().on_press(move |s: &mut App, tx| {
                     s.close_layer(tx);
                     s.delete_folder(&f);
                     s.row_deleted(tx);

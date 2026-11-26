@@ -8,24 +8,24 @@ use crate::roles::Roles;
 use crate::theme::Pal;
 
 /// Outer margin of every sidebar row and section label, matching the top bar and footer (SB-07).
-pub(super) const INSET: f32 = 8.0;
+pub(super) const INSET: f32 = super::super::tokens::space::PX_8;
 /// Left and right padding inside a sidebar row or label.
-pub(super) const ROW_PX: f32 = 8.0;
+pub(super) const ROW_PX: f32 = super::super::tokens::space::PX_8;
 /// Where a root row's text or icon starts: outer margin plus row padding.
 pub(super) const TEXT_X: f32 = INSET + ROW_PX;
 /// Room between adjacent rows in a sidebar list.
-pub(super) const GAP: f32 = 1.0;
-/// A single-line row's height: 12.5 pt text at ~1.3 leading plus 5 pt top and bottom (SB-07).
-pub(super) const ROW_H: f32 = 27.0;
+pub(super) const GAP: f32 = super::super::tokens::space::GAP_MICRO;
+/// A single-line row's height, aligned with the outline panel (`SZ-05`, `CONTROL_PANEL`).
+pub(super) const ROW_H: f32 = super::super::tokens::size::CONTROL_PANEL;
 /// A two-row row's height: 12.5 pt title and 10.5 pt caption at 1.15 leading plus 4 pt top and
 /// bottom (SB-07).
 pub(super) const TWO_ROWS_H: f32 = 35.0;
 /// A row's corners.
-pub(super) const RADIUS: f32 = 6.0;
+pub(super) const RADIUS: f32 = super::super::tokens::radius::CONTROL;
 /// An inner control's corners inside a `RADIUS` row or field (`TYPOPOLISH`).
-pub(super) const INNER_RADIUS: f32 = 4.0;
+pub(super) const INNER_RADIUS: f32 = super::super::tokens::radius::INNER;
 /// A section label's row: the least pointer target (SB-05, SB-08).
-pub(super) const LABEL_H: f32 = 24.0;
+pub(super) const LABEL_H: f32 = super::super::tokens::size::CONTROL_BAR;
 /// Single-line row and tab title size (SB-07).
 pub(super) const ROW_TEXT: f32 = 12.5;
 /// Folder and tag count size (`.r .m`).

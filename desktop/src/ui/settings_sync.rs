@@ -5,7 +5,7 @@ use rune::{Color, El, TextEdit, Tx, col, row, text, text_input};
 
 use super::V;
 use super::settings::{block, body_width, desc_text, row_};
-use super::widgets::{Control, label, primary_button, seg, settings_seg, switch};
+use super::components::{Button, label, seg, settings_seg, switch};
 use crate::app::{App, SyncStatus};
 use super::styles::{literal, sans};
 
@@ -233,29 +233,20 @@ pub fn sync(v: V) -> El {
         }
         let on = pv.id == pid;
         let id = pv.id;
-        let mut card = col()
-            .key(format!("pv-{id}"))
-            .w(card_w)
-            .gap(3.0)
-            .py(10.0)
-            .px(12.0)
-            .radius(9.0)
-            .fill(p.bg)
-            .border(1.0, if on { p.acc } else { p.line })
-            .border_layout()
-            .label(pv.name)
-            .choice(on, move |s: &mut App, _: &mut Tx| {
-                if s.settings().sync.provider != id {
-                    s.settings_mut().sync.provider = id.into();
-                    s.sync_changed();
-                    s.sync_status = SyncStatus::Idle;
-                }
-            })
-            .child(text(pv.name).font(sans(13.0, 500.0)).color(p.ink).truncate().max_w(card_w - 26.0))
-            .child(text(pv.kind).font(sans(11.0, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
-        if on {
-            card = card.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
-        }
+        let card = super::components::choice_card(p, format!("pv-{id}"), pv.name, on, None, move |s: &mut App, _: &mut Tx| {
+            if s.settings().sync.provider != id {
+                s.settings_mut().sync.provider = id.into();
+                s.sync_changed();
+                s.sync_status = SyncStatus::Idle;
+            }
+        })
+        .w(card_w)
+        .gap(3.0)
+        .py(super::tokens::space::PX_10)
+        .px(super::tokens::space::PX_12)
+        .fill(p.bg)
+        .child(text(pv.name).font(sans(13.0, 500.0)).color(p.ink).truncate().max_w(card_w - 26.0))
+        .child(text(pv.kind).font(sans(11.0, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
         line = line.child(card);
     }
     grid = grid.child(line);
@@ -316,15 +307,16 @@ pub fn sync(v: V) -> El {
                 .gap(6.0)
                 .pb(16.0)
                 .child(label("Passphrase", sans(12.5, 500.0), p.ink2))
-                .child(text_box(v, "pass", "Passphrase", pass, "At least 12 characters", true, false, 320.0, |s, t| {
+                .child(super::components::literal_field(v, "pass", "Passphrase", pass, "At least 12 characters", true, false, 320.0, |s, t| {
                     s.settings_mut().sync.pass = t;
                     s.sync_changed();
                 }))
                 .child(label("If you lose this passphrase, the remote copy can't be recovered.", sans(12.0, 400.0), p.mute)),
         );
     }
+    let err_ink = super::styles::error_ink(p);
     let (msg, color) = match &s.sync_status {
-        SyncStatus::Idle if sy.connected && s.sync.error.is_some() => (format!("The last sync failed. {}", s.sync.error.clone().unwrap_or_default()), p.err),
+        SyncStatus::Idle if sy.connected && s.sync.error.is_some() => (format!("The last sync failed. {}", s.sync.error.clone().unwrap_or_default()), err_ink),
         SyncStatus::Idle if sy.connected => (
             match sy.last_sync {
                 Some(t) => format!("Connected. Last synced {}.", crate::sync::app::ago(t)),
@@ -334,7 +326,7 @@ pub fn sync(v: V) -> El {
         ),
         SyncStatus::Idle => ("Not connected yet.".to_string(), p.mute),
         SyncStatus::Testing { msg } => (msg.clone(), p.mute),
-        SyncStatus::Error { msg, .. } => (msg.clone(), p.err),
+        SyncStatus::Error { msg, .. } => (msg.clone(), err_ink),
         SyncStatus::Ok { msg } => (msg.clone(), p.ink2),
     };
     let working = s.sync.testing() || s.sync.busy();
@@ -350,15 +342,17 @@ pub fn sync(v: V) -> El {
             .border_sides([1.0, 0.0, 0.0, 0.0], p.line)
             .border_layout()
             .child(
-                primary_button(p, "test", if s.sync.testing() { "Working…" } else { "Test connection" }, 32.0, 14.0, 13.0, |s, _| {
-                    if !s.sync.testing() && !s.sync.busy() {
-                        test_sync(s);
-                    }
-                })
-                .disabled(working),
+                Button::primary(p, "test", if s.sync.testing() { "Working…" } else { "Test connection" })
+                    .busy(s.sync.testing())
+                    .disabled(s.sync.busy() && !s.sync.testing())
+                    .on_press(|s, _| {
+                        if !s.sync.testing() && !s.sync.busy() {
+                            test_sync(s);
+                        }
+                    }),
             )
             .children(if sy.connected && !working {
-                vec![super::widgets::outline_button(p, "sync-now", "Sync now", 32.0, |s, _| s.sync_now()).px(14.0)]
+                vec![Button::outline(p, "sync-now", "Sync now").on_press(|s, _| s.sync_now())]
             } else {
                 Vec::new()
             })
@@ -382,7 +376,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
     let key = fd.key;
     match fd.kind {
         Kind::Text | Kind::Secret => {
-            c = c.child(text_box(v, &field_key(s, pid, key), fd.label, value, fd.ph, fd.kind == Kind::Secret, bad, f32::INFINITY, move |s, t| set_cfg(s, key, t)));
+            c = c.child(super::components::literal_field(v, &field_key(s, pid, key), fd.label, value, fd.ph, fd.kind == Kind::Secret, bad, f32::INFINITY, move |s, t| set_cfg(s, key, t)));
         }
         Kind::Choice => {
             let mut r = row().key("opts").w_full().flex_wrap().gap(6.0).role("radiogroup").focus_group();
@@ -390,16 +384,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
                 let on = value == *ov;
                 let ov = *ov;
                 r = r.child(
-                    row()
-                        .key(format!("o-{i}"))
-                        .h(28.0)
-                        .px(10.0)
-                        .center()
-                        .radius(7.0)
-                        .border(1.0, if on { p.acc } else { p.line })
-                        .border_layout()
-                        .label(*ol)
-                        .choice(on, move |s: &mut App, _: &mut Tx| set_cfg(s, key, ov.into()))
+                    super::components::choice_pill(p, format!("o-{i}"), *ol, on, true, move |s: &mut App, _: &mut Tx| set_cfg(s, key, ov.into()))
                         .child(label(*ol, sans(12.0, 400.0), if on { p.acc } else { p.ink2 })),
                 );
             }
@@ -412,22 +397,7 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
             let init = value.clone();
             let fk2 = fk.clone();
             c = c.child(
-                super::widgets::input_focus_ring_when(
-                    col()
-                        .key("area")
-                        .w_full()
-                        .h(84.0)
-                        .py(8.0)
-                        .px(10.0)
-                        .radius(7.0)
-                        .fill(p.bg)
-                        .border(1.0, if bad { p.err } else { p.line })
-                        .border_layout()
-                        .scroll(rune::ScrollSpec { stick_bottom: false }),
-                    p,
-                    focused,
-                )
-                .child(
+                super::components::area_frame(p, "area", 84.0, bad, focused).child(
                     text_input(&edit, literal(11.5).lh(11.5 * 1.5))
                         .key(fk.clone())
                         .w_full()
@@ -448,83 +418,9 @@ fn field(v: V, pid: &str, fd: &Field, bad: bool) -> El {
             );
         }
         Kind::Read => {
-            c = c.child(text(value).font(literal(12.0)).color(p.ink2).wrap().wrap_anywhere().w_full().py(7.0).px(10.0).radius(7.0).fill(p.code));
+            c = c.child(text(value).font(literal(12.0)).color(p.ink2).wrap().wrap_anywhere().w_full().py(7.0).px(10.0).radius(super::tokens::radius::FIELD).fill(p.code));
         }
     }
-    c
-}
-
-/// A 32-point single-line field with an optional show and hide button for secrets.
-pub fn text_box(v: V, fk: &str, aria_label: &str, value: String, ph: &'static str, secret: bool, bad: bool, max_w: f32, set: impl Fn(&mut App, String) + 'static) -> El {
-    let p = v.p;
-    let s = v.s;
-    let revealed = s.reveal.contains(fk);
-    let mut edit = s.fields.get(fk).cloned().unwrap_or_else(|| TextEdit::new(value.clone()));
-    if secret && !revealed {
-        edit = edit.secure();
-    }
-    let focused = edit.focused;
-    let fk_edit = fk.to_string();
-    let fk_change = fk.to_string();
-    let init = value.clone();
-    let mut b = super::widgets::input_focus_ring_when(
-        row()
-            .key(format!("box-{fk}"))
-            .w_full()
-            .h(32.0)
-            .center_y()
-            .radius(7.0)
-            .fill(p.bg)
-            .border(1.0, if bad { p.err } else { p.line })
-            .border_layout()
-            .clip_rounded(7.0),
-        p,
-        focused,
-    )
-    .child(
-        text_input(&edit, literal(12.5))
-            .key(fk.to_string())
-            .single_line()
-            .grow(1.0)
-            .min_w(0.0)
-            .px(10.0)
-            .color(p.ink)
-            .label(aria_label)
-            .placeholder(ph, super::styles::placeholder_ink(p))
-            .caret(p.ink, p.sel)
-            .on_edit(move |s: &mut App| s.field(&fk_edit, || init.clone()))
-            .on_input_change(move |s: &mut App, _| {
-                let t = s.fields.get(&fk_change).map(|e| e.text.clone()).unwrap_or_default();
-                set(s, t);
-            })
-            .on_input_key(|_: &mut App, ev: &rune::KeyEvent, tx: &mut rune::Tx| crate::keys::esc_again(ev, tx)),
-    );
-    if max_w.is_finite() {
-        b = b.max_w(max_w);
-    }
-    if secret {
-        let rk = fk.to_string();
-        b = b.child(
-            row()
-                .key("reveal")
-                .h_full()
-                .px(10.0)
-                .center()
-                .border_sides([0.0, 0.0, 0.0, 1.0], p.line)
-                .border_layout()
-                .hover_group()
-                .role("button")
-                .control(move |s: &mut App, _: &mut Tx| {
-                    if !s.reveal.remove(&rk) {
-                        s.reveal.insert(rk.clone());
-                    }
-                    if let Some(e) = s.fields.get_mut(&rk) {
-                        e.set_secure(!s.reveal.contains(&rk));
-                    }
-                })
-                .child(label(if revealed { "hide" } else { "show" }, sans(11.5, 400.0), p.mute).group_color(p.ink)),
-        );
-    }
     let _ = (desc_text, Color::TRANSPARENT);
-    b
+    c
 }

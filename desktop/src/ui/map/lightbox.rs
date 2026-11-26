@@ -1,7 +1,7 @@
 //! The lightbox (MAP-047): an image from the map as large as 90% of the window lets it be,
 //! never larger than itself, with its caption, Open externally and Edit Markdown.
 
-use rune::{el, icon, row, text};
+use rune::{el, row, text};
 
 use super::map_look;
 use crate::app::App;
@@ -10,11 +10,11 @@ use crate::layer::Lightbox;
 use crate::page::r;
 use crate::roles::Roles;
 use crate::ui::V;
-use crate::ui::icons::CLOSE;
+use crate::ui::components::Button;
 use crate::ui::layer::Card;
 use crate::ui::preview::{Cx, LOADING, Pic};
 use crate::ui::styles::sans;
-use crate::ui::widgets::{Control, kbd, outline_button};
+use crate::ui::components::kbd;
 
 /// The card's padding, the gap around the image, and the header and footer bar heights.
 const PAD: f32 = 12.0;
@@ -71,19 +71,8 @@ pub(in crate::ui) fn lightbox(v: V, lb: &Lightbox) -> Card {
         .child(el().grow(1.0))
         .child(kbd(v.p, esc_lbl.clone(), false))
         .child(
-            row()
-                .key("lightbox-close")
-                .size(24.0, 24.0)
-                .center()
-                .radius(6.0)
-                .hover(v.p.hover)
-                .hover_group()
-                .cursor(rune::Cursor::Pointer)
-                .role("button")
-                .label("Close")
-                .help(format!("Close · {esc_lbl}"))
-                .control(|s: &mut App, tx| s.close_layer(tx))
-                .child(icon(&CLOSE, 13.0).color(v.p.mute).group_color(v.p.ink)),
+            crate::ui::components::IconButton::close(v.p, "lightbox-close", format!("Close · {esc_lbl}"))
+                .on_press(|s: &mut App, tx| s.close_layer(tx)),
         );
     let caption = text(img.alt.clone()).key("lightbox-caption").font(look.prose(r(b * 0.84), 1.5).italic()).color(look.c.dim).truncate().grow(1.0).min_w(0.0);
     let mut bar = row()
@@ -94,21 +83,17 @@ pub(in crate::ui) fn lightbox(v: V, lb: &Lightbox) -> Card {
         .center_y();
     if multi {
         bar = bar
-            .child(outline_button(v.p, "lightbox-prev", "Prev", BAR_H, |s: &mut App, _| s.lightbox_step(-1)))
-            .child(outline_button(v.p, "lightbox-next", "Next", BAR_H, |s: &mut App, _| s.lightbox_step(1)));
+            .child(Button::outline(v.p, "lightbox-prev", "Prev").sm().on_press(|s: &mut App, _| s.lightbox_step(-1)))
+            .child(Button::outline(v.p, "lightbox-next", "Next").sm().on_press(|s: &mut App, _| s.lightbox_step(1)));
     }
     let bar = bar
         .child(caption)
-        .child(outline_button(v.p, "lightbox-open", "Open externally", BAR_H, |s: &mut App, tx| s.lightbox_open(tx)))
-        .child(outline_button(v.p, "lightbox-edit", "Edit Markdown", BAR_H, |s: &mut App, tx| s.lightbox_edit(tx)));
-    let mut card = crate::ui::reader::popup(&c)
-        .key("lightbox")
+        .child(Button::outline(v.p, "lightbox-open", "Open externally").sm().on_press(|s: &mut App, tx| s.lightbox_open(tx)))
+        .child(Button::outline(v.p, "lightbox-edit", "Edit Markdown").sm().on_press(|s: &mut App, tx| s.lightbox_edit(tx)));
+    let card = crate::ui::components::dialog_frame(v.p, "lightbox", None)
         .role("dialog")
         .label("Image")
         .padding(PAD)
         .child(rune::col().gap(GAP).items_center().child(header).child(pic.key("lightbox-pic")).child(bar));
-    if v.p.dark {
-        card = card.border(1.0, crate::roles::mix(c.bg, c.text, 0.20));
-    }
     Card { el: card, plane: Some(rune::col().center()) }
 }

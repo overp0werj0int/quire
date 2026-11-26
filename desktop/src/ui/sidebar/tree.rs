@@ -8,7 +8,7 @@ use super::super::lists::{self, Branch};
 use super::super::panel;
 use super::super::styles::{medium, nav};
 use super::super::icons::{FOLDER, FOLDER_OPEN, LOCK, PLUS, WARNING};
-use super::super::widgets::{floating, label, name_tip};
+use super::super::components::{input_focus_ring, label, name_tip, popup_frame};
 use super::parts::{COUNT_TEXT, GAP, INNER_RADIUS, INSET, RADIUS, ROW_H, ROW_PX, ROW_TEXT, TEXT_X};
 use super::{BUTTON_END, ICON};
 use crate::app::App;
@@ -292,7 +292,7 @@ fn new_folder_row(v: V, depth: usize, edit: &rune::TextEdit) -> El {
         .gap(ICON_GAP - FIELD_PAD)
         .child(icon(&FOLDER, ICON).color(p.acc))
         .child(
-            super::super::widgets::input_focus_ring(
+            input_focus_ring(
                 el().key("new-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(INNER_RADIUS).fill(c.hover),
                 p,
             )
@@ -344,7 +344,7 @@ fn rename_folder_row(v: V, depth: usize, open: bool, edit: &rune::TextEdit) -> E
         .gap(ICON_GAP - FIELD_PAD)
         .child(icon(glyph, ICON).color(p.acc))
         .child(
-            super::super::widgets::input_focus_ring(
+            input_focus_ring(
                 el().key("rename-folder-box").grow(1.0).min_w(0.0).px(FIELD_PAD).py(1.0).radius(INNER_RADIUS).fill(c.hover),
                 p,
             )
@@ -395,7 +395,7 @@ pub fn drag_ghost(v: V) -> El {
         Some(t) => format!("to {t}/"),
         None => String::new(),
     };
-    let mut r = floating(row(), &Roles::new(p))
+    let mut r = popup_frame(row(), p)
         .key("drag-ghost")
         .absolute(d.x + 14.0, d.y + 10.0)
         .gap(8.0)

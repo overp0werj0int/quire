@@ -1,12 +1,12 @@
 //! The settings sheet.
 
-use crate::roles::Roles;
 use rune::{Color, El, Key, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
+use super::components::{Button, Control, SCROLL_FADE, dialog_frame, faded, label, seg, settings_seg, switch};
 use super::layer::Card;
 use super::icons::{CLOSE, SEARCH};
-use super::widgets::{Control, SCROLL_FADE, faded, label, outline_button, seg, settings_seg, switch};
+use super::tokens::{radius, size, space};
 use super::{settings_mcp, settings_sync};
 use crate::app::{App, SECS, Sec};
 use super::styles::{self, literal, note, sans};
@@ -55,19 +55,7 @@ pub(super) fn settings(v: V) -> Card {
         .center_y()
         .justify_between()
         .child(label(title, sans(17.0, 600.0), p.ink))
-        .child(
-            row()
-                .key("set-close")
-                .size(28.0, 28.0)
-                .center()
-                .radius(6.0)
-                .hover(p.hover)
-                .hover_group()
-                .label("Close")
-                .help("Close")
-                .control(|s: &mut App, tx: &mut Tx| s.close_layer(tx))
-                .child(icon(&CLOSE, 14.0).color(p.mute).group_color(p.ink)),
-        );
+        .child(super::components::IconButton::close(p, "set-close", "Close").on_press(|s: &mut App, tx: &mut Tx| s.close_layer(tx)));
     let body = match s.set_sec {
         Sec::Appearance => appearance(v),
         Sec::Editor => editor(v),
@@ -92,42 +80,31 @@ pub(super) fn settings(v: V) -> Card {
                 .scroll_margin(SCROLL_FADE)
                 .child(faded("set", v.p.bg, col().key(format!("set-body-{title}")).w_full().px(pad(v)).pb(28.0).child(body))),
         );
-    let [a, b] = theme::settings_shadows();
     // The shadow sits on an outer box: a rounded clip would cut it off.
-    let panel = el()
-        .key("settings-frame")
-        .w_full()
-        .max_w(780.0)
+    let panel = dialog_frame(p, "settings-frame", Some(size::DIALOG_W_SETTINGS))
         .max_h(max_h(v))
-        .radius(12.0)
-        .fill(p.bg)
-        .border(1.0, Roles::new(p).hairline)
-        .box_shadow(a)
-        .box_shadow(b)
         .child(
             row()
                 .key("settings")
                 .w_full()
-                .radius(12.0)
-                .clip_rounded(12.0)
+                .radius(radius::DIALOG)
+                .clip_rounded(radius::DIALOG)
                 .role("dialog")
                 .label("Settings")
                 .child(nav)
                 .child(content),
         );
-    Card { el: panel, plane: Some(col().px(24.0).pt((v.vh - max_h(v)) / 2.0).items_center()) }
+    Card { el: panel, plane: Some(col().px(space::DIALOG_MARGIN).pt((v.vh - max_h(v)) / 2.0).items_center()) }
 }
 
 /// The tallest the settings box grows: the window less a 24 point margin, up to 720 points.
-/// The box is as tall as its page needs up to this, and its top stays where a box this tall
-/// would start, so the section list never moves when the section changes.
 fn max_h(v: V) -> f32 {
-    (v.vh - 48.0).min(720.0)
+    (v.vh - space::DIALOG_MARGIN_BOTH).min(720.0)
 }
 
 /// Whether the window is small: the section list and the page's margins narrow in it.
 fn small(v: V) -> bool {
-    v.vw < 720.0
+    v.vw < size::NARROW_NOTE_W
 }
 
 /// The section list's width.
@@ -137,12 +114,12 @@ fn nav_w(v: V) -> f32 {
 
 /// The page's side margin.
 fn pad(v: V) -> f32 {
-    if small(v) { 24.0 } else { 32.0 }
+    if small(v) { space::PAD_DIALOG } else { space::PAD_DIALOG_WIDE }
 }
 
 /// The width of the settings body, for grids that fit columns to it.
 pub fn body_width(v: V) -> f32 {
-    (v.vw - 48.0).min(780.0) - nav_w(v) - 2.0 * pad(v)
+    (v.vw - space::DIALOG_MARGIN_BOTH).min(size::DIALOG_W_SETTINGS) - nav_w(v) - 2.0 * pad(v)
 }
 
 /// Whether a row stacks its control under its title and description: when the body is too
@@ -172,13 +149,13 @@ pub fn pair(v: V, key: &str, left: El, control: El) -> El {
 }
 
 pub fn desc_text(v: V, d: &str) -> El {
-    text(d).font(sans(12.5, 400.0).lh(12.5 * 1.45)).color(v.p.mute).wrap().mt(3.0).w_full()
+    text(d).font(super::styles::desc()).color(v.p.mute).wrap().mt(3.0).w_full()
 }
 
 /// A block with a title and description over its own content.
 pub fn block(v: V, key: &str, title: &str, desc: Option<&str>) -> El {
     let p = v.p;
-    let mut c = col().key(key).w_full().py(16.0).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().child(label(title, sans(14.0, 500.0), p.ink));
+    let mut c = col().key(key).w_full().py(16.0).border_sides([1.0, 0.0, 0.0, 0.0], p.line).border_layout().child(label(title, super::styles::row_title(), p.ink));
     if let Some(d) = desc {
         c = c.child(desc_text(v, d));
     }
@@ -250,34 +227,25 @@ fn theme_grid(v: V, dark: bool) -> El {
                         .child(el().w(62.0).h(4.0).radius(2.0).fill(tp.mute))
                         .child(row().gap(4.0).child(el().w(20.0).h(4.0).radius(2.0).fill(tp.acc)).child(el().w(28.0).h(4.0).radius(2.0).fill(tp.mark))),
                 );
-            let mut card = col()
-                .key(format!("theme-{slot}-{id}"))
-                .w(cw)
-                .gap(8.0)
-                .padding(6.0)
-                .pb(8.0)
-                .radius(9.0)
-                .border(1.0, if on { p.acc } else { card_border })
-                .border_layout()
-                .hover(p.hover)
-                .label(name)
-                .choice(on, move |s: &mut App, _: &mut Tx| {
-                    let set = s.settings_mut();
-                    if dark {
-                        set.dark_theme = Some(id.into());
-                    } else {
-                        set.light_theme = Some(id.into());
-                    }
-                    // A pick in the other mode's list switches to that mode, so the change shows.
-                    if set.theme != "system" {
-                        set.theme = if dark { "dark".into() } else { "light".into() };
-                    }
-                })
-                .child(picture)
-                .child(label(name, sans(12.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).truncate());
-            if on {
-                card = card.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
-            }
+            let card = super::components::choice_card(p, format!("theme-{slot}-{id}"), name, on, Some(card_border), move |s: &mut App, _: &mut Tx| {
+                let set = s.settings_mut();
+                if dark {
+                    set.dark_theme = Some(id.into());
+                } else {
+                    set.light_theme = Some(id.into());
+                }
+                // A pick in the other mode's list switches to that mode, so the change shows.
+                if set.theme != "system" {
+                    set.theme = if dark { "dark".into() } else { "light".into() };
+                }
+            })
+            .w(cw)
+            .gap(space::GAP_CONTROL)
+            .padding(space::PX_6)
+            .pb(space::PX_8)
+            .hover(p.hover)
+            .child(picture)
+            .child(label(name, sans(12.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).truncate());
             r = r.child(card);
         }
         grid = grid.child(r);
@@ -339,7 +307,7 @@ fn accent_block(v: V) -> El {
     }
     let typed = s.fields.get("accent-hex").map_or_else(|| current.clone(), |e| e.text.clone());
     let bad = !typed.trim().is_empty() && theme::parse_accent(&typed).is_none();
-    let field = super::settings_sync::text_box(v, "accent-hex", "Accent colour", current.clone(), "#7a4fba", false, bad, 120.0, |s, t| {
+    let field = super::components::literal_field(v, "accent-hex", "Accent colour", current.clone(), "#7a4fba", false, bad, 120.0, |s, t| {
         let t = t.trim().to_lowercase();
         if t.is_empty() {
             s.settings_mut().accent = String::new();
@@ -362,28 +330,19 @@ fn editor(v: V) -> El {
     for (i, f) in EDITOR_FONTS.iter().enumerate() {
         let on = editor_id == f.id;
         let id = f.id;
-        let mut b = col()
-            .key(format!("font-{id}"))
-            .grow(1.0)
-            .min_w(0.0)
-            .gap(8.0)
-            .pt(12.0)
-            .px(14.0)
-            .pb(14.0)
-            .radius(9.0)
-            .fill(p.bg)
-            .border(1.0, if on { p.acc } else { p.line })
-            .border_layout()
-            .label(f.label)
-            .choice(on, move |s: &mut App, _: &mut Tx| {
-                s.settings_mut().font = id.into();
-            })
-            .child(label(f.label, sans(11.5, 400.0), if on { p.acc } else { p.mute }))
-            .child(label("## Field notes", note(f.family, 15.0, 22.5), p.ink))
-            .child(label("Rain until 14:00.", note(f.family, 13.0, 19.5), p.ink2));
-        if on {
-            b = b.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
-        }
+        let b = super::components::choice_card(p, format!("font-{id}"), f.label, on, None, move |s: &mut App, _: &mut Tx| {
+            s.settings_mut().font = id.into();
+        })
+        .grow(1.0)
+        .min_w(0.0)
+        .gap(space::GAP_CONTROL)
+        .pt(space::PX_12)
+        .px(14.0)
+        .pb(14.0)
+        .fill(p.bg)
+        .child(label(f.label, super::styles::small(), if on { p.acc } else { p.mute }))
+        .child(label("## Field notes", note(f.family, 15.0, 22.5), p.ink))
+        .child(label("Rain until 14:00.", note(f.family, 13.0, 19.5), p.ink2));
         card_row = card_row.child(b);
         if i % cols == cols - 1 {
             cards = cards.child(std::mem::replace(&mut card_row, row().w_full().gap(10.0)));
@@ -454,7 +413,7 @@ fn files(v: V) -> El {
         v,
         "location",
         col().key("text").child(label("Folder location", sans(14.0, 500.0), p.ink)).child(text(path).font(literal(12.0)).color(p.mute).wrap().wrap_anywhere().mt(4.0).w_full()),
-        outline_button(p, "switch", "Switch folder…", 30.0, |s, tx| s.go_welcome(tx)),
+        Button::outline(p, "switch", "Switch folder…").on_press(|s, tx| s.go_welcome(tx)),
     );
     let upd = s.settings().update_links;
     let al = s.settings().auto_lock_mins;
@@ -480,7 +439,7 @@ fn files(v: V) -> El {
             Some("Re-locks unlocked notes after a period of inactivity."),
             settings_seg(v, "set-autolock", vec![al_opt(0, "Off"), al_opt(5, "5m"), al_opt(15, "15m"), al_opt(30, "30m")]),
         ))
-        .child(row_(v, "sample", "Sample notes", Some("Put Field Notes back the way it started."), outline_button(p, "restore", "Restore", 30.0, |s, tx| s.reset_sample(tx))))
+        .child(row_(v, "sample", "Sample notes", Some("Put Field Notes back the way it started."), Button::outline(p, "restore", "Restore").on_press(|s, tx| s.reset_sample(tx))))
 }
 
 fn keys(v: V) -> El {
@@ -494,47 +453,28 @@ fn keys(v: V) -> El {
     let reset_all = if km.is_empty() {
         el()
     } else {
-        outline_button(p, "keys-reset-all", "Reset all", 26.0, |s: &mut App, _: &mut Tx| s.reset_all_key_bindings())
+        Button::outline(p, "keys-reset-all", "Reset all").sm().on_press(|s: &mut App, _: &mut Tx| s.reset_all_key_bindings())
     };
     let mut c = col().key("keys").w_full().child(row_(v, "keybindings-head", "Keybindings", Some(&path_note), reset_all));
     let query_empty = v.s.keys_query.text.is_empty();
     let clear_btn = (!query_empty).then(|| {
-        row()
-            .key("keys-search-clear")
-            .size(22.0, 22.0)
-            .center()
-            .radius(5.0)
-            .hover(p.hover)
-            .hover_group()
-            .role("button")
-            .label("Clear shortcut filter")
-            .help("Clear filter")
-            .control(|s: &mut App, tx: &mut Tx| {
+        super::components::IconButton::new(p, "keys-search-clear", &CLOSE, "Clear filter")
+            .size(super::components::IconButtonSize::Mini)
+            .aria_label("Clear shortcut filter")
+            .ring(super::tokens::FocusRing::Inset)
+            .on_press(|s: &mut App, tx: &mut Tx| {
                 s.keys_query = rune::TextEdit::new("");
                 s.keys_query.focused = true;
                 tx.focus("keys-search", false);
             })
-            .child(icon(&CLOSE, 12.0).color(p.mute).group_color(p.ink))
     });
-    let search_bar = super::widgets::input_focus_ring_when(
-        row()
-            .key("keys-search-box")
-            .w_full()
-            .h(32.0)
-            .pl(10.0)
-            .pr(6.0)
-            .gap(8.0)
-            .center_y()
-            .radius(7.0)
-            .fill(p.bg)
-            .border(1.0, p.line)
-            .border_layout(),
-        p,
-        v.s.keys_query.focused,
-    )
-    .child(icon(&SEARCH, 14.0).color(p.mute))
-    .child(
-        text_input(&v.s.keys_query, sans(13.0, 400.0))
+    let search_bar = super::components::input_frame(p, "keys-search-box", super::components::InputSize::Dialog, false, v.s.keys_query.focused)
+        .pl(super::tokens::space::PAD_INPUT_X)
+        .pr(super::tokens::space::PX_4)
+        .gap(super::tokens::space::GAP_CONTROL)
+        .child(icon(&SEARCH, 14.0).color(p.mute))
+        .child(
+            text_input(&v.s.keys_query, super::styles::field())
             .key("keys-search")
             .single_line()
             .grow(1.0)
@@ -607,7 +547,7 @@ fn keys(v: V) -> El {
             }
             left = left.child(title_row);
             if let Some(msg) = err {
-                left = left.child(label(msg, sans(11.5, 400.0), p.err).wrap());
+                left = left.child(super::components::error_line(p, msg));
             }
             let right = if is_editing {
                 let (rw, rg, rc) = super::focus_ring(p);
@@ -629,8 +569,8 @@ fn keys(v: V) -> El {
                             .label(format!("Recording shortcut for {}", a.name))
                             .child(label("Press shortcut…", sans(12.0, 500.0), p.acc)),
                     )
-                    .child(outline_button(p, &format!("key-clear-{id}"), "Clear", 26.0, move |s: &mut App, _: &mut Tx| s.clear_key_binding(id)))
-                    .child(outline_button(p, &format!("key-cancel-{id}"), "Cancel", 26.0, |s: &mut App, _: &mut Tx| s.cancel_key_edit()))
+                    .child(Button::outline(p, format!("key-clear-{id}"), "Clear").sm().on_press(move |s: &mut App, _: &mut Tx| s.clear_key_binding(id)))
+                    .child(Button::outline(p, format!("key-cancel-{id}"), "Cancel").sm().on_press(|s: &mut App, _: &mut Tx| s.cancel_key_edit()))
             } else {
                 let mut chips = row().gap(5.0).center_y().flex_wrap();
                 let labels = km.display_labels(id);
@@ -638,7 +578,7 @@ fn keys(v: V) -> El {
                     chips = chips.child(label("Unbound", sans(12.0, 400.0), p.mute));
                 } else {
                     for kb in labels {
-                        chips = chips.child(super::widgets::kbd(p, kb, false));
+                        chips = chips.child(super::components::kbd(p, kb, false));
                     }
                 }
                 let trigger = if mouse_only {
@@ -657,7 +597,7 @@ fn keys(v: V) -> El {
                 };
                 let mut r = row().gap(6.0).center_y().child(trigger);
                 if custom {
-                    r = r.child(outline_button(p, &format!("key-reset-{id}"), "Reset", 26.0, move |s: &mut App, _: &mut Tx| s.reset_key_binding(id)));
+                    r = r.child(Button::outline(p, format!("key-reset-{id}"), "Reset").sm().on_press(move |s: &mut App, _: &mut Tx| s.reset_key_binding(id)));
                 }
                 r
             };
@@ -707,7 +647,7 @@ fn keys(v: V) -> El {
         for (i, name, chords) in sb_shown {
             let mut chips = row().gap(5.0).center_y().flex_wrap();
             for ch in chords {
-                chips = chips.child(super::widgets::kbd(p, keymap::label_of(ch), false));
+                chips = chips.child(super::components::kbd(p, keymap::label_of(ch), false));
             }
             c = c.child(
                 row()

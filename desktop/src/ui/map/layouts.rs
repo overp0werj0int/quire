@@ -19,7 +19,8 @@ use crate::ui::icons::CHECK;
 use crate::ui::layer::Card;
 use crate::ui::styles::sans;
 use crate::ui::titlebar::BAR_H;
-use crate::ui::widgets::{Control, floating, kbd};
+use crate::ui::components::{Control, kbd, popup_frame};
+use crate::ui::tokens::{motion, radius};
 
 const PAD: f32 = 12.0;
 const GAP: f32 = 8.0;
@@ -56,14 +57,14 @@ pub(in crate::ui) fn layouts(v: V) -> Card {
     let esc = keymap::label_of("Esc");
     let header = row()
         .key("layouts-header")
-        .h(24.0)
-        .gap(8.0)
+        .h(crate::ui::tokens::size::CONTROL_BAR)
+        .gap(crate::ui::tokens::space::GAP_CONTROL)
         .center_y()
         .child(text("Layout").font(sans(12.5, 600.0)).color(c.text))
         .child(el().grow(1.0))
         .child(kbd(v.p, esc, false));
     let foot = text("Saved in this note, under markmap").font(sans(11.0, 400.0)).color(v.p.mute);
-    let card = floating(col(), &c)
+    let card = popup_frame(col(), v.p)
         .key("layouts")
         .role("dialog")
         .label("Layout")
@@ -71,7 +72,7 @@ pub(in crate::ui) fn layouts(v: V) -> Card {
         .w(w)
         .padding(PAD)
         .gap(10.0)
-        .radius(9.0)
+        .radius(radius::FIELD)
         .child(header)
         .child(grid)
         .child(foot)
@@ -94,13 +95,13 @@ fn fade(card: El) -> El {
     if crate::motion::reduced() {
         return card;
     }
-    let s = rune::Spring::new(0.08, 0.0);
+    let s = motion::modal_spring();
     card.transition(rune::Transition::opacity().springs(rune::SpringPair::new(s, s)))
 }
 
 fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
     let (rw, rg, rc) = crate::ui::focus_ring(v.p);
-    let plate = el().w(THUMB[0]).h(THUMB[1]).radius(6.0).clip_rounded(6.0).fill(c.sunken).child(schematic(v.p, l));
+    let plate = el().w(THUMB[0]).h(THUMB[1]).radius(radius::CONTROL).clip_rounded(radius::CONTROL).fill(c.sunken).child(schematic(v.p, l));
     let digit = idx + 1;
     let key_badge = row()
         .key(format!("layout-key-{digit}"))
@@ -108,7 +109,7 @@ fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
         .h(15.0)
         .px(3.0)
         .center()
-        .radius(3.5)
+        .radius(radius::INNER)
         .fill(c.raised)
         .border(1.0, c.hairline)
         .border_layout()
@@ -127,7 +128,7 @@ fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
         .padding(TILE_PAD)
         .gap(6.0)
         .items_center()
-        .radius(8.0)
+        .radius(radius::FIELD)
         .border(1.5, if current { c.accent } else { Color::TRANSPARENT })
         .border_layout()
         .hover(v.p.hover)

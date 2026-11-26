@@ -32,5 +32,25 @@ apps differ.
   reader and writer to the desktop app. Its `behavior/` files say what the preview and the
   editor must do. Read the matching file before you change either, and run
   `python3 docs/reader-writer/tools/check-specs.py` after you edit one.
+- Desktop UI design system: read [`design/system/DESIGN.md`](design/system/DESIGN.md),
+  [`desktop/src/ui/tokens.rs`](desktop/src/ui/tokens.rs),
+  [`desktop/src/ui/styles.rs`](desktop/src/ui/styles.rs), and
+  [`desktop/src/ui/components/mod.rs`](desktop/src/ui/components/mod.rs) before adding or
+  changing desktop UI.
+  - Always reuse existing components from `desktop/src/ui/components/` (`Button`, `IconButton`,
+    `input_frame` / `password_field` / `literal_field`, `choice_card` / `choice_pill` /
+    `checkbox_box`, `switch`, `segmented` / `pill_group`, `kbd` / `key_hint`, `count_pill` /
+    `tag_badge` / `status_dot` / `error_line`, `mini_bar` / `mini_button`, `dialog_frame` /
+    `popup_frame` / `bar_edge` / `faded`, `Control` / `label` / `bar_sep`). Never hand-roll
+    buttons, icon buttons, inputs, choice cards/pills, checkboxes, badges, error lines, popups,
+    or modal dialogs inside a layout file.
+  - Create a new component type only when a screen genuinely needs a distinct pattern that
+    existing components cannot express cleanly. Place it in its own module under
+    `desktop/src/ui/components/`, compose it from `ui/tokens.rs` (`space`, `radius`, `size`,
+    `state`, `motion`, `Elevation`, `FocusRing`, `Zone`), `ui/styles.rs` type constructors, and
+    more basic components, and export it from `desktop/src/ui/components/mod.rs`.
+  - Keep the structural guardrails in `ui/tokens.rs` and `ui/styles.rs` passing, and when a
+    change alters shared tokens or components, update `design/system/` and run
+    `python3 design/system/build.py`.
 - The "Rules for changes" section at the end of `ARCHITECTURE.md` applies to every change.
 - When a change makes `ARCHITECTURE.md` wrong, update it in the same change.

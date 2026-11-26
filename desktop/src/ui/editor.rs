@@ -6,7 +6,7 @@
 
 use rune::{Color, El, Key, KeyEvent, ScrollFade, ScrollSpec, TextEdit, TextHighlight, TextStyle, Tx, col, el, icon, row, text, text_input};
 
-use super::widgets::{Control, label};
+use super::components::{Control, IconButton, IconButtonSize, input_focus_ring, label, name_tip};
 use super::{V, outline, preview};
 use crate::app::{App, Mode};
 use crate::keymap::Ctx;
@@ -159,7 +159,8 @@ pub fn body(v: V) -> El {
         .child(main_area);
     let mut inner = row().key("sheet-row").grow(1.0).min_h(0.0).w_full().child(area);
     // The outline slides in from the right and out to it over 160 ms (WR-99).
-    let slide = rune::SpringPair::new(rune::Spring::new(0.16, 0.0), rune::Spring::new(0.16, 0.0));
+    let ds = super::tokens::motion::drawer_spring();
+    let slide = rune::SpringPair::new(ds, ds);
     let t = rune::Transition::move_edge(rune::Edge::Trailing).springs(slide);
     if v.right_visible() {
         // Docked, its slot closes as it leaves.
@@ -179,28 +180,17 @@ fn conflict_banner(v: V) -> Option<El> {
     let active = v.s.active.as_deref()?;
     let p = v.p;
     let c = Roles::new(p);
-    let (rw, rg, rc) = super::focus_ring(p);
     let bg = crate::roles::mix(p.bg, p.err, if p.dark { 0.14 } else { 0.08 });
     let edge = p.err.alpha(if p.dark { 0.35 } else { 0.28 });
-    let act_btn = |key: &'static str, text_: &'static str, color: Color, border_color: Color, run: Box<dyn Fn(&mut App, &mut Tx)>| {
-        super::focus::stop(row())
-            .key(key)
-            .h(26.0)
-            .px(10.0)
-            .center()
-            .radius(6.0)
-            .fill(p.bg)
-            .border(1.0, border_color)
-            .border_layout()
-            .hover(p.hover)
-            .role("button")
-            .label(text_)
-            .focus_ring(rw, rg, rc)
+    let act_btn = |key: &'static str, text_: &'static str, variant: super::components::ButtonVariant, run: Box<dyn Fn(&mut App, &mut Tx)>| {
+        super::components::Button::new(p, key, text_)
+            .variant(variant)
+            .sm()
+            .fill_bg(p.bg)
+            .focus_stop()
             .keeps_text_selection()
-            .control(move |s: &mut App, tx| run(s, tx))
-            .child(label(text_, sans(12.0, 500.0), color))
+            .on_press(move |s: &mut App, tx| run(s, tx))
     };
-    let keep_ink = Roles::readable_on(p.acc, p.bg, 4.5);
     let (msg, buttons) = if let Some((orig, device)) = md::conflict_origin(active) {
         let (orig1, orig2, orig3) = (orig.clone(), orig.clone(), orig.clone());
         let (conf1, conf2) = (active.to_string(), active.to_string());
@@ -213,29 +203,25 @@ fn conflict_banner(v: V) -> Option<El> {
             .child(act_btn(
                 "conflict-diff",
                 if diff_open { "Hide diff" } else { "Compare" },
-                if diff_open { keep_ink } else { p.ink },
-                if diff_open { p.acc.alpha(0.55) } else { p.line },
+                if diff_open { super::components::ButtonVariant::AccentOutline } else { super::components::ButtonVariant::Outline },
                 Box::new(|s, _| s.toggle_conflict_diff()),
             ))
             .child(act_btn(
                 "conflict-open-orig",
                 "Open original",
-                p.ink,
-                p.line,
+                super::components::ButtonVariant::Outline,
                 Box::new(move |s, tx| s.open_conflict_original(&orig1, tx)),
             ))
             .child(act_btn(
                 "conflict-keep-this",
                 "Keep this version",
-                keep_ink,
-                p.acc.alpha(0.55),
+                super::components::ButtonVariant::AccentOutline,
                 Box::new(move |s, tx| s.keep_conflict_version(&conf1, &orig2, tx)),
             ))
             .child(act_btn(
                 "conflict-discard",
                 "Discard conflict",
-                c.readable_err(),
-                p.err.alpha(0.55),
+                super::components::ButtonVariant::Destructive,
                 Box::new(move |s, tx| s.discard_conflict_version(&conf2, &orig3, tx)),
             ));
         (msg, buttons)
@@ -258,8 +244,7 @@ fn conflict_banner(v: V) -> Option<El> {
         let buttons = row().gap(6.0).center_y().flex_wrap().child(act_btn(
             "conflict-open-conflict",
             "Open conflict",
-            keep_ink,
-            p.acc.alpha(0.55),
+            super::components::ButtonVariant::AccentOutline,
             Box::new(move |s, tx| s.open_file(&first_copy, None, tx)),
         ));
         (msg, buttons)
@@ -695,24 +680,16 @@ pub(super) fn shows_toolbar(v: V) -> bool {
 /// The toolbar's lock: a plain note gets a password, and an unlocked note locks again. The
 /// accent marks a note that is locked and open now.
 fn lock_button(v: V) -> El {
+    use super::components::{IconButton, IconButtonSize};
     use super::icons::LOCK;
     let p = v.p;
     let open = v.s.active.as_deref().is_some_and(|a| v.s.note_unlocked(a));
     let help = crate::commands::lock_name(open);
-    let (rw, rg, rc) = super::focus_ring(p);
-    row()
-        .key("fmt-lock")
-        .size(28.0, 28.0)
-        .center()
-        .radius(6.0)
-        .hover(p.hover)
-        .hover_group()
-        .role("button")
-        .label(help)
-        .help(help)
-        .focus_ring(rw, rg, rc)
-        .control(|s: &mut App, tx| s.ask_lock(tx))
-        .child(icon(&LOCK, 16.0).color(if open { p.acc } else { p.mute }).group_color(if open { p.acc } else { p.ink }))
+    let mut b = IconButton::new(p, "fmt-lock", &LOCK, help).size(IconButtonSize::Toolbar);
+    if open {
+        b = b.tint(p.acc, p.acc);
+    }
+    b.on_press(|s: &mut App, tx| s.ask_lock(tx))
 }
 
 /// The formatting toolbar: a pill at the top of the note column, its first icon's box on the
@@ -720,49 +697,35 @@ fn lock_button(v: V) -> El {
 /// until it reaches TOOLBAR_TOP below the title bar, then stays there, and the note scrolls
 /// under it.
 fn toolbar(v: V) -> El {
+    use super::components::{IconButton, IconButtonSize, ToggleKind};
     use super::icons::{BOLD, BULLETS, CODE, HEADING, IMAGE, ITALIC, LINK, NUMBERS, QUOTE, STRIKE, TASK, WIKI};
-    use super::widgets::icon_button;
     use crate::format::Fmt;
     let p = v.p;
     let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
-    let (rw, rg, rc) = super::focus_ring(p);
     let doc = v.s.active_text();
     let caret = v.s.active.as_ref().and_then(|a| v.s.edits.get(a)).map_or(0, |e| e.focus.min(doc.len()));
     let active = crate::writer::active_formats(doc, caret);
-    let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| icon_button(p, key, glyph, 16.0, &help).role("button").focus_ring(rw, rg, rc).control(move |s: &mut App, tx| s.format(f, tx));
-    let toggle = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt, on: bool| {
-        let mut b = row()
-            .key(key)
-            .size(28.0, 28.0)
-            .center()
-            .radius(6.0)
-            .role("switch")
-            .checked(on)
-            .label(help.clone())
-            .help(help)
-            .focus_ring(rw, rg, rc)
-            .control(move |s: &mut App, tx| s.format(f, tx));
-        if on {
-            b = b
-                .fill(p.act)
-                .border(1.0, p.acc.alpha(if p.dark { 0.45 } else { 0.35 }))
-                .child(icon(glyph, 16.0).color(p.acc));
-        } else {
-            b = b.hover(p.hover).hover_group().child(icon(glyph, 16.0).color(p.mute).group_color(p.ink));
-        }
-        b
+    let btn = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt| {
+        IconButton::new(p, key, glyph, help)
+            .size(IconButtonSize::Toolbar)
+            .on_press(move |s: &mut App, tx| s.format(f, tx))
     };
-    let sep = |key: &str| el().key(key).w(1.0).h(16.0).mx(5.0).fill(p.line);
+    let toggle = |key: &str, glyph: &'static rune::Icon, help: String, f: Fmt, on: bool| {
+        IconButton::new(p, key, glyph, help)
+            .size(IconButtonSize::Toolbar)
+            .toggle(ToggleKind::AccentSwitch(on))
+            .on_press(move |s: &mut App, tx| s.format(f, tx))
+    };
+    let sep = |key: &str| super::components::bar_sep(p, key, 16.0).mx(5.0);
     // At rest the toolbar has no background and no border, as the text around it. The
     // background, its shadow and the find bar's corner and hairline come in while the note
     // scrolls under the toolbar, so the two bars on one row look alike (RAD).
-    let shadow = if p.dark { 0.5 } else { 0.12 };
-    let back = super::widgets::bar_edge(el(), &Roles::new(p))
-        .key("toolbar-back")
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .fill(p.bg.alpha(0.94))
-        .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: -4.0, color: Color::BLACK.alpha(shadow), inset: false })
-        .stuck_reveal(8.0);
+    let back = super::components::toolbar_surface(
+        el().key("toolbar-back").pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0)).radius(super::tokens::radius::CONTROL),
+        p,
+        1.0,
+    )
+    .stuck_reveal(8.0);
     let tb_top = toolbar_top(v);
     let tb_h = toolbar_h(v);
     // Align the narrow Source toolbar's left edge with the full-width Find bar (`FIND_NARROW_X`)
@@ -827,7 +790,7 @@ fn toolbar(v: V) -> El {
         .child(toggle("fmt-quote", &QUOTE, tip("Quote", "writer.blockquote"), Fmt::Quote, active.quote))
         .child(toggle("fmt-code", &CODE, tip("Inline code", "writer.inline-code"), Fmt::Code, active.code))
         .child(sep("sep-3"))
-        .child(icon_button(p, "fmt-image", &IMAGE, 16.0, &tip(crate::commands::INSERT_IMAGE, "app.insert-image")).role("button").focus_ring(rw, rg, rc).control(|s: &mut App, tx| s.pick_image(tx)))
+        .child(IconButton::new(p, "fmt-image", &IMAGE, tip(crate::commands::INSERT_IMAGE, "app.insert-image")).size(IconButtonSize::Toolbar).on_press(|s: &mut App, tx| s.pick_image(tx)))
         .child(sep("sep-4"))
         .child(lock_button(v))
 }
@@ -858,21 +821,14 @@ pub(super) fn crumb(v: V) -> El {
         crumb_fit(&dir, &name, (w - pad - mark - copy_w - lock_w - note_pill_w).max(0.0), style)
     });
     let (rw, rg, rc) = super::focus_ring(p);
-    let copy_btn = super::focus::stop(row())
-        .key("copy-path")
-        .size(24.0, 24.0)
-        .center()
-        .radius(5.0)
-        .hover(p.hover)
-        .hover_group()
-        .no_window_drag()
-        .role("button")
-        .label("Copy file path")
-        .help("Copy full path")
-        .focus_ring(rw, rg, rc)
+    let copy_btn = super::components::IconButton::new(p, "copy-path", &super::icons::COPY, "Copy full path")
+        .size(super::components::IconButtonSize::Bar)
+        .aria_label("Copy file path")
+        .tint(quiet.faint, p.ink)
+        .focus_stop()
         .keeps_text_selection()
-        .control(super::titlebar::act(|s, tx| s.copy_path(tx)))
-        .child(icon(&super::icons::COPY, 15.0).color(quiet.faint).group_color(p.ink));
+        .no_window_drag()
+        .on_press(super::titlebar::act(|s, tx| s.copy_path(tx)));
     let mut r = row().key("crumb").h(24.0).grow(1.0).min_w(0.0).gap(6.0).center_y().child(copy_btn);
     if !dir.is_empty() {
         let folder = match &fit {
@@ -895,7 +851,7 @@ pub(super) fn crumb(v: V) -> El {
                 .min_w(0.0)
                 .px(5.0)
                 .mx(-5.0)
-                .radius(5.0)
+                .radius(super::tokens::radius::CONTROL)
                 .hover(p.hover)
                 .no_window_drag()
                 .role("button")
@@ -914,7 +870,7 @@ pub(super) fn crumb(v: V) -> El {
     let cut = fit.as_ref().is_some_and(|(_, shown)| *shown != name);
     let shown = fit.map_or_else(|| name.clone(), |(_, shown)| shown);
     let mut name_el = text(shown).font(style).color(p.ink2).truncate().shrink().min_w(0.0);
-    name_el = if cut { name_el.label(name.clone()).help(super::widgets::name_tip(&active)) } else { name_el.help_when_truncated(super::widgets::name_tip(&active)) };
+    name_el = if cut { name_el.label(name.clone()).help(name_tip(&active)) } else { name_el.help_when_truncated(name_tip(&active)) };
     let mut r = match &s.renaming {
         None if note_mode => r.child(
             row()
@@ -936,7 +892,7 @@ pub(super) fn crumb(v: V) -> El {
                 .min_w(0.0)
                 .px(5.0)
                 .mx(-5.0)
-                .radius(5.0)
+                .radius(super::tokens::radius::CONTROL)
                 .hover(p.hover)
                 .no_window_drag()
                 .role("button")
@@ -961,8 +917,8 @@ pub(super) fn crumb(v: V) -> El {
                     .min_w(0.0)
                     .center_y()
                     .child(
-                        super::widgets::input_focus_ring(
-                            el().key("rename-box").no_window_drag().w(w).shrink().min_w(least).px(5.0).py(2.0).mx(-5.0).radius(5.0).fill(p.soft),
+                        input_focus_ring(
+                            el().key("rename-box").no_window_drag().w(w).shrink().min_w(least).px(5.0).py(2.0).mx(-5.0).radius(super::tokens::radius::CONTROL).fill(p.soft),
                             p,
                         )
                         .child(
@@ -1009,10 +965,10 @@ pub(super) fn crumb(v: V) -> El {
         r = r.child(
             super::focus::stop(row())
                 .key("note-mode-pill")
-                .h(22.0)
-                .px(8.0)
+                .h(super::tokens::size::CONTROL_BAR)
+                .px(super::tokens::space::PX_8)
                 .center_y()
-                .radius(11.0)
+                .radius(super::tokens::radius::PILL)
                 .fill(p.soft)
                 .border(1.0, p.line)
                 .border_layout()
@@ -1029,23 +985,16 @@ pub(super) fn crumb(v: V) -> El {
     }
     if locked {
         let badge = if unlocked {
-            super::focus::stop(row())
-                .key("crumb-lock")
-                .size(24.0, 24.0)
-                .center()
-                .radius(5.0)
-                .hover(p.hover)
-                .no_window_drag()
-                .role("button")
-                .label("Unlocked · Click to lock now")
-                .help("Unlocked · Click to lock now")
-                .focus_ring(rw, rg, rc)
+            IconButton::new(p, "crumb-lock", &super::icons::LOCK, "Unlocked · Click to lock now")
+                .size(IconButtonSize::Bar)
+                .tint(p.acc, p.acc)
+                .focus_stop()
                 .keeps_text_selection()
-                .control(super::titlebar::act(|s, tx| {
+                .on_press(super::titlebar::act(|s, tx| {
                     s.relock();
                     tx.focus(crate::ui::lock::PASS, false);
                 }))
-                .child(icon(&super::icons::LOCK, 13.0).color(p.acc))
+                .no_window_drag()
         } else {
             row()
                 .key("crumb-lock")
@@ -1122,7 +1071,7 @@ pub fn source_column(v: V) -> crate::page::Column {
 
 /// The widths of the docked sidebar and outline, 0 for one that is not docked.
 pub(super) fn docked(v: V) -> (f32, f32) {
-    (if v.left_visible() { super::sidebar::DOCKED_W } else { 0.0 }, if v.right_visible() { 236.0 } else { 0.0 })
+    (if v.left_visible() { super::sidebar::DOCKED_W } else { 0.0 }, if v.right_visible() { super::OUTLINE_W } else { 0.0 })
 }
 
 /// The writer (`behavior/writer.md`): one field, painted with the formatting spans of
@@ -1308,7 +1257,6 @@ fn is_editor_motion_or_edit_key(ev: &KeyEvent) -> bool {
 fn ac_popover(v: V) -> Option<El> {
     let (trig, items, active_idx, total) = v.s.ac_state()?;
     let p = v.p;
-    let c = Roles::new(p);
     let quiet = Roles::panel(p);
     const POP_W: f32 = 264.0;
     const ROW_H: f32 = 28.0;
@@ -1358,7 +1306,7 @@ fn ac_popover(v: V) -> Option<El> {
             .gap(8.0)
             .center_y()
             .justify_between()
-            .radius(5.0)
+            .radius(super::tokens::radius::CONTROL)
             .fill(if on { p.act } else { Color::TRANSPARENT })
             .hover(if on { p.act } else { p.hover })
             .cursor(rune::Cursor::Pointer)
@@ -1388,7 +1336,7 @@ fn ac_popover(v: V) -> Option<El> {
         );
     }
     Some(
-        super::reader::popup(&c)
+        super::reader::popup(v.p)
             .key("ac-pop")
             .pin(Some(x), Some(y), None, None)
             .w(POP_W)
@@ -1487,7 +1435,6 @@ fn no_tab(v: V) -> El {
 
 fn empty_vault(v: V) -> El {
     let p = v.p;
-    let (rw, rg, rc) = super::focus_ring(p);
     let path = v.s.vault.as_ref().map_or(String::new(), |x| crate::store::tilde(&x.path));
     col()
         .key("empty-vault")
@@ -1497,21 +1444,11 @@ fn empty_vault(v: V) -> El {
         .child(label("Nothing here yet.", sans(32.0, 500.0).lh(32.0 * 1.15).tracking(-0.02 * 32.0), p.ink))
         .child(text(md::pretty(&format!("Notes you write here are saved as plain .md files in {path}."))).font(sans(14.0, 400.0).lh(14.0 * 1.6)).color(p.ink2).wrap())
         .child(
-            super::focus::stop(row())
-                .key("first-note")
-                .h(34.0)
-                .mt(6.0)
-                .px(14.0)
-                .gap(12.0)
-                .center_y()
-                .radius(8.0)
-                .fill(p.button)
-                .hover(p.button_hover)
-                .role("button")
-                .label("New note")
-                .focus_ring(rw, rg, rc)
-                .control(|s: &mut App, tx| s.new_note(None, tx))
-                .child(label("Create your first note", sans(13.5, 500.0), p.on_acc))
-                .child(label(v.s.keymap.label("app.new-note"), keys(11.0), p.on_acc.alpha(0.8))),
+            super::components::Button::primary(p, "first-note", "Create your first note")
+                .aria_label("New note")
+                .focus_stop()
+                .trailing(label(v.s.keymap.label("app.new-note"), keys(11.0), p.on_acc.alpha(0.8)))
+                .on_press(|s: &mut App, tx| s.new_note(None, tx))
+                .mt(6.0),
         )
 }

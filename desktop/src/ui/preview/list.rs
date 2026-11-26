@@ -8,7 +8,7 @@ use crate::app::App;
 use crate::blocks::{Block, Item, Kind, List, Task};
 use crate::page::{line, r};
 use crate::ui::icons;
-use crate::ui::widgets::Control;
+use crate::ui::components::Control;
 
 /// The indent left of each item's body and the vertical gap between items for list `l` in `tone`.
 pub(super) fn layout_metrics(cx: &Cx, l: &List, tone: Tone) -> (f32, f32, f32, f32) {
@@ -90,13 +90,14 @@ pub(super) fn list(cx: &Cx, l: &List, tone: Tone) -> El {
                     .checked(done)
                     .label(lbl);
                 if cx.selectable {
-                    let (_, _, rc) = crate::ui::focus_ring(cx.v.p);
-                    hit = crate::ui::focus::stop(hit)
-                        .cursor(rune::Cursor::Pointer)
-                        .focus_ring(2.0, 1.0, rc)
-                        .keeps_text_selection()
-                        .preserve_focus_on_press(true)
-                        .control(move |s: &mut App, _| s.toggle_task(line_no, !done));
+                    hit = crate::ui::tokens::FocusRing::Tight.apply(
+                        crate::ui::focus::stop(hit)
+                            .cursor(rune::Cursor::Pointer)
+                            .keeps_text_selection()
+                            .preserve_focus_on_press(true)
+                            .control(move |s: &mut App, _| s.toggle_task(line_no, !done)),
+                        cx.v.p,
+                    );
                 }
                 hit.child(b).pin(Some(mx + mw - bx - pad_x), Some(r(xc - bx / 2.0 - t * 0.04) - pad_y), None, None)
             }

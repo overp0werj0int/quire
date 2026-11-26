@@ -11,7 +11,7 @@ use super::super::V;
 use super::super::lists;
 use super::super::styles::nav;
 use super::super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CLOSE, LOCK, WARNING};
-use super::super::widgets::name_tip;
+use super::super::components::name_tip;
 use super::{BUTTON_END, ICON};
 use super::parts::{GAP, INNER_RADIUS, INSET, OUT_TEXT, RADIUS, ROW_TEXT, TAB_TITLE_LH, TWO_ROWS_H, caption_style, two_rows};
 use super::tree::last_part;
