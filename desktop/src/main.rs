@@ -4211,9 +4211,9 @@ mod escape_tests {
         anchors.sort_by(|a, b| a[1].total_cmp(&b[1]));
         assert_eq!(anchors.len(), 3, "three heading anchors: {anchors:?}");
         assert!(anchors[0][3] > anchors[1][3] && anchors[1][3] > anchors[2][3], "H1 > H2 > H3 anchor height: {anchors:?}");
-        // Preview code block groups Edit and Copy into one 32 pt floating mini-bar of 24x24 icon buttons.
+        // Preview code block groups Edit and Copy into one 28 pt floating mini-bar (same scale as map-zoom-hud).
         let code_bar = all.iter().find(|e| e.key.as_deref() == Some("code-actions")).expect("code-actions mini-bar");
-        assert!((code_bar.rect[3] - crate::ui::widgets::MINI_BAR_H).abs() < 0.5, "code mini-bar height: {:?}", code_bar.rect);
+        assert!((code_bar.rect[3] - 28.0).abs() < 0.5 && (code_bar.rect[3] - crate::ui::widgets::MINI_BAR_H).abs() < 0.5, "code mini-bar height: {:?}", code_bar.rect);
         let copy_btn = all.iter().find(|e| e.key.as_deref() == Some("copy")).expect("copy button");
         let code_edit = all.iter().find(|e| e.key.as_deref() == Some("block-edit:6")).expect("code edit button");
         assert!((copy_btn.rect[2] - 24.0).abs() < 0.5 && (copy_btn.rect[3] - 24.0).abs() < 0.5, "copy icon button 24x24: {:?}", copy_btn.rect);
@@ -4267,6 +4267,7 @@ mod escape_tests {
         assert!((bot_gap - left_gap).abs() < 0.5, "bottom kbd gap {bot_gap} must equal left gap {left_gap}");
         assert!((top_gap - (left_gap - 2.0)).abs() < 0.5, "top title gap {top_gap} compensates for 2pt leading vs left {left_gap}");
         let sh_bar = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions mini-bar");
+        assert!((sh_bar.rect[3] - 28.0).abs() < 0.5, "sheet-actions matches 28 pt zoom HUD scale: {:?}", sh_bar.rect);
         assert!(sh_bar.opacity < 0.05, "sheet-actions hidden until hover: {}", sh_bar.opacity);
         assert!(sh_bar.rect[1] < pop[1] + 40.0 && sh_bar.rect[0] > pop[0] + pop[2] / 2.0, "sheet-actions sits top-right: {:?} in {pop:?}", sh_bar.rect);
         rt.pointer_move(pop[0] + 40.0, pop[1] + 40.0);

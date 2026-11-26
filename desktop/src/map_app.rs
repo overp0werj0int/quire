@@ -1706,7 +1706,8 @@ impl App {
 /// The inline field's key: a text field, so the note's caret keys stay out of it.
 pub const FIELD: &str = "map-inline-edit";
 /// The add toolbar over a new node's glass (MAP-087): its height, and the gap under it.
-pub const KIND_BAR_H: f32 = 36.0;
+/// Height of the add toolbar over a new node's glass, matching `MINI_BAR_H` / `map-zoom-hud`.
+pub const KIND_BAR_H: f32 = 28.0;
 pub const KIND_BAR_GAP: f32 = 6.0;
 
 /// What a new node is placed by: Tab, Enter, Shift+Enter (MAP-021, MAP-023).

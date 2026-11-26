@@ -140,7 +140,7 @@ rewrites the preview (`App::map_pick_kind`), so the node changes kind before any
 in `Ctx::MapEdit`. While it is open its node takes the field's size in the layout
 (`App::map_laid`), and an existing node never less than its own, so the neighbours move
 clear as the text grows. A sheet saved in Map mode goes through `App::map_replace`, so the map keeps
-its place. Map cards (code, diff, table, quote, alert, HTML), Preview blocks (with combined Edit/Copy on code and diff blocks), and the Edit Sheet (Cancel/Save, or Copy/Close on conflict) all use the shared floating icon mini-bar (`ui::widgets::mini_bar`, uniform `24 × 24` icon buttons with tooltips), and `map_paste_key` reads the live OS clipboard first before falling back to `last_copied`. Zoom HUD buttons (`zoom-out`, `zoom-reset`, `zoom-in`, `zoom-fit`), `map-props`, and fold pills (`map-pill:*`, `map-fold:*`) are keyboard-focusable stops with focus rings.
+its place. Map cards (code, diff, table, quote, alert, HTML), Preview blocks (with combined Edit/Copy on code and diff blocks), and the Edit Sheet (Cancel/Save, or Copy/Close on conflict) all use the shared floating icon mini-bar (`ui::widgets::mini_bar`, 28 pt tall with 24 × 24 icon buttons and 12 pt glyphs matching `map-zoom-hud` and `map-kinds`), and `map_paste_key` reads the live OS clipboard first before falling back to `last_copied`. Zoom HUD buttons (`zoom-out`, `zoom-reset`, `zoom-in`, `zoom-fit`), `map-props`, and fold pills (`map-pill:*`, `map-fold:*`) are keyboard-focusable stops with focus rings.
 
 A move, by a drop or by Alt and the arrows, is `map::move_to`, one more of these functions.
 `map::zone` says which moves the rules allow, and the drop zones under a drag show only those

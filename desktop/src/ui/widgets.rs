@@ -121,16 +121,20 @@ pub fn floating(e: El, c: &Roles) -> El {
     e.fill(c.bg).border(1.0, c.hairline).box_shadow(a).box_shadow(b)
 }
 
-/// Uniform button size for the title bar and floating action mini-bars.
+/// Uniform button size for floating action mini-bars and the map zoom HUD (`TARGETS24`).
 pub const MINI_BTN: f32 = 24.0;
-/// Uniform icon size inside `MINI_BTN` buttons.
-pub const MINI_ICON: f32 = 15.0;
-/// Height of a floating action mini-bar (`MINI_BTN` + 4 pt top and bottom padding).
-pub const MINI_BAR_H: f32 = MINI_BTN + 8.0;
-/// Horizontal padding inside a floating action mini-bar.
-pub const MINI_BAR_PX: f32 = 4.0;
-/// Gap between buttons in a floating action mini-bar.
-pub const MINI_BAR_GAP: f32 = 4.0;
+/// Uniform icon size inside `MINI_BTN` buttons (matches `map-zoom-hud`).
+pub const MINI_ICON: f32 = 12.0;
+/// Height of a floating action mini-bar (`MINI_BTN` + 2 pt top and bottom padding; matches `map-zoom-hud`).
+pub const MINI_BAR_H: f32 = MINI_BTN + 4.0;
+/// Horizontal padding inside a floating action mini-bar (uniform 2 pt all around).
+pub const MINI_BAR_PX: f32 = 2.0;
+/// Gap between buttons in a floating action mini-bar (matches `map-zoom-hud`).
+pub const MINI_BAR_GAP: f32 = 1.0;
+/// Outer corner radius of a floating action mini-bar (matches `map-zoom-hud`).
+pub const MINI_BAR_RADIUS: f32 = 6.0;
+/// Inner button corner radius inside a floating action mini-bar (`MINI_BAR_RADIUS - 2.0`).
+pub const MINI_BTN_RADIUS: f32 = 4.0;
 
 /// Width of a floating action mini-bar holding `n` uniform icon buttons.
 pub fn mini_bar_w(n: usize) -> f32 {
@@ -156,7 +160,7 @@ pub fn toolbar_surface(e: El, p: &Pal, k: f32) -> El {
         })
 }
 
-/// Shared floating mini-toolbar container (the zen/preview/map/sheet floating pill), scaled by `k`.
+/// Shared floating mini-toolbar container (preview blocks, map cards, and edit sheet), scaled by `k`.
 pub fn mini_bar_at(p: &Pal, key: &str, k: f32) -> El {
     toolbar_surface(
         row()
@@ -165,7 +169,7 @@ pub fn mini_bar_at(p: &Pal, key: &str, k: f32) -> El {
             .px(MINI_BAR_PX * k)
             .gap(MINI_BAR_GAP * k)
             .center_y()
-            .radius(10.0 * k),
+            .radius(MINI_BAR_RADIUS * k),
         p,
         k,
     )
@@ -185,7 +189,7 @@ pub fn mini_button_at(p: &Pal, key: &str, glyph: &'static Icon, help: &str, tint
         .key(key)
         .size(MINI_BTN * k, MINI_BTN * k)
         .center()
-        .radius(6.0 * k)
+        .radius(MINI_BTN_RADIUS * k)
         .hover(p.hover)
         .hover_group()
         .cursor(rune::Cursor::Pointer)

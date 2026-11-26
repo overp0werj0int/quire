@@ -561,18 +561,19 @@ fn field(v: V, p: Place, room: f32, st: rune::TextStyle, w: f32, m: &crate::map_
 /// its place can't take greyed. Its sizes are points on screen times `k`, one over the map's
 /// zoom, so it keeps Source's size at every zoom. A press keeps the keyboard in the field, which
 /// neither commits nor closes.
-/// The add toolbar's width: 5 buttons of 28, a separator of 11, 5 gaps of 2 and 4 of padding
-/// at each end.
-const KIND_BAR_W: f32 = 169.0;
+/// The add toolbar's width: 5 buttons of `MINI_BTN` (24), a separator of 5 (1 + 2×2), 5 gaps of 1
+/// and 3 of padding at each end (same scale as `map-zoom-hud`).
+const KIND_BAR_W: f32 = 136.0;
 
 fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
     use super::icons::{BULLETS, HEADING, NUMBERS, PARAGRAPH, TASK};
+    use super::widgets::{MINI_BAR_GAP, MINI_BAR_RADIUS, MINI_BTN, MINI_BTN_RADIUS, MINI_ICON};
     use crate::map::NewKind;
     let p = v.p;
     let tip = |name: &str, id: &str| v.s.keymap.tip(name, id);
     let btn = |key: &str, glyph: &'static rune::Icon, help: String, kind: NewKind, on: bool, run: fn(&mut App, &mut Tx)| {
-        let b = rune::row().key(key).size(28.0 * k, 28.0 * k).center().radius(6.0 * k).role("radio").checked(on).label(help.clone()).help(help);
-        let glyph = rune::icon(glyph, 16.0 * k);
+        let b = rune::row().key(key).size(MINI_BTN * k, MINI_BTN * k).center().radius(MINI_BTN_RADIUS * k).role("radio").checked(on).label(help.clone()).help(help);
+        let glyph = rune::icon(glyph, MINI_ICON * k);
         if !new.kinds.has(kind) {
             return b.disabled(true).child(glyph.color(p.mute.alpha(0.35)));
         }
@@ -586,28 +587,29 @@ fn kind_bar(v: V, new: map_app::NewNode, [x, y]: [f32; 2], k: f32) -> El {
     let heading = level.map_or(NewKind::Heading(1), NewKind::Heading);
     let heading_tip = level.map_or_else(|| "Heading".to_string(), |l| tip(&format!("Heading {l}"), &format!("mapedit.heading-{l}")));
     let is = |kind: NewKind| new.kind == kind;
-    rune::row()
-        .key("map-kinds")
-        .pin(Some(x + W), Some(y + W), None, None)
-        .h(map_app::KIND_BAR_H * k)
-        .px(4.0 * k)
-        .gap(2.0 * k)
-        .center_y()
-        .fill(p.bg)
-        .radius(super::widgets::BAR_RADIUS * k)
-        .border(k, Roles::new(p).hairline)
-        .box_shadow(rune::Shadow { x: 0.0, y: 6.0 * k, blur: 22.0 * k, spread: -4.0 * k, color: Color::BLACK.alpha(if p.dark { 0.5 } else { 0.12 }), inset: false })
-        .role("toolbar")
-        .label("New node type")
-        // A press anywhere on it leaves the keyboard and the text in the field (MAP-017).
-        .keeps_text_selection()
-        .on_press(|_: &mut App| {})
-        .child(btn("map-kind-paragraph", &PARAGRAPH, tip("Paragraph", "mapedit.paragraph"), NewKind::Paragraph, is(NewKind::Paragraph), |s, tx| s.map_pick_kind(NewKind::Paragraph, tx)))
-        .child(btn("map-kind-heading", &HEADING, heading_tip, heading, matches!(new.kind, NewKind::Heading(_)), |s, tx| s.map_pick_heading(tx)))
-        .child(el().key("map-kinds-sep").w(k).h(16.0 * k).mx(5.0 * k).fill(p.line))
-        .child(btn("map-kind-bullets", &BULLETS, tip("Bulleted list", "mapedit.bulleted"), NewKind::Bullet, is(NewKind::Bullet), |s, tx| s.map_pick_kind(NewKind::Bullet, tx)))
-        .child(btn("map-kind-numbers", &NUMBERS, tip("Numbered list", "mapedit.numbered"), NewKind::Number, is(NewKind::Number), |s, tx| s.map_pick_kind(NewKind::Number, tx)))
-        .child(btn("map-kind-task", &TASK, tip("Task", "mapedit.task"), NewKind::Task, is(NewKind::Task), |s, tx| s.map_pick_kind(NewKind::Task, tx)))
+    super::widgets::toolbar_surface(
+        rune::row()
+            .key("map-kinds")
+            .pin(Some(x + W), Some(y + W), None, None)
+            .h(map_app::KIND_BAR_H * k)
+            .px(3.0 * k)
+            .gap(MINI_BAR_GAP * k)
+            .center_y()
+            .radius(MINI_BAR_RADIUS * k),
+        p,
+        k,
+    )
+    .role("toolbar")
+    .label("New node type")
+    // A press anywhere on it leaves the keyboard and the text in the field (MAP-017).
+    .keeps_text_selection()
+    .on_press(|_: &mut App| {})
+    .child(btn("map-kind-paragraph", &PARAGRAPH, tip("Paragraph", "mapedit.paragraph"), NewKind::Paragraph, is(NewKind::Paragraph), |s, tx| s.map_pick_kind(NewKind::Paragraph, tx)))
+    .child(btn("map-kind-heading", &HEADING, heading_tip, heading, matches!(new.kind, NewKind::Heading(_)), |s, tx| s.map_pick_heading(tx)))
+    .child(el().key("map-kinds-sep").w(k).h(14.0 * k).mx(2.0 * k).fill(p.line))
+    .child(btn("map-kind-bullets", &BULLETS, tip("Bulleted list", "mapedit.bulleted"), NewKind::Bullet, is(NewKind::Bullet), |s, tx| s.map_pick_kind(NewKind::Bullet, tx)))
+    .child(btn("map-kind-numbers", &NUMBERS, tip("Numbered list", "mapedit.numbered"), NewKind::Number, is(NewKind::Number), |s, tx| s.map_pick_kind(NewKind::Number, tx)))
+    .child(btn("map-kind-task", &TASK, tip("Task", "mapedit.task"), NewKind::Task, is(NewKind::Task), |s, tx| s.map_pick_kind(NewKind::Task, tx)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1130,9 +1132,9 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
         super::focus::stop(
             rune::row()
                 .key(key)
-                .size(24.0, 24.0)
+                .size(super::widgets::MINI_BTN, super::widgets::MINI_BTN)
                 .center()
-                .radius(4.0)
+                .radius(super::widgets::MINI_BTN_RADIUS)
                 .hover(hud_hover)
                 .hover_group()
                 .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
@@ -1145,7 +1147,7 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
                     run(s, tx);
                     s.keys_to_note(tx);
                 })
-                .child(rune::icon(glyph, 12.0).color(hud_ink).group_color(c.text)),
+                .child(rune::icon(glyph, super::widgets::MINI_ICON).color(hud_ink).group_color(c.text)),
         )
     };
     let pct = format!("{}%", (zoom * 100.0).round() as i32);
@@ -1153,11 +1155,11 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let reset = super::focus::stop(
         rune::row()
             .key("zoom-reset")
-            .h(24.0)
+            .h(super::widgets::MINI_BTN)
             .min_w(42.0)
             .px(5.0)
             .center()
-            .radius(4.0)
+            .radius(super::widgets::MINI_BTN_RADIUS)
             .hover(hud_hover)
             .hover_group()
             .hover_motion(rune::Curve::linear(0.1), rune::Curve::linear(0.1))
@@ -1176,11 +1178,11 @@ pub(super) fn zoom_hud(v: V) -> Option<El> {
     let hud = super::widgets::toolbar_surface(
         rune::row()
             .key("map-zoom-hud")
-            .h(28.0)
+            .h(super::widgets::MINI_BAR_H)
             .px(3.0)
-            .gap(1.0)
+            .gap(super::widgets::MINI_BAR_GAP)
             .center_y()
-            .radius(6.0),
+            .radius(super::widgets::MINI_BAR_RADIUS),
         v.p,
         1.0,
     )
