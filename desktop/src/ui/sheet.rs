@@ -10,7 +10,7 @@ use super::icons;
 use super::layer::Card;
 use super::styles::sans;
 use super::reader::cap;
-use super::tokens::{motion, radius, space};
+use super::tokens::{motion, space};
 use crate::app::App;
 use crate::keymap::Ctx;
 use crate::page::r;
@@ -22,7 +22,7 @@ const PAD_X: f32 = space::PAD_DIALOG;
 const HEADER_H: f32 = 48.0;
 const BODY_PY: f32 = space::PX_24;
 const BODY_GAP: f32 = space::GAP_SECTION;
-const FOOTER_H: f32 = 45.0;
+const FOOTER_H: f32 = 44.0;
 const FADE: f32 = space::SCROLL_FADE_DIALOG;
 /// Matches the 20 pt height of the footer's `kbd` key caps.
 const KEY_ROW: f32 = 20.0;
@@ -67,7 +67,7 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
     // SHEET-022 to SHEET-026: a neighbour, clipped to three reading lines, fading at the edge
     // where it is cut.
     let context = |key: &str, i: usize, before: bool| {
-        let fade = if before { ScrollFade::strength(FADE).full_at(0.5).linear() } else { ScrollFade::strength(0.0).with_end(ScrollFade::strength(FADE).full_at(0.5).linear()) };
+        let fade = ScrollFade::strength(FADE).full_at(0.5).linear();
         col()
             .key(key)
             .w(ctx_w)
@@ -107,7 +107,8 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .min_h(90.0)
         .max_h(limit)
         .scroll(ScrollSpec { stick_bottom: false })
-        .scroll_margin(6.0)
+        .scroll_fade(ScrollFade::strength(FADE).full_at(0.5).linear())
+        .scroll_margin(FADE)
         .child(el().key("sheet-pad").w_full().py(6.0).child(input));
 
     // SHEET-030, SHEET-038, SHEET-047: keyboard hints in the footer; icon actions float top-right on hover.
@@ -185,8 +186,6 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .h(HEADER_H)
         .px(PAD_X)
         .center_y()
-        .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
-        .border_layout()
         .child(title);
     let mut body = col().key("sheet-body").w_full().px(PAD_X).py(BODY_PY).gap(BODY_GAP);
     if let Some(i) = sh.pick.before {
@@ -203,14 +202,10 @@ pub(super) fn sheet(v: V, sh: &Sheet) -> Card {
         .px(PAD_X)
         .py(space::PX_12)
         .center_y()
-        .border_sides([1.0, 0.0, 0.0, 0.0], c.hairline)
-        .border_layout()
         .child(foot);
     let card = col()
         .key("sheet-card")
         .w(w)
-        .radius(radius::DIALOG)
-        .clip_rounded(radius::DIALOG)
         .child(header)
         .child(body)
         .child(footer);

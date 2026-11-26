@@ -4267,7 +4267,7 @@ mod escape_tests {
         assert!((header[3] - 48.0).abs() < 1.0, "sheet-header is 48 pt: {header:?}");
         assert!(body[1] >= header[1] + header[3] - 0.5 && footer[1] >= body[1] + body[3] - 0.5, "header -> body -> footer stack cleanly");
         assert!(editor[1] - body[1] >= 23.5, "sheet-body has generous 24 pt top padding: body={body:?}, editor={editor:?}");
-        assert!((footer[3] - 45.0).abs() < 1.0, "sheet-footer is 45 pt (1 pt hairline + 12 + 20 + 12): {footer:?}");
+        assert!((footer[3] - 44.0).abs() < 1.0, "sheet-footer is 44 pt: {footer:?}");
         let sh_bar = sh_els.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions mini-bar");
         assert!((sh_bar.rect[3] - 28.0).abs() < 0.5, "sheet-actions matches 28 pt zoom HUD scale: {:?}", sh_bar.rect);
         assert!(sh_bar.opacity < 0.05, "sheet-actions hidden until hover: {}", sh_bar.opacity);
