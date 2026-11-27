@@ -31,3 +31,10 @@ Deferred items from `behavior/map.md` (decision 0014):
 - **Map multi-line Markdown paste.** Paste multi-line Markdown trees directly onto the canvas while not inline-editing (`MAP-084`).
 - **Map internal card scrolling.** Scroll inside overflowing code, diff and table cards with wheel hand-off to the canvas (`MAP-085`).
 - **Map Space+drag pan.** Pan anywhere on the canvas with `Space` plus left-drag without triggering `Space` fold on key-down (`MAP-086`).
+
+Deferred items from `behavior/board.md` (decision 0015):
+
+- **Adding and renaming on the board.** An inline field for a new card or column (`BRD-032`).
+- **Folded columns.** A column folded on the map as a narrow strip (`BRD-033`).
+- **A board rooted at a heading.** A subheading's children as the columns (`BRD-034`).
+- **Holding several cards.** Moving a selection of cards in one drag (`BRD-035`).
