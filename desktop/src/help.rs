@@ -400,7 +400,7 @@ impl Search {
         self.slide_dir = if order(mode) > order(self.mode) { 1 } else { -1 };
         self.slide_gen += 1;
         self.mode = mode;
-        self.idx = None;
+        self.idx = (!self.q.text.trim().is_empty()).then_some(0);
     }
 }
 

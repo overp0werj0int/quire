@@ -419,7 +419,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                 .on_edit(help_field)
                 .on_input_change(|s: &mut App, _| {
                     if let Some(h) = s.help_search_mut() {
-                        h.idx = None;
+                        h.idx = (!h.q.text.trim().is_empty()).then_some(0);
                     }
                 })
                 // The field takes its editing keys before the window's: the sheet's go first.
