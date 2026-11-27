@@ -4,7 +4,7 @@ events: tap:editor@0.2 key:Home+cmd@0.4 key:7+cmd+shift@0.6 key:Down@0.8 key:Dow
 expect: label:fmt-numbers: 'Numbered list (Ctrl+Shift+7)'
 expect: label:fmt-bullets: 'Bulleted list (Ctrl+Shift+8)'
 expect: label:fmt-task: 'Task (Ctrl+Shift+9)'
-expect: label:fmt-heading: 'Heading (Ctrl+Alt+1 to Ctrl+Alt+6)'
+expect: label:fmt-heading: 'Heading (click H1–H3, Ctrl+Alt+1–Ctrl+Alt+6)'
 --- before
 one
 
