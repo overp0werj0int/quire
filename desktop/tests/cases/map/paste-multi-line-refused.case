@@ -1,7 +1,7 @@
-Ctrl+V of several lines writes nothing and says where to paste them.
+Ctrl+V of several lines pastes them under the selected container node (MAP-048, MAP-084).
 note: Menu.md
 events: key:m+cmd@0.3 key:Right@0.6 paste:one\ntwo@1.0
-expect: text:toast: 'Paste multi-line Markdown in Source or the Edit Sheet'
+expect: text:toast: None
 --- before
 # Plan
 
@@ -15,6 +15,10 @@ Para.
 
 - milk
   - oat
+
+  one
+  two
+
 - eggs
 
 Para.

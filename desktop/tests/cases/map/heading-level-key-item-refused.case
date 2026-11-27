@@ -1,6 +1,8 @@
-Ctrl+Alt+2 on a list item does nothing and says only headings have a level.
+Ctrl+Alt+2 on a list item converts it to a level-2 heading (KEY-128).
 note: Plan.md
 events: key:m+cmd@0.3 key:2+cmd+alt@0.9
-expect: text:toast: 'Only headings have a level'
+expect: text:toast: None
 --- before
 - a
+--- after
+## a
