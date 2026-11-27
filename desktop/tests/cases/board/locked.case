@@ -1,0 +1,12 @@
+A locked note shows its lock panel in Board mode, and no board.
+note: Secret.md
+events: key:k+cmd+shift@0.3
+expect: rect:board-canvas: None
+expect: rect:lock-panel: [{any}]
+expect: state:mode: "board"
+--- before
+%QUIRE-LOCKED-NOTE v1 pbkdf2-sha256 600000 AAAAAAAAAAAAAAAAAAAAAA==
+
+Locked.
+
+AAAA

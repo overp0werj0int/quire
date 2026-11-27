@@ -39,14 +39,17 @@ pub enum Mode {
     Preview,
     /// The note as a mind map (decision 0014).
     Map,
+    /// The note as a kanban board (decision 0015).
+    Board,
 }
 
 impl Mode {
-    /// The mode `state.json` names; anything unknown is the source (MAP-064).
+    /// The mode `state.json` names; anything unknown is the source (MAP-064, BRD-029).
     pub fn from_id(id: &str) -> Mode {
         match id {
             "preview" => Mode::Preview,
             "map" => Mode::Map,
+            "board" => Mode::Board,
             _ => Mode::Source,
         }
     }
@@ -56,6 +59,7 @@ impl Mode {
             Mode::Source => "source",
             Mode::Preview => "preview",
             Mode::Map => "map",
+            Mode::Board => "board",
         }
     }
 }
@@ -255,6 +259,8 @@ pub struct App {
     pub wstate: crate::writer_app::WriterState,
     /// Map mode's state: each tab's camera, folds and selection (`crate::map_app`).
     pub map: crate::map_app::MapState,
+    /// Board mode's state: hold/drag, layout rects, scroll offsets (`crate::board_app`).
+    pub board: crate::board_app::BoardState,
     /// Note mode's Open list: the notes opened as files, by full path, in order. Each is a
     /// vault of its own, rooted at its folder; the one shown is `vault`, read again from disk
     /// each time it is shown.
@@ -477,6 +483,7 @@ pub fn init() -> App {
         reader: Default::default(),
         wstate: Default::default(),
         map: Default::default(),
+        board: Default::default(),
         tab_gen: 0,
         tab_slide: 0,
         mode_swapped: false,
@@ -847,7 +854,7 @@ impl App {
         let set = self.settings();
         let left_vis = self.persist.left_open && !self.focus && vw >= SIDEBAR_DOCK_W;
         let right_vis = self.persist.right_open && !self.focus && self.active.is_some() && vw >= OUTLINE_DOCK_W;
-        let source = (matches!(self.mode, Mode::Preview | Mode::Map) && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
+        let source = (matches!(self.mode, Mode::Preview | Mode::Map | Mode::Board) && self.active.is_some() && self.active_text().len() <= 2_000_000).then(|| {
             (self.active_text_key().to_owned(), vw.to_bits(), set.size, set.font.clone(), self.wide(), left_vis, right_vis, dark)
         });
         let palette = (dark, self.keymap.rev, self.note_mode(), self.active.is_some(), set.panel_font.clone());
@@ -928,6 +935,9 @@ impl App {
             }
             if let Some(old) = old {
                 self.map_reloaded(&rel, &old);
+                if self.active.as_deref() == Some(rel.as_str()) {
+                    self.board_cancel_hold();
+                }
             }
             any = true;
         }
@@ -2401,7 +2411,11 @@ impl App {
             return;
         }
         self.mode_swapped = true;
-        if self.mode == Mode::Map {
+        if self.mode == Mode::Board {
+            self.leave_board(to, tx);
+        } else if to == Mode::Board {
+            self.enter_board(tx);
+        } else if self.mode == Mode::Map {
             self.leave_map(to, tx);
         } else if to == Mode::Map {
             self.enter_map(tx);
@@ -2840,6 +2854,12 @@ impl App {
             Mode::Map => {
                 self.map_go_line(line, tx);
                 self.keys_to_note(tx);
+            }
+            Mode::Board => {
+                let t = self.map_tree();
+                if let Some(item) = crate::board::item_of(&t, t.at_line(line)) {
+                    self.board_select(t.nodes[item].id, tx);
+                }
             }
         }
     }

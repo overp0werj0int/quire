@@ -43,6 +43,7 @@ Notes on reading this file:
 - **KEY-13** [adapted: 0003] [verify: unit, script] app.mode-source (global): `Ctrl+E`. Switches to Source (edit) mode idempotently, keeping the reading place.
 - **KEY-160** [adapted: 0003] [verify: unit, script] app.mode-preview (global): `Ctrl+P`. Switches to Preview (reader) mode idempotently, keeping the place. Preview and Map also bind `p` (KEY-163, KEY-177).
 - **KEY-102** [adapted: 0014] [verify: unit, script] app.mode-map (global): `Ctrl+M`. Switches to Map mode idempotently, keeping the place (overrides macOS Minimize). Preview and Map also bind `m` (KEY-164, KEY-178).
+- **KEY-195** [adapted: 0015] [verify: unit, script] app.mode-board (global): `Ctrl+Shift+K`. Switches to Board mode from any mode, and from Board back to the last linear mode (BRD-029).
 - **KEY-14** [quire] [verify: -] app.settings (global): `Ctrl+,`. Opens or closes Settings.
 - **KEY-15** [quire] [verify: -] app.focus-mode (global): `Ctrl+.`. Enters or leaves Zen mode, which hides the panels (WR-223).
 - **KEY-16** [quire] [verify: -] app.new-note (global): `Ctrl+N`. Makes a note named "Untitled" and opens it in a tab.

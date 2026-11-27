@@ -94,6 +94,7 @@ const NOTE_BUTTONS: &[&str] = &[
     "mode-source",
     "mode-preview",
     "mode-map",
+    "mode-board",
     "map-fit",
     "map-layout",
     "map-props",
@@ -332,7 +333,7 @@ impl App {
                 let (line, _) = crate::md::line_col(doc, caret);
                 shown.iter().rposition(|&i| heads[i].line <= line)
             }
-            Mode::Map => self.map_heading_line(4).and_then(|l| shown.iter().position(|&i| heads[i].line == l)),
+            Mode::Map | Mode::Board => self.map_heading_line(4).and_then(|l| shown.iter().position(|&i| heads[i].line == l)),
             Mode::Preview => None,
         });
         match cur.or((!shown.is_empty()).then_some(0)) {

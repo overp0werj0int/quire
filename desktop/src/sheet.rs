@@ -144,7 +144,7 @@ impl App {
 
     /// The sheet on source lines `lines` of the note shown, from the map or lightbox (MAP-020).
     pub fn open_sheet_lines(&mut self, lines: Range<usize>, scope: Scope, tx: &mut Tx) {
-        if !matches!(self.mode, Mode::Map | Mode::Preview) || self.active_locked() {
+        if !matches!(self.mode, Mode::Map | Mode::Preview | Mode::Board) || self.active_locked() {
             return;
         }
         let pick = if self.mode == Mode::Preview {
@@ -205,7 +205,7 @@ impl App {
         let with = sh.edit.text.clone();
         self.close_layer(tx);
         // One step in the note's source history (edit-sheet.md, open questions).
-        if self.mode == Mode::Map && self.active.as_deref() == Some(rel.as_str()) {
+        if matches!(self.mode, Mode::Map | Mode::Board) && self.active.as_deref() == Some(rel.as_str()) {
             self.map_replace(lines, &with, tx);
         } else {
             self.splice_note(&rel, r, &with);
@@ -213,7 +213,7 @@ impl App {
         // Written at once, so "Saved" is true by the time anyone looks (open questions).
         self.flush_notes();
         self.toast("Saved", tx);
-        if self.mode == Mode::Map {
+        if matches!(self.mode, Mode::Map | Mode::Board) {
             self.keys_to_note(tx);
         } else {
             tx.blur();

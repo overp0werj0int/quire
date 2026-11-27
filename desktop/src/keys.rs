@@ -284,6 +284,7 @@ pub fn handler(id: &str) -> Option<Run> {
         "app.mode-source" => |s, tx| s.show_mode(Mode::Source, tx),
         "app.mode-preview" | "reader.mode-preview" | "map.mode-preview" => |s, tx| s.show_mode(Mode::Preview, tx),
         "app.mode-map" | "reader.mode-map" | "map.mode-map" => |s, tx| s.show_mode(Mode::Map, tx),
+        "app.mode-board" => |s, tx| s.toggle_board(tx),
         "app.settings" | "reader.settings" | "map.settings" => |s, tx| s.toggle_settings(tx),
         "app.focus-mode" | "reader.focus-mode" | "map.focus-mode" => |s, tx| s.toggle_focus(tx),
         "app.new-note" => |s, tx| s.new_note(None, tx),

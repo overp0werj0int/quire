@@ -1,0 +1,51 @@
+Clicking a task card checkbox ticks the task on disk.
+state: {"mode": "board"}
+events: tap:board-task:9399331354417882438@0.3 key:s+cmd@0.7
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- after
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [x] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

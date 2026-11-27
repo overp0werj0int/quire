@@ -1,0 +1,15 @@
+Ctrl+Shift+K switches to Board mode, persists board in state.json, and toggles back to the last linear mode.
+events: key:k+cmd+shift@0.2
+expect: state:mode: "board"
+expect: focus: note-keys (no ring)
+expect: rect:board-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+# Plan
+
+## Todo
+
+- First task
+
+## Done
+
+- Second task

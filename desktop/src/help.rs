@@ -76,7 +76,7 @@ const READER: &[Group] = &[
             h("Readable / full width", &["reader.toggle-wide"]),
             h("Fold / unfold section", &["reader.toggle-fold"]),
             h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
-            h("Source / preview / map", &["app.mode-source", "reader.mode-preview", "app.mode-preview", "reader.mode-map", "app.mode-map"]),
+            h("Source / preview / map / board", &["app.mode-source", "reader.mode-preview", "app.mode-preview", "reader.mode-map", "app.mode-map", "app.mode-board"]),
             h("Zen / settings / image", &["reader.focus-mode", "reader.settings", "reader.insert-image"]),
         ],
     ),
@@ -142,7 +142,7 @@ const WRITER: &[Group] = &[
     (
         "View",
         &[
-            h("Source / preview / map", &["app.mode-source", "app.mode-preview", "app.mode-map"]),
+            h("Source / preview / map / board", &["app.mode-source", "app.mode-preview", "app.mode-map", "app.mode-board"]),
             h("Find", &["writer.find"]),
             h("Find and replace", &["writer.replace"]),
             h("Next / previous match", &["writer.find-next", "writer.find-previous"]),
@@ -235,7 +235,7 @@ const MAP: &[Group] = &[
             h("Close find or cancel drag", &["map.escape", "app.escape"]),
             h("Sidebar", &["map.toggle-sidebar"]),
             h("Outline", &["map.toggle-outline", "app.toggle-outline"]),
-            h("Source / preview / map", &["app.mode-source", "map.mode-preview", "app.mode-preview", "map.mode-map", "app.mode-map"]),
+            h("Source / preview / map / board", &["app.mode-source", "map.mode-preview", "app.mode-preview", "map.mode-map", "app.mode-map", "app.mode-board"]),
             h("Zen / settings / image", &["map.focus-mode", "map.settings", "map.insert-image"]),
             h("This sheet", &["map.help", "app.help"]),
         ],
@@ -256,12 +256,41 @@ const MAP: &[Group] = &[
     SIDEBAR,
 ];
 
+/// The board's groups (BRD-029).
+const BOARD: &[Group] = &[
+    (
+        "View",
+        &[
+            h("Source / preview / map / board", &["app.mode-source", "app.mode-preview", "app.mode-map", "app.mode-board"]),
+            h("Outline", &["app.toggle-outline"]),
+            h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
+            h("Close or leave", &["app.escape"]),
+        ],
+    ),
+    (
+        "File",
+        &[
+            h("Open a note", &["app.quick-switcher"]),
+            h("New note", &["app.new-note"]),
+            h("Save now", &["app.save"]),
+            h("Read from disk", &["app.read-from-disk"]),
+            h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
+            k("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
+            h("Close / reopen tab", &["app.close-tab", "app.reopen-tab"]),
+            h("This sheet", &["app.help"]),
+        ],
+    ),
+    APP,
+    SIDEBAR,
+];
+
 /// A mode's groups, and how many of them make the left column on a wide window (WR-163).
 pub fn groups(mode: Mode) -> (&'static [Group], usize) {
     match mode {
         Mode::Preview => (READER, 3),
         Mode::Source => (WRITER, 2),
         Mode::Map => (MAP, 3),
+        Mode::Board => (BOARD, 2),
     }
 }
 
@@ -342,6 +371,7 @@ impl Search {
             Mode::Source => 0u8,
             Mode::Preview => 1,
             Mode::Map => 2,
+            Mode::Board => 3,
         };
         self.slide_dir = if order(mode) > order(self.mode) { 1 } else { -1 };
         self.slide_gen += 1;

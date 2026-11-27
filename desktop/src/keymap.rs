@@ -72,6 +72,7 @@ pub const TABLE: &[Action] = &[
     a(13, "app.mode-source", "Source mode", &[Global], Adapted, &["Ctrl+E"]),
     a(160, "app.mode-preview", "Preview mode", &[Global], Adapted, &["Ctrl+P"]),
     a(102, "app.mode-map", "Map mode", &[Global], Adapted, &["Ctrl+M"]),
+    a(195, "app.mode-board", "Board mode", &[Global], Adapted, &["Ctrl+Shift+K"]),
     a(14, "app.settings", "Settings", &[Global], Quire, &["Ctrl+,"]),
     a(15, "app.focus-mode", "Zen mode", &[Global], Quire, &["Ctrl+."]),
     a(16, "app.new-note", "New note", &[Global], Quire, &["Ctrl+N"]),

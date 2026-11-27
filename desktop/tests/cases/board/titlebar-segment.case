@@ -1,0 +1,14 @@
+Clicking the Board segment in the title bar switches to Board mode.
+events: tap:mode-board@0.3
+expect: state:mode: "board"
+expect: rect:board-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+# Plan
+
+## Todo
+
+- Task one
+
+## Done
+
+- Task two

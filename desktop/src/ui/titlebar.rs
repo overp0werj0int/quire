@@ -5,7 +5,7 @@ use rune::{El, Tx, el, row};
 
 use super::V;
 use super::components::{IconButton, IconButtonSize, ToggleKind};
-use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, LAYOUT_RIGHT, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, icon_of};
+use super::icons::{CODE, COPY, EYE, FIT, FOCUS, FONT, HELP, KANBAN, LAYOUT_RIGHT, MAP, NARROW, PARAGRAPH, SEARCH, SIDEBAR_LEFT, SIDEBAR_RIGHT, TYPEWRITER, WIDEN, icon_of};
 use super::components::{DOTS_W, dots, label};
 use crate::app::{App, Mode};
 use crate::layer::Kind;
@@ -65,7 +65,7 @@ pub fn corner(v: V) -> El {
     let sidebar_action = match v.s.mode {
         Mode::Map => "map.toggle-sidebar",
         Mode::Preview => "reader.toggle-sidebar",
-        Mode::Source => "app.toggle-sidebar",
+        Mode::Source | Mode::Board => "app.toggle-sidebar",
     };
     let sidebar_tip = v.s.keymap.tip(crate::commands::sidebar_name(v.s), sidebar_action);
     row()
@@ -169,6 +169,15 @@ fn actions(v: V, mut r: El) -> El {
         }
         let help = tip("Show shortcuts", "map.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
+    } else if v.has_doc() && s.mode == Mode::Board {
+        if s.active_locked() {
+            r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
+        } else {
+            let find = if s.keymap.label("board.find").is_empty() { tip("Find in note", "reader.find") } else { tip("Find in note", "board.find") };
+            r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
+        }
+        let help = tip("Show shortcuts", "app.help");
+        r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
         // Find, the writer's view toggles (WR-79, WR-85, WR-125), and shortcuts help.
         if s.active_locked() {
@@ -191,9 +200,14 @@ fn actions(v: V, mut r: El) -> El {
     }
     if v.has_doc() {
         r = r.child(super::components::bar_sep(p, "bar-sep", 16.0));
-        // Source, Preview and Map, the shown one marked (MAP-064).
+        // Source, Preview, Map and Board, the shown one marked (MAP-064, BRD-029).
         let mut modes = row().key("modes").gap(4.0).center_y().role("radiogroup").label("Mode");
-        for (m, key, glyph, name) in [(Mode::Source, "mode-source", &CODE, "Source"), (Mode::Preview, "mode-preview", &EYE, "Preview"), (Mode::Map, "mode-map", &MAP, "Map")] {
+        for (m, key, glyph, name) in [
+            (Mode::Source, "mode-source", &CODE, "Source"),
+            (Mode::Preview, "mode-preview", &EYE, "Preview"),
+            (Mode::Map, "mode-map", &MAP, "Map"),
+            (Mode::Board, "mode-board", &KANBAN, "Board"),
+        ] {
             let on = s.mode == m;
             let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(m)) };
             modes = modes.child(
@@ -213,7 +227,7 @@ fn actions(v: V, mut r: El) -> El {
         let outline_action = match s.mode {
             Mode::Map => "map.toggle-outline",
             Mode::Preview => "reader.toggle-outline",
-            Mode::Source => "app.toggle-outline",
+            Mode::Source | Mode::Board => "app.toggle-outline",
         };
         let outline = tip(crate::commands::outline_name(s), outline_action);
         r = r.child(bar_toggle(p, "toggle-right", &SIDEBAR_RIGHT, &outline, v.right_visible() || v.right_over(), |s: &mut App, tx| s.toggle_right(tx)));
@@ -221,9 +235,9 @@ fn actions(v: V, mut r: El) -> El {
     r
 }
 
-/// The width of zen mode's pill in the widest mode (Source): nine buttons (`actions`), the rule
+/// The width of zen mode's pill in the widest mode (Source): ten buttons (`actions`), the rule
 /// between them, their gaps and its padding.
-const PILL_ROOM: f32 = 9.0 * (BUTTON + 4.0) + 1.0 + 8.0;
+const PILL_ROOM: f32 = 10.0 * (BUTTON + 4.0) + 1.0 + 8.0;
 
 /// Zen mode's bar: the word count and how to leave, centred in the band above the text, so
 /// nothing covers it; the window dots and a button to leave show under the pointer.

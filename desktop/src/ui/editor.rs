@@ -76,7 +76,14 @@ pub fn body(v: V) -> El {
     // one container strictly below `find_backing` so `thumb`'s `live_rect` shares `doc-scroll`'s
     // `[0, 0]` origin whether or not Find is open (`THUMBFIX`).
     let mapping = v.has_doc() && super::mapping(v.s);
-    let page = if mapping { super::map::canvas(v) } else { doc_scroll(v) };
+    let boarding = v.has_doc() && super::boarding(v.s);
+    let page = if mapping {
+        super::map::canvas(v)
+    } else if boarding {
+        super::board::board(v)
+    } else {
+        doc_scroll(v)
+    };
     let (tab_enter, tab_exit) = super::tab_transition(v.s.tab_slide);
     let tab_page = col()
         .key(format!("tab-page:{}", v.s.tab_gen))
@@ -131,8 +138,8 @@ pub fn body(v: V) -> El {
         .child(view);
     if reading || writer {
         main_area = main_area.children(progress).child(super::reader::find_bar(v)).children(ac_popover(v));
-    } else if mapping {
-        // Over the canvas, which needs no slot: the map centres matches clear of the bar.
+    } else if mapping || boarding {
+        // Over the canvas/board, which needs no slot: matches centre or scroll clear of the bar.
         main_area = main_area.child(super::reader::find_bar(v));
     }
     let toast = if let Some(d) = &v.s.deleted {

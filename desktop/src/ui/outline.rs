@@ -48,8 +48,8 @@ pub fn outline(v: V) -> El {
         }
         (map.reading || map.writing, map.reading, map.outline_gen)
     };
-    // On the map the row of the heading holding the selected node is marked (MAP-067).
-    let on_map = super::mapping(s).then(|| s.map_heading_line(4).and_then(|l| shown.iter().position(|&j| heads[j].line == l)));
+    // On the map or board, the row of the heading holding the selected node is marked (MAP-067, BRD-030).
+    let on_map = (super::mapping(s) || super::boarding(s)).then(|| s.map_heading_line(4).and_then(|l| shown.iter().position(|&j| heads[j].line == l)));
     let pal_id = p as *const crate::theme::Pal as usize;
     let panel_font = &s.settings().panel_font;
     let heads_version = {

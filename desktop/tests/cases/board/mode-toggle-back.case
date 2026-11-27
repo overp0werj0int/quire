@@ -1,0 +1,10 @@
+Pressing Ctrl+Shift+K twice returns to the last linear mode (Preview).
+state: {"mode": "preview"}
+events: key:k+cmd+shift@0.2 key:k+cmd+shift@0.6
+expect: state:mode: "preview"
+--- before
+# Plan
+
+## Todo
+
+- First task

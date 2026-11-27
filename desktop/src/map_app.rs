@@ -74,7 +74,7 @@ pub struct MapView {
 impl MapView {
     /// After change `s` turned map `old` into `t`: the folds and the selection follow their
     /// nodes, the selection else to the node at the change (MAP-010, MAP-068).
-    fn follow(&mut self, old: &Tree, t: &Tree, s: &map::Splice) {
+    pub(crate) fn follow(&mut self, old: &Tree, t: &Tree, s: &map::Splice) {
         self.selected = map::follow(old, t, s, self.selected).unwrap_or_else(|| t.nodes[t.at_line(s.lines.start)].id);
         let sel = t.find(self.selected).unwrap_or(ROOT);
         self.folds.follow(old, t, sel, |id| map::follow(old, t, s, id));
@@ -1148,6 +1148,11 @@ impl App {
     /// A node clicked on the canvas: an open field commits, then the node is selected, where
     /// it is. A double click edits it (MAP-016).
     pub fn map_click(&mut self, i: usize, double: bool, tx: &mut Tx) {
+        if self.mode == Mode::Board {
+            let id = self.map_tree().nodes[i].id;
+            self.board_click(id, double, tx);
+            return;
+        }
         if std::mem::take(&mut self.map.dropped) || self.map_editing() == Some(i) {
             return;
         }
@@ -1301,7 +1306,7 @@ impl App {
                 crate::md::line_col(text, caret).0
             }
             Mode::Preview => self.doc().blocks.get(self.top()).map_or(0, |b| b.lines.start),
-            Mode::Map => {
+            Mode::Map | Mode::Board => {
                 let t = self.map_tree();
                 t.nodes[self.map_selected()].own.start
             }
@@ -2280,7 +2285,7 @@ impl App {
     }
 
     /// Splice `s` into note `rel`, whose text is `base`, as one change.
-    fn splice_into(&mut self, rel: &str, base: &str, s: &map::Splice) {
+    pub(crate) fn splice_into(&mut self, rel: &str, base: &str, s: &map::Splice) {
         let new = s.apply(base);
         let (pre, post) = shared(base, &new);
         self.splice_note(rel, pre..base.len() - post, &new[pre..new.len() - post]);

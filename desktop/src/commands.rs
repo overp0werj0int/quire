@@ -25,6 +25,7 @@ pub fn show_name(m: Mode) -> &'static str {
         Mode::Source => "Show source",
         Mode::Preview => "Show preview",
         Mode::Map => "Show map",
+        Mode::Board => "Switch to Board",
     }
 }
 
@@ -34,6 +35,7 @@ pub fn mode_action(m: Mode) -> &'static str {
         Mode::Source => "app.mode-source",
         Mode::Preview => "app.mode-preview",
         Mode::Map => "app.mode-map",
+        Mode::Board => "app.mode-board",
     }
 }
 
@@ -42,6 +44,7 @@ pub fn show(m: Mode) -> Run {
         Mode::Source => |s, tx| s.show_mode(Mode::Source, tx),
         Mode::Preview => |s, tx| s.show_mode(Mode::Preview, tx),
         Mode::Map => |s, tx| s.show_mode(Mode::Map, tx),
+        Mode::Board => |s, tx| s.show_mode(Mode::Board, tx),
     }
 }
 
@@ -74,7 +77,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         cmd("Open quick switcher", "app.quick-switcher", |s, tx| s.quick_open(tx)),
     ];
     if has {
-        for m in [Mode::Source, Mode::Preview, Mode::Map] {
+        for m in [Mode::Source, Mode::Preview, Mode::Map, Mode::Board] {
             if m != s.mode {
                 v.push(cmd(show_name(m), mode_action(m), show(m)));
             }
@@ -85,6 +88,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         let (find_action, find_run): (&'static str, Run) = match s.mode {
             Mode::Preview => ("reader.find", |s, tx| s.open_find(tx)),
             Mode::Map => ("map.find", |s, tx| s.open_find(tx)),
+            Mode::Board => ("reader.find", |s, tx| s.open_find(tx)),
             Mode::Source => ("writer.find", |s, tx| s.writer_find(tx)),
         };
         v.push(cmd("Find in note", find_action, find_run));
@@ -161,7 +165,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     let help_action = match s.mode {
         Mode::Preview => "reader.help",
         Mode::Map => "map.help",
-        Mode::Source => "app.help",
+        Mode::Source | Mode::Board => "app.help",
     };
     v.push(cmd("Keyboard shortcuts", help_action, |s, tx| s.toggle_help(tx)));
     v.push(cmd("Open trash…", "", |s, tx| s.open_trash(tx)));

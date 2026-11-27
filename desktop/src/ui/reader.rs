@@ -327,6 +327,7 @@ pub(super) fn help_sheet(v: V) -> Card {
             mode_item(crate::app::Mode::Source, "help-mode-source", "Source"),
             mode_item(crate::app::Mode::Preview, "help-mode-preview", "Preview"),
             mode_item(crate::app::Mode::Map, "help-mode-map", "Map"),
+            mode_item(crate::app::Mode::Board, "help-mode-board", "Board"),
         ],
     );
     let version_lbl = text(format!("Quire {}", env!("CARGO_PKG_VERSION")))

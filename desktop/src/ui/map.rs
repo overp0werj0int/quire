@@ -14,6 +14,11 @@ use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, T
 use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
 pub(super) use layouts::layouts;
 pub(super) use lightbox::lightbox;
+
+/// Builds a map block card for reuse in Board mode (`BRD-010`).
+pub(super) fn block_card(cx: &Cx, bl: &crate::blocks::Block, i: usize, tail: &str) -> Option<(El, [f32; 2])> {
+    card::card(cx, bl, i, tail, None)
+}
 use super::components::Control;
 use super::{V, styles};
 use crate::app::App;
@@ -53,7 +58,7 @@ fn key_tail(key: &str) -> &str {
 const GRAPHIC: f32 = 3.1;
 
 /// A branch's colour on the page: the accent at the root, else the palette (MAP-040).
-fn branch_color(c: &Roles, branch: usize) -> Color {
+pub(super) fn branch_color(c: &Roles, branch: usize) -> Color {
     if branch == 0 {
         return Roles::readable_on(c.accent, c.bg, GRAPHIC);
     }
@@ -79,7 +84,7 @@ fn map_look(v: V) -> Look {
 
 /// Node `n`'s text as the reader sets it, in `st` (MAP-038): its inline runs after an ordered
 /// item's number, or its label as it is.
-fn label(cx: &Cx, n: &Node, st: TextStyle, color: Color) -> Rich {
+pub(super) fn label(cx: &Cx, n: &Node, st: TextStyle, color: Color) -> Rich {
     let plain = |t: String| Run { t, ..Run::default() };
     let runs = match (&n.body, &n.kind) {
         (Body::Runs(r), NodeKind::Item { marker, ordered: true, .. }) => std::iter::once(plain(format!("{marker} "))).chain(r.iter().cloned()).collect(),

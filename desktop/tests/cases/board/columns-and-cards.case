@@ -1,0 +1,36 @@
+Columns, cards, loose column, child task summary, section cards, and excluded footnotes.
+state: {"mode": "board"}
+events: hover:board-canvas@0.2
+expect: rect:board-col:loose: [264.0, 57.0, 280.0, 87.0]
+expect: rect:board-col:10736194977767075865: [556.0, 57.0, 280.0, 252.0]
+expect: rect:board-col:10856064137881781609: [848.0, 57.0, 280.0, 87.0]
+expect: text:board-count:loose: '1'
+expect: text:board-count:10736194977767075865: '4'
+expect: text:board-sub:8887052920360726499: '1/2'
+expect: text:board-card:5666298580418273122: 'Backlog 1 node'
+--- before
+# Sprint
+
+Intro note before columns.[^1]
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+
+[^1]: Footnote text

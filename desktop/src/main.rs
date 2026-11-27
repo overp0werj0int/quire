@@ -7,6 +7,9 @@ mod app;
 #[cfg(test)]
 mod bench;
 mod blocks;
+mod board;
+mod board_app;
+mod board_drag;
 mod cli;
 mod commands;
 mod focus;
@@ -61,6 +64,9 @@ fn scene_welcome(s: &mut App) {
 }
 fn scene_preview(s: &mut App) {
     s.mode = app::Mode::Preview;
+}
+fn scene_board(s: &mut App) {
+    s.mode = app::Mode::Board;
 }
 fn scene_dark(s: &mut App) {
     s.persist.settings.theme = "dark".into();
@@ -141,7 +147,7 @@ fn main() {
         on_key: Some(keys::on_key),
         poll: Some(|s: &mut App, t, tx| s.poll(t, tx)),
         setup: Some(|s: &mut App, waker| s.set_waker(waker)),
-        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys), ("parity", scene_parity), ("note", scene_note)],
+        scenes: &[("welcome", scene_welcome), ("preview", scene_preview), ("board", scene_board), ("dark", scene_dark), ("focus", scene_focus), ("settings", scene_settings), ("keys", scene_keys), ("parity", scene_parity), ("note", scene_note)],
         ..AppSpec::new("Quire", (1280.0, 800.0), app::init, ui::view)
     };
     rune::App::new(spec)
@@ -776,6 +782,7 @@ pub(crate) mod scroll_tests {
                 crate::app::Mode::Source => "mode-source",
                 crate::app::Mode::Preview => "mode-preview",
                 crate::app::Mode::Map => "mode-map",
+                crate::app::Mode::Board => "mode-board",
             };
             seen.insert(shown);
             for (key, action) in pairs {

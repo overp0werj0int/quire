@@ -1318,7 +1318,7 @@ impl App {
     pub fn find_count(&self) -> usize {
         match self.mode {
             Mode::Source => self.source_matches().len(),
-            Mode::Map => self.map_hits().len(),
+            Mode::Map | Mode::Board => self.map_hits().len(),
             Mode::Preview => self.find_matches().len(),
         }
     }
@@ -1527,6 +1527,12 @@ impl App {
             Mode::Source => self.source_jump(line.unwrap_or(doc.blocks[i].lines.start), tx),
             Mode::Preview => self.land(i, true, tx),
             Mode::Map => self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx),
+            Mode::Board => {
+                let t = self.map_tree();
+                if let Some(item) = crate::board::item_of(&t, t.at_line(line.unwrap_or(doc.blocks[i].lines.start))) {
+                    self.board_select(t.nodes[item].id, tx);
+                }
+            }
         }
     }
 
