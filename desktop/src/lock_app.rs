@@ -376,7 +376,7 @@ impl App {
                         self.rebuild_names_pub();
                         self.touch_activity();
                         if is_active {
-                            if self.mode == Mode::Map {
+                            if matches!(self.mode, Mode::Map | Mode::Board) {
                                 self.keys_to_note(tx);
                             } else {
                                 self.focus_editor(tx);

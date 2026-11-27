@@ -24,10 +24,8 @@ pub const MAX_DEG: f32 = 6.0;
 pub const MAX_SPEED: f32 = 1200.0;
 /// Horizontal travel under this many points between frames keeps the last sign (BRD-015).
 pub const SIGN_EPS: f32 = 4.0;
-/// Tilt spring duration in seconds (120 ms, BRD-015).
-pub const TILT_SPRING: f32 = 0.12;
-/// Settle glide duration in seconds (180 ms, BRD-019).
-pub const SETTLE_SECS: f64 = 0.18;
+/// Settle glide duration in seconds (180 ms, BRD-019, from `ui::tokens::motion`).
+pub const SETTLE_SECS: f64 = crate::ui::tokens::motion::LAYOUT_GLIDE_SPRING as f64;
 /// Edge auto-scroll band width in points (BRD-018).
 pub const EDGE: f32 = 36.0;
 /// Maximum edge auto-scroll speed in points per second (BRD-018).
@@ -93,6 +91,8 @@ pub enum Hold {
         vx: f32,
         /// Clock time of the previous `poll_board` tick.
         tick: f64,
+        /// Deferred re-aim after an edge auto-scroll step, applied on the next frame's fresh layout (C6).
+        reaim: bool,
     },
     /// Gliding from release position to target slot while turning upright over `SETTLE_SECS`.
     Settling {
@@ -284,6 +284,7 @@ impl App {
                             poll_x: pt[0],
                             vx: 0.0,
                             tick: now,
+                            reaim: false,
                         };
                         if let Some(v) = self.map_view_mut() {
                             v.selected = id;
@@ -539,6 +540,7 @@ impl App {
                             poll_x: pt[0],
                             vx: 0.0,
                             tick: now,
+                            reaim: false,
                         };
                         if let Some(v) = self.map_view_mut() {
                             v.selected = id;
@@ -713,7 +715,7 @@ impl App {
         if self.mode != Mode::Board {
             return false;
         }
-        let mut need_reaim: Option<Held> = None;
+        let mut do_reaim: Option<Held> = None;
         let mut changed = false;
         let mut keep_waking = false;
 
@@ -726,9 +728,12 @@ impl App {
                 tx.wake_after(Duration::from_millis(16));
                 return true;
             }
-            Hold::Held { what, at, lean, sign, poll_x, vx, tick, .. } => {
+            Hold::Held { what, at, lean, sign, poll_x, vx, tick, reaim, .. } => {
                 let what = *what;
                 let at = *at;
+                if std::mem::take(reaim) {
+                    do_reaim = Some(what);
+                }
                 let raw_dt = (now - *tick).max(0.0);
                 let dt = raw_dt.min(0.05) as f32;
                 *tick = now;
@@ -830,22 +835,28 @@ impl App {
                     self.board.scroll_x.set(next_x);
                     tx.scroll_to_instant("board-scroll", next_x, 0.0);
                     changed = true;
-                    need_reaim = Some(what);
+                    *reaim = true;
+                    keep_waking = true;
                 }
                 if let Some((key_id, next_y)) = v_scroll {
                     self.board.col_scroll.borrow_mut().insert(key_id, next_y);
                     tx.scroll_to_instant(format!("board-col-scroll:{key_id}"), 0.0, next_y);
                     changed = true;
-                    need_reaim = Some(what);
+                    *reaim = true;
+                    keep_waking = true;
                 }
             }
             _ => return false,
         }
 
-        if let Some(what) = need_reaim {
+        if let Some(what) = do_reaim {
+            let before = (self.board.hold.slot(), self.board.hold.col_slot());
             match what {
                 Held::Card(_) => self.board_aim_card(),
                 Held::Column(_) => self.board_aim_column(),
+            }
+            if (self.board.hold.slot(), self.board.hold.col_slot()) != before {
+                changed = true;
             }
         }
         if keep_waking {

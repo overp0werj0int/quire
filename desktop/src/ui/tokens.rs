@@ -66,6 +66,8 @@ pub mod radius {
     pub const CONTROL: f32 = 6.0;
     /// Text buttons (primary, outline, destructive), dialog inputs, segmented tracks, cards, menus.
     pub const FIELD: f32 = 8.0;
+    /// Board columns (BRD-008).
+    pub const COLUMN: f32 = 10.0;
     /// Modal dialogs (Settings, Lock, Trash, Palette, Help, Edit sheet).
     pub const DIALOG: f32 = 12.0;
     /// Fully rounded pills (toasts, notices, count pills).
@@ -134,12 +136,16 @@ pub mod motion {
     pub const HOVER_FADE: f32 = 0.1;
     /// Modal dialog and scrim fade spring.
     pub const MODAL_SPRING: f32 = 0.08;
+    /// Held board card/column tilt spring (120 ms, BRD-015).
+    pub const TILT_SPRING: f32 = 0.12;
     /// In-place swap transition spring (160 ms).
     pub const SWAP_SPRING: f32 = 0.16;
     /// Sidebar and outline drawer slide spring (160 ms).
     pub const DRAWER_SPRING: f32 = 0.16;
     /// Tab switch slide spring (180 ms).
     pub const TAB_SLIDE_SPRING: f32 = 0.18;
+    /// Board card/column layout glide and settle duration (180 ms, BRD-016, BRD-019).
+    pub const LAYOUT_GLIDE_SPRING: f32 = 0.18;
     /// Zen bar and HUD reveal spring (250 ms).
     pub const ZEN_REVEAL_SPRING: f32 = 0.25;
     /// How long an armed destructive button stays armed before resetting.
@@ -153,6 +159,10 @@ pub mod motion {
         Spring::new(MODAL_SPRING, 0.0)
     }
 
+    pub fn tilt_spring() -> Spring {
+        Spring::new(TILT_SPRING, 0.0)
+    }
+
     pub fn swap_spring() -> Spring {
         Spring::new(SWAP_SPRING, 0.0)
     }
@@ -163,6 +173,10 @@ pub mod motion {
 
     pub fn tab_spring() -> Spring {
         Spring::new(TAB_SLIDE_SPRING, 0.0)
+    }
+
+    pub fn layout_glide_spring() -> Spring {
+        Spring::new(LAYOUT_GLIDE_SPRING, 0.0)
     }
 
     pub fn zen_spring() -> Spring {

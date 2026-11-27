@@ -504,6 +504,10 @@ pub fn init() -> App {
     }
     app.mode = Mode::from_id(&app.persist.mode);
     app.map.back = Mode::from_id(&app.persist.back);
+    app.board.back = match app.map.back {
+        Mode::Preview => Mode::Preview,
+        _ => Mode::Source,
+    };
     let known: Vec<PathBuf> = app.persist.vaults.iter().map(|v| v.path.clone()).collect();
     let (start, note) = match crate::cli::start_target(&known) {
         Some(crate::cli::Start::Note(file)) => {
@@ -761,7 +765,7 @@ impl App {
         }
         if !self.note_mode() {
             self.persist.mode = self.mode.id().into();
-            self.persist.back = self.map.back.id().into();
+            self.persist.back = if self.mode == Mode::Board { self.board.back } else { self.map.back }.id().into();
         }
     }
 
@@ -1496,7 +1500,7 @@ impl App {
                 e.focused = true;
             }
         }
-        self.want_editor_focus = self.mode == Mode::Source || (self.mode == Mode::Map && self.active_locked());
+        self.want_editor_focus = self.mode == Mode::Source || (matches!(self.mode, Mode::Map | Mode::Board) && self.active_locked());
         self.persist_later();
         self.sync_auto(0.5);
     }

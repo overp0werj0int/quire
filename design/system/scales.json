@@ -4,6 +4,7 @@
     ["r-inner", 4, "ui/tokens.rs", "controls inside a control-radius bar, row or field; key caps; inline tags"],
     ["r-control", 6, "ui/tokens.rs", "icon buttons, panel rows, floating bars, menu rows, segments, sidebar search"],
     ["r-field", 8, "ui/tokens.rs", "text buttons (primary, outline, destructive), dialog inputs, segmented tracks, cards, menus"],
+    ["r-column", 10, "ui/tokens.rs", "board columns"],
     ["r-dialog", 12, "ui/tokens.rs", "modal dialogs (Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox)"],
     ["r-pill", 999, "ui/tokens.rs", "toasts, notices, count pills, switches"]
   ],
@@ -59,9 +60,11 @@
   "motion": [
     ["hover-fade", "0.1 s linear", "ui/tokens.rs", "hover colour fade"],
     ["modal-fade", "spring 0.08", "ui/tokens.rs", "modal dialog and scrim fade"],
+    ["tilt", "spring 0.12", "ui/tokens.rs", "held board card and column tilt"],
     ["swap", "spring 0.16, from 40%", "ui/tokens.rs", "in-place mode swap"],
     ["drawer", "spring 0.16", "ui/tokens.rs", "sidebar and outline drawers"],
     ["tab-slide", "spring 0.18", "ui/tokens.rs", "switching note tabs"],
+    ["layout-glide", "spring 0.18", "ui/tokens.rs", "board card and column layout glide and settle"],
     ["zen-reveal", "spring 0.25", "ui/tokens.rs", "zen title bar and map HUD"],
     ["toast", "1.6 s", "reader.rs", "how long a toast stays"],
     ["undo", "6 s", "folders.rs", "how long Undo stays"],

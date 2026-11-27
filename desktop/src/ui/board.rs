@@ -2,25 +2,23 @@
 //! columns of cards laid out by Rune flow layout, reusing the reader's inline runs,
 //! the map's block cards, and the design system's components and tokens.
 
-use rune::{Color, Drag, El, ScrollSpec, Spring, TextHighlight, Tx, WheelEvent, col, el, row, text};
+use rune::{Drag, El, ScrollSpec, Spring, TextHighlight, Tx, WheelEvent, col, el, row, text};
 
 use super::components::{checkbox_box, count_pill, faded_h};
 use super::map as ui_map;
 use super::preview::{Cx, Hl, Look, look_at};
-use super::tokens::{Elevation, radius, space};
+use super::tokens::{Elevation, FocusRing, motion, radius, size, space};
 use super::{V, styles};
 use crate::app::App;
 use crate::blocks::Task;
 use crate::board::{self, Column, ColumnHead};
 use crate::board_app::{card_key, col_key, head_key};
-use crate::board_drag::{Held, Hold, SETTLE_SECS, TILT_SPRING, ease_out};
+use crate::board_drag::{Held, Hold, SETTLE_SECS, ease_out};
 use crate::map::{Body, NodeId, NodeKind, Tree};
 use crate::map_app::{self, Tier};
 use crate::page;
 use crate::roles::Roles;
 
-/// Column radius in points (BRD-008).
-const COL_RADIUS: f32 = 10.0;
 /// Column inner padding (BRD-008).
 const COL_PAD: f32 = space::PX_8;
 /// Gap between cards inside a column (BRD-010).
@@ -33,8 +31,6 @@ const BAR_W: f32 = 3.0;
 const BAR_H: f32 = 14.0;
 /// Scroll-edge fade height inside columns (matching Edit Sheet / panels).
 const COL_FADE: f32 = space::SCROLL_FADE_PANEL;
-/// Card layout glide duration (180 ms, BRD-016).
-const LAYOUT_GLIDE: f32 = 0.18;
 
 /// Board's page look at `width`, with `dim` lifted to `readable_dim` as Map mode does.
 fn board_look(v: V, width: f32) -> Look {
@@ -99,7 +95,17 @@ pub(super) fn board(v: V) -> El {
         _ => 40.0,
     };
     let reduced = crate::motion::reduced();
-    let row_glide = if reduced { Spring::NONE } else { Spring::new(LAYOUT_GLIDE, 0.0) };
+    let row_glide = if reduced { Spring::NONE } else { motion::layout_glide_spring() };
+    let anchor_in_item = sel.is_some_and(|sid| {
+        held_card != Some(sid)
+            && settling_card != Some(sid)
+            && held_col != Some(sid)
+            && settling_col != Some(sid)
+            && model.columns.iter().any(|col| {
+                matches!(col.head, ColumnHead::Heading(h) if t.nodes[h].id == sid)
+                    || col.cards.iter().any(|&ci| t.nodes[ci].id == sid)
+            })
+    });
 
     let mut cols_row = row()
         .key("board-row")
@@ -175,9 +181,9 @@ pub(super) fn board(v: V) -> El {
             move |at| sx.set(at.offset[0])
         })
         .on_wheel(|s: &mut App, e: WheelEvent, tx: &mut Tx| {
-            // Shift+wheel scrolls the board row horizontally (BRD-007).
+            // Shift+wheel scrolls the board row horizontally (BRD-007, C2).
             if e.mods.shift && e.dx == 0.0 && e.dy != 0.0 {
-                let next = (s.board.scroll_x.get() - e.dy).max(0.0);
+                let next = (s.board.scroll_x.get() - e.dy).clamp(0.0, s.board_max_scroll_x());
                 s.board.scroll_x.set(next);
                 tx.scroll_to_instant("board-scroll", next, 0.0);
                 return true;
@@ -202,6 +208,7 @@ pub(super) fn board(v: V) -> El {
         .label("Board")
         .on_layout(|s: &mut App, r| s.board_view_laid_out(r))
         .on_drag(|s: &mut App, d: &mut Drag, tx: &mut Tx| s.board_pan_drag(d, tx))
+        .children((!anchor_in_item).then(super::focus::note_anchor))
         .child(scroll)
         .children(overlay)
 }
@@ -247,7 +254,7 @@ fn column_el(
     let header = column_header(v, cx, t, col_data, &h_key, head_selected, holding, key_id, find);
 
     let reduced = crate::motion::reduced();
-    let glide = if reduced { Spring::NONE } else { Spring::new(LAYOUT_GLIDE, 0.0) };
+    let glide = if reduced { Spring::NONE } else { motion::layout_glide_spring() };
     let mut cards_stack = col()
         .key(format!("board-cards:{key_id}"))
         .w_full()
@@ -325,7 +332,7 @@ fn column_el(
         .w(col_w)
         .max_h(avail_h)
         .padding(COL_PAD)
-        .radius(COL_RADIUS)
+        .radius(radius::COLUMN)
         .fill(c.panel)
         .child(bounds_marker)
         .child(header)
@@ -353,7 +360,7 @@ fn slot_el(c: &Roles, h: f32) -> El {
 fn col_slot_el(c: &Roles, w: f32, h: f32) -> El {
     el().key("board-col-slot")
         .size(w, h.max(80.0))
-        .radius(COL_RADIUS)
+        .radius(radius::COLUMN)
         .fill(c.accent.alpha(0.10))
         .border(1.5, c.accent.alpha(0.55))
         .border_dash(6.0, 4.0)
@@ -382,7 +389,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
                 .border_layout()
                 .origin(ox, oy)
                 .rotate(lean)
-                .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) })
+                .rotate_motion(if reduced { Spring::NONE } else { motion::tilt_spring() })
                 .role("listitem")
                 .label(t.nodes[i].label.clone())
                 .focus_selected(true)
@@ -392,7 +399,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
                 let wash = el()
                     .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                     .radius(radius::FIELD)
-                    .fill(c.panel.alpha(0.55))
+                    .fill(c.dim.alpha(0.22))
                     .inert();
                 card = card.child(wash);
                 let cue = text(reason)
@@ -454,13 +461,13 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             let mut lifted = lifted_column_el(v, cx, t, col_data, size, true)
                 .origin(ox, oy)
                 .rotate(lean)
-                .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) });
+                .rotate_motion(if reduced { Spring::NONE } else { motion::tilt_spring() });
             lifted = Elevation::Dialog.apply(lifted, v.p, 1.0);
             if let Some(reason) = refused {
                 let wash = el()
                     .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                    .radius(COL_RADIUS)
-                    .fill(c.panel.alpha(0.55))
+                    .radius(radius::COLUMN)
+                    .fill(c.dim.alpha(0.22))
                     .inert();
                 lifted = lifted.child(wash);
                 let cue = text(reason)
@@ -551,7 +558,7 @@ fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], 
         .key(col_key(col_data.head, t))
         .size(size[0] + 2.0 * bw, size[1] + 2.0 * bw)
         .padding(COL_PAD)
-        .radius(COL_RADIUS)
+        .radius(radius::COLUMN)
         .fill(c.on_page(c.panel))
         .clip_soft(0.0)
         .role("region")
@@ -607,7 +614,8 @@ fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, select
                 head_row = head_row.hover(c.hover);
             }
             if selected {
-                head_row = apply_selection_glass(head_row, c);
+                let (rw, rg, rc) = FocusRing::Inset.spec(v.p);
+                head_row = head_row.focus_within_ring(rw, rg, rc).child(super::focus::note_anchor());
             }
             el().key(format!("board-head-host:{id}"))
                 .w_full()
@@ -665,7 +673,8 @@ fn card_el(v: V, cx: &Cx, t: &Tree, i: usize, selected: bool, holding: bool, set
             card = card.hover(c.hover);
         }
         if selected {
-            card = apply_selection_glass(card, c);
+            let (rw, rg, rc) = FocusRing::Inset.spec(v.p);
+            card = card.focus_within_ring(rw, rg, rc).child(super::focus::note_anchor());
         }
     }
 
@@ -726,16 +735,20 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32, find: Option<Board
     let top = if let Some(task) = task {
         let checked = task == Task::Done;
         let box_top = ((st.line_height - space::PX_16) / 2.0).max(0.0);
+        let pad = (size::CONTROL_BAR - space::PX_16) * 0.5;
         let toggle = el()
             .key(format!("board-task:{id}"))
-            .pt(box_top)
+            .pin(Some(-pad), Some(box_top - pad), None, None)
+            .size(size::CONTROL_BAR, size::CONTROL_BAR)
+            .center()
             .cursor(rune::Cursor::Pointer)
             .role("checkbox")
             .checked(checked)
             .label(if checked { "Checked" } else { "Not checked" })
             .on_press_tx(move |s: &mut App, tx| s.board_toggle_task(id, tx))
             .child(checkbox_box(v.p, checked));
-        row().w_full().items_start().gap(space::PX_8).child(toggle).child(label_el)
+        let slot = el().size(space::PX_16, box_top + space::PX_16).child(toggle);
+        row().w_full().items_start().gap(space::PX_8).child(slot).child(label_el)
     } else {
         el().w(inner_w).w_full().child(label_el)
     };
@@ -750,11 +763,4 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32, find: Option<Board
     } else {
         top
     }
-}
-
-/// Focus glass selection treatment matching `Cx::focus_glass` and Map's selection rim (BRD-012).
-fn apply_selection_glass(e: El, c: &Roles) -> El {
-    e.gradient(c.text.alpha(0.07), Color::TRANSPARENT)
-        .border_gradient(1.5, c.text.alpha(0.55), c.text.alpha(0.12))
-        .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 10.0, spread: 0.0, color: c.text.alpha(0.08), inset: true })
 }

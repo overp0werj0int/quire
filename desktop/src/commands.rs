@@ -88,7 +88,7 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
         let (find_action, find_run): (&'static str, Run) = match s.mode {
             Mode::Preview => ("reader.find", |s, tx| s.open_find(tx)),
             Mode::Map => ("map.find", |s, tx| s.open_find(tx)),
-            Mode::Board => ("reader.find", |s, tx| s.open_find(tx)),
+            Mode::Board => ("board.find", |s, tx| s.open_find(tx)),
             Mode::Source => ("writer.find", |s, tx| s.writer_find(tx)),
         };
         v.push(cmd("Find in note", find_action, find_run));
@@ -165,7 +165,8 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     let help_action = match s.mode {
         Mode::Preview => "reader.help",
         Mode::Map => "map.help",
-        Mode::Source | Mode::Board => "app.help",
+        Mode::Board => "board.help",
+        Mode::Source => "app.help",
     };
     v.push(cmd("Keyboard shortcuts", help_action, |s, tx| s.toggle_help(tx)));
     v.push(cmd("Open trash…", "", |s, tx| s.open_trash(tx)));

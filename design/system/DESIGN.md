@@ -51,8 +51,8 @@ All tokens live in `desktop/src/ui/tokens.rs`:
 - Spacing grid: 1, 2, 4, 6, 8, 10, 12, 16, 24, 32 with semantic gap and padding roles.
 - Concentric radius scale: `INNER` (4) inside controls and key caps, `CONTROL` (6) for icon
   buttons, rows, bars, segments and panel search, `FIELD` (8) for text buttons, dialog inputs,
-  segmented tracks, cards and menus, `DIALOG` (12) for every modal dialog, `PILL` (999) for
-  toasts, notices, counts and switches.
+  segmented tracks, cards and menus, `COLUMN` (10) for board columns, `DIALOG` (12) for every
+  modal dialog, `PILL` (999) for toasts, notices, counts and switches.
 - Control heights (4 pt steps): `CONTROL_BAR` (24) in bars and pills, `CONTROL_PANEL` (28) in
   panels, segments, switches and row buttons, `CONTROL_DIALOG` (32) in dialog buttons and
   inputs. Menu rows are 30; title bar is 40; side-panel rows share 28 with 8 inset and text at
@@ -74,7 +74,8 @@ bar, layout picker), `Dialog` (Settings, Lock, Trash, Palette, Help, Edit sheet,
 ## Motion
 
 Named constants in `tokens::motion`: hover fades in 0.1 s, dialogs fade with spring 0.08,
-in-place swaps and drawers use spring 0.16, tabs slide over 0.18, zen bar reveals over 0.25.
+board drag tilt uses spring 0.12, in-place swaps and drawers use spring 0.16, tabs slide and
+board layouts glide over 0.18, zen bar reveals over 0.25.
 Under reduced motion everything jumps. A toast stays 1.6 s, Undo 6 s, and armed destructive
 buttons lapse after 2 s in both the edit sheet and Trash.
 

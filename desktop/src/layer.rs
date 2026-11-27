@@ -538,7 +538,7 @@ impl App {
 pub fn toggles(id: &str) -> Option<Kind> {
     match id {
         "app.settings" | "reader.settings" | "map.settings" => Some(Kind::Settings),
-        "app.help" | "reader.help" | "map.help" => Some(Kind::Help),
+        "app.help" | "reader.help" | "map.help" | "board.help" => Some(Kind::Help),
         "app.toggle-sidebar" | "reader.toggle-sidebar" | "map.toggle-sidebar" => Some(Kind::Drawer(Drawer::Sidebar)),
         "app.toggle-outline" | "reader.toggle-outline" | "map.toggle-outline" => Some(Kind::Drawer(Drawer::Outline)),
         "map.layout" => Some(Kind::Layouts),

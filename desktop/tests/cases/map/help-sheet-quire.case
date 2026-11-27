@@ -2,7 +2,7 @@ F1 on the map opens its help sheet with unified keys and ignores any legacy pres
 note: Trip.md
 state: {"mode": "map", "settings": {"keymap": "quire"}}
 events: key:F1@0.8
-expect: text:help-Find & views: 'FIND & VIEWS Ctrl+F / Find n F3 Ctrl+G N Shift+F3 Ctrl+Shift+G Next / previous match Esc Close find or cancel drag b B Ctrl+B Sidebar o O Ctrl+O Outline Ctrl+E p Ctrl+P m Ctrl+M Source / preview / map z . , i Zen / settings / image ? Ctrl+/ F1 This sheet'
+expect: text:help-Find & views: 'FIND & VIEWS Ctrl+F / Find n F3 Ctrl+G N Shift+F3 Ctrl+Shift+G Next / previous match Esc Close find or cancel drag b B Ctrl+B Sidebar o O Ctrl+O Outline Ctrl+E p Ctrl+P m Ctrl+M Ctrl+Shift+K Source / preview / map / board z . , i Zen / settings / image ? Ctrl+/ F1 This sheet'
 expect: rect:help-Navigate: [110.0, 126.0, 510.0, 229.0]
 expect: rect:help-Edit: [110.0, 373.0, 510.0, 403.0]
 expect: rect:help-Canvas: [660.0, 126.0, 510.0, 193.0]

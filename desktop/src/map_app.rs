@@ -1320,7 +1320,10 @@ impl App {
         }
         tx.clear_text_selection();
         let span = self.place_span_now();
-        self.map.back = self.mode;
+        self.map.back = match self.mode {
+            Mode::Board => self.board.back,
+            m => m,
+        };
         self.mode = Mode::Map;
         self.close_find(tx);
         self.keys_to_note(tx);
@@ -1415,7 +1418,7 @@ impl App {
 
     /// Splice `s` of the note shown, whose map was `old`, goes in as one undo step (MAP-013);
     /// the folds follow their nodes and the node at the splice's focus line is selected.
-    fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
+    pub(crate) fn map_apply(&mut self, old: &Tree, s: &map::Splice, tx: &mut Tx) {
         self.map_apply_inner(old, s, Reveal::Always, tx);
     }
 
@@ -1425,6 +1428,14 @@ impl App {
         self.splice_into(&rel, &base, s);
         let t = self.map_follow(old, s);
         let focus = s.focus.map_or(ROOT, |l| t.at_line(l));
+        if self.mode == Mode::Board {
+            if let Some(item) = crate::board::item_of(&t, focus)
+                && let Some(v) = self.map_view_mut()
+            {
+                v.selected = t.nodes[item].id;
+            }
+            return;
+        }
         let show = match reveal {
             Reveal::Keep => {
                 self.map_open_to(self.map_selected());

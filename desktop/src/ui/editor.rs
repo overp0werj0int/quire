@@ -133,7 +133,7 @@ pub fn body(v: V) -> El {
         .min_w(0.0)
         .min_h(0.0)
         .w_full()
-        .children((!writer).then(super::focus::note_anchor))
+        .children((!writer && !boarding).then(super::focus::note_anchor))
         .children(has_find_slot.then(|| super::reader::find_backing(v)))
         .child(view);
     if reading || writer {

@@ -7,6 +7,7 @@
   --q-r-inner: 4px; /* ui/tokens.rs: controls inside a control-radius bar, row or field; key caps; inline tags */
   --q-r-control: 6px; /* ui/tokens.rs: icon buttons, panel rows, floating bars, menu rows, segments, sidebar search */
   --q-r-field: 8px; /* ui/tokens.rs: text buttons (primary, outline, destructive), dialog inputs, segmented tracks, cards, menus */
+  --q-r-column: 10px; /* ui/tokens.rs: board columns */
   --q-r-dialog: 12px; /* ui/tokens.rs: modal dialogs (Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox) */
   --q-r-pill: 999px; /* ui/tokens.rs: toasts, notices, count pills, switches */
   /* size */

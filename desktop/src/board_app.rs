@@ -101,9 +101,14 @@ impl App {
         }
         tx.clear_text_selection();
         let from = self.mode;
-        if matches!(from, Mode::Source | Mode::Preview) {
-            self.board.back = from;
-        }
+        self.board.back = match from {
+            Mode::Source | Mode::Preview => from,
+            Mode::Map => match self.map.back {
+                Mode::Preview => Mode::Preview,
+                _ => Mode::Source,
+            },
+            Mode::Board => self.board.back,
+        };
         let line = if !self.active_locked() && matches!(from, Mode::Source | Mode::Preview) {
             Some(self.linear_place_line())
         } else {
@@ -147,9 +152,8 @@ impl App {
             t.nodes[sel].own.start
         };
         if to == Mode::Map {
-            self.mode = Mode::Map;
-            self.close_find(tx);
-            self.keys_to_note(tx);
+            self.board_ensure_selection();
+            self.enter_map(tx);
             return;
         }
         self.mode = to;
@@ -253,23 +257,19 @@ impl App {
         }
     }
 
-    /// Applies a `map::Splice` from Board mode through the map's single-undo-step pipeline
-    /// (BRD-019, MAP-013).
+    /// Applies a `map::Splice` from Board mode through the shared `App::map_apply` pipeline
+    /// (BRD-019, MAP-013, C7).
     pub fn board_apply(&mut self, old: &map::Tree, s: &map::Splice, tx: &mut Tx) {
-        let Some(rel) = self.active.clone() else { return };
-        let base = self.active_text().to_string();
-        self.splice_into(&rel, &base, s);
-        let t = self.map_tree();
-        if let Some(v) = self.map_view_mut() {
-            v.follow(old, &t, s);
+        self.map_apply(old, s, tx);
+        if crate::focus::on_note(tx) {
+            self.keys_to_note(tx);
         }
-        let focus = s.focus.map_or(map::ROOT, |l| t.at_line(l));
-        if let Some(item) = board::item_of(&t, focus)
-            && let Some(v) = self.map_view_mut()
-        {
-            v.selected = t.nodes[item].id;
-        }
-        let _ = tx;
+    }
+
+    /// Maximum horizontal scroll offset for `board-scroll` (C2).
+    pub fn board_max_scroll_x(&self) -> f32 {
+        let layout = self.board.layout.borrow();
+        (layout.row_w - layout.view[2]).max(0.0)
     }
 
     /// Horizontal drag pan on empty board space (BRD-007).
@@ -284,7 +284,7 @@ impl App {
             }
             Phase::Move => {
                 if let Some((from_x, start_px)) = self.board.pan_drag {
-                    let next = (from_x - (d.window_point()[0] - start_px)).max(0.0);
+                    let next = (from_x - (d.window_point()[0] - start_px)).clamp(0.0, self.board_max_scroll_x());
                     self.board.scroll_x.set(next);
                     tx.scroll_to_instant("board-scroll", next, 0.0);
                     tx.live_only();
@@ -350,6 +350,9 @@ impl App {
     fn board_select_and_show(&mut self, i: usize, t: &map::Tree, tx: &mut Tx) {
         let id = t.nodes[i].id;
         self.board_select(id);
+        if crate::focus::on_note(tx) {
+            self.keys_to_note(tx);
+        }
         self.board_scroll_to_item(i, t, tx);
     }
 

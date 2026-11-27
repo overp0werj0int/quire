@@ -1176,7 +1176,7 @@ impl App {
     /// (Preview at any width, or toolbar-hidden Source / zen mode).
     fn has_find_slot(&self) -> bool {
         let has_doc = self.screen == crate::app::Screen::Vault && self.active.as_ref().is_some_and(|a| self.files().contains_key(a));
-        if !has_doc || self.active_locked() || self.mode == Mode::Map {
+        if !has_doc || self.active_locked() || matches!(self.mode, Mode::Map | Mode::Board) {
             return false;
         }
         let shows_toolbar = !self.focus && self.mode == Mode::Source && self.settings().toolbar;
