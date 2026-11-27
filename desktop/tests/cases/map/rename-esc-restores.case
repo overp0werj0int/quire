@@ -1,6 +1,6 @@
-Esc in the field puts the text back and writes nothing.
+Double Esc in a modified field puts the text back and writes nothing (MAP-017).
 note: Plan.md
-events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Escape@1.8 key:s+cmd@2.2
+events: key:m+cmd@0.3 key:Right@0.8 key:e@1.0 type:Money@1.2 key:Escape@1.8 key:Escape@2.0 key:s+cmd@2.4
 expect: focus: note-keys (no ring)
 expect: selected: map-node:3
 --- before

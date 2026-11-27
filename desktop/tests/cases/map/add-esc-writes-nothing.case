@@ -1,6 +1,6 @@
-Esc on a new node takes it away, writes nothing and selects the node it came from.
+Double Esc on a modified new node takes it away, writes nothing and selects the node it came from (MAP-017).
 note: Plan.md
-events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:Escape@1.4 key:s+cmd@1.8
+events: key:m+cmd@0.3 key:Right@0.6 key:Tab@0.8 type:x@1.0 key:Escape@1.4 key:Escape@1.6 key:s+cmd@2.0
 expect: selected: map-node:3
 expect: nodes: 1 3
 --- before
