@@ -1,0 +1,28 @@
+l moves right to the next column and falls back to its last card when that column is shorter.
+state: {"mode": "board", "right_open": false}
+events: tap:board-card:8887052920360726499@0.2 key:l@0.4
+expect: selected: board-card:10358574669306381026
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

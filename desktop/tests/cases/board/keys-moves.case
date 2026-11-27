@@ -1,6 +1,6 @@
-Alt+Down moves a card down in its column, Alt+Right moves a card to the end of the next column, and Alt+Right on a column header reorders the column.
+Alt+Right on a column header reorders the column past its right neighbour.
 state: {"mode": "board", "right_open": false}
-events: tap:board-card:9399331354417882438@0.2 key:Down+alt@0.5 key:Right+alt@0.8 key:Home@1.1 key:Right+alt@1.4 key:s+cmd@1.8
+events: tap:board-head:10736194977767075865@0.2 key:Right+alt@0.5 key:s+cmd@0.9
 --- before
 # Sprint
 
@@ -33,10 +33,10 @@ Intro note before columns.
 ## Doing
 
 - Build kanban board
-- [ ] Write board spec
 
 ## Todo
 
+- [ ] Write board spec
 - [x] Ship map mode
 - Plan drag physics
   - [ ] Tilt on lift

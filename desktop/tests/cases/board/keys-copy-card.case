@@ -1,0 +1,29 @@
+Ctrl+C on a selected card copies its Markdown to the clipboard and shows the Copied toast.
+state: {"mode": "board", "right_open": false}
+at: 0.8
+events: tap:board-card:9399331354417882438@0.2 key:c+cmd@0.5
+expect: text:toast: 'Copied'
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

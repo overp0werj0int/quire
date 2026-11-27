@@ -1,0 +1,30 @@
+Under reduced motion a held card keeps a fixed 3 degree tilt even when dragged left.
+state: {"mode": "board", "right_open": false}
+env: QUIRE_REDUCED_MOTION=1
+at: 1.0
+events: drag:board-card:9399331354417882438>-120,0,1.0@0.3
+expect: tilt:board-card:9399331354417882438: 0.0524
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

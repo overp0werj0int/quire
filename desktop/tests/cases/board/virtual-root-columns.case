@@ -1,0 +1,18 @@
+A note with multiple top-level # headings uses a virtual root so each # heading is a column and cards drag between them.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:11333666779116951903>584,0,0.4@0.3 key:s+cmd@1.1
+--- before
+# Alpha
+
+- One
+
+# Beta
+
+- Two
+--- after
+# Alpha
+
+# Beta
+
+- Two
+- One

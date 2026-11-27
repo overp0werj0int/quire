@@ -1,0 +1,29 @@
+Slow leftward drag accumulates travel past the sign threshold and produces a negative tilt.
+state: {"mode": "board", "right_open": false}
+at: 1.0
+events: drag:board-card:9399331354417882438>-120,0,1.0@0.3
+expect: tilt:board-card:9399331354417882438: -0.0596
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

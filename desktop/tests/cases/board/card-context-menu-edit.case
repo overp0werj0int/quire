@@ -1,0 +1,28 @@
+Choosing Edit in a card's right-click menu opens the Edit Sheet.
+state: {"mode": "board", "right_open": false}
+events: rtap:board-card:9399331354417882438@0.2 tap:menu-board-edit@0.6
+expect: focus: sheet-editor (no ring)
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

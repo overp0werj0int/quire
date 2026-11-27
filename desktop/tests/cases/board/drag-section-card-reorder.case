@@ -1,0 +1,31 @@
+Dragging a section card past another section card reorders the two sections with their nested items.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:17146245427670281941>0,90,0.4@0.3 key:s+cmd@1.1
+--- before
+# Plan
+
+## Todo
+
+- Loose item
+
+### First section
+
+- Alpha
+
+### Second section
+
+- Beta
+--- after
+# Plan
+
+## Todo
+
+- Loose item
+
+### Second section
+
+- Beta
+
+### First section
+
+- Alpha

@@ -1,0 +1,36 @@
+Switching tabs while a card is held cancels the hold immediately with no ghost on the other tab and nothing written.
+state: {"mode": "board", "right_open": false}
+at: 1.0
+events: tap:file:Other.md@0.1 tap:file:Note.md@0.3 drag:board-card:9399331354417882438>292,0,1.0@0.5 key:Tab+cmd@0.8
+expect: rect:board-card:9399331354417882438: None
+expect: tilt:board-card:9399331354417882438: None
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- file Other.md
+# Other
+
+## Misc
+
+- Elsewhere

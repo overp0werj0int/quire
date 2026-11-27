@@ -1,0 +1,29 @@
+A held card with no horizontal motion rests at 3 degrees.
+state: {"mode": "board", "right_open": false}
+at: 0.8
+events: drag:board-card:9399331354417882438>0,40,0.6@0.3
+expect: tilt:board-card:9399331354417882438: 0.0524
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

@@ -1,0 +1,30 @@
+Dragging on a task card's checkbox does not lift the card or open a drop slot.
+state: {"mode": "board", "right_open": false}
+at: 0.55
+events: drag:board-task:9399331354417882438>292,0,0.4@0.3
+expect: tilt:board-card:9399331354417882438: 0.0000
+expect: rect:board-slot: None
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

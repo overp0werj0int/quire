@@ -1,0 +1,30 @@
+A press moving less than 6 px does not lift a card or open a drop slot.
+state: {"mode": "board", "right_open": false}
+at: 0.45
+events: drag:board-card:9399331354417882438>4,0,0.3@0.3
+expect: tilt:board-card:9399331354417882438: 0.0000
+expect: rect:board-slot: None
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

@@ -1,0 +1,30 @@
+Mouse-up after pressing Esc during a drag does not cut off the 180 ms settle glide.
+state: {"mode": "board", "right_open": false}
+at: 0.56
+events: drag:board-card:9399331354417882438>292,0,0.25@0.3 key:Escape@0.5
+expect: tilt:board-card:9399331354417882438: 0.0261
+expect: rect:board-card:9399331354417882438: [628.86, 94.56, 264.9, 44.89]
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

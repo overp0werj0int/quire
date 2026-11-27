@@ -1,0 +1,29 @@
+Delete on a column header refuses with the spec toast and leaves the note unchanged.
+state: {"mode": "board", "right_open": false}
+at: 0.8
+events: tap:board-head:10736194977767075865@0.2 key:Delete@0.5
+expect: text:toast: 'Delete a column in Source or on the map'
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

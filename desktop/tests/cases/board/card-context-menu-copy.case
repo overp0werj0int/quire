@@ -1,0 +1,29 @@
+Choosing Copy in a card's right-click menu copies the card and shows the Copied toast.
+state: {"mode": "board", "right_open": false}
+at: 0.9
+events: rtap:board-card:9399331354417882438@0.2 tap:menu-board-copy@0.6
+expect: text:toast: 'Copied'
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
