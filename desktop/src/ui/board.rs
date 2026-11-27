@@ -364,8 +364,8 @@ fn col_slot_el(c: &Roles, w: f32, h: f32) -> El {
 fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> Option<El> {
     let c = &cx.look.c;
     let reduced = crate::motion::reduced();
-    match *hold {
-        Hold::Held { what: Held::Card(id), grab, at, size, refused, lean, .. } => {
+    match hold {
+        &Hold::Held { what: Held::Card(id), grab, at, size, refused, lean, .. } => {
             let i = t.find(id)?;
             let pos = [at[0] - grab[0], at[1] - grab[1]];
             let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
@@ -413,7 +413,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             }
             Some(card.pin(Some(pos[0]), Some(pos[1]), None, None).paint_order(40).inert())
         }
-        Hold::Settling { what: Held::Card(id), from, to, size, grab, from_lean, start } => {
+        &Hold::Settling { what: Held::Card(id), from, to, size, grab, from_lean, start, .. } => {
             let i = t.find(id)?;
             let frac = ((v.s.now.get() - start) / SETTLE_SECS).clamp(0.0, 1.0) as f32;
             let k = ease_out(frac);
@@ -445,7 +445,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             card = Elevation::Dialog.apply(card, v.p, 1.0 - k);
             Some(card)
         }
-        Hold::Held { what: Held::Column(id), grab, at, size, refused, lean, .. } => {
+        &Hold::Held { what: Held::Column(id), grab, at, size, refused, lean, .. } => {
             let h = t.find(id)?;
             let ci = model.find_column(h)?;
             let col_data = &model.columns[ci];
@@ -482,7 +482,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             }
             Some(lifted.pin(Some(pos[0]), Some(pos[1]), None, None).paint_order(40).inert())
         }
-        Hold::Settling { what: Held::Column(id), from, to, size, grab, from_lean, start } => {
+        &Hold::Settling { what: Held::Column(id), from, to, size, grab, from_lean, start, .. } => {
             let h = t.find(id)?;
             let ci = model.find_column(h)?;
             let col_data = &model.columns[ci];
@@ -733,7 +733,7 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32, find: Option<Board
             .role("checkbox")
             .checked(checked)
             .label(if checked { "Checked" } else { "Not checked" })
-            .on_press_tx(move |s: &mut App, tx| s.board_toggle_task(i, tx))
+            .on_press_tx(move |s: &mut App, tx| s.board_toggle_task(id, tx))
             .child(checkbox_box(v.p, checked));
         row().w_full().items_start().gap(space::PX_8).child(toggle).child(label_el)
     } else {

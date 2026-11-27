@@ -304,8 +304,9 @@ impl App {
         // One that gives way to this one, now or earlier in this change, leaves at once rather
         // than fading out under it.
         self.layer_swap = !replaced.is_empty() || self.handed.is_some();
-        // A drag in the tree under it ends: its ghost would outlive the press.
+        // A drag in the tree or on the board under it ends: its ghost would outlive the press.
         self.dragging = None;
+        self.board_cancel_hold();
         let back = match (&layer, replaced.into_iter().next()) {
             (Layer::Menu(Menu { of: MenuOf::Edit(field), .. }), _) => Some(field.to_string()),
             (_, Some(first)) => first.back,
@@ -372,6 +373,7 @@ impl App {
             self.cancel_lock_job();
         }
         self.layers.clear();
+        self.board_cancel_hold();
         self.layers.push(Open { layer, back: None, over: self.context(), size: self.window_size() });
     }
 

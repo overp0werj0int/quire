@@ -60,6 +60,9 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         return true;
     }
     if vault && s.mode == crate::app::Mode::Board && !s.active_locked() && crate::focus::on_note(tx) && menu_key(ev) {
+        if s.board.hold.active() {
+            return true;
+        }
         if let Some(id) = s.board_selected() {
             s.board_card_menu(id, None, tx);
         }
@@ -103,6 +106,10 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             }
             if a.id == "board.escape" {
                 return s.board_escape(tx);
+            }
+            // While a card or column is held on the board, Board keys do nothing except Esc (A1).
+            if *ctx == Ctx::Board && s.board.hold.active() {
+                return true;
             }
             // A locked note's map or board is hidden behind the lock panel: its item keys select nothing.
             if *ctx == Ctx::Map

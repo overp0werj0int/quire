@@ -39,8 +39,6 @@ pub struct BoardState {
     pub back: Mode,
     /// Active drag / settle state machine.
     pub hold: Hold,
-    /// Suppresses the synthetic click that follows a dropped drag.
-    pub dropped: bool,
     /// Layout reports from Rune (`El::on_layout`).
     pub layout: RefCell<BoardLayout>,
     /// Horizontal pan state while dragging empty board space `(start_scroll_x, start_pointer_x)`.
@@ -56,7 +54,6 @@ impl Default for BoardState {
         BoardState {
             back: Mode::Source,
             hold: Hold::None,
-            dropped: false,
             layout: RefCell::new(BoardLayout::default()),
             pan_drag: None,
             scroll_x: Rc::new(Cell::new(0.0)),
@@ -68,7 +65,7 @@ impl Default for BoardState {
 impl App {
     /// True when Board mode shows an open, unlocked note.
     pub fn board_editable(&self) -> bool {
-        self.mode == Mode::Board && self.active.is_some() && !self.active_locked()
+        self.screen == crate::app::Screen::Vault && self.mode == Mode::Board && self.active.is_some() && !self.active_locked()
     }
 
     /// Builds the current board projection (including an empty Loose column while a compatible
@@ -113,7 +110,7 @@ impl App {
             None
         };
         self.mode = Mode::Board;
-        self.board.hold = Hold::None;
+        self.board_cancel_hold();
         self.board.pan_drag = None;
         self.close_find(tx);
         self.keys_to_note(tx);
@@ -140,7 +137,7 @@ impl App {
         if self.mode != Mode::Board || to == Mode::Board {
             return;
         }
-        self.board.hold = Hold::None;
+        self.board_cancel_hold();
         self.board.pan_drag = None;
         let line = if self.active_locked() {
             0
@@ -219,12 +216,8 @@ impl App {
         }
     }
 
-    /// Clicks a card or column header (ignoring the synthetic press right after a drop).
+    /// Clicks a card or column header (Rune drops the synthetic press after a moved drag).
     pub fn board_click(&mut self, id: NodeId, double: bool, tx: &mut Tx) {
-        if self.board.dropped {
-            self.board.dropped = false;
-            return;
-        }
         self.board_select(id);
         self.keys_to_note(tx);
         if double {
@@ -248,12 +241,13 @@ impl App {
         }
     }
 
-    /// Toggles task state on node `i` (BRD-011, BRD-027).
-    pub fn board_toggle_task(&mut self, i: usize, tx: &mut Tx) {
+    /// Toggles task state on node `id`, finding it again in the current tree (BRD-011, BRD-027, A6).
+    pub fn board_toggle_task(&mut self, id: NodeId, tx: &mut Tx) {
         if !self.board_editable() {
             return;
         }
         let t = self.map_tree();
+        let Some(i) = t.find(id) else { return };
         if let Some(s) = map::toggle_task(self.active_text(), &t, i) {
             self.board_apply(&t, &s, tx);
         }
@@ -584,9 +578,8 @@ impl App {
         if !self.board_editable() {
             return;
         }
-        let t = self.map_tree();
-        if let Some(i) = self.board_selected_index(&t) {
-            self.board_toggle_task(i, tx);
+        if let Some(id) = self.board_selected() {
+            self.board_toggle_task(id, tx);
         }
     }
 

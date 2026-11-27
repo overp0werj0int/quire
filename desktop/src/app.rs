@@ -936,9 +936,6 @@ impl App {
             }
             if let Some(old) = old {
                 self.map_reloaded(&rel, &old);
-                if self.active.as_deref() == Some(rel.as_str()) {
-                    self.board_cancel_hold();
-                }
             }
             any = true;
         }
@@ -1627,6 +1624,7 @@ impl App {
     /// in any mode takes the change back, then the note saves as `set_text` does. The caret
     /// keeps its place in the text around the change.
     pub fn splice_note(&mut self, rel: &str, r: std::ops::Range<usize>, with: &str) {
+        self.board_cancel_hold();
         let Some(base) = self.note_text(rel).map(str::to_string) else { return };
         let text = format!("{}{with}{}", &base[..r.start], &base[r.end..]);
         self.ensure_edit_of(rel);

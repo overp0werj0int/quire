@@ -54,6 +54,8 @@ pub enum Hold {
     /// Pointer is down on a card or column header, not yet past `THRESHOLD`.
     Pressed {
         what: Held,
+        /// Note identity and text revision when the press began (A2, A3).
+        origin: crate::app::TextKey,
         start: [f32; 2],
         grab: [f32; 2],
         size: [f32; 2],
@@ -63,6 +65,8 @@ pub enum Hold {
     /// Lifted and following the pointer with a tilt and live drop slot.
     Held {
         what: Held,
+        /// Note identity and text revision when the hold began (A2, A3).
+        origin: crate::app::TextKey,
         /// Offset from the held card/column's top-left corner to the pressed point.
         grab: [f32; 2],
         /// Pointer position in board-viewport coordinates.
@@ -90,6 +94,8 @@ pub enum Hold {
     /// Gliding from release position to target slot while turning upright over `SETTLE_SECS`.
     Settling {
         what: Held,
+        /// Note identity and text revision this settle belongs to (A2).
+        origin: crate::app::TextKey,
         from: [f32; 2],
         to: [f32; 2],
         size: [f32; 2],
@@ -182,16 +188,30 @@ impl App {
         [wx - v[0], wy - v[1]]
     }
 
+    /// True when the active hold's page context has changed (note, text revision, vault, lock
+    /// state, mode, screen, or an open layer) and the hold must end with nothing written (A2, A3).
+    pub(crate) fn board_hold_stale(&self) -> bool {
+        match &self.board.hold {
+            Hold::None => false,
+            Hold::Pressed { origin, .. } | Hold::Held { origin, .. } => {
+                !self.board_editable() || !self.layers.is_empty() || !origin.matches(self.active_text_key())
+            }
+            Hold::Settling { origin, .. } => {
+                !self.board_editable() || !origin.matches(self.active_text_key())
+            }
+        }
+    }
+
     /// Drag handler on a board card (BRD-014 to BRD-020, BRD-022, BRD-023).
     pub fn board_card_drag(&mut self, id: NodeId, d: &Drag, tx: &mut Tx) {
         let pt = self.board_point(d);
         let now = self.now.get();
         match d.phase {
             Phase::Down => {
-                self.board.dropped = false;
-                if !self.board_editable() {
+                if !self.board_editable() || !self.layers.is_empty() {
                     return;
                 }
+                let origin = self.active_text_key().to_owned();
                 let layout = self.board.layout.borrow();
                 let view = layout.view;
                 let rect = layout.cards.get(&id).copied().unwrap_or([view[0] + pt[0], view[1] + pt[1], 264.0, 40.0]);
@@ -199,21 +219,26 @@ impl App {
                 let grab = [(pt[0] - local[0]).clamp(0.0, rect[2]), (pt[1] - local[1]).clamp(0.0, rect[3])];
                 let size = [rect[2], rect[3]];
                 drop(layout);
-                self.board.hold = Hold::Pressed { what: Held::Card(id), start: pt, grab, size, origin_pos: local };
+                self.board.hold = Hold::Pressed { what: Held::Card(id), origin, start: pt, grab, size, origin_pos: local };
                 tx.live_only();
             }
             Phase::Move => {
+                if self.board_hold_stale() {
+                    self.board_cancel_hold();
+                    return;
+                }
                 let reduced = crate::motion::reduced();
                 match &mut self.board.hold {
-                    Hold::Pressed { what: Held::Card(cid), start, grab, size, origin_pos } if *cid == id => {
+                    Hold::Pressed { what: Held::Card(cid), origin, start, grab, size, origin_pos } if *cid == id => {
                         if (pt[0] - start[0]).hypot(pt[1] - start[1]) <= THRESHOLD {
                             tx.live_only();
                             return;
                         }
-                        let (grab, size, origin_pos) = (*grab, *size, *origin_pos);
+                        let (origin, grab, size, origin_pos) = (origin.clone(), *grab, *size, *origin_pos);
                         let (lean, sign) = (BASE_DEG.to_radians(), 1.0);
                         self.board.hold = Hold::Held {
                             what: Held::Card(id),
+                            origin,
                             grab,
                             at: pt,
                             size,
@@ -250,13 +275,27 @@ impl App {
                 }
             }
             Phase::Up => {
-                let hold = std::mem::take(&mut self.board.hold);
-                let Hold::Held { what: Held::Card(cid), grab, at, size, origin_pos, slot, refused, lean, .. } = hold else {
+                // Leave `Hold::Settling` untouched so a mouse-up after Esc lets the glide finish (A5).
+                match &self.board.hold {
+                    Hold::Pressed { what: Held::Card(cid), .. } if *cid == id => {
+                        self.board.hold = Hold::None;
+                        return;
+                    }
+                    Hold::Held { what: Held::Card(cid), .. } if *cid == id => {}
+                    _ => return,
+                }
+                let Hold::Held { what: Held::Card(cid), origin, grab, at, size, origin_pos, slot, refused, lean, .. } = std::mem::take(&mut self.board.hold) else {
                     return;
                 };
-                self.board.dropped = true;
+                if !self.board_editable() || !self.layers.is_empty() || !origin.matches(self.active_text_key()) {
+                    return;
+                }
                 let from = [at[0] - grab[0], at[1] - grab[1]];
                 if d.cancelled() {
+                    // Rune's `queue_key` intercepts Escape during a drag and emits a cancelled
+                    // `Phase::Up` instead of reaching `keys::on_key`; when the page underneath is
+                    // unchanged, glide back over 180 ms (BRD-019). Stale cancels (tab/mode/note/layer
+                    // changes) already exited above in `Hold::None` (A2).
                     self.start_settle(Held::Card(cid), from, origin_pos, size, grab, lean, tx);
                     return;
                 }
@@ -301,7 +340,8 @@ impl App {
             self.board.hold = Hold::None;
             return;
         }
-        self.board.hold = Hold::Settling { what, from, to, size, grab, from_lean, start: self.now.get() };
+        let origin = self.active_text_key().to_owned();
+        self.board.hold = Hold::Settling { what, origin, from, to, size, grab, from_lean, start: self.now.get() };
         tx.wake_after(Duration::from_millis(16));
     }
 
@@ -324,7 +364,7 @@ impl App {
 
     /// Updates `slot` and `refused` for the currently held card (BRD-017).
     pub(crate) fn board_aim_card(&mut self) {
-        let Hold::Held { what: Held::Card(id), grab, at, size, .. } = self.board.hold else { return };
+        let &Hold::Held { what: Held::Card(id), grab, at, size, .. } = &self.board.hold else { return };
         let t = self.map_tree();
         let Some(held_idx) = t.find(id) else { return };
         let model = board::build_with_held(&t, Some(held_idx));
@@ -422,10 +462,10 @@ impl App {
         let now = self.now.get();
         match d.phase {
             Phase::Down => {
-                self.board.dropped = false;
-                if !self.board_editable() {
+                if !self.board_editable() || !self.layers.is_empty() {
                     return;
                 }
+                let origin = self.active_text_key().to_owned();
                 let layout = self.board.layout.borrow();
                 let view = layout.view;
                 let rect = layout.cols.get(&id).copied().unwrap_or([view[0] + pt[0], view[1] + pt[1], 280.0, 200.0]);
@@ -433,21 +473,26 @@ impl App {
                 let grab = [(pt[0] - local[0]).clamp(0.0, rect[2]), (pt[1] - local[1]).clamp(0.0, rect[3])];
                 let size = [rect[2], rect[3]];
                 drop(layout);
-                self.board.hold = Hold::Pressed { what: Held::Column(id), start: pt, grab, size, origin_pos: local };
+                self.board.hold = Hold::Pressed { what: Held::Column(id), origin, start: pt, grab, size, origin_pos: local };
                 tx.live_only();
             }
             Phase::Move => {
+                if self.board_hold_stale() {
+                    self.board_cancel_hold();
+                    return;
+                }
                 let reduced = crate::motion::reduced();
                 match &mut self.board.hold {
-                    Hold::Pressed { what: Held::Column(cid), start, grab, size, origin_pos } if *cid == id => {
+                    Hold::Pressed { what: Held::Column(cid), origin, start, grab, size, origin_pos } if *cid == id => {
                         if (pt[0] - start[0]).hypot(pt[1] - start[1]) <= THRESHOLD {
                             tx.live_only();
                             return;
                         }
-                        let (grab, size, origin_pos) = (*grab, *size, *origin_pos);
+                        let (origin, grab, size, origin_pos) = (origin.clone(), *grab, *size, *origin_pos);
                         let (lean, sign) = ((BASE_DEG * 0.5).to_radians(), 1.0);
                         self.board.hold = Hold::Held {
                             what: Held::Column(id),
+                            origin,
                             grab,
                             at: pt,
                             size,
@@ -484,11 +529,21 @@ impl App {
                 }
             }
             Phase::Up => {
-                let hold = std::mem::take(&mut self.board.hold);
-                let Hold::Held { what: Held::Column(cid), grab, at, size, origin_pos, col_slot, refused, lean, .. } = hold else {
+                // Leave `Hold::Settling` untouched so a mouse-up after Esc lets the glide finish (A5).
+                match &self.board.hold {
+                    Hold::Pressed { what: Held::Column(cid), .. } if *cid == id => {
+                        self.board.hold = Hold::None;
+                        return;
+                    }
+                    Hold::Held { what: Held::Column(cid), .. } if *cid == id => {}
+                    _ => return,
+                }
+                let Hold::Held { what: Held::Column(cid), origin, grab, at, size, origin_pos, col_slot, refused, lean, .. } = std::mem::take(&mut self.board.hold) else {
                     return;
                 };
-                self.board.dropped = true;
+                if !self.board_editable() || !self.layers.is_empty() || !origin.matches(self.active_text_key()) {
+                    return;
+                }
                 let from = [at[0] - grab[0], at[1] - grab[1]];
                 if d.cancelled() {
                     self.start_settle(Held::Column(cid), from, origin_pos, size, grab, lean, tx);
@@ -535,7 +590,7 @@ impl App {
 
     /// Updates `col_slot` and `refused` for the currently held column (BRD-021).
     pub(crate) fn board_aim_column(&mut self) {
-        let Hold::Held { what: Held::Column(id), grab, at, size, .. } = self.board.hold else { return };
+        let &Hold::Held { what: Held::Column(id), grab, at, size, .. } = &self.board.hold else { return };
         let t = self.map_tree();
         let Some(held_idx) = t.find(id) else { return };
         let model = board::build(&t);
@@ -617,6 +672,10 @@ impl App {
     /// Per-frame board animation step: settle glide, edge auto-scroll (BRD-018), and velocity
     /// tilt relaxation when the hand pauses (BRD-015).
     pub(crate) fn poll_board(&mut self, now: f64, tx: &mut Tx) -> bool {
+        if self.board_hold_stale() {
+            self.board_cancel_hold();
+            return true;
+        }
         if self.mode != Mode::Board {
             return false;
         }
