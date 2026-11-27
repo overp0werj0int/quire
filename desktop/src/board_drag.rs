@@ -85,10 +85,13 @@ pub enum Hold {
         lean: f32,
         /// Last non-zero horizontal travel sign (`+1.0` clockwise, `-1.0` counter-clockwise).
         sign: f32,
-        /// Last pointer `x` and clock time for velocity calculation.
-        last_x: f32,
-        last_t: f64,
-        /// Last time edge scroll stepped.
+        /// Horizontal anchor where `sign` was last confirmed; reversal flips once travel passes `SIGN_EPS` (B1).
+        sign_x: f32,
+        /// Pointer `x` at the previous `poll_board` tick, for poll-interval velocity (B2).
+        poll_x: f32,
+        /// Smoothed horizontal pointer velocity in px/s (B2).
+        vx: f32,
+        /// Clock time of the previous `poll_board` tick.
         tick: f64,
     },
     /// Gliding from release position to target slot while turning upright over `SETTLE_SECS`.
@@ -151,6 +154,35 @@ impl Hold {
             _ => None,
         }
     }
+
+    /// Key and current tilt (in radians) of the held or settling board element, for headless probes (B3).
+    pub fn tilt(&self, now: f64) -> Option<(String, f32)> {
+        match *self {
+            Hold::Held { what: Held::Card(id), lean, .. } => Some((card_key(id), lean)),
+            Hold::Held { what: Held::Column(id), lean, .. } => Some((format!("board-col:{id}"), lean)),
+            Hold::Settling { what: Held::Card(id), from_lean, start, .. } => {
+                let k = ease_out(((now - start) / SETTLE_SECS).clamp(0.0, 1.0) as f32);
+                Some((card_key(id), from_lean * (1.0 - k)))
+            }
+            Hold::Settling { what: Held::Column(id), from_lean, start, .. } => {
+                let k = ease_out(((now - start) / SETTLE_SECS).clamp(0.0, 1.0) as f32);
+                Some((format!("board-col:{id}"), from_lean * (1.0 - k)))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Updates the horizontal lean sign with `SIGN_EPS` hysteresis: moving further in `sign`'s
+/// direction advances the anchor `sign_x`, while reversing accumulates travel until
+/// `|x - sign_x| >= SIGN_EPS`, then flips and anchors at `x` (BRD-015, B1).
+pub fn advance_sign(sign: f32, sign_x: f32, x: f32) -> (f32, f32) {
+    let sign = if sign == 0.0 { 1.0 } else { sign };
+    if (sign > 0.0 && x > sign_x) || (sign < 0.0 && x < sign_x) {
+        return (sign, x);
+    }
+    let travel = x - sign_x;
+    if travel.abs() >= SIGN_EPS { (travel.signum(), x) } else { (sign, sign_x) }
 }
 
 /// Pure tilt rule (BRD-015, BRD-021, BRD-022):
@@ -248,8 +280,9 @@ impl App {
                             refused: None,
                             lean,
                             sign,
-                            last_x: pt[0],
-                            last_t: now,
+                            sign_x: pt[0],
+                            poll_x: pt[0],
+                            vx: 0.0,
                             tick: now,
                         };
                         if let Some(v) = self.map_view_mut() {
@@ -258,16 +291,16 @@ impl App {
                         self.board_aim_card();
                         tx.wake_after(Duration::from_millis(16));
                     }
-                    Hold::Held { what: Held::Card(cid), at, lean, sign, last_x, last_t, .. } if *cid == id => {
-                        let dx = pt[0] - *last_x;
-                        let dt = (now - *last_t).max(1.0 / 240.0) as f32;
-                        let vx = dx / dt;
-                        let (new_lean, new_sign) = tilt_radians(*sign, dx, vx, reduced, false);
+                    Hold::Held { what: Held::Card(cid), at, lean, sign, sign_x, vx, .. } if *cid == id => {
+                        if !reduced {
+                            let (new_sign, new_sign_x) = advance_sign(*sign, *sign_x, pt[0]);
+                            if new_sign != *sign {
+                                *sign = new_sign;
+                                *lean = tilt_radians(new_sign, 0.0, *vx, false, false).0;
+                            }
+                            *sign_x = new_sign_x;
+                        }
                         *at = pt;
-                        *lean = new_lean;
-                        *sign = new_sign;
-                        *last_x = pt[0];
-                        *last_t = now;
                         self.board_aim_card();
                         tx.wake_after(Duration::from_millis(16));
                     }
@@ -502,8 +535,9 @@ impl App {
                             refused: None,
                             lean,
                             sign,
-                            last_x: pt[0],
-                            last_t: now,
+                            sign_x: pt[0],
+                            poll_x: pt[0],
+                            vx: 0.0,
                             tick: now,
                         };
                         if let Some(v) = self.map_view_mut() {
@@ -512,16 +546,16 @@ impl App {
                         self.board_aim_column();
                         tx.wake_after(Duration::from_millis(16));
                     }
-                    Hold::Held { what: Held::Column(cid), at, lean, sign, last_x, last_t, .. } if *cid == id => {
-                        let dx = pt[0] - *last_x;
-                        let dt = (now - *last_t).max(1.0 / 240.0) as f32;
-                        let vx = dx / dt;
-                        let (new_lean, new_sign) = tilt_radians(*sign, dx, vx, reduced, true);
+                    Hold::Held { what: Held::Column(cid), at, lean, sign, sign_x, vx, .. } if *cid == id => {
+                        if !reduced {
+                            let (new_sign, new_sign_x) = advance_sign(*sign, *sign_x, pt[0]);
+                            if new_sign != *sign {
+                                *sign = new_sign;
+                                *lean = tilt_radians(new_sign, 0.0, *vx, false, true).0;
+                            }
+                            *sign_x = new_sign_x;
+                        }
                         *at = pt;
-                        *lean = new_lean;
-                        *sign = new_sign;
-                        *last_x = pt[0];
-                        *last_t = now;
                         self.board_aim_column();
                         tx.wake_after(Duration::from_millis(16));
                     }
@@ -692,23 +726,37 @@ impl App {
                 tx.wake_after(Duration::from_millis(16));
                 return true;
             }
-            Hold::Held { what, at, lean, sign, last_t, tick, .. } => {
+            Hold::Held { what, at, lean, sign, poll_x, vx, tick, .. } => {
                 let what = *what;
                 let at = *at;
-                let dt = (now - *tick).clamp(0.0, 0.05) as f32;
+                let raw_dt = (now - *tick).max(0.0);
+                let dt = raw_dt.min(0.05) as f32;
                 *tick = now;
 
-                // 1. Velocity relaxation when hand pauses (BRD-015).
+                // 1. Poll-interval smoothed velocity and still-hand relaxation to 3 deg (BRD-015, B2).
                 let reduced = crate::motion::reduced();
-                if !reduced {
-                    let rest = *sign * BASE_DEG.to_radians() * if what.is_column() { 0.5 } else { 1.0 };
-                    if (*lean - rest).abs() > 0.001 {
-                        if now - *last_t > 0.08 {
-                            *lean = rest;
-                            changed = true;
-                        } else {
-                            keep_waking = true;
-                        }
+                if raw_dt > 1e-4 {
+                    let dx = at[0] - *poll_x;
+                    *poll_x = at[0];
+                    let inst_vx = dx / raw_dt as f32;
+                    let alpha = 1.0 - (-(raw_dt as f32) / 0.05).exp();
+                    *vx += (inst_vx - *vx) * alpha;
+                    if dx.abs() < 0.01 && vx.abs() < 1.0 {
+                        *vx = 0.0;
+                    }
+                    let (target_lean, _) = tilt_radians(*sign, 0.0, *vx, reduced, what.is_column());
+                    if (target_lean - *lean).abs() > 1e-4 {
+                        *lean = target_lean;
+                        changed = true;
+                    }
+                    if !reduced && vx.abs() > 0.0 {
+                        keep_waking = true;
+                    }
+                } else if reduced {
+                    let (target_lean, _) = tilt_radians(1.0, 0.0, 0.0, true, what.is_column());
+                    if (target_lean - *lean).abs() > 1e-4 {
+                        *lean = target_lean;
+                        changed = true;
                     }
                 }
 
@@ -805,6 +853,31 @@ impl App {
         }
         changed
     }
+
+    /// Writes the active hold's tilt state to `QUIRE_PROBE_STATE` during headless probe runs (B3).
+    pub(crate) fn write_probe_state(&self) {
+        if !rune::is_headless() {
+            return;
+        }
+        let Some(path) = std::env::var_os("QUIRE_PROBE_STATE") else { return };
+        let path = std::path::PathBuf::from(path);
+        let payload = match self.board.hold.tilt(self.now.get()) {
+            Some((key, lean)) => format!("{{\"tilt_key\":{},\"tilt\":{lean:.6}}}", serde_json::to_string(&key).unwrap_or_else(|_| "null".into())),
+            None => "{\"tilt_key\":null,\"tilt\":0.0}".to_string(),
+        };
+        thread_local! {
+            static LAST: std::cell::RefCell<Option<(std::path::PathBuf, String)>> = const { std::cell::RefCell::new(None) };
+        }
+        LAST.with(|last| {
+            let mut slot = last.borrow_mut();
+            if slot.as_ref().is_some_and(|(p, s)| *p == path && *s == payload) {
+                return;
+            }
+            if std::fs::write(&path, &payload).is_ok() {
+                *slot = Some((path, payload));
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -837,5 +910,26 @@ mod tests {
         assert!((card_red - 3.0f32.to_radians()).abs() < 1e-5);
         let (col_red, _) = tilt_radians(-1.0, -20.0, -1500.0, true, true);
         assert!((col_red - 1.5f32.to_radians()).abs() < 1e-5);
+    }
+
+    #[test]
+    fn slow_leftward_travel_accumulates_past_sign_eps() {
+        let mut sign = 1.0;
+        let mut anchor = 200.0;
+        // 2 px left: under 4 px, keeps +1.
+        (sign, anchor) = advance_sign(sign, anchor, 198.0);
+        assert_eq!((sign, anchor), (1.0, 200.0));
+        // Another 2 px left: cumulative -4 px flips to -1 and anchors at 196.
+        (sign, anchor) = advance_sign(sign, anchor, 196.0);
+        assert_eq!((sign, anchor), (-1.0, 196.0));
+        // Continuing left moves anchor forward with the drag.
+        (sign, anchor) = advance_sign(sign, anchor, 194.0);
+        assert_eq!((sign, anchor), (-1.0, 194.0));
+        // Small rightward jitter (+2 px) holds -1.
+        (sign, anchor) = advance_sign(sign, anchor, 196.0);
+        assert_eq!((sign, anchor), (-1.0, 194.0));
+        // Reversing right by 4 px from anchor flips back to +1.
+        (sign, anchor) = advance_sign(sign, anchor, 198.0);
+        assert_eq!((sign, anchor), (1.0, 198.0));
     }
 }

@@ -262,7 +262,14 @@ def replay(binary, events, at, size, scale, theme, work, snap=None, note=None, f
     for attempt in range(6):
         shutil.rmtree(home, ignore_errors=True)
         os.makedirs(home)
-        env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home + "/.config", XDG_DATA_HOME=home + "/.local/share", RUNE_PERF_WARN="0")
+        env = dict(
+            os.environ,
+            HOME=home,
+            XDG_CONFIG_HOME=home + "/.config",
+            XDG_DATA_HOME=home + "/.local/share",
+            QUIRE_PROBE_STATE=os.path.join(work, "probe-state.json"),
+            RUNE_PERF_WARN="0",
+        )
         env.update(env_add or {})
         if note:
             notes = os.path.join(work, "notes")
@@ -394,14 +401,15 @@ def answer(what, els, home):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %s" % (what, e.get("scale") if e else None)
     if what.startswith("tilt:"):
-        e = next((e for e in els if e.get("key") == what[5:]), None)
+        key = what[5:]
+        e = next((e for e in els if e.get("key") == key), None)
         if not e:
             return "%s: None" % what
         rot = e.get("rotation")
         if rot is None:
-            desc = e.get("description") or ""
-            m = re.search(r"tilt=(-?[0-9.]+)", desc)
-            rot = float(m.group(1)) if m else 0.0
+            ps = os.path.join(os.path.dirname(home), "probe-state.json")
+            saved = json.load(open(ps)) if os.path.exists(ps) else {}
+            rot = saved.get("tilt", 0.0) if saved.get("tilt_key") == key else 0.0
         return "%s: %.4f" % (what, rot)
     if what.startswith("color:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)

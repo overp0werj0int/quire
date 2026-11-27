@@ -813,6 +813,7 @@ impl App {
         self.poll_writer(t, tx);
         changed |= self.poll_map(t, tx);
         changed |= self.poll_board(t, tx);
+        self.write_probe_state();
         if self.want_editor_focus && self.laid_out.get() {
             self.want_editor_focus = false;
             if self.layers.is_empty() && tx.focused().is_none() {

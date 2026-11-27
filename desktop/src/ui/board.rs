@@ -383,7 +383,6 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
                 .origin(ox, oy)
                 .rotate(lean)
                 .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) })
-                .description(format!("tilt={lean:.4}"))
                 .role("listitem")
                 .label(t.nodes[i].label.clone())
                 .focus_selected(true)
@@ -435,7 +434,6 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
                 .origin(ox, oy)
                 .rotate(lean)
                 .rotate_motion(Spring::NONE)
-                .description(format!("tilt={lean:.4}"))
                 .role("listitem")
                 .label(t.nodes[i].label.clone())
                 .focus_selected(true)
@@ -449,14 +447,14 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             let h = t.find(id)?;
             let ci = model.find_column(h)?;
             let col_data = &model.columns[ci];
-            let pos = [at[0] - grab[0], at[1] - grab[1]];
-            let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
-            let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
+            let bw = 1.5;
+            let pos = [at[0] - grab[0] - bw, at[1] - grab[1] - bw];
+            let ox = ((grab[0] + bw) / (size[0] + 2.0 * bw).max(1.0)).clamp(0.0, 1.0);
+            let oy = ((grab[1] + bw) / (size[1] + 2.0 * bw).max(1.0)).clamp(0.0, 1.0);
             let mut lifted = lifted_column_el(v, cx, t, col_data, size, true)
                 .origin(ox, oy)
                 .rotate(lean)
-                .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) })
-                .description(format!("tilt={lean:.4}"));
+                .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) });
             lifted = Elevation::Dialog.apply(lifted, v.p, 1.0);
             if let Some(reason) = refused {
                 let wash = el()
@@ -486,18 +484,18 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             let h = t.find(id)?;
             let ci = model.find_column(h)?;
             let col_data = &model.columns[ci];
+            let bw = 1.0;
             let frac = ((v.s.now.get() - start) / SETTLE_SECS).clamp(0.0, 1.0) as f32;
             let k = ease_out(frac);
-            let pos = [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
+            let pos = [from[0] + (to[0] - from[0]) * k - bw, from[1] + (to[1] - from[1]) * k - bw];
             let lean = from_lean * (1.0 - k);
-            let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
-            let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
+            let ox = ((grab[0] + bw) / (size[0] + 2.0 * bw).max(1.0)).clamp(0.0, 1.0);
+            let oy = ((grab[1] + bw) / (size[1] + 2.0 * bw).max(1.0)).clamp(0.0, 1.0);
             let mut lifted = lifted_column_el(v, cx, t, col_data, size, false)
                 .pin(Some(pos[0]), Some(pos[1]), None, None)
                 .origin(ox, oy)
                 .rotate(lean)
                 .rotate_motion(Spring::NONE)
-                .description(format!("tilt={lean:.4}"))
                 .paint_order(40)
                 .inert();
             lifted = Elevation::Dialog.apply(lifted, v.p, 1.0 - k);
@@ -547,9 +545,11 @@ fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], 
         stack = stack.child(card);
     }
 
+    let bw = if accent_border { 1.5 } else { 1.0 };
+    let scroll_y = v.s.board.col_scroll.borrow().get(&id).copied().unwrap_or(0.0);
     let mut frame = col()
         .key(col_key(col_data.head, t))
-        .size(size[0], size[1])
+        .size(size[0] + 2.0 * bw, size[1] + 2.0 * bw)
         .padding(COL_PAD)
         .radius(COL_RADIUS)
         .fill(c.on_page(c.panel))
@@ -558,12 +558,12 @@ fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], 
         .label(n.label.clone())
         .focus_selected(true)
         .child(header)
-        .child(el().w_full().grow(1.0).min_h(0.0).clip_soft(0.0).child(stack));
+        .child(el().w_full().grow(1.0).min_h(0.0).clip_soft(0.0).child(stack.pin(Some(0.0), Some(-scroll_y), Some(0.0), None)));
 
     frame = if accent_border {
-        frame.border(1.5, c.accent).border_layout()
+        frame.border(bw, c.accent).border_layout()
     } else {
-        frame.border(1.0, c.hairline).border_layout()
+        frame.border(bw, c.hairline).border_layout()
     };
     frame
 }
