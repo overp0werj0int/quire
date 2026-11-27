@@ -1,0 +1,27 @@
+Dragging a section card over the loose column shows a refusal cue and releasing writes nothing.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:5666298580418273122>-292,-160,0.4@0.3 key:s+cmd@1.2
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

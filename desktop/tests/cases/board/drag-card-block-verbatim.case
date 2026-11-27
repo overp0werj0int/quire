@@ -1,0 +1,27 @@
+Moving a code block card across columns preserves its lines verbatim.
+state: {"mode": "board", "right_open": false}
+events: drag:404,130>584,0,0.4@0.3 key:s+cmd@1.2
+--- before
+# Board
+
+## Snippets
+
+```rust
+let x = 1;
+```
+
+## Archive
+
+- Kept note
+--- after
+# Board
+
+## Snippets
+
+## Archive
+
+- Kept note
+
+```rust
+let x = 1;
+```

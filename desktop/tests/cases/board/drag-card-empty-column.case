@@ -1,0 +1,22 @@
+Dropping a card into an empty column makes it that column's first child.
+state: {"mode": "board", "right_open": false}
+events: drag:404,117>584,0,0.4@0.3 key:s+cmd@1.2
+--- before
+# Board
+
+## Todo
+
+- First item
+- Second item
+
+## Done
+--- after
+# Board
+
+## Todo
+
+- Second item
+
+## Done
+
+- First item

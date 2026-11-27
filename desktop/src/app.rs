@@ -812,6 +812,7 @@ impl App {
         changed |= self.expire_deleted(t, tx);
         self.poll_writer(t, tx);
         changed |= self.poll_map(t, tx);
+        changed |= self.poll_board(t, tx);
         if self.want_editor_focus && self.laid_out.get() {
             self.want_editor_focus = false;
             if self.layers.is_empty() && tx.focused().is_none() {
@@ -2752,6 +2753,9 @@ impl App {
     /// the notice goes, then new folder, rename and the create prompt close, then zen mode ends.
     /// The keyboard stays where it was.
     pub fn escape(&mut self, tx: &mut Tx) -> bool {
+        if self.mode == Mode::Board && self.board_escape_hold(tx) {
+            return true;
+        }
         if self.notice.take().is_some() {
             self.notice_open = None;
             return true;

@@ -59,7 +59,7 @@ sys.dont_write_bytecode = True
 import probe  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "role:", "scale:", "opacity:", "color:", "contrast:", "selected", "nodes", "file:", "state:")
+READINGS = ("focus", "rect:", "text:", "doc-y", "label:", "role:", "scale:", "tilt:", "opacity:", "color:", "contrast:", "selected", "nodes", "file:", "state:")
 
 
 class Case:

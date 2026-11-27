@@ -1,0 +1,53 @@
+Dragging a task card across columns moves it on disk while keeping all other lines byte for byte.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:9399331354417882438>292,0,0.5@0.3 key:s+cmd@1.2
+expect: selected: board-card:3031994135120554004
+expect: tilt:board-card:3031994135120554004: 0.0000
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- after
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+- [ ] Write board spec
+
+## Done
+
+- Review design

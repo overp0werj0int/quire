@@ -1,0 +1,39 @@
+An outside write while a card is held cancels the hold with nothing written by the app.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:9399331354417882438>292,0,3.2@0.3 write:Note.md@0.6
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- outside Note.md
+# Sprint
+
+## Todo
+
+- Updated outside
+--- after
+# Sprint
+
+## Todo
+
+- Updated outside

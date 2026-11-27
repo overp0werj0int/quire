@@ -1,0 +1,27 @@
+Releasing a held card back in its original slot writes nothing to disk.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:9399331354417882438>12,4,0.3@0.3 key:s+cmd@1.0
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

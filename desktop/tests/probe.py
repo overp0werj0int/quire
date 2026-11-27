@@ -48,6 +48,7 @@ WHAT is any of (default `focus,doc-y`):
     label:KEY         an element's accessible label (a map node's reads its text and state)
     role:KEY          an element's accessible role
     scale:KEY         how much an element is drawn scaled (a map node's is the map's zoom)
+    tilt:KEY          an element's rotation in radians (for tilted board cards/columns)
     opacity:KEY       how opaque an element is drawn: sample it with --series to see a fade
     color:KEY         an element's text colour, or that of the first text inside it
     contrast:KEY      the text inside an element against the fills behind it (WCAG 4.5:1) and
@@ -392,6 +393,16 @@ def answer(what, els, home):
     if what.startswith("scale:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         return "%s: %s" % (what, e.get("scale") if e else None)
+    if what.startswith("tilt:"):
+        e = next((e for e in els if e.get("key") == what[5:]), None)
+        if not e:
+            return "%s: None" % what
+        rot = e.get("rotation")
+        if rot is None:
+            desc = e.get("description") or ""
+            m = re.search(r"tilt=(-?[0-9.]+)", desc)
+            rot = float(m.group(1)) if m else 0.0
+        return "%s: %.4f" % (what, rot)
     if what.startswith("color:"):
         e = next((e for e in els if e.get("key") == what[6:]), None)
         if e and e.get("color") is None:
@@ -407,7 +418,7 @@ def answer(what, els, home):
         e = next((e for e in els if e.get("key") == what[8:]), None)
         return "%s: %s" % (what, e.get("opacity") if e else None)
     if what == "selected":
-        e = next((e for e in els if e.get("itemSelected") and e.get("key", "").startswith("map-node:")), None)
+        e = next((e for e in els if e.get("itemSelected") and e.get("key", "").startswith(("map-node:", "board-card:", "board-head:"))), None)
         return "selected: %s" % (e.get("key") if e else None)
     if what == "nodes":
         return "nodes: %s" % " ".join(e["key"][9:] for e in els if e.get("key", "").startswith("map-node:"))

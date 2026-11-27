@@ -136,7 +136,14 @@ pub fn slot_add(board: &Board, t: &Tree, held: usize, slot: Slot) -> Result<Add,
     let rest = board.rest(slot.column, Some(held));
     let idx = slot.index.min(rest.len());
     let add = if idx < rest.len() {
-        Add::Before(rest[idx])
+        // When placing a non-heading card directly before a section heading and after a
+        // non-heading card, anchor after the preceding card so a list item joins its list
+        // cleanly instead of landing after the blank line before the subheading.
+        if idx > 0 && !is_heading(t, held) && is_heading(t, rest[idx]) && !is_heading(t, rest[idx - 1]) {
+            Add::After(rest[idx - 1])
+        } else {
+            Add::Before(rest[idx])
+        }
     } else if let Some(&last) = rest.last() {
         // Putting a section card at the end of a column that has no section cards yet uses
         // `Add::Child(heading)` rather than `Add::After(non_heading)` (MAP-027).

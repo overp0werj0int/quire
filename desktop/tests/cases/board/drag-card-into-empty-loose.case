@@ -1,0 +1,18 @@
+Lifting a card reveals an empty loose column when allowed, and dropping there places the card before the first heading.
+state: {"mode": "board", "right_open": false}
+events: drag:404,117>-20,0,0.4@0.3 key:s+cmd@1.2
+--- before
+# Board
+
+## Todo
+
+- Loose candidate
+- Stays in todo
+--- after
+# Board
+
+- Loose candidate
+
+## Todo
+
+- Stays in todo
