@@ -1,7 +1,7 @@
 A small map that was all in view stays all in view after a pick: Both sides zooms out from 200% to fit it.
 note: Plan.md
 events: key:m+cmd@0.3 tap:map-layout@0.8 tap:layout-both@1.4 key:s+cmd@2.2
-expect: text:zoom-reset: '147%'
+expect: text:zoom-pct: '147%'
 expect: rect:map-node:10: [273.8, 401.58, 135.23, 37.86]
 expect: rect:map-node:6: [1180.7, 430.8, 73.5, 37.84]
 --- before
