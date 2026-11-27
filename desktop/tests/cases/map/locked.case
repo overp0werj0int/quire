@@ -2,7 +2,7 @@ A locked note shows its lock panel in Map mode, and no map.
 note: Secret.md
 events: key:m+cmd@0.3
 expect: rect:map-canvas: None
-expect: rect:lock-panel: [304.0, 141.0, 360.0, 142.84]
+expect: rect:lock-panel: [421.0, 141.0, 360.0, 142.84]
 expect: rect:map-fit: None
 expect: label:mode-map: 'Map'
 --- before
