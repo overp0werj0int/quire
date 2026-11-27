@@ -1,8 +1,8 @@
 Ctrl + wheel zooms about the pointer.
 note: Trip.md
 events: key:m+cmd@0.3 wheel:0,-50,300,420+cmd@0.9
-expect: rect:map-node:8: [501.97, 395.61, 84.7, 46.2]
-expect: scale:map-node:8: 1.5398999452590942
+expect: rect:map-node:8: [499.36, 395.44, 85.28, 46.52]
+expect: scale:map-node:8: 1.5505000352859497
 --- before
 ---
 title: Trip

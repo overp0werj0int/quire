@@ -1,8 +1,8 @@
 - zooms out by a fifth about the selected node, which holds still.
 note: Trip.md
 events: key:m+cmd@0.3 key:-@0.9
-expect: rect:map-node:8: [468.34, 404.19, 54.2, 29.56]
-expect: scale:map-node:8: 0.9854999780654907
+expect: rect:map-node:8: [466.31, 404.06, 54.58, 29.77]
+expect: scale:map-node:8: 0.9922999739646912
 --- before
 ---
 title: Trip
