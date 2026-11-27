@@ -1,9 +1,9 @@
-The menu's Edit on an image opens the lightbox, not the Edit Sheet.
+The menu's Edit on an image opens the Edit Sheet directly rather than the lightbox.
 note: Menu.md
 file: attachments/wide.png fixtures/wide.png
 events: key:m+cmd@0.3 rtap:map-node:11@0.8 tap:menu-edit@1.2
-expect: text:lightbox-caption: 'A wide checkerboard'
-expect: rect:sheet-editor: None
+expect: text:lightbox-caption: None
+expect: rect:sheet-editor: [305.5, 363.0, 607.0, 28.0]
 --- before
 # Plan
 

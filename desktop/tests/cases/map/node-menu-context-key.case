@@ -3,7 +3,7 @@ note: Menu.md
 file: attachments/wide.png fixtures/wide.png
 events: key:m+cmd@0.3 key:l@0.6 key:ContextMenu@0.9
 expect: focus: menu-add-child (ring shown)
-expect: text:node-menu: 'Add child Tab Add sibling Enter Edit F2 Edit branch in sheet E Fold Space Copy Markdown Ctrl+C Copy branch Ctrl+Shift+C Delete Delete'
+expect: text:node-menu: 'Add child Tab Add sibling Enter Edit F2 Edit branch in sheet E Fold Space Convert to paragraph Ctrl+Alt+0 Convert to task Ctrl+Shift+7 Convert to bulleted list Ctrl+Shift+8 Convert to numbered list Ctrl+Shift+9 Cut Ctrl+X Copy Markdown Ctrl+C Copy branch Ctrl+Shift+C Paste Ctrl+V Delete Delete'
 --- before
 # Plan
 

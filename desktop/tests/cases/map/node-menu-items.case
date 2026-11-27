@@ -1,7 +1,7 @@
 The root's menu has no Add sibling and no Delete.
 note: Menu.md
 events: key:m+cmd@0.3 rtap:map-node:1@0.8
-expect: text:node-menu: 'Add child Tab Edit F2 Edit branch in sheet E Fold Space Copy Markdown Ctrl+C Copy branch Ctrl+Shift+C'
+expect: text:node-menu: 'Add child Tab Edit F2 Edit branch in sheet E Fold Space Copy Markdown Ctrl+C Copy branch Ctrl+Shift+C Paste Ctrl+V'
 --- before
 # Plan
 
