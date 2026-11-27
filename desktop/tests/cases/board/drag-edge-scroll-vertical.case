@@ -1,0 +1,61 @@
+Holding a dragged card within 36 px of a column's bottom edge auto-scrolls the column so it can land among off-screen cards below.
+state: {"mode": "board", "right_open": false}
+events: drag:board-card:8998016758880667060>0,40,1.2@0.3 key:s+cmd@1.8
+--- before
+# Tall
+
+Intro
+
+## List
+
+- Item 01
+- Item 02
+- Item 03
+- Item 04
+- Item 05
+- Item 06
+- Item 07
+- Item 08
+- Item 09
+- Item 10
+- Item 11
+- Item 12
+- Item 13
+- Item 14
+- Item 15
+- Item 16
+- Item 17
+- Item 18
+- Item 19
+- Item 20
+- Item 21
+- Item 22
+--- after
+# Tall
+
+Intro
+
+## List
+
+- Item 01
+- Item 02
+- Item 03
+- Item 04
+- Item 05
+- Item 06
+- Item 07
+- Item 08
+- Item 09
+- Item 10
+- Item 11
+- Item 12
+- Item 13
+- Item 14
+- Item 16
+- Item 17
+- Item 18
+- Item 19
+- Item 20
+- Item 15
+- Item 21
+- Item 22

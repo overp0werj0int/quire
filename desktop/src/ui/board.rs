@@ -67,22 +67,71 @@ pub(super) fn board(v: V) -> El {
     let holding = hold.active();
     let held_card = hold.held_card();
     let settling_card = hold.settling_card();
+    let held_col = hold.held_column();
+    let settling_col = hold.settling_column();
     let slot = hold.slot();
+    let col_drag_slot = hold.col_slot();
     let slot_h = match hold {
         Hold::Held { size, .. } => size[1],
         _ => 40.0,
     };
+    let reduced = crate::motion::reduced();
+    let row_glide = if reduced { Spring::NONE } else { Spring::new(LAYOUT_GLIDE, 0.0) };
 
     let mut cols_row = row()
         .key("board-row")
         .items_start()
         .gap(col_gap)
         .padding(outer_pad)
-        .h_full();
+        .h_full()
+        .motion(row_glide)
+        .child_exit(rune::Transition::none())
+        .on_layout(|s: &mut App, r| s.board_row_laid_out(r[2]));
 
+    let mut col_slot_placed = false;
+    let mut heading_k = 0usize;
     for (ci, col_data) in model.columns.iter().enumerate() {
+        if let ColumnHead::Heading(h) = col_data.head {
+            let hid = t.nodes[h].id;
+            if held_col == Some(hid) {
+                // Keep the column header's drag host alive at the exact same tree path while
+                // pinned out of flow so Rune keeps the drag capture and the column's old place closes.
+                cols_row = cols_row.child(
+                    el().key(format!("board-col-host:{hid}"))
+                        .pin(Some(0.0), Some(0.0), None, None)
+                        .size(0.0, 0.0)
+                        .child(
+                            el().key(format!("board-head-host:{hid}"))
+                                .size(0.0, 0.0)
+                                .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.board_col_drag(hid, d, tx)),
+                        ),
+                );
+                continue;
+            }
+            if col_drag_slot == Some(heading_k) {
+                cols_row = cols_row.child(col_slot_el(c, col_w, slot_h));
+                col_slot_placed = true;
+            }
+            heading_k += 1;
+        }
         let col_slot = slot.filter(|sl| sl.column == ci).map(|sl| (sl.index, slot_h));
-        cols_row = cols_row.child(column_el(v, &cx, &t, col_data, col_w, sel, holding, held_card, settling_card, col_slot));
+        let col_settling = matches!(col_data.head, ColumnHead::Heading(h) if settling_col == Some(t.nodes[h].id));
+        cols_row = cols_row.child(column_el(
+            v,
+            &cx,
+            &t,
+            col_data,
+            col_w,
+            sel,
+            holding,
+            held_card,
+            settling_card,
+            col_settling,
+            col_slot,
+        ));
+    }
+    if col_drag_slot.is_some() && !col_slot_placed {
+        cols_row = cols_row.child(col_slot_el(c, col_w, slot_h));
     }
 
     if !model.has_headings() {
@@ -113,7 +162,7 @@ pub(super) fn board(v: V) -> El {
         })
         .child(cols_row);
 
-    let overlay = hold_overlay(v, &cx, &t, hold);
+    let overlay = hold_overlay(v, &cx, &t, &model, hold);
 
     el().key("board-canvas")
         .grow(1.0)
@@ -157,15 +206,16 @@ fn column_el(
     holding: bool,
     held_card: Option<NodeId>,
     settling_card: Option<NodeId>,
+    col_settling: bool,
     col_slot: Option<(usize, f32)>,
 ) -> El {
     let c = &cx.look.c;
     let b = cx.look.b;
     let key_id = col_data.head.key_id(t);
-    let c_key = col_key(col_data.head, t);
+    let c_key = if col_settling { format!("board-col-seat:{key_id}") } else { col_key(col_data.head, t) };
     let h_key = head_key(col_data.head, t);
     let head_selected = match col_data.head {
-        ColumnHead::Heading(h) => sel == Some(t.nodes[h].id),
+        ColumnHead::Heading(h) => sel == Some(t.nodes[h].id) && !col_settling,
         ColumnHead::Loose => false,
     };
 
@@ -179,7 +229,8 @@ fn column_el(
         .gap(CARD_GAP)
         .pt(space::PX_6)
         .motion(glide)
-        .child_exit(rune::Transition::none());
+        .child_exit(rune::Transition::none())
+        .on_layout(move |s: &mut App, r| s.board_col_content_laid_out(key_id, r[3]));
 
     let mut slot_placed = false;
     let mut rest_k = 0usize;
@@ -214,12 +265,13 @@ fn column_el(
     }
 
     let faded_cards = faded_h(&format!("board-col-{key_id}"), c.on_page(c.panel), COL_FADE, cards_stack);
-    let cards_scroll = el()
+    let cards_scroll = col()
         .key(format!("board-col-scroll:{key_id}"))
         .w_full()
         .shrink()
         .min_h(0.0)
         .scroll(ScrollSpec::default())
+        .scroll_margin(COL_FADE)
         .on_scroll_offset({
             let map = v.s.board.col_scroll.clone();
             move |at| {
@@ -233,16 +285,31 @@ fn column_el(
     let outer_pad = page::r(b * 16.0 / 14.0);
     let avail_h = (v.s.board.layout.borrow().view[3] - 2.0 * outer_pad).max(160.0);
 
-    col()
+    let host_key = match col_data.head {
+        ColumnHead::Loose => "board-col-host:loose".to_string(),
+        ColumnHead::Heading(_) => format!("board-col-host:{key_id}"),
+    };
+    let bounds_marker = el()
         .key(c_key)
+        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+        .inert()
+        .on_layout(move |s: &mut App, r| s.board_col_laid_out(key_id, r));
+
+    let mut column = col()
+        .key(host_key)
         .w(col_w)
         .max_h(avail_h)
         .padding(COL_PAD)
         .radius(COL_RADIUS)
         .fill(c.panel)
-        .on_layout(move |s: &mut App, r| s.board_col_laid_out(key_id, r))
+        .child(bounds_marker)
         .child(header)
-        .child(cards_scroll)
+        .child(cards_scroll);
+
+    if col_settling {
+        column = column.opacity(0.0);
+    }
+    column
 }
 
 /// The dashed accent drop slot that opens where a dropped card would land (BRD-016).
@@ -257,8 +324,19 @@ fn slot_el(c: &Roles, h: f32) -> El {
         .inert()
 }
 
-/// Overlay for the lifted held card or settling card (BRD-014, BRD-015, BRD-017, BRD-019, BRD-022).
-fn hold_overlay(v: V, cx: &Cx, t: &Tree, hold: &Hold) -> Option<El> {
+/// The dashed accent column-wide slot that opens between columns during a column drag (BRD-021).
+fn col_slot_el(c: &Roles, w: f32, h: f32) -> El {
+    el().key("board-col-slot")
+        .size(w, h.max(80.0))
+        .radius(COL_RADIUS)
+        .fill(c.accent.alpha(0.10))
+        .border(1.5, c.accent.alpha(0.55))
+        .border_dash(6.0, 4.0)
+        .inert()
+}
+
+/// Overlay for the lifted/settling card or column (BRD-014, BRD-015, BRD-017, BRD-019, BRD-021, BRD-022).
+fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> Option<El> {
     let c = &cx.look.c;
     let reduced = crate::motion::reduced();
     match *hold {
@@ -342,12 +420,131 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, hold: &Hold) -> Option<El> {
             card = Elevation::Dialog.apply(card, v.p, 1.0 - k);
             Some(card)
         }
+        Hold::Held { what: Held::Column(id), grab, at, size, refused, lean, .. } => {
+            let h = t.find(id)?;
+            let ci = model.find_column(h)?;
+            let col_data = &model.columns[ci];
+            let pos = [at[0] - grab[0], at[1] - grab[1]];
+            let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
+            let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
+            let mut lifted = lifted_column_el(v, cx, t, col_data, size, true)
+                .origin(ox, oy)
+                .rotate(lean)
+                .rotate_motion(if reduced { Spring::NONE } else { Spring::new(TILT_SPRING, 0.0) })
+                .description(format!("tilt={lean:.4}"));
+            lifted = Elevation::Dialog.apply(lifted, v.p, 1.0);
+            if let Some(reason) = refused {
+                let wash = el()
+                    .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .radius(COL_RADIUS)
+                    .fill(c.panel.alpha(0.55))
+                    .inert();
+                lifted = lifted.child(wash);
+                let cue = text(reason)
+                    .key("board-refusal")
+                    .font(styles::sans(styles::CAPTION, 500.0))
+                    .color(styles::caption_ink(v.p))
+                    .mt(space::PX_4);
+                return Some(
+                    col()
+                        .key("board-held-wrap")
+                        .pin(Some(pos[0]), Some(pos[1]), None, None)
+                        .paint_order(40)
+                        .inert()
+                        .child(lifted)
+                        .child(cue),
+                );
+            }
+            Some(lifted.pin(Some(pos[0]), Some(pos[1]), None, None).paint_order(40).inert())
+        }
+        Hold::Settling { what: Held::Column(id), from, to, size, grab, from_lean, start } => {
+            let h = t.find(id)?;
+            let ci = model.find_column(h)?;
+            let col_data = &model.columns[ci];
+            let frac = ((v.s.now.get() - start) / SETTLE_SECS).clamp(0.0, 1.0) as f32;
+            let k = ease_out(frac);
+            let pos = [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
+            let lean = from_lean * (1.0 - k);
+            let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
+            let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
+            let mut lifted = lifted_column_el(v, cx, t, col_data, size, false)
+                .pin(Some(pos[0]), Some(pos[1]), None, None)
+                .origin(ox, oy)
+                .rotate(lean)
+                .rotate_motion(Spring::NONE)
+                .description(format!("tilt={lean:.4}"))
+                .paint_order(40)
+                .inert();
+            lifted = Elevation::Dialog.apply(lifted, v.p, 1.0 - k);
+            Some(lifted)
+        }
         _ => None,
     }
 }
 
-/// Column header row (BRD-009): 3 × 14 px branch colour bar (omitted on Loose), bold `B` title
-/// truncated with ellipsis, and right-aligned `count_pill`.
+/// Visual representation of a lifted or settling column in the drag overlay (BRD-021).
+fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], accent_border: bool) -> El {
+    let c = &cx.look.c;
+    let b = cx.look.b;
+    let ColumnHead::Heading(h) = col_data.head else {
+        return el();
+    };
+    let n = &t.nodes[h];
+    let id = n.id;
+    let st = map_app::style(Tier::Head, b, cx.look.family, cx.look.mono);
+    let bar_col = ui_map::branch_color(c, n.branch);
+    let bar = el().size(BAR_W, BAR_H).radius(1.5).fill(bar_col);
+    let rich = ui_map::label(cx, n, st, c.strong);
+    let title = rich.el(st, c.strong, None).truncate().grow(1.0).shrink().min_w(0.0);
+    let header = row()
+        .w_full()
+        .px(space::PX_4)
+        .py(space::PX_4)
+        .gap(space::PX_8)
+        .center_y()
+        .radius(radius::CONTROL)
+        .child(bar)
+        .child(title)
+        .child(count_pill(v.p, format!("board-lifted-count:{id}"), col_data.cards.len()));
+
+    let mut stack = col().w_full().gap(CARD_GAP).pt(space::PX_6);
+    for &ci in &col_data.cards {
+        let body = card_body(v, cx, t, ci, cx.look.width);
+        let card = el()
+            .w_full()
+            .py(CARD_PY)
+            .px(CARD_PX)
+            .radius(radius::FIELD)
+            .fill(c.on_page(c.card))
+            .border(1.0, c.hairline)
+            .border_layout()
+            .child(body);
+        stack = stack.child(card);
+    }
+
+    let mut frame = col()
+        .key(col_key(col_data.head, t))
+        .size(size[0], size[1])
+        .padding(COL_PAD)
+        .radius(COL_RADIUS)
+        .fill(c.on_page(c.panel))
+        .clip_soft(0.0)
+        .role("region")
+        .label(n.label.clone())
+        .focus_selected(true)
+        .child(header)
+        .child(el().w_full().grow(1.0).min_h(0.0).clip_soft(0.0).child(stack));
+
+    frame = if accent_border {
+        frame.border(1.5, c.accent).border_layout()
+    } else {
+        frame.border(1.0, c.hairline).border_layout()
+    };
+    frame
+}
+
+/// Column header row (BRD-009, BRD-021): 3 × 14 px branch colour bar (omitted on Loose), bold `B`
+/// title truncated with ellipsis, and right-aligned `count_pill`.
 fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, selected: bool, holding: bool, key_id: u64) -> El {
     let c = &cx.look.c;
     let b = cx.look.b;
@@ -374,18 +571,22 @@ fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, select
             head_row = head_row
                 .role("button")
                 .label(n.label.clone())
-                .cursor(rune::Cursor::Pointer)
                 .child(bar)
                 .child(title)
-                .child(count_pill(v.p, format!("board-count:{id}"), col_data.cards.len()))
-                .on_press_tx(move |s: &mut App, tx| s.board_click(id, false, tx))
-                .on_double_press_tx(move |s: &mut App, tx| s.board_click(id, true, tx));
+                .child(count_pill(v.p, format!("board-count:{id}"), col_data.cards.len()));
             if !holding {
                 head_row = head_row.hover(c.hover);
             }
             if selected {
                 head_row = apply_selection_glass(head_row, c);
             }
+            el().key(format!("board-head-host:{id}"))
+                .w_full()
+                .cursor(rune::Cursor::Pointer)
+                .on_press_tx(move |s: &mut App, tx| s.board_click(id, false, tx))
+                .on_double_press_tx(move |s: &mut App, tx| s.board_click(id, true, tx))
+                .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.board_col_drag(id, d, tx))
+                .child(head_row)
         }
         ColumnHead::Loose => {
             let root_label = if t.root().label.is_empty() { "Loose".to_string() } else { t.root().label.clone() };
@@ -396,12 +597,11 @@ fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, select
                 .grow(1.0)
                 .shrink()
                 .min_w(0.0);
-            head_row = head_row
+            head_row
                 .child(title)
-                .child(count_pill(v.p, "board-count:loose", col_data.cards.len()));
+                .child(count_pill(v.p, "board-count:loose", col_data.cards.len()))
         }
     }
-    head_row
 }
 
 /// One card on the board (BRD-010, BRD-011, BRD-012, BRD-014). Keyed by `NodeId`.

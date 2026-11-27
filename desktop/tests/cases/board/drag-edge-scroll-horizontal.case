@@ -1,0 +1,50 @@
+Holding a dragged card within 36 px of the board's right edge auto-scrolls the board row so it can land in an off-screen column.
+state: {"mode": "board", "right_open": false}
+events: drag:1220,115>55,0,1.2@0.3 key:s+cmd@1.8
+--- before
+# Wide
+
+Intro
+
+## A
+
+- Card A
+
+## B
+
+- Card B
+
+## C
+
+- Card C
+
+## D
+
+- Card D
+
+## E
+
+- Card E
+--- after
+# Wide
+
+Intro
+
+## A
+
+- Card A
+
+## B
+
+- Card B
+
+## C
+
+## D
+
+- Card D
+- Card C
+
+## E
+
+- Card E

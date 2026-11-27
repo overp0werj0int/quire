@@ -1,0 +1,30 @@
+Mid-drag a held column tilts at half the card angle and opens a column-wide slot between columns.
+state: {"mode": "board", "right_open": false}
+at: 0.79
+events: drag:board-head:10736194977767075865>360,0,0.4@0.4
+expect: tilt:board-col:10736194977767075865: 0.0378
+expect: rect:board-col-slot: [848.0, 57.0, 280.0, 252.0]
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

@@ -10,8 +10,8 @@ use std::time::Duration;
 use rune::{Drag, Phase, Tx};
 
 use crate::app::{App, Mode};
-use crate::board::{self, Board, Slot};
-use crate::board_app::card_key;
+use crate::board::{self, Board, ColumnHead, Slot};
+use crate::board_app::{card_key, head_key};
 use crate::map::{self, NodeId};
 
 /// Pointer travel in points before a press lifts a card or column (BRD-014, BRD-021).
@@ -131,9 +131,23 @@ impl Hold {
         }
     }
 
+    pub fn settling_column(&self) -> Option<NodeId> {
+        match self {
+            Hold::Settling { what: Held::Column(id), .. } => Some(*id),
+            _ => None,
+        }
+    }
+
     pub fn slot(&self) -> Option<Slot> {
         match self {
             Hold::Held { slot, .. } => *slot,
+            _ => None,
+        }
+    }
+
+    pub fn col_slot(&self) -> Option<usize> {
+        match self {
+            Hold::Held { col_slot, .. } => *col_slot,
             _ => None,
         }
     }
@@ -231,9 +245,7 @@ impl App {
                             v.selected = id;
                         }
                         self.board_aim_card();
-                        if !reduced {
-                            tx.wake_after(Duration::from_millis(16));
-                        }
+                        tx.wake_after(Duration::from_millis(16));
                     }
                     Hold::Held { what: Held::Card(cid), at, lean, sign, last_x, last_t, .. } if *cid == id => {
                         let dx = pt[0] - *last_x;
@@ -246,9 +258,7 @@ impl App {
                         *last_x = pt[0];
                         *last_t = now;
                         self.board_aim_card();
-                        if !reduced {
-                            tx.wake_after(Duration::from_millis(16));
-                        }
+                        tx.wake_after(Duration::from_millis(16));
                     }
                     _ => {}
                 }
@@ -420,11 +430,214 @@ impl App {
         None
     }
 
-    /// Per-frame board animation step (settle glide + velocity relaxation when hand pauses).
+    /// Drag handler on a heading column's header (BRD-021, BRD-022, BRD-023).
+    pub fn board_col_drag(&mut self, id: NodeId, d: &Drag, tx: &mut Tx) {
+        let pt = self.board_point(d);
+        let now = self.now.get();
+        match d.phase {
+            Phase::Down => {
+                self.board.dropped = false;
+                if !self.board_editable() {
+                    return;
+                }
+                let layout = self.board.layout.borrow();
+                let view = layout.view;
+                let rect = layout.cols.get(&id).copied().unwrap_or([view[0] + pt[0], view[1] + pt[1], 280.0, 200.0]);
+                let local = [rect[0] - view[0], rect[1] - view[1]];
+                let grab = [(pt[0] - local[0]).clamp(0.0, rect[2]), (pt[1] - local[1]).clamp(0.0, rect[3])];
+                let size = [rect[2], rect[3]];
+                drop(layout);
+                self.board.hold = Hold::Pressed { what: Held::Column(id), start: pt, grab, size, origin_pos: local };
+                tx.live_only();
+            }
+            Phase::Move => {
+                let reduced = crate::motion::reduced();
+                match &mut self.board.hold {
+                    Hold::Pressed { what: Held::Column(cid), start, grab, size, origin_pos } if *cid == id => {
+                        if (pt[0] - start[0]).hypot(pt[1] - start[1]) <= THRESHOLD {
+                            tx.live_only();
+                            return;
+                        }
+                        let (grab, size, origin_pos) = (*grab, *size, *origin_pos);
+                        let (lean, sign) = ((BASE_DEG * 0.5).to_radians(), 1.0);
+                        self.board.hold = Hold::Held {
+                            what: Held::Column(id),
+                            grab,
+                            at: pt,
+                            size,
+                            origin_pos,
+                            slot: None,
+                            col_slot: None,
+                            refused: None,
+                            lean,
+                            sign,
+                            last_x: pt[0],
+                            last_t: now,
+                            tick: now,
+                        };
+                        if let Some(v) = self.map_view_mut() {
+                            v.selected = id;
+                        }
+                        self.board_aim_column();
+                        tx.wake_after(Duration::from_millis(16));
+                    }
+                    Hold::Held { what: Held::Column(cid), at, lean, sign, last_x, last_t, .. } if *cid == id => {
+                        let dx = pt[0] - *last_x;
+                        let dt = (now - *last_t).max(1.0 / 240.0) as f32;
+                        let vx = dx / dt;
+                        let (new_lean, new_sign) = tilt_radians(*sign, dx, vx, reduced, true);
+                        *at = pt;
+                        *lean = new_lean;
+                        *sign = new_sign;
+                        *last_x = pt[0];
+                        *last_t = now;
+                        self.board_aim_column();
+                        tx.wake_after(Duration::from_millis(16));
+                    }
+                    _ => {}
+                }
+            }
+            Phase::Up => {
+                let hold = std::mem::take(&mut self.board.hold);
+                let Hold::Held { what: Held::Column(cid), grab, at, size, origin_pos, col_slot, refused, lean, .. } = hold else {
+                    return;
+                };
+                self.board.dropped = true;
+                let from = [at[0] - grab[0], at[1] - grab[1]];
+                if d.cancelled() {
+                    self.start_settle(Held::Column(cid), from, origin_pos, size, grab, lean, tx);
+                    return;
+                }
+                let t = self.map_tree();
+                let Some(held_idx) = t.find(cid) else { return };
+                let model = board::build(&t);
+                if let Some(target_col) = col_slot {
+                    let target_to = self.col_slot_local_pos(&model, &t, held_idx, target_col).unwrap_or(origin_pos);
+                    let mut final_id = cid;
+                    if !board::is_same_column_slot(&model, held_idx, target_col)
+                        && let Ok(add) = board::column_add(&model, &t, held_idx, target_col)
+                    {
+                        match map::move_to(self.active_text(), &t, held_idx, add) {
+                            Ok(splice) => {
+                                self.board_apply(&t, &splice, tx);
+                                if let Some(sel) = self.board_selected() {
+                                    final_id = sel;
+                                    let t2 = self.map_tree();
+                                    if let Some(hi) = t2.find(sel) {
+                                        tx.scroll_into_view(head_key(ColumnHead::Heading(hi), &t2));
+                                    }
+                                }
+                            }
+                            Err(Some(why)) => {
+                                self.toast(why, tx);
+                                self.start_settle(Held::Column(cid), from, origin_pos, size, grab, lean, tx);
+                                return;
+                            }
+                            Err(None) => {}
+                        }
+                    }
+                    self.start_settle(Held::Column(final_id), from, target_to, size, grab, lean, tx);
+                } else {
+                    if let Some(reason) = refused {
+                        self.toast(reason, tx);
+                    }
+                    self.start_settle(Held::Column(cid), from, origin_pos, size, grab, lean, tx);
+                }
+            }
+        }
+    }
+
+    /// Updates `col_slot` and `refused` for the currently held column (BRD-021).
+    pub(crate) fn board_aim_column(&mut self) {
+        let Hold::Held { what: Held::Column(id), grab, at, size, .. } = self.board.hold else { return };
+        let t = self.map_tree();
+        let Some(held_idx) = t.find(id) else { return };
+        let model = board::build(&t);
+        let heads: Vec<usize> = model
+            .columns
+            .iter()
+            .filter_map(|c| match c.head {
+                ColumnHead::Heading(h) if h != held_idx => Some(h),
+                _ => None,
+            })
+            .collect();
+        if heads.is_empty() {
+            if let Hold::Held { col_slot, refused, .. } = &mut self.board.hold {
+                *col_slot = Some(0);
+                *refused = None;
+            }
+            return;
+        }
+        let layout = self.board.layout.borrow();
+        let view = layout.view;
+        let mid_x = view[0] + (at[0] - grab[0]) + size[0] * 0.5;
+        let mut target = heads.len();
+        for (k, &h) in heads.iter().enumerate() {
+            if let Some(&cr) = layout.cols.get(&t.nodes[h].id) {
+                let cx = cr[0] + cr[2] * 0.5;
+                if cx > mid_x {
+                    target = k;
+                    break;
+                }
+            }
+        }
+        drop(layout);
+
+        let (allowed, why) = if board::is_same_column_slot(&model, held_idx, target)
+            || board::column_add(&model, &t, held_idx, target).is_ok()
+        {
+            (Some(target), None)
+        } else {
+            let reason = board::column_add(&model, &t, held_idx, target).err().flatten();
+            (None, reason)
+        };
+        if let Hold::Held { col_slot, refused, .. } = &mut self.board.hold {
+            *col_slot = allowed;
+            *refused = why;
+        }
+    }
+
+    /// Estimates the board-local `[x, y]` of column slot `target_col` for the settle glide target.
+    fn col_slot_local_pos(&self, model: &Board, t: &map::Tree, held_idx: usize, target_col: usize) -> Option<[f32; 2]> {
+        let layout = self.board.layout.borrow();
+        let view = layout.view;
+        let b = self.settings().size as f32;
+        let col_gap = crate::page::r(b * 12.0 / 14.0);
+        let outer_pad = crate::page::r(b * 16.0 / 14.0);
+        let heads: Vec<usize> = model
+            .columns
+            .iter()
+            .filter_map(|c| match c.head {
+                ColumnHead::Heading(h) if h != held_idx => Some(h),
+                _ => None,
+            })
+            .collect();
+        if let Some(&after_h) = heads.get(target_col)
+            && let Some(&r) = layout.cols.get(&t.nodes[after_h].id)
+        {
+            return Some([r[0] - view[0], r[1] - view[1]]);
+        }
+        if let Some(&before_h) = target_col.checked_sub(1).and_then(|k| heads.get(k))
+            && let Some(&r) = layout.cols.get(&t.nodes[before_h].id)
+        {
+            return Some([r[0] + r[2] + col_gap - view[0], r[1] - view[1]]);
+        }
+        if let Some(&loose_r) = layout.cols.get(&0) {
+            return Some([loose_r[0] + loose_r[2] + col_gap - view[0], loose_r[1] - view[1]]);
+        }
+        Some([outer_pad, outer_pad])
+    }
+
+    /// Per-frame board animation step: settle glide, edge auto-scroll (BRD-018), and velocity
+    /// tilt relaxation when the hand pauses (BRD-015).
     pub(crate) fn poll_board(&mut self, now: f64, tx: &mut Tx) -> bool {
         if self.mode != Mode::Board {
             return false;
         }
+        let mut need_reaim: Option<Held> = None;
+        let mut changed = false;
+        let mut keep_waking = false;
+
         match &mut self.board.hold {
             Hold::Settling { start, .. } => {
                 if crate::motion::reduced() || now - *start >= SETTLE_SECS {
@@ -432,20 +645,119 @@ impl App {
                     return true;
                 }
                 tx.wake_after(Duration::from_millis(16));
-                true
+                return true;
             }
-            Hold::Held { what, lean, sign, last_t, .. } => {
+            Hold::Held { what, at, lean, sign, last_t, tick, .. } => {
+                let what = *what;
+                let at = *at;
+                let dt = (now - *tick).clamp(0.0, 0.05) as f32;
+                *tick = now;
+
+                // 1. Velocity relaxation when hand pauses (BRD-015).
                 let reduced = crate::motion::reduced();
-                if !reduced && now - *last_t > 0.08 {
+                if !reduced {
                     let rest = *sign * BASE_DEG.to_radians() * if what.is_column() { 0.5 } else { 1.0 };
                     if (*lean - rest).abs() > 0.001 {
-                        *lean = rest;
-                        return true;
+                        if now - *last_t > 0.08 {
+                            *lean = rest;
+                            changed = true;
+                        } else {
+                            keep_waking = true;
+                        }
                     }
                 }
-                false
+
+                // 2. Edge auto-scroll (BRD-018): within 36 px of board left/right or column top/bottom.
+                let layout = self.board.layout.borrow();
+                let view = layout.view;
+                let max_x = (layout.row_w - view[2]).max(0.0);
+                let vx = if view[2] > 0.0 && at[0] < EDGE {
+                    -EDGE_SPEED * ((EDGE - at[0]) / EDGE).clamp(0.0, 1.0)
+                } else if view[2] > 0.0 && at[0] > view[2] - EDGE {
+                    EDGE_SPEED * ((at[0] - (view[2] - EDGE)) / EDGE).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let mut h_scroll: Option<f32> = None;
+                if vx != 0.0 && max_x > 0.0 {
+                    let cur = self.board.scroll_x.get();
+                    let can_move = (vx < 0.0 && cur > 0.01) || (vx > 0.0 && cur < max_x - 0.01);
+                    if can_move {
+                        keep_waking = true;
+                        if dt > 0.0 {
+                            let next = (cur + vx * dt).clamp(0.0, max_x);
+                            if (next - cur).abs() > 0.01 {
+                                h_scroll = Some(next);
+                            }
+                        }
+                    }
+                }
+
+                let mut v_scroll: Option<(u64, f32)> = None;
+                if !what.is_column() {
+                    let px = view[0] + at[0];
+                    let py = view[1] + at[1];
+                    let hovered_col = layout
+                        .cols
+                        .iter()
+                        .find(|&(_, cr)| px >= cr[0] && px <= cr[0] + cr[2])
+                        .map(|(&k, _)| k);
+                    if let Some(key_id) = hovered_col
+                        && let Some(&cv) = layout.col_views.get(&key_id)
+                        && let Some(&content_h) = layout.col_content_h.get(&key_id)
+                    {
+                        let max_y = (content_h - cv[3]).max(0.0);
+                        if max_y > 0.0 && py >= cv[1] - 48.0 && py <= cv[1] + cv[3] + 48.0 {
+                            let vy = if py < cv[1] + EDGE {
+                                -EDGE_SPEED * ((cv[1] + EDGE - py) / EDGE).clamp(0.0, 1.0)
+                            } else if py > cv[1] + cv[3] - EDGE {
+                                EDGE_SPEED * ((py - (cv[1] + cv[3] - EDGE)) / EDGE).clamp(0.0, 1.0)
+                            } else {
+                                0.0
+                            };
+                            if vy != 0.0 {
+                                let cur = self.board.col_scroll.borrow().get(&key_id).copied().unwrap_or(0.0);
+                                let can_move = (vy < 0.0 && cur > 0.01) || (vy > 0.0 && cur < max_y - 0.01);
+                                if can_move {
+                                    keep_waking = true;
+                                    if dt > 0.0 {
+                                        let next = (cur + vy * dt).clamp(0.0, max_y);
+                                        if (next - cur).abs() > 0.01 {
+                                            v_scroll = Some((key_id, next));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                drop(layout);
+
+                if let Some(next_x) = h_scroll {
+                    self.board.scroll_x.set(next_x);
+                    tx.scroll_to_instant("board-scroll", next_x, 0.0);
+                    changed = true;
+                    need_reaim = Some(what);
+                }
+                if let Some((key_id, next_y)) = v_scroll {
+                    self.board.col_scroll.borrow_mut().insert(key_id, next_y);
+                    tx.scroll_to_instant(format!("board-col-scroll:{key_id}"), 0.0, next_y);
+                    changed = true;
+                    need_reaim = Some(what);
+                }
             }
-            _ => false,
+            _ => return false,
         }
+
+        if let Some(what) = need_reaim {
+            match what {
+                Held::Card(_) => self.board_aim_card(),
+                Held::Column(_) => self.board_aim_column(),
+            }
+        }
+        if keep_waking {
+            tx.wake_after(Duration::from_millis(16));
+        }
+        changed
     }
 }

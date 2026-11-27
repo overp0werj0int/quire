@@ -1,0 +1,52 @@
+Dragging a heading column's header past another column moves the heading and all its cards on disk.
+state: {"mode": "board", "right_open": false}
+events: drag:board-head:10736194977767075865>360,0,0.4@0.3 key:s+cmd@1.2
+expect: selected: board-head:10736194977767075865
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- after
+# Sprint
+
+Intro note before columns.
+
+## Doing
+
+- Build kanban board
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Done
+
+- Review design

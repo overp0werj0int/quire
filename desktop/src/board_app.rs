@@ -19,12 +19,16 @@ use crate::map::{self, NodeId};
 pub struct BoardLayout {
     /// Board viewport `[x, y, w, h]` in window points.
     pub view: [f32; 4],
+    /// Total laid-out width of `board-row` for clamping horizontal scroll.
+    pub row_w: f32,
     /// Column outer rects by column key id (`0` for Loose, heading `NodeId` otherwise).
     pub cols: HashMap<u64, [f32; 4]>,
     /// Column header rects by column key id.
     pub heads: HashMap<u64, [f32; 4]>,
     /// Column scroll-area rects by column key id.
     pub col_views: HashMap<u64, [f32; 4]>,
+    /// Column card-stack content height by column key id, for clamping vertical scroll.
+    pub col_content_h: HashMap<u64, f32>,
     /// Card rects by `NodeId`.
     pub cards: HashMap<NodeId, [f32; 4]>,
 }
@@ -303,6 +307,11 @@ impl App {
         self.board.layout.borrow_mut().view = r;
     }
 
+    /// Records the board row's total width from `El::on_layout`.
+    pub fn board_row_laid_out(&self, w: f32) {
+        self.board.layout.borrow_mut().row_w = w;
+    }
+
     /// Records a column's outer rect from `El::on_layout`.
     pub fn board_col_laid_out(&self, col_key: u64, r: [f32; 4]) {
         self.board.layout.borrow_mut().cols.insert(col_key, r);
@@ -316,6 +325,11 @@ impl App {
     /// Records a column's cards scroll viewport rect from `El::on_layout`.
     pub fn board_col_view_laid_out(&self, col_key: u64, r: [f32; 4]) {
         self.board.layout.borrow_mut().col_views.insert(col_key, r);
+    }
+
+    /// Records a column's card-stack content height from `El::on_layout`.
+    pub fn board_col_content_laid_out(&self, col_key: u64, h: f32) {
+        self.board.layout.borrow_mut().col_content_h.insert(col_key, h);
     }
 
     /// Records a card's rect from `El::on_layout`.

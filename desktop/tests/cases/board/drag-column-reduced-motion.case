@@ -1,0 +1,30 @@
+Under reduced motion a held column keeps a fixed 1.5 degree tilt with no lean.
+state: {"mode": "board", "right_open": false}
+env: QUIRE_REDUCED_MOTION=1
+at: 0.65
+events: drag:board-head:10736194977767075865>360,0,0.4@0.4
+expect: tilt:board-col:10736194977767075865: 0.0262
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
