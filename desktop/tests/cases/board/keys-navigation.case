@@ -1,0 +1,28 @@
+Arrow and hjkl keys move selection vertically (up into the header), horizontally (matching height or falling back to last card or empty header), and Home selects the first column header.
+state: {"mode": "board", "right_open": false}
+events: tap:board-card:9399331354417882438@0.2 key:Up@0.4 key:Down@0.6 key:j@0.8 key:j@1.0 key:l@1.2 key:h@1.4 key:Home@1.6
+expect: selected: board-head:10736194977767075865
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

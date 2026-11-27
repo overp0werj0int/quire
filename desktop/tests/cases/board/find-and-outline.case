@@ -1,0 +1,28 @@
+Find matches column titles and card labels in note order, and clicking an outline heading selects that heading's column.
+state: {"mode": "board", "right_open": true}
+events: key:f+cmd@0.2 type:Done@0.5 key:Enter@0.9 key:Escape@1.2 tap:ol-3@1.6
+expect: selected: board-head:10856064137881781609
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

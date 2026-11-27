@@ -1,0 +1,53 @@
+x toggles a task card, Delete deletes a card and Ctrl+Z undoes it, and Delete on a column header refuses with the spec toast.
+state: {"mode": "board", "right_open": false}
+at: 1.9
+events: tap:board-card:9399331354417882438@0.2 key:x@0.4 key:Delete@0.7 key:z+cmd@1.0 key:s+cmd@1.2 key:Home@1.4 key:Delete@1.6
+expect: text:toast: 'Delete a column in Source or on the map'
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- after
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [x] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design

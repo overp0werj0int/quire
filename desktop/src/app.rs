@@ -2859,12 +2859,7 @@ impl App {
                 self.map_go_line(line, tx);
                 self.keys_to_note(tx);
             }
-            Mode::Board => {
-                let t = self.map_tree();
-                if let Some(item) = crate::board::item_of(&t, t.at_line(line)) {
-                    self.board_select(t.nodes[item].id, tx);
-                }
-            }
+            Mode::Board => self.board_jump(line, tx),
         }
     }
 

@@ -41,12 +41,6 @@ pub enum Held {
 }
 
 impl Held {
-    pub fn id(self) -> NodeId {
-        match self {
-            Held::Card(id) | Held::Column(id) => id,
-        }
-    }
-
     pub fn is_column(self) -> bool {
         matches!(self, Held::Column(_))
     }
@@ -149,14 +143,6 @@ impl Hold {
         match self {
             Hold::Held { col_slot, .. } => *col_slot,
             _ => None,
-        }
-    }
-
-    /// The tilt in radians if currently held, or `0.0` otherwise.
-    pub fn lean(&self) -> f32 {
-        match self {
-            Hold::Held { lean, .. } => *lean,
-            _ => 0.0,
         }
     }
 }

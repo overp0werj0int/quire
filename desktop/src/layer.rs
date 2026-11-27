@@ -91,6 +91,8 @@ pub enum MenuOf {
     Block(usize),
     /// A map node (MAP-062).
     Node(crate::map::NodeId),
+    /// A board card (BRD-028).
+    BoardCard(crate::map::NodeId),
     /// A recent folder row on the welcome screen.
     RecentVault(std::path::PathBuf),
     /// An Open shelf tab in the sidebar: rename, copy path, close, close others.

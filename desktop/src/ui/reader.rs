@@ -640,7 +640,7 @@ pub fn find_placed(v: V) -> Option<El> {
 /// without painting any fog or curtain behind the pill, so only the floating pill and its small
 /// elevation shadow appear over the page.
 pub fn toast_band(v: V) -> Option<El> {
-    if super::mapping(v.s) {
+    if super::mapping(v.s) || super::boarding(v.s) {
         return None;
     }
     let h = band_h(v)?;

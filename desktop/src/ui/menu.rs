@@ -10,6 +10,8 @@
 //! or Shift+F10 in the editor), its first item shows marked; the pointer and the
 //! keys share one highlight.
 
+use std::borrow::Cow;
+
 use rune::{El, col, el, row, text};
 
 use super::V;
@@ -30,14 +32,15 @@ type Run = Box<dyn Fn(&mut App, &mut rune::Tx)>;
 /// or a check reaches it; the others are `tm-<index>`.
 struct Item {
     key: Option<&'static str>,
-    label: &'static str,
+    dyn_key: Option<String>,
+    label: Cow<'static, str>,
     keys: Option<String>,
     enabled: bool,
     run: Run,
 }
 
-fn item(label: &'static str, run: Run) -> Item {
-    Item { key: None, label, keys: None, enabled: true, run }
+fn item(label: impl Into<Cow<'static, str>>, run: Run) -> Item {
+    Item { key: None, dyn_key: None, label: label.into(), keys: None, enabled: true, run }
 }
 
 /// The open menu's card.
@@ -49,6 +52,7 @@ pub(super) fn menu(v: V, m: &Menu) -> Card {
         MenuOf::Edit(_) => list(v, "edit-menu", m.at, 200.0, None, 0.0, edit(v)),
         MenuOf::Block(line) => list(v, "block-menu", m.at, 200.0, None, 0.0, block(v, *line)),
         MenuOf::Node(id) => list(v, "node-menu", m.at, 200.0, None, 0.0, node(v, *id)),
+        MenuOf::BoardCard(id) => list(v, "board-card-menu", m.at, 200.0, None, 0.0, board_card(v, *id)),
         MenuOf::RecentVault(path) => list(v, "recent-menu", m.at, 180.0, None, 0.0, recent_vault(path)),
         MenuOf::Tab(t) => list(v, "tab-menu", m.at, 180.0, None, 0.0, tab_menu(v, t)),
     };
@@ -73,8 +77,8 @@ fn list(v: V, key: &str, at: (f32, f32), min_w: f32, head: Option<El>, head_h: f
     let mut panel = popup_frame(col(), p).key(key).absolute(x, y).w(w).padding(5.0).radius(radius::FIELD).role("menu").focus_group().children(head);
     for (i, it) in items.into_iter().enumerate() {
         let ink = if it.enabled { p.ink } else { p.mute };
-        let key = it.key.map_or_else(|| format!("tm-{i}"), str::to_string);
-        let mut r = row().key(key).w_full().h(size::MENU_ROW).px(space::PAD_INPUT_X).gap(14.0).center_y().radius(radius::CONTROL).role("menuitem").label(it.label).child(label(it.label, nav(panel::BODY, false), ink).grow(1.0));
+        let key = it.dyn_key.or_else(|| it.key.map(str::to_string)).unwrap_or_else(|| format!("tm-{i}"));
+        let mut r = row().key(key).w_full().h(size::MENU_ROW).px(space::PAD_INPUT_X).gap(14.0).center_y().radius(radius::CONTROL).role("menuitem").label(it.label.as_ref()).child(label(it.label.as_ref(), nav(panel::BODY, false), ink).grow(1.0));
         if let Some(k) = it.keys {
             r = r.child(label(k, keys(panel::BODY_SMALL), p.mute));
         }
@@ -398,6 +402,67 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
             items
         }
     }
+}
+
+/// A board card's menu (BRD-028): Edit, Copy, Move to <Column> (one per other column), and Delete.
+fn board_card(v: V, id: crate::map::NodeId) -> Vec<Item> {
+    let t = v.s.map_tree();
+    let Some(i) = t.find(id) else { return Vec::new() };
+    let model = crate::board::build(&t);
+    let Some((cur_col, _)) = model.find_card(i) else { return Vec::new() };
+    let key_of = |act: &str| Some(v.s.keymap.label(act)).filter(|k| !k.is_empty());
+
+    let mut items = vec![
+        Item {
+            key: Some("menu-board-edit"),
+            keys: key_of("board.edit"),
+            ..item("Edit", Box::new(move |s, tx| {
+                s.board_select(id);
+                s.board_edit_selected(tx);
+            }))
+        },
+        Item {
+            key: Some("menu-board-copy"),
+            keys: key_of("board.copy"),
+            ..item("Copy", Box::new(move |s, tx| {
+                s.board_select(id);
+                s.board_copy(tx);
+            }))
+        },
+    ];
+
+    for (ci, col) in model.columns.iter().enumerate() {
+        if ci == cur_col {
+            continue;
+        }
+        let target_slot = crate::board::Slot { column: ci, index: col.cards.len() };
+        let allowed = crate::board::nearest_allowed(&model, &t, i, target_slot).is_some();
+        let target_key = col.head.key_id(&t);
+        let col_name = match col.head {
+            crate::board::ColumnHead::Loose => {
+                if t.root().label.is_empty() { "Loose".to_string() } else { t.root().label.clone() }
+            }
+            crate::board::ColumnHead::Heading(h) => t.nodes[h].label.clone(),
+        };
+        items.push(Item {
+            dyn_key: Some(format!("menu-board-move-{target_key}")),
+            enabled: allowed,
+            ..item(
+                format!("Move to {col_name}"),
+                Box::new(move |s, tx| s.board_move_card_to_column(id, target_key, tx)),
+            )
+        });
+    }
+
+    items.push(Item {
+        key: Some("menu-board-delete"),
+        keys: key_of("board.delete"),
+        ..item("Delete", Box::new(move |s, tx| {
+            s.board_select(id);
+            s.board_delete(tx);
+        }))
+    });
+    items
 }
 
 /// The tree menu's second step for a folder with notes: what moves to the trash, and two

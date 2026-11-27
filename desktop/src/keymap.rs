@@ -23,6 +23,7 @@ pub enum Ctx {
     Rewrite,
     Map,
     MapEdit,
+    Board,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +62,7 @@ const W: &[Ctx] = &[Writer, Sheet];
 const WM: &[Ctx] = &[Writer, Sheet, MapEdit];
 const M: &[Ctx] = &[Map];
 const ME: &[Ctx] = &[MapEdit];
+const B: &[Ctx] = &[Board];
 
 pub const TABLE: &[Action] = &[
     // Global.
@@ -282,6 +284,29 @@ pub const TABLE: &[Action] = &[
     a(155, "mapedit.numbered", "New node as a numbered item", ME, Quire, &["Ctrl+Shift+7"]),
     a(156, "mapedit.bulleted", "New node as a bulleted item", ME, Quire, &["Ctrl+Shift+8"]),
     a(157, "mapedit.task", "New node as a task", ME, Quire, &["Ctrl+Shift+9"]),
+    // Board.
+    a(196, "board.left", "Select left", B, Adapted, &["Left", "h"]),
+    a(197, "board.right", "Select right", B, Adapted, &["Right", "l"]),
+    a(198, "board.up", "Select up", B, Adapted, &["Up", "k"]),
+    a(199, "board.down", "Select down", B, Adapted, &["Down", "j"]),
+    a(200, "board.home", "First column", B, Adapted, &["Home"]),
+    a(201, "board.move-up", "Move card up", B, Adapted, &["Alt+Up"]),
+    a(202, "board.move-down", "Move card down", B, Adapted, &["Alt+Down"]),
+    a(203, "board.move-left", "Move left", B, Adapted, &["Alt+Left"]),
+    a(204, "board.move-right", "Move right", B, Adapted, &["Alt+Right"]),
+    a(205, "board.toggle-task", "Tick the task", B, Adapted, &["x"]),
+    a(206, "board.edit", "Edit in sheet", B, Adapted, &["Enter", "e", "F2"]),
+    a(207, "board.delete", "Delete the card", B, Adapted, &["Delete", "Backspace"]),
+    a(208, "board.copy", "Copy Markdown", B, Adapted, &["Ctrl+C"]),
+    a(209, "board.undo", "Undo", B, Adapted, &["Ctrl+Z"]),
+    a(210, "board.redo", "Redo", B, Adapted, &["Ctrl+Shift+Z", "Ctrl+Y"]),
+    a(211, "board.follow-link", "Follow the card's link", B, Adapted, &["Ctrl+Enter"]),
+    a(212, "board.card-menu", "Card menu", B, Adapted, &["Right-click"]),
+    a(213, "board.find", "Find", B, Adapted, &["Ctrl+F", "/"]),
+    a(214, "board.find-next", "Next match", B, Adapted, &["n", "F3", "Ctrl+G"]),
+    a(215, "board.find-previous", "Previous match", B, Adapted, &["N", "Shift+F3", "Ctrl+Shift+G"]),
+    a(216, "board.help", "Keyboard help", B, Adapted, &["?"]),
+    a(217, "board.escape", "Close find or cancel drag", B, Adapted, &["Esc"]),
 ];
 
 pub fn action(id: &str) -> Option<&'static Action> {
@@ -439,7 +464,7 @@ impl Overrides {
 }
 
 fn falls_to_global(ctx: Ctx) -> bool {
-    matches!(ctx, Reader | Writer | Find | Palette | Field | Map | MapEdit)
+    matches!(ctx, Reader | Writer | Find | Palette | Field | Map | MapEdit | Board)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

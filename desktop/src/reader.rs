@@ -1318,25 +1318,34 @@ impl App {
     pub fn find_count(&self) -> usize {
         match self.mode {
             Mode::Source => self.source_matches().len(),
-            Mode::Map | Mode::Board => self.map_hits().len(),
+            Mode::Map => self.map_hits().len(),
+            Mode::Board => self.board_hits().len(),
             Mode::Preview => self.find_matches().len(),
         }
     }
 
     /// How many matches there are and the one a search starts from: the first at or below the
-    /// top block (RD-57), or on the map at or after the selected node (MAP-066).
+    /// top block (RD-57), or on the map/board at or after the selected item (MAP-066, BRD-030).
     fn find_start(&self) -> (usize, usize) {
         if self.mode == Mode::Map {
             let h = self.map_hits();
             return (h.len(), self.map_first_hit(&h));
         }
+        if self.mode == Mode::Board {
+            let h = self.board_hits();
+            return (h.len(), self.board_first_hit(&h));
+        }
         let m = self.find_matches();
         (m.len(), first_match(&m, self.top()))
     }
 
-    /// Brings the current match into view: on the page, or on the map.
+    /// Brings the current match into view: on the page, on the map, or on the board.
     pub(crate) fn show_match(&mut self, glide: bool, tx: &mut Tx) {
-        if self.mode == Mode::Map { self.map_show_hit(tx) } else { self.center_match(glide, tx) }
+        match self.mode {
+            Mode::Map => self.map_show_hit(tx),
+            Mode::Board => self.board_show_hit(tx),
+            _ => self.center_match(glide, tx),
+        }
     }
 
     /// The matches of the find query in the open note.
@@ -1527,12 +1536,7 @@ impl App {
             Mode::Source => self.source_jump(line.unwrap_or(doc.blocks[i].lines.start), tx),
             Mode::Preview => self.land(i, true, tx),
             Mode::Map => self.map_go_line(line.unwrap_or(doc.blocks[i].lines.start), tx),
-            Mode::Board => {
-                let t = self.map_tree();
-                if let Some(item) = crate::board::item_of(&t, t.at_line(line.unwrap_or(doc.blocks[i].lines.start))) {
-                    self.board_select(t.nodes[item].id, tx);
-                }
-            }
+            Mode::Board => self.board_jump(line.unwrap_or(doc.blocks[i].lines.start), tx),
         }
     }
 

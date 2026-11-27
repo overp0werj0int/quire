@@ -59,6 +59,12 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
         s.map_node_menu(s.map_selected(), None, tx);
         return true;
     }
+    if vault && s.mode == crate::app::Mode::Board && !s.active_locked() && crate::focus::on_note(tx) && menu_key(ev) {
+        if let Some(id) = s.board_selected() {
+            s.board_card_menu(id, None, tx);
+        }
+        return true;
+    }
     for ctx in stack {
         if matches!(ctx, Ctx::Reader | Ctx::Map) {
             // The second key of `g g` (RD-23).
@@ -95,7 +101,10 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             if a.id == "map.escape" {
                 return s.map_escape(tx);
             }
-            // A locked note's map is hidden behind the lock panel: its node keys select nothing.
+            if a.id == "board.escape" {
+                return s.board_escape(tx);
+            }
+            // A locked note's map or board is hidden behind the lock panel: its item keys select nothing.
             if *ctx == Ctx::Map
                 && s.active_locked()
                 && !matches!(
@@ -105,17 +114,33 @@ fn page_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx, stop: Option<Pane>) -> bool
             {
                 continue;
             }
-            // From Find or another text field, Reader/Map single-key shortcuts stay quiet so typing
-            // in the field never fires them (MAP-060, MAP-066).
-            if matches!(ctx, Ctx::Reader | Ctx::Map)
+            if *ctx == Ctx::Board && s.active_locked() && a.id != "board.help" {
+                continue;
+            }
+            // From Find or another text field, Reader/Map/Board single-key shortcuts stay quiet so typing
+            // in the field never fires them (MAP-060, MAP-066, BRD-030).
+            if matches!(ctx, Ctx::Reader | Ctx::Map | Ctx::Board)
                 && field
-                && !matches!(a.id, "reader.find" | "reader.find-next" | "reader.find-previous" | "map.find" | "map.find-next" | "map.find-previous")
+                && !matches!(
+                    a.id,
+                    "reader.find"
+                        | "reader.find-next"
+                        | "reader.find-previous"
+                        | "map.find"
+                        | "map.find-next"
+                        | "map.find-previous"
+                        | "board.find"
+                        | "board.find-next"
+                        | "board.find-previous"
+                )
             {
                 continue;
             }
             // n and N step only while a query exists; F3, Shift+F3, Ctrl+G and Ctrl+Shift+G open Find.
-            if matches!(a.id, "reader.find-next" | "reader.find-previous" | "map.find-next" | "map.find-previous")
-                && s.find_query().is_none()
+            if matches!(
+                a.id,
+                "reader.find-next" | "reader.find-previous" | "map.find-next" | "map.find-previous" | "board.find-next" | "board.find-previous"
+            ) && s.find_query().is_none()
                 && matches!(ev.key, rune::Key::Text(_))
             {
                 continue;
@@ -255,6 +280,8 @@ pub(crate) fn page_stack(s: &App) -> &'static [Ctx] {
         &[Ctx::MapEdit, Ctx::Global]
     } else if s.mode == crate::app::Mode::Map {
         &[Ctx::Map, Ctx::Global]
+    } else if s.mode == crate::app::Mode::Board {
+        &[Ctx::Board, Ctx::Global]
     } else {
         &[Ctx::Writer, Ctx::Global]
     }
@@ -316,7 +343,7 @@ pub fn handler(id: &str) -> Option<Run> {
                 s.zoom(None, tx);
             }
         },
-        "app.help" | "reader.help" | "map.help" => |s, tx| s.toggle_help(tx),
+        "app.help" | "reader.help" | "map.help" | "board.help" => |s, tx| s.toggle_help(tx),
         "app.undo-delete" => |s, tx| s.undo_delete(tx),
         "app.next-pane" => |s, tx| s.step_pane(false, tx),
         "app.previous-pane" => |s, tx| s.step_pane(true, tx),
@@ -450,6 +477,28 @@ pub fn handler(id: &str) -> Option<Run> {
         "map.find-previous" => |s, tx| find_step_or_open(s, false, tx),
         "map.escape" => |s, tx| {
             s.map_escape(tx);
+        },
+        "board.left" => |s, tx| s.board_move_sel_h(-1, tx),
+        "board.right" => |s, tx| s.board_move_sel_h(1, tx),
+        "board.up" => |s, tx| s.board_move_sel_v(-1, tx),
+        "board.down" => |s, tx| s.board_move_sel_v(1, tx),
+        "board.home" => |s, tx| s.board_home(tx),
+        "board.move-up" => |s, tx| s.board_move_card_v(-1, tx),
+        "board.move-down" => |s, tx| s.board_move_card_v(1, tx),
+        "board.move-left" => |s, tx| s.board_move_h(-1, tx),
+        "board.move-right" => |s, tx| s.board_move_h(1, tx),
+        "board.toggle-task" => |s, tx| s.board_toggle_selected_task(tx),
+        "board.edit" => |s, tx| s.board_edit_selected(tx),
+        "board.delete" => |s, tx| s.board_delete(tx),
+        "board.copy" => |s, tx| s.board_copy(tx),
+        "board.undo" => |s, tx| s.board_undo(false, tx),
+        "board.redo" => |s, tx| s.board_undo(true, tx),
+        "board.follow-link" => |s, tx| s.board_follow_link(tx),
+        "board.find" => |s, tx| s.open_find(tx),
+        "board.find-next" => |s, tx| find_step_or_open(s, true, tx),
+        "board.find-previous" => |s, tx| find_step_or_open(s, false, tx),
+        "board.escape" => |s, tx| {
+            s.board_escape(tx);
         },
         // The editor follows a Ctrl-clicked link itself; this entry lists it in Settings.
         "writer.follow-link-click" => |_, _| {},

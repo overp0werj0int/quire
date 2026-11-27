@@ -2,11 +2,11 @@
 //! columns of cards laid out by Rune flow layout, reusing the reader's inline runs,
 //! the map's block cards, and the design system's components and tokens.
 
-use rune::{Color, Drag, El, ScrollSpec, Spring, Tx, WheelEvent, col, el, row, text};
+use rune::{Color, Drag, El, ScrollSpec, Spring, TextHighlight, Tx, WheelEvent, col, el, row, text};
 
 use super::components::{checkbox_box, count_pill, faded_h};
 use super::map as ui_map;
-use super::preview::{Cx, Look, look_at};
+use super::preview::{Cx, Hl, Look, look_at};
 use super::tokens::{Elevation, radius, space};
 use super::{V, styles};
 use crate::app::App;
@@ -50,6 +50,28 @@ fn board_look(v: V, width: f32) -> Look {
     look
 }
 
+/// Active Board Find query and current match, for painting match highlights (BRD-030).
+#[derive(Clone, Copy)]
+struct BoardFind<'a> {
+    q: &'a str,
+    cur: Option<crate::map_find::Hit>,
+}
+
+fn find_marks(c: &Roles, text: &str, f: BoardFind, node: usize) -> Vec<TextHighlight> {
+    let cur_k = f.cur.filter(|h| h.node == node && h.pid.is_none()).map(|h| h.k);
+    crate::writer_app::find_in(text, f.q)
+        .into_iter()
+        .enumerate()
+        .map(|(k, r)| {
+            if Some(k) == cur_k {
+                TextHighlight::new(r, c.find_current).color(c.find_current_text).key(crate::reader::FIND_CUR)
+            } else {
+                TextHighlight::new(r, c.find)
+            }
+        })
+        .collect()
+}
+
 /// Builds the full Board viewport filling the note area (BRD-007 to BRD-023).
 pub(super) fn board(v: V) -> El {
     let s = v.s;
@@ -63,6 +85,7 @@ pub(super) fn board(v: V) -> El {
     let c = &look.c;
     let (t, model) = s.board_model();
     let sel = s.board_selected();
+    let find = s.find_query().map(|q| BoardFind { q, cur: s.board_hits().get(s.reader.find.cur).copied() });
     let hold = &s.board.hold;
     let holding = hold.active();
     let held_card = hold.held_card();
@@ -128,6 +151,7 @@ pub(super) fn board(v: V) -> El {
             settling_card,
             col_settling,
             col_slot,
+            find,
         ));
     }
     if col_drag_slot.is_some() && !col_slot_placed {
@@ -208,6 +232,7 @@ fn column_el(
     settling_card: Option<NodeId>,
     col_settling: bool,
     col_slot: Option<(usize, f32)>,
+    find: Option<BoardFind>,
 ) -> El {
     let c = &cx.look.c;
     let b = cx.look.b;
@@ -219,7 +244,7 @@ fn column_el(
         ColumnHead::Loose => false,
     };
 
-    let header = column_header(v, cx, t, col_data, &h_key, head_selected, holding, key_id);
+    let header = column_header(v, cx, t, col_data, &h_key, head_selected, holding, key_id, find);
 
     let reduced = crate::motion::reduced();
     let glide = if reduced { Spring::NONE } else { Spring::new(LAYOUT_GLIDE, 0.0) };
@@ -255,7 +280,7 @@ fn column_el(
         }
         let selected = sel == Some(cid);
         let settling = settling_card == Some(cid);
-        cards_stack = cards_stack.child(card_el(v, cx, t, ci, selected, holding, settling));
+        cards_stack = cards_stack.child(card_el(v, cx, t, ci, selected, holding, settling, find));
         rest_k += 1;
     }
     if let Some((_, slot_h)) = col_slot
@@ -345,7 +370,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             let pos = [at[0] - grab[0], at[1] - grab[1]];
             let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
             let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
-            let body = card_body(v, cx, t, i, cx.look.width);
+            let body = card_body(v, cx, t, i, cx.look.width, None);
             let mut card = el()
                 .key(card_key(id))
                 .size(size[0], size[1])
@@ -396,7 +421,7 @@ fn hold_overlay(v: V, cx: &Cx, t: &Tree, model: &board::Board, hold: &Hold) -> O
             let lean = from_lean * (1.0 - k);
             let ox = (grab[0] / size[0].max(1.0)).clamp(0.0, 1.0);
             let oy = (grab[1] / size[1].max(1.0)).clamp(0.0, 1.0);
-            let body = card_body(v, cx, t, i, cx.look.width);
+            let body = card_body(v, cx, t, i, cx.look.width, None);
             let mut card = el()
                 .key(card_key(id))
                 .pin(Some(pos[0]), Some(pos[1]), None, None)
@@ -509,7 +534,7 @@ fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], 
 
     let mut stack = col().w_full().gap(CARD_GAP).pt(space::PX_6);
     for &ci in &col_data.cards {
-        let body = card_body(v, cx, t, ci, cx.look.width);
+        let body = card_body(v, cx, t, ci, cx.look.width, None);
         let card = el()
             .w_full()
             .py(CARD_PY)
@@ -545,7 +570,8 @@ fn lifted_column_el(v: V, cx: &Cx, t: &Tree, col_data: &Column, size: [f32; 2], 
 
 /// Column header row (BRD-009, BRD-021): 3 × 14 px branch colour bar (omitted on Loose), bold `B`
 /// title truncated with ellipsis, and right-aligned `count_pill`.
-fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, selected: bool, holding: bool, key_id: u64) -> El {
+#[allow(clippy::too_many_arguments)]
+fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, selected: bool, holding: bool, key_id: u64, find: Option<BoardFind>) -> El {
     let c = &cx.look.c;
     let b = cx.look.b;
     let st = map_app::style(Tier::Head, b, cx.look.family, cx.look.mono);
@@ -566,7 +592,10 @@ fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, select
             let id = n.id;
             let bar_col = ui_map::branch_color(c, n.branch);
             let bar = el().key(format!("board-bar:{id}")).size(BAR_W, BAR_H).radius(1.5).fill(bar_col);
-            let rich = ui_map::label(cx, n, st, c.strong);
+            let mut rich = ui_map::label(cx, n, st, c.strong);
+            if let Some(f) = find {
+                rich.marks = find_marks(c, &rich.text, f, h);
+            }
             let title = rich.el(st, c.strong, None).truncate().grow(1.0).shrink().min_w(0.0);
             head_row = head_row
                 .role("button")
@@ -604,15 +633,16 @@ fn column_header(v: V, cx: &Cx, t: &Tree, col_data: &Column, h_key: &str, select
     }
 }
 
-/// One card on the board (BRD-010, BRD-011, BRD-012, BRD-014). Keyed by `NodeId`.
-fn card_el(v: V, cx: &Cx, t: &Tree, i: usize, selected: bool, holding: bool, settling: bool) -> El {
+/// One card on the board (BRD-010, BRD-011, BRD-012, BRD-014, BRD-028). Keyed by `NodeId`.
+#[allow(clippy::too_many_arguments)]
+fn card_el(v: V, cx: &Cx, t: &Tree, i: usize, selected: bool, holding: bool, settling: bool, find: Option<BoardFind>) -> El {
     let c = &cx.look.c;
     let n = &t.nodes[i];
     let id = n.id;
     let key = if settling { format!("board-card-seat:{id}") } else { card_key(id) };
     let inner_w = cx.look.width;
 
-    let body = card_body(v, cx, t, i, inner_w);
+    let body = card_body(v, cx, t, i, inner_w, find);
     let mut card = el()
         .key(key)
         .w_full()
@@ -644,13 +674,14 @@ fn card_el(v: V, cx: &Cx, t: &Tree, i: usize, selected: bool, holding: bool, set
         .cursor(rune::Cursor::Pointer)
         .on_press_tx(move |s: &mut App, tx| s.board_click(id, false, tx))
         .on_double_press_tx(move |s: &mut App, tx| s.board_click(id, true, tx))
+        .on_secondary_press(move |s: &mut App, at, tx| s.board_card_menu(id, Some((at.x, at.y)), tx))
         .on_drag(move |s: &mut App, d: &mut Drag, tx: &mut Tx| s.board_card_drag(id, d, tx))
         .child(card)
 }
 
 /// Renders a card's inner content: section card, block card, task card, or inline text + child
-/// summary caption (BRD-004, BRD-010, BRD-011).
-fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32) -> El {
+/// summary caption (BRD-004, BRD-010, BRD-011, BRD-030).
+fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32, find: Option<BoardFind>) -> El {
     let c = &cx.look.c;
     let b = cx.look.b;
     let n = &t.nodes[i];
@@ -659,7 +690,10 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32) -> El {
     // Section card: heading under a column (BRD-004).
     if matches!(n.kind, NodeKind::Heading { .. }) {
         let st = map_app::style(Tier::Head, b, cx.look.family, cx.look.mono);
-        let rich = ui_map::label(cx, n, st, c.strong);
+        let mut rich = ui_map::label(cx, n, st, c.strong);
+        if let Some(f) = find {
+            rich.marks = find_marks(c, &rich.text, f, i);
+        }
         let cap_font = map_app::chip_font(b, cx.look.mono);
         return col()
             .w_full()
@@ -669,10 +703,12 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32) -> El {
     }
 
     // Block card: code, diff, table, quote, alert, HTML, image, gallery (BRD-010).
-    if let Body::Card(bl) = &n.body
-        && let Some((card_el, _)) = ui_map::block_card(cx, bl, i, &format!("b{id}"))
-    {
-        return card_el;
+    if let Body::Card(bl) = &n.body {
+        let hl = find.map(|f| Hl::new(f.q, f.cur.filter(|h| h.node == i).and_then(|h| h.pid.map(|pid| (pid, h.k)))));
+        let card_cx = Cx::map(v, cx.look, hl.as_ref());
+        if let Some((card_el, _)) = ui_map::block_card(&card_cx, bl, i, &format!("b{id}")) {
+            return card_el;
+        }
     }
 
     let st = map_app::style(Tier::Body, b, cx.look.family, cx.look.mono);
@@ -681,7 +717,10 @@ fn card_body(v: V, cx: &Cx, t: &Tree, i: usize, inner_w: f32) -> El {
         _ => None,
     };
     let ink = if task == Some(Task::Done) { c.dim } else { c.text };
-    let rich = ui_map::label(cx, n, st, ink);
+    let mut rich = ui_map::label(cx, n, st, ink);
+    if let Some(f) = find {
+        rich.marks = find_marks(c, &rich.text, f, i);
+    }
     let label_el = rich.el(st, ink, None).wrap_anywhere().grow(1.0).shrink().min_w(0.0);
 
     let top = if let Some(task) = task {

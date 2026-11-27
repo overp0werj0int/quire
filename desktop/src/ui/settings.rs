@@ -523,6 +523,7 @@ fn keys(v: V) -> El {
         (Ctx::Sheet, "In the edit sheet"),
         (Ctx::Map, "In the map"),
         (Ctx::MapEdit, "Naming a map node"),
+        (Ctx::Board, "On the board"),
         (Ctx::Find, "In find"),
         (Ctx::Palette, "In the palette"),
         (Ctx::Field, "In name fields"),

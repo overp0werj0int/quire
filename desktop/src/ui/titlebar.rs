@@ -173,10 +173,10 @@ fn actions(v: V, mut r: El) -> El {
         if s.active_locked() {
             r = r.child(bar_button_disabled(p, "find", &SEARCH, "Unlock note to find"));
         } else {
-            let find = if s.keymap.label("board.find").is_empty() { tip("Find in note", "reader.find") } else { tip("Find in note", "board.find") };
+            let find = tip("Find in note", "board.find");
             r = r.child(bar_toggle(p, "find", &SEARCH, &find, s.reader.find.open, act(|s, tx| s.toggle_find(tx))));
         }
-        let help = tip("Show shortcuts", "app.help");
+        let help = tip("Show shortcuts", "board.help");
         r = r.child(bar_button(p, "help", &HELP, &help, act(|s, tx| s.toggle_help(tx))));
     } else if v.has_doc() {
         // Find, the writer's view toggles (WR-79, WR-85, WR-125), and shortcuts help.

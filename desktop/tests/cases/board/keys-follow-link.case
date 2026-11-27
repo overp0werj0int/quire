@@ -1,0 +1,14 @@
+Ctrl+Enter on a card containing a wiki-link opens the linked note.
+state: {"mode": "board", "right_open": false}
+events: key:Enter+cmd@0.4
+expect: text:crumb-file: 'Target .md'
+--- before
+# Board
+
+## Todo
+
+- See [[Target]] for details
+--- file Target.md
+# Target
+
+Linked note body.

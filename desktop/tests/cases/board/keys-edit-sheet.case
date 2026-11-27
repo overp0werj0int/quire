@@ -1,0 +1,51 @@
+Pressing e on a card opens the Edit Sheet on the card's lines and Ctrl+Enter saves edits to disk.
+state: {"mode": "board", "right_open": false}
+events: tap:board-card:10358574669306381026@0.2 key:e@0.5 key:End+cmd@0.8 type:_now@1.0 key:Enter+cmd@1.4 key:s+cmd@1.7
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
+--- after
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board now
+
+## Done
+
+- Review design

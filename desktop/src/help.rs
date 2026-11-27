@@ -259,12 +259,37 @@ const MAP: &[Group] = &[
 /// The board's groups (BRD-029).
 const BOARD: &[Group] = &[
     (
-        "View",
+        "Navigate",
         &[
+            h("Select left / right", &["board.left", "board.right"]),
+            h("Select up / down", &["board.up", "board.down"]),
+            h("First column", &["board.home"]),
+            h("Follow the card's link", &["board.follow-link"]),
+        ],
+    ),
+    (
+        "Edit",
+        &[
+            h("Move card up / down", &["board.move-up", "board.move-down"]),
+            h("Move card or column left / right", &["board.move-left", "board.move-right"]),
+            h("Tick the task", &["board.toggle-task"]),
+            h("Edit in sheet", &["board.edit"]),
+            k("Card menu", &["board.card-menu"]),
+            h("Copy Markdown", &["board.copy"]),
+            h("Delete the card", &["board.delete"]),
+            h("Undo / redo", &["board.undo", "board.redo"]),
+        ],
+    ),
+    (
+        "Find & views",
+        &[
+            h("Find", &["board.find"]),
+            h("Next / previous match", &["board.find-next", "board.find-previous"]),
+            h("Close find or cancel drag", &["board.escape", "app.escape"]),
             h("Source / preview / map / board", &["app.mode-source", "app.mode-preview", "app.mode-map", "app.mode-board"]),
             h("Outline", &["app.toggle-outline"]),
             h("Zoom text", &["app.zoom-in", "app.zoom-out", "app.zoom-reset"]),
-            h("Close or leave", &["app.escape"]),
+            h("This sheet", &["board.help", "app.help"]),
         ],
     ),
     (
@@ -277,7 +302,6 @@ const BOARD: &[Group] = &[
             h("Next / previous tab", &["app.next-tab", "app.previous-tab"]),
             k("Switch tab 1 to 9", &["app.tab-1", "app.tab-9"]),
             h("Close / reopen tab", &["app.close-tab", "app.reopen-tab"]),
-            h("This sheet", &["app.help"]),
         ],
     ),
     APP,
@@ -504,10 +528,11 @@ mod tests {
     /// Every key bound in a mode shows in that mode's help sheet.
     #[test]
     fn every_bound_key_shows_in_its_modes_help() {
-        let modes: [(Mode, &[Ctx]); 3] = [
+        let modes: [(Mode, &[Ctx]); 4] = [
             (Mode::Preview, &[Ctx::Global, Ctx::Reader]),
             (Mode::Source, &[Ctx::Global, Ctx::Writer]),
             (Mode::Map, &[Ctx::Global, Ctx::Map, Ctx::MapEdit]),
+            (Mode::Board, &[Ctx::Global, Ctx::Board]),
         ];
         let mut missing = Vec::new();
         for (mode, ctxs) in modes {
@@ -528,10 +553,11 @@ mod tests {
     /// contexts the mode's keys go through (the preview's edit sheet is opened from it).
     #[test]
     fn every_key_shown_acts_in_its_mode() {
-        let modes: [(Mode, &[Ctx]); 3] = [
+        let modes: [(Mode, &[Ctx]); 4] = [
             (Mode::Preview, &[Ctx::Global, Ctx::Reader, Ctx::Sheet]),
             (Mode::Source, &[Ctx::Global, Ctx::Writer]),
             (Mode::Map, &[Ctx::Global, Ctx::Map, Ctx::MapEdit]),
+            (Mode::Board, &[Ctx::Global, Ctx::Board]),
         ];
         for (mode, ctxs) in modes {
             for (_, rows) in groups(mode).0 {
@@ -549,7 +575,7 @@ mod tests {
     /// Every id a row names is an action, and a row that runs has one that does something.
     #[test]
     fn every_row_names_real_actions() {
-        for mode in [Mode::Preview, Mode::Source, Mode::Map] {
+        for mode in [Mode::Preview, Mode::Source, Mode::Map, Mode::Board] {
             for (_, rows) in groups(mode).0 {
                 for r in rows.iter() {
                     for id in r.ids {

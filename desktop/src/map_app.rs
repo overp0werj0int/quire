@@ -1885,7 +1885,7 @@ impl App {
     }
 
     /// The lightbox on node `i`'s image, or on image `k` of its gallery; false when it has none.
-    fn open_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) -> bool {
+    pub(crate) fn open_lightbox(&mut self, i: usize, k: usize, tx: &mut Tx) -> bool {
         let t = self.map_tree();
         let Some(n) = t.nodes.get(i) else { return false };
         let Body::Card(bl) = &n.body else { return false };

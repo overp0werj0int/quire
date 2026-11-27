@@ -1,0 +1,29 @@
+Find in Board mode steps through matching column titles and card labels in note order and selects each match.
+state: {"mode": "board", "right_open": false}
+events: key:f+cmd@0.2 type:board@0.5 key:Enter@1.0
+expect: selected: board-card:10358574669306381026
+expect: text:find-count: '2 / 2'
+--- before
+# Sprint
+
+Intro note before columns.
+
+## Todo
+
+- [ ] Write board spec
+- [x] Ship map mode
+- Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+### Backlog
+
+- Deferred item
+
+## Doing
+
+- Build kanban board
+
+## Done
+
+- Review design
