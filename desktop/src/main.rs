@@ -3888,11 +3888,11 @@ mod writer_chrome_tests {
         if !cfg!(target_os = "macos") {
             assert_eq!(left[0], 8.0, "toggle-left sits 8 pt from the left edge: {left:?}");
         }
-        let buttons = ["find", "copy-all", "wide", "help", "mode-source", "mode-preview", "mode-map", "focus", "toggle-right"];
+        let buttons = ["find", "copy-all", "wide", "help", "mode-source", "mode-preview", "mode-map", "mode-board", "focus", "toggle-right"];
         let rects: Vec<[f32; 4]> = buttons.iter().map(|k| info(&rt, k).expect(k).rect).collect();
         let right_edge = rects.last().unwrap()[0] + rects.last().unwrap()[2];
         assert!((root_w - right_edge - 8.0).abs() < 0.5, "toggle-right ends 8 pt from right edge: {right_edge} vs {root_w}");
-        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8)] {
+        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9)] {
             let gap = rects[pair.1][0] - (rects[pair.0][0] + rects[pair.0][2]);
             assert!((gap - 4.0).abs() < 0.5, "4 pt gap between {} and {}: {gap}", buttons[pair.0], buttons[pair.1]);
         }

@@ -747,3 +747,36 @@ impl App {
         changed
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tilt_rule_matches_brd_015_021_022() {
+        // Rest: 3 deg clockwise with last sign +1.
+        let (rad, sign) = tilt_radians(1.0, 0.0, 0.0, false, false);
+        assert!((rad - 3.0f32.to_radians()).abs() < 1e-5);
+        assert_eq!(sign, 1.0);
+        // Full speed right: 6 deg clockwise.
+        let (rad, sign) = tilt_radians(1.0, 20.0, 1500.0, false, false);
+        assert!((rad - 6.0f32.to_radians()).abs() < 1e-5);
+        assert_eq!(sign, 1.0);
+        // Full speed left: -6 deg counter-clockwise.
+        let (rad, sign) = tilt_radians(1.0, -20.0, -1500.0, false, false);
+        assert!((rad + 6.0f32.to_radians()).abs() < 1e-5);
+        assert_eq!(sign, -1.0);
+        // Small jitter under 4 px keeps last sign.
+        let (rad, sign) = tilt_radians(-1.0, 2.0, 0.0, false, false);
+        assert!((rad + 3.0f32.to_radians()).abs() < 1e-5);
+        assert_eq!(sign, -1.0);
+        // Column uses half angles (1.5..3 deg).
+        let (rad, _) = tilt_radians(1.0, 20.0, 1500.0, false, true);
+        assert!((rad - 3.0f32.to_radians()).abs() < 1e-5);
+        // Reduced motion: fixed 3 deg for card, 1.5 deg for column.
+        let (card_red, _) = tilt_radians(-1.0, -20.0, -1500.0, true, false);
+        assert!((card_red - 3.0f32.to_radians()).abs() < 1e-5);
+        let (col_red, _) = tilt_radians(-1.0, -20.0, -1500.0, true, true);
+        assert!((col_red - 1.5f32.to_radians()).abs() < 1e-5);
+    }
+}

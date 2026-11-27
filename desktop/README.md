@@ -139,7 +139,7 @@ Use `./dev` while you work. It checks and tests an edit in seconds, and it leave
 ```sh
 cargo test                                               # unit tests, optimized: slower to build, 90 seconds to run
 cargo run -- --snap shot.png --size 1280x800 --scale 2   # render a frame headless
-cargo run -- --snap shot.png --scene dark                # scenes: welcome, preview, dark, focus, settings, note (Note mode)
+cargo run -- --snap shot.png --scene dark                # scenes: welcome, preview, dark, focus, settings, board, note (Note mode)
 cargo run -- --script events.json --snap shot.png --at mark:end   # play input events, then render
 ```
 

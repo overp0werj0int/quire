@@ -297,3 +297,55 @@ pub fn section_summary(t: &Tree, i: usize) -> String {
     let count = t.nodes[i].end - i - 1;
     if count == 1 { "1 node".into() } else { format!("{count} nodes") }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tree(src: &str) -> Tree {
+        let doc = crate::blocks::build(src);
+        map::build(&doc, src, "Note.md")
+    }
+
+    #[test]
+    fn builds_loose_columns_section_cards_and_skips_footnotes() {
+        let t = tree("# Top\n\nLoose para\n\n## Todo\n\n- [ ] One\n- Two\n  - [x] Sub\n\n### Sub\n\n- Inner\n\n## Done\n\n[^1]: Foot\n");
+        let b = build(&t);
+        assert_eq!(b.columns.len(), 3);
+        assert_eq!(b.columns[0].head, ColumnHead::Loose);
+        assert_eq!(b.columns[0].cards.len(), 1);
+        assert!(matches!(b.columns[1].head, ColumnHead::Heading(_)));
+        assert_eq!(b.columns[1].cards.len(), 3); // One, Two, Sub (section card)
+        assert_eq!(child_summary(&t, b.columns[1].cards[1]).as_deref(), Some("1/1"));
+        assert_eq!(section_summary(&t, b.columns[1].cards[2]), "1 node");
+        assert!(matches!(b.columns[2].head, ColumnHead::Heading(_)));
+        assert_eq!(b.columns[2].cards.len(), 0); // footnote excluded
+    }
+
+    #[test]
+    fn nearest_allowed_clamps_text_above_section_and_refuses_section_in_loose() {
+        let t = tree("# Top\n\nLoose\n\n## Todo\n\n- Task\n\n### Sub\n\n- Inner\n");
+        let b = build(&t);
+        let task = b.columns[1].cards[0];
+        let section = b.columns[1].cards[1];
+        // Dropping text card below section card clamps above section card (index 0 in rest).
+        let clamped = nearest_allowed(&b, &t, task, Slot { column: 1, index: 1 });
+        assert_eq!(clamped, Some(Slot { column: 1, index: 0 }));
+        // Section card in loose column is refused with HEADINGS_ONLY.
+        assert_eq!(nearest_allowed(&b, &t, section, Slot { column: 0, index: 0 }), None);
+        assert_eq!(column_refusal(&b, &t, section, Slot { column: 0, index: 0 }), Some(map::HEADINGS_ONLY));
+    }
+
+    #[test]
+    fn build_with_held_reveals_empty_loose_for_non_heading_only() {
+        let t = tree("# Top\n\n## Todo\n\n- Task\n\n### Sub\n\n- Inner\n");
+        let base = build(&t);
+        assert_eq!(base.columns.len(), 1);
+        let task = base.columns[0].cards[0];
+        let section = base.columns[0].cards[1];
+        let with_task = build_with_held(&t, Some(task));
+        assert_eq!(with_task.columns[0].head, ColumnHead::Loose);
+        let with_section = build_with_held(&t, Some(section));
+        assert!(matches!(with_section.columns[0].head, ColumnHead::Heading(_)));
+    }
+}
