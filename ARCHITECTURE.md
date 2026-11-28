@@ -220,32 +220,49 @@ which leaves 3:1 after the rounding to 8-bit colour. The
 themes in `tests/fixtures/omarchy-themes/`.
 
 Board mode (`Mode::Board`, named `board` in `state.json`, decision 0015) is the fourth mode,
-toggled with `Ctrl+Shift+K` (`app.mode-board`) back to the last linear mode (inheriting
-`MapState::back` when entered from Map; leaving Board for Map goes through `App::enter_map`).
-`board.rs` is a pure view of Map mode's `map::Tree`: root headings become columns, their direct
-children become cards (subheadings become section cards, list-item children stay inside their card
-with a task or count caption), and non-heading children before the first column heading form a
-leading loose column (hidden when empty, revealed while a compatible card is held). Board mode
-rewrites no Markdown on its own: every card or column move maps a board `Slot` to a `map::Add`,
-checks `map::zone` (`board::slot_add`, `board::nearest_allowed`, `board::column_add`), and applies
-`map::move_to` through `App::map_apply` (`App::board_apply` delegates to it) as one shared undo
-step. Selection is the tab's `MapView::selected`, so switching between Map and Board keeps the
-node; the selected card or column header carries `focus::NOTE` and renders with Rune's
-`Cx::focus_glass`. `ui/board.rs` lays columns and cards out with Rune flow layout using shared
-tokens from `ui/tokens.rs` (`radius::COLUMN`, `motion::layout_glide_spring`,
-`motion::tilt_spring`), reads card and column rects from `El::on_layout` (`BoardLayout`), and
-renders a held card or column in an overlay tilted with `El::rotate` and `El::rotate_motion` about
-its grab point (`El::origin`) while its drag host stays pinned out of flow so Rune keeps drag
-capture. `board_drag.rs` owns the drag and settle lifecycle in one state machine (`Hold`), tracks
-the originating `TextKey` so `App::poll_board` (and `App::open_layer` / `App::splice_note`)
-cancels any stale hold via `App::board_cancel_hold` with nothing written when the note, text,
-tab, vault, lock state, mode or layer changes, accumulates horizontal travel past `SIGN_EPS`
-(`advance_sign`) and smooths horizontal speed across poll ticks (`tilt_radians`), and defers
-post-scroll re-aiming to the next frame's layout. While a hold is active, `Ctx::Board` keys do
-nothing except Esc, and mouse-up after Esc leaves `Hold::Settling` to finish its 180 ms glide.
+gated to unlocked notes whose front matter declares `kanban-plugin` (`board::is_kanban`, reading
+`blocks::Kind::FrontMatter`). Regular notes hide the Board button/command and fall back out of
+Board mode; kanban notes with no explicit per-note mode override (`Session::note_modes`) enter
+Board mode automatically. `Ctrl+Shift+K` (`app.mode-board`) toggles Board on a kanban note back to
+the last linear mode (inheriting `MapState::back` when entered from Map; leaving Board for Map goes
+through `App::enter_map`). `board.rs` is a pure view of Map mode's `map::Tree`: root headings
+become columns and only task items (`- [ ]` / `- [x]`) become cards (`Card`), with direct child
+tasks nested recursively as `Card::subtasks` (default folded per note in `BoardState::expanded`,
+following `NodeId` via `map::follow`). Cards with subtasks show a folding handle (`board-fold:{id}`)
+and colored `ui::components::progress_dot` dots (solid when done, outlined when incomplete) and
+unfold recursively as indented sub-cards obeying the same rules. Clicking a card opens the Card
+Mini Window inside `Layer::Sheet` (`Sheet::card: Some(CardView)`), rendering content under the task
+node via `ui::preview::render_blocks` (`item_content_blocks`) with an always-visible header `Edit`
+button that swaps into the shared Edit Sheet editor and returns to Preview mode on save. Board mode rewrites no Markdown on its own: every card, sub-card, or column move maps a board `Slot`
+(`SlotParent::{Column, Card}`) to a `map::Add`, checks `map::zone` (`board::slot_add`,
+`board::nearest_allowed`, `board::column_add`), and applies `map::move_to` through `App::map_apply`
+(`App::board_apply` delegates to it) as one shared undo step. Selection is the tab's
+`MapView::selected`, so switching between Map and Board keeps the node; `doc-main` keeps one stable
+`focus::NOTE` anchor across selection moves and drags (while links inside board cards stay clickable
+and followable via `Ctrl+Enter` without taking keyboard focus), and the selected card, sub-card, or
+column header renders with the shared sliding `SelectionGlass`
+(`ui::components::selection_glass`), tracking vertical column scroll live via `Live` offset/opacity
+with zero view commits. `ui/board.rs` lays columns and cards out with Rune flow layout using shared
+tokens and components from `ui/tokens.rs` and `ui/components/` (`radius::COLUMN`,
+`motion::hover_fade`, `motion::layout_glide_spring`, `motion::tilt_spring`, `motion::modal_spring`,
+`count_pill`, `progress_dot`, `faded_h`, `SelectionGlass`), reports rects via `live_only`
+`El::on_layout_tx` (`BoardLayout`), and routes both horizontal (`board-scroll`) and vertical
+(`board-col-scroll:*`) touchpad scrolling, inertial throw, fling boost, `touchpad_hold`, and
+`Shift+wheel` directly through Rune's single native scroll/throw engine (no custom `on_wheel`),
+matching Preview and Source (decision 0012; `map_throw.rs` mirrors the same Chrome physics and
+`FlingBooster` for Map's unbounded 2D zoomable canvas). Held cards and columns render in an overlay
+scaled and tilted with `El::rotate` and `El::rotate_motion` about their grab point (`El::origin`)
+while their drag host stays pinned out of flow so Rune keeps drag capture. `board_drag.rs` owns the drag and settle lifecycle in one state machine
+(`Hold`), tracks the originating `TextKey` so `App::poll_board` (and `App::open_layer` /
+`App::splice_note`) cancels any stale hold via `App::board_cancel_hold` with nothing written when
+the note, text, tab, vault, lock state, mode or layer changes, accumulates horizontal travel past
+`SIGN_EPS` (`advance_sign`) and smooths horizontal speed across poll ticks (`tilt_radians`), and
+defers post-scroll re-aiming to the next frame's layout. While a hold is active, `Ctx::Board` keys
+do nothing except Esc, and mouse-up after Esc leaves `Hold::Settling` to finish its 180 ms glide.
 Board keys live in `Ctx::Board` (falling through to `Ctx::Global`), card right-click opens
-`MenuOf::BoardCard`, Find searches column titles and cards in note order (`App::board_hits`), and
-the outline highlights and jumps to the owning heading (`App::board_jump`).
+`MenuOf::BoardCard`, Find searches column titles and task cards (including folded subtasks,
+unfolding ancestors on jump) in note order (`App::board_hits`), and the outline highlights and jumps
+to the owning heading (`App::board_jump`).
 
 `main.rs` connects these parts. It builds a `rune::AppSpec` from `app::init`, `ui::view`,
 `keys::on_key`, `App::poll` and `App::set_waker`. It calls `App::flush_all` when the window
@@ -595,9 +612,9 @@ deleted. Otherwise the next sync would upload the old text over the newer remote
 | `map_drag.rs` | A drag on a map node (MAP-026): past 6 points it moves the node. It holds the drag's state, the drop zone under the pointer (`App::map_drop_at`, from `map::zone`), and the pan at the canvas's edges, stepped from `App::poll`. A drag on the empty canvas, the root or a footnote pans. |
 | `map_motion.rs` | The map's relayout glide (MAP-043): the layout each frame draws (`App::map_drawn`), nodes paired across a change by id, by the splice's moved lines, or by place when a rename changed the id, and grown out of or folded into their parent's fold ring. Nothing glides under reduced motion. |
 | `map_throw.rs` | The map's touchpad throw (MAP-033): the map pans in its own `on_wheel`, which takes the swipe from Rune's throw, so this fits the release speed and runs Chrome's fling curve on the camera as Rune does for a page (RD-27), stepped from `App::poll_map`. |
-| `board.rs` | Board mode's pure model (`docs/reader-writer/behavior/board.md`, decision 0015): projects `&map::Tree` into `Board` columns and cards (`ColumnHead::{Loose, Heading}`), maps a drop `Slot` to `map::Add` checked by `map::zone` (`slot_add`, `nearest_allowed`, `column_add`), resolves nested nodes to their card (`item_of`), and builds child/section summary captions. |
-| `board_app.rs` | Board mode state and actions on `App` (`BoardState`, `BoardLayout`): entering and leaving Board (via `App::enter_map` when switching to Map) with selection synced through `MapView::selected`, shared `App::map_apply` edits, keyboard navigation (`BRD-025`), keyboard moves (`BRD-026`), card actions (toggle task by `NodeId`, Edit Sheet, delete, copy, undo/redo, follow link, `BRD-027`), right-click card menu (`BRD-028`), Board Find (`board_hits`, `BRD-030`), outline jump, and clamped empty-board horizontal pan. |
-| `board_drag.rs` | Board mode drag state machine (`Hold`, `Held::{Card, Column}`) carrying `TextKey` for stale-hold cancellation (`board_cancel_hold`), pure sign hysteresis and speed-to-tilt rules (`advance_sign`, `tilt_radians`, half-angle for columns, fixed under reduced motion), drop-slot aiming for cards and columns, settle glide, Esc cancel, headless probe state export, and board/column edge auto-scroll with next-frame re-aiming stepped from `App::poll_board`. |
+| `board.rs` | Board mode's pure model (`docs/reader-writer/behavior/board.md`, decision 0015): `is_kanban` front-matter check (`blocks::Kind::FrontMatter`), projects `&map::Tree` into heading `Column`s of task-only `Card`s with recursive `subtasks` and `subtask_dots`, maps a drop `Slot` (`SlotParent::{Column, Card}`) to `map::Add` checked by `map::zone` (`slot_add`, `nearest_allowed`, `column_add`), and resolves nested nodes to the deepest visible board item (`item_of`). |
+| `board_app.rs` | Board mode state and actions on `App` (`BoardState`, `BoardLayout`): `kanban-plugin` gating and auto-entry (`sync_mode_for_active_note`, `board_enforce_kanban`), per-note subtask fold state (`expanded` following `NodeId` via `map::follow`), entering and leaving Board with selection synced through `MapView::selected`, card click opening the Card Mini Window (`board_open_card`), shared `App::map_apply` edits, keyboard navigation across visible cards and unfolded sub-cards (`BRD-025`), keyboard moves (`BRD-026`), card actions (`BRD-027`), right-click card menu (`BRD-028`), Board Find (`board_hits`, unfolding ancestors on jump), outline jump, and clamped empty-board horizontal pan. |
+| `board_drag.rs` | Board mode drag state machine (`Hold`, `Held::{Card, Column}`) carrying `TextKey` for stale-hold cancellation (`board_cancel_hold`), pure sign hysteresis and speed-to-tilt rules (`advance_sign`, `tilt_radians`, half-angle for columns, fixed under reduced motion), drop-slot aiming across columns and unfolded subtask containers, settle glide, Esc cancel, headless probe state export, and board/column edge auto-scroll with next-frame re-aiming stepped from `App::poll_board`. |
 | `theme.rs` | Themes, fonts, text measurements. |
 | `motion.rs` | Reduced motion: `QUIRE_REDUCED_MOTION`, Hyprland's animations setting and the system's, as one gate. |
 | `roles.rs` | The preview page's colours and code colours, derived from the active palette (`docs/reader-writer/`, decision 0005), and the side panels' text colours, made readable on the sidebar (`Roles::panel`, decision 0008). |

@@ -1,11 +1,42 @@
-//! Board mode's pure model: a note's `map::Tree` projected into columns of cards
-//! (`docs/reader-writer/behavior/board.md`, decision 0015).
+//! Board mode's pure model: a `kanban-plugin` note's `map::Tree` projected into heading columns
+//! of task cards with recursive subtask trees (`docs/reader-writer/behavior/board.md`, decision 0015).
 //!
 //! Pure, with no `App` or UI. Every move maps a board `Slot` to a `map::Add` and asks
 //! `map::zone` whether the note's Markdown rules allow it.
 
-use crate::blocks::Task;
-use crate::map::{self, Add, NodeKind, ROOT, Refused, Tree};
+use std::collections::HashSet;
+
+use crate::blocks::{Doc, Kind, Task};
+use crate::map::{self, Add, NodeId, NodeKind, ROOT, Refused, Tree};
+
+/// True when `doc` declares `kanban-plugin` in its front matter (and does not explicitly disable
+/// it with `false`, `no`, or `off`).
+pub fn is_kanban(doc: &Doc) -> bool {
+    doc.blocks.iter().any(|bl| match &bl.kind {
+        Kind::FrontMatter { fields, .. } => fields.iter().any(|f| {
+            f.key.eq_ignore_ascii_case("kanban-plugin")
+                && !matches!(f.value.trim().to_ascii_lowercase().as_str(), "false" | "no" | "off")
+        }),
+        _ => false,
+    })
+}
+
+/// True when tree node `i` is a task list item (`- [ ]` or `- [x]`).
+pub fn is_task(t: &Tree, i: usize) -> bool {
+    matches!(t.nodes[i].kind, NodeKind::Item { task, .. } if task != Task::None)
+}
+
+/// Task state of node `i`, or `None` when it is not a task item.
+pub fn task_state(t: &Tree, i: usize) -> Option<Task> {
+    match t.nodes[i].kind {
+        NodeKind::Item { task, .. } if task != Task::None => Some(task),
+        _ => None,
+    }
+}
+
+pub fn is_heading(t: &Tree, i: usize) -> bool {
+    matches!(t.nodes[i].kind, NodeKind::Heading { .. })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
@@ -14,56 +45,156 @@ pub struct Board {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Column {
-    pub head: ColumnHead,
-    /// Indices into `Tree::nodes`, in note order.
-    pub cards: Vec<usize>,
+    /// Heading node index in `Tree::nodes`.
+    pub heading: usize,
+    /// Top-level task cards directly under this column heading, in note order.
+    pub cards: Vec<Card>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Card {
+    /// Task item node index in `Tree::nodes`.
+    pub node: usize,
+    /// Direct child task items, recursively modeled with the exact same rules.
+    pub subtasks: Vec<Card>,
+    /// True when this task node has any non-task child blocks (prose, code, images, bullets, etc.).
+    pub has_body: bool,
+}
+
+/// Where a card drop slot lives: in a column's top-level card list or in an expanded card's
+/// subtask list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ColumnHead {
-    /// Non-heading children of the root before the first column heading (BRD-005).
-    Loose,
-    /// A heading child of the root, by its index in `Tree::nodes` (BRD-002).
-    Heading(usize),
+pub enum SlotParent {
+    /// Column index in `Board::columns`.
+    Column(usize),
+    /// Parent task card's node index in `Tree::nodes`.
+    Card(usize),
 }
 
-/// A drop position on the board: `index` is the insertion index among the column's remaining
-/// cards (excluding the held card if it comes from that column).
+/// A drop position on the board: `index` is the insertion index among remaining direct task cards
+/// under `parent` (excluding the held card if it comes from there).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Slot {
-    pub column: usize,
+    pub parent: SlotParent,
     pub index: usize,
 }
 
-impl ColumnHead {
-    /// The `Tree` node index that owns cards in this column (`ROOT` for Loose, `h` for Heading).
-    pub fn parent(self) -> usize {
-        match self {
-            ColumnHead::Loose => ROOT,
-            ColumnHead::Heading(h) => h,
+impl Card {
+    fn build(t: &Tree, node: usize) -> Card {
+        let mut subtasks = Vec::new();
+        let mut has_body = false;
+        for &c in &t.nodes[node].children {
+            if is_task(t, c) {
+                subtasks.push(Card::build(t, c));
+            } else if !matches!(t.nodes[c].kind, NodeKind::Footnotes) {
+                has_body = true;
+            }
+        }
+        Card { node, subtasks, has_body }
+    }
+
+    /// Completion state (`true` = done, `false` = todo) of each direct subtask, in note order.
+    pub fn subtask_dots(&self, t: &Tree) -> Vec<bool> {
+        self.subtasks.iter().map(|c| task_state(t, c.node) == Some(Task::Done)).collect()
+    }
+
+    /// Finds `node` anywhere inside this card subtree.
+    pub fn find(&self, node: usize) -> Option<&Card> {
+        if self.node == node {
+            return Some(self);
+        }
+        for sub in &self.subtasks {
+            if let Some(found) = sub.find(node) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    fn find_parent(&self, target: usize) -> Option<(SlotParent, usize)> {
+        for (idx, sub) in self.subtasks.iter().enumerate() {
+            if sub.node == target {
+                return Some((SlotParent::Card(self.node), idx));
+            }
+            if let Some(found) = sub.find_parent(target) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    fn collect_visible(&self, t: &Tree, expanded: &HashSet<NodeId>, held: Option<usize>, depth: usize, out: &mut Vec<(usize, usize)>) {
+        if Some(self.node) == held {
+            return;
+        }
+        out.push((self.node, depth));
+        if !self.subtasks.is_empty() && expanded.contains(&t.nodes[self.node].id) {
+            for sub in &self.subtasks {
+                sub.collect_visible(t, expanded, held, depth + 1, out);
+            }
         }
     }
 
-    /// Stable key id for this column (`0` for Loose, else the heading's `NodeId`).
-    pub fn key_id(self, t: &Tree) -> u64 {
-        match self {
-            ColumnHead::Loose => 0,
-            ColumnHead::Heading(h) => t.nodes[h].id,
+    fn collect_all(&self, out: &mut Vec<usize>) {
+        out.push(self.node);
+        for sub in &self.subtasks {
+            sub.collect_all(out);
         }
+    }
+}
+
+impl Column {
+    /// Stable key id for this column (its heading's `NodeId`).
+    pub fn key_id(&self, t: &Tree) -> u64 {
+        t.nodes[self.heading].id
+    }
+
+    /// Visible cards `(node_idx, depth)` in visual preorder, respecting `expanded` and omitting
+    /// `held` (and its subtree).
+    pub fn visible_cards(&self, t: &Tree, expanded: &HashSet<NodeId>, held: Option<usize>) -> Vec<(usize, usize)> {
+        let mut out = Vec::new();
+        for card in &self.cards {
+            card.collect_visible(t, expanded, held, 0, &mut out);
+        }
+        out
+    }
+
+    /// Every task card in this column (including folded subtasks), in note order.
+    pub fn all_cards(&self) -> Vec<usize> {
+        let mut out = Vec::new();
+        for card in &self.cards {
+            card.collect_all(&mut out);
+        }
+        out
     }
 }
 
 impl Board {
-    /// Whether the board has any heading columns (false triggers the BRD-006 empty hint).
+    /// Whether the board has any heading columns.
     pub fn has_headings(&self) -> bool {
-        self.columns.iter().any(|c| matches!(c.head, ColumnHead::Heading(_)))
+        !self.columns.is_empty()
     }
 
-    /// Finds which column and card index hold node `i`.
-    pub fn find_card(&self, i: usize) -> Option<(usize, usize)> {
+    /// Finds the `Card` for tree node `i` anywhere on the board (top-level or subtask).
+    pub fn card(&self, i: usize) -> Option<&Card> {
+        self.columns.iter().find_map(|col| col.cards.iter().find_map(|c| c.find(i)))
+    }
+
+    /// Finds the column index that contains card `i` (top-level or subtask).
+    pub fn find_card_column(&self, i: usize) -> Option<usize> {
+        self.columns.iter().position(|col| col.cards.iter().any(|c| c.find(i).is_some()))
+    }
+
+    /// Finds the direct `(SlotParent, index)` owning card `i`.
+    pub fn find_card_slot(&self, i: usize) -> Option<(SlotParent, usize)> {
         for (ci, col) in self.columns.iter().enumerate() {
-            if let Some(ki) = col.cards.iter().position(|&c| c == i) {
-                return Some((ci, ki));
+            for (ki, card) in col.cards.iter().enumerate() {
+                if card.node == i {
+                    return Some((SlotParent::Column(ci), ki));
+                }
+                if let Some(found) = card.find_parent(i) {
+                    return Some(found);
+                }
             }
         }
         None
@@ -71,141 +202,121 @@ impl Board {
 
     /// Finds which column has heading node `h`.
     pub fn find_column(&self, h: usize) -> Option<usize> {
-        self.columns.iter().position(|c| c.head == ColumnHead::Heading(h))
+        self.columns.iter().position(|c| c.heading == h)
     }
 
-    /// Cards in column `ci`, excluding `held` if present.
-    pub fn rest(&self, ci: usize, held: Option<usize>) -> Vec<usize> {
-        self.columns[ci].cards.iter().copied().filter(|&c| Some(c) != held).collect()
+    /// Direct task cards under `parent`, excluding `held` if present.
+    pub fn rest(&self, parent: SlotParent, held: Option<usize>) -> Vec<usize> {
+        let slice = match parent {
+            SlotParent::Column(ci) => self.columns.get(ci).map(|c| c.cards.as_slice()),
+            SlotParent::Card(node) => self.card(node).map(|c| c.subtasks.as_slice()),
+        };
+        slice
+            .unwrap_or(&[])
+            .iter()
+            .map(|c| c.node)
+            .filter(|&n| Some(n) != held)
+            .collect()
+    }
+
+    /// Tree node index of `parent`'s owning node (the column heading or parent task card).
+    pub fn parent_node(&self, parent: SlotParent) -> Option<usize> {
+        match parent {
+            SlotParent::Column(ci) => self.columns.get(ci).map(|c| c.heading),
+            SlotParent::Card(node) => self.card(node).map(|c| c.node),
+        }
     }
 }
 
-/// Builds the board from `t` (BRD-001 to BRD-005):
-/// - Root's non-heading children (excluding `Footnotes`) form the leading `Loose` column when
-///   non-empty.
-/// - Root's heading children become columns in note order, each holding all of its direct children
-///   (non-headings first, then section-heading cards) in note order.
+/// Builds the task-only kanban board from `t`:
+/// - Root's heading children become columns in note order.
+/// - Each column's direct task-item children become cards, with direct child tasks nested
+///   recursively as `Card::subtasks`.
+/// - Non-heading root blocks, non-task children, subheadings, and `Footnotes` are excluded.
 pub fn build(t: &Tree) -> Board {
-    let mut loose = Vec::new();
     let mut columns = Vec::new();
     for &c in &t.root().children {
-        match t.nodes[c].kind {
-            NodeKind::Footnotes => {}
-            NodeKind::Heading { .. } => {
-                let cards = t.nodes[c]
-                    .children
-                    .iter()
-                    .copied()
-                    .filter(|&k| !matches!(t.nodes[k].kind, NodeKind::Footnotes))
-                    .collect();
-                columns.push(Column { head: ColumnHead::Heading(c), cards });
-            }
-            _ => loose.push(c),
+        if matches!(t.nodes[c].kind, NodeKind::Heading { .. }) {
+            let cards = t.nodes[c]
+                .children
+                .iter()
+                .copied()
+                .filter(|&k| is_task(t, k))
+                .map(|k| Card::build(t, k))
+                .collect();
+            columns.push(Column { heading: c, cards });
         }
-    }
-    if !loose.is_empty() {
-        columns.insert(0, Column { head: ColumnHead::Loose, cards: loose });
     }
     Board { columns }
 }
 
-/// Like [`build`], prepending an empty `Loose` column when card `held` is lifted and `map::zone`
-/// allows dropping it into the loose area (BRD-005).
-pub fn build_with_held(t: &Tree, held: Option<usize>) -> Board {
-    let mut b = build(t);
-    let Some(s) = held else { return b };
-    let has_loose = b.columns.first().is_some_and(|c| c.head == ColumnHead::Loose);
-    if !has_loose && !is_heading(t, s) && map::zone(t, s, Add::Child(ROOT)).is_ok() {
-        b.columns.insert(0, Column { head: ColumnHead::Loose, cards: Vec::new() });
-    }
-    b
-}
-
-pub fn is_heading(t: &Tree, i: usize) -> bool {
-    matches!(t.nodes[i].kind, NodeKind::Heading { .. })
-}
-
-/// Maps `slot` on `board` for held card `held` to a `map::Add` and checks `map::zone` (BRD-017).
+/// Maps `slot` on `board` for held task card `held` to a `map::Add` and checks `map::zone`.
 pub fn slot_add(board: &Board, t: &Tree, held: usize, slot: Slot) -> Result<Add, Refused> {
-    let col = board.columns.get(slot.column).ok_or(None)?;
-    // A section heading card can never land in the loose column: a heading child of ROOT would
-    // become a column itself rather than a loose card (BRD-004, BRD-005).
-    if col.head == ColumnHead::Loose && is_heading(t, held) {
-        return Err(Some(map::HEADINGS_ONLY));
-    }
-    let rest = board.rest(slot.column, Some(held));
+    let parent_node = board.parent_node(slot.parent).ok_or(None)?;
+    let rest = board.rest(slot.parent, Some(held));
     let idx = slot.index.min(rest.len());
     let add = if idx < rest.len() {
-        // When placing a non-heading card directly before a section heading and after a
-        // non-heading card, anchor after the preceding card so a list item joins its list
-        // cleanly instead of landing after the blank line before the subheading.
-        if idx > 0 && !is_heading(t, held) && is_heading(t, rest[idx]) && !is_heading(t, rest[idx - 1]) {
-            Add::After(rest[idx - 1])
-        } else {
-            Add::Before(rest[idx])
-        }
+        Add::Before(rest[idx])
     } else if let Some(&last) = rest.last() {
-        // Putting a section card at the end of a column that has no section cards yet uses
-        // `Add::Child(heading)` rather than `Add::After(non_heading)` (MAP-027).
-        if is_heading(t, held) && !is_heading(t, last) {
-            Add::Child(col.head.parent())
-        } else {
-            Add::After(last)
-        }
+        Add::After(last)
     } else {
-        Add::Child(col.head.parent())
+        // Empty task list in this column/card: append as child, or before the first subheading
+        // if a heading column has subheadings under it.
+        let child_add = Add::Child(parent_node);
+        if map::zone(t, held, child_add).is_ok() {
+            return Ok(child_add);
+        }
+        if let SlotParent::Column(_) = slot.parent
+            && let Some(&first_head) = t.nodes[parent_node].children.iter().find(|&&k| is_heading(t, k))
+        {
+            let before_head = Add::Before(first_head);
+            map::zone(t, held, before_head)?;
+            return Ok(before_head);
+        }
+        map::zone(t, held, child_add)?;
+        return Ok(child_add);
     };
     map::zone(t, held, add)?;
     Ok(add)
 }
 
-/// Nearest slot in `slot.column` that `slot_add` allows for `held`, or `None` if the column
-/// allows no slot at all (BRD-017). Ties prefer the earlier slot (higher in the column).
+/// Nearest slot under `slot.parent` that `slot_add` allows for `held`, or `None` if disallowed.
 pub fn nearest_allowed(board: &Board, t: &Tree, held: usize, slot: Slot) -> Option<Slot> {
-    if slot.column >= board.columns.len() {
-        return None;
-    }
-    let len = board.rest(slot.column, Some(held)).len();
+    board.parent_node(slot.parent)?;
+    let len = board.rest(slot.parent, Some(held)).len();
     let want = slot.index.min(len);
-    if slot_add(board, t, held, Slot { column: slot.column, index: want }).is_ok() {
-        return Some(Slot { column: slot.column, index: want });
+    if slot_add(board, t, held, Slot { parent: slot.parent, index: want }).is_ok() {
+        return Some(Slot { parent: slot.parent, index: want });
     }
     for d in 1..=len {
         if let Some(lo) = want.checked_sub(d)
-            && slot_add(board, t, held, Slot { column: slot.column, index: lo }).is_ok()
+            && slot_add(board, t, held, Slot { parent: slot.parent, index: lo }).is_ok()
         {
-            return Some(Slot { column: slot.column, index: lo });
+            return Some(Slot { parent: slot.parent, index: lo });
         }
         let hi = want + d;
-        if hi <= len && slot_add(board, t, held, Slot { column: slot.column, index: hi }).is_ok() {
-            return Some(Slot { column: slot.column, index: hi });
+        if hi <= len && slot_add(board, t, held, Slot { parent: slot.parent, index: hi }).is_ok() {
+            return Some(Slot { parent: slot.parent, index: hi });
         }
     }
     None
 }
 
-/// Refusal reason when `nearest_allowed` returns `None` for `slot.column`.
-pub fn column_refusal(board: &Board, t: &Tree, held: usize, slot: Slot) -> Option<&'static str> {
+/// Refusal reason when `nearest_allowed` returns `None` for `slot.parent`.
+pub fn slot_refusal(board: &Board, t: &Tree, held: usize, slot: Slot) -> Option<&'static str> {
     slot_add(board, t, held, slot).err().flatten()
 }
 
-/// True when dropping `held` at `slot` leaves it in the exact place it came from (BRD-019).
+/// True when dropping `held` at `slot` leaves it in the exact place it came from.
 pub fn is_same_slot(board: &Board, held: usize, slot: Slot) -> bool {
-    let Some((ci, ki)) = board.find_card(held) else { return false };
-    ci == slot.column && ki == slot.index
+    let Some((parent, idx)) = board.find_card_slot(held) else { return false };
+    parent == slot.parent && idx == slot.index
 }
 
 /// Maps moving column heading `held` to target index `target_col` among the remaining heading
-/// columns (BRD-021).
+/// columns.
 pub fn column_add(board: &Board, t: &Tree, held: usize, target_col: usize) -> Result<Add, Refused> {
-    let heads: Vec<usize> = board
-        .columns
-        .iter()
-        .filter_map(|c| match c.head {
-            ColumnHead::Heading(h) if h != held => Some(h),
-            _ => None,
-        })
-        .collect();
+    let heads: Vec<usize> = board.columns.iter().map(|c| c.heading).filter(|&h| h != held).collect();
     if heads.is_empty() {
         return Err(None);
     }
@@ -215,137 +326,155 @@ pub fn column_add(board: &Board, t: &Tree, held: usize, target_col: usize) -> Re
     Ok(add)
 }
 
-/// True when dropping column heading `held` at `target_col` (among remaining heading columns)
-/// leaves it in place.
+/// True when dropping column heading `held` at `target_col` leaves it in place.
 pub fn is_same_column_slot(board: &Board, held: usize, target_col: usize) -> bool {
-    let mut pos = 0;
-    for c in &board.columns {
-        if let ColumnHead::Heading(h) = c.head {
-            if h == held {
-                return pos == target_col;
-            }
-            pos += 1;
+    board.find_column(held) == Some(target_col)
+}
+
+/// True when every card ancestor of task card `i` is expanded in `expanded` (so `i` is visible
+/// on the board right now).
+pub fn is_card_visible(t: &Tree, board: &Board, expanded: &HashSet<NodeId>, i: usize) -> bool {
+    if board.card(i).is_none() {
+        return false;
+    }
+    let mut cur = i;
+    while let Some(p) = t.nodes[cur].parent {
+        if board.find_column(p).is_some() {
+            return true;
         }
+        if !expanded.contains(&t.nodes[p].id) {
+            return false;
+        }
+        cur = p;
     }
     false
 }
 
-/// Resolves any tree node `i` to the board item (column heading or card) that owns it (BRD-024).
-/// Returns `None` for the root or footnotes when they have no board item.
-pub fn item_of(t: &Tree, i: usize) -> Option<usize> {
+/// Resolves any tree node `i` to the deepest visible board item (card or column heading) that owns
+/// it, respecting `expanded` for subtasks.
+pub fn item_of(t: &Tree, board: &Board, expanded: &HashSet<NodeId>, i: usize) -> Option<usize> {
     let mut cur = i;
     loop {
         if cur == ROOT || matches!(t.nodes[cur].kind, NodeKind::Footnotes | NodeKind::Footnote { .. }) {
             return None;
         }
-        let p = t.nodes[cur].parent?;
-        if p == ROOT {
-            // Direct child of root: either a column heading or a loose card.
+        if board.find_column(cur).is_some() {
             return Some(cur);
         }
-        if t.nodes[p].parent == Some(ROOT) && is_heading(t, p) {
-            // Direct child of a column heading: a card (including a section card).
+        if is_card_visible(t, board, expanded, cur) {
             return Some(cur);
+        }
+        cur = t.nodes[cur].parent?;
+    }
+}
+
+/// Ancestor card `NodeId`s that must be expanded so task card `i` becomes visible (outermost first).
+pub fn ancestors_to_expand(t: &Tree, board: &Board, i: usize) -> Vec<NodeId> {
+    if board.card(i).is_none() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut cur = i;
+    while let Some(p) = t.nodes[cur].parent {
+        if board.find_column(p).is_some() {
+            break;
+        }
+        if board.card(p).is_some() {
+            out.push(t.nodes[p].id);
         }
         cur = p;
     }
+    out.reverse();
+    out
 }
 
-/// First selectable board item: first card of the first column that has one, else first column
-/// heading (BRD-012).
+/// First selectable board item: first top-level card of the first column that has one, else first
+/// column heading.
 pub fn default_selection(board: &Board) -> Option<usize> {
     for col in &board.columns {
-        if let Some(&first) = col.cards.first() {
-            return Some(first);
+        if let Some(first) = col.cards.first() {
+            return Some(first.node);
         }
-        if let ColumnHead::Heading(h) = col.head {
-            return Some(h);
-        }
+        return Some(col.heading);
     }
     None
-}
-
-/// Caption under a list-item card that has children (BRD-011): `done/all` when any descendant is
-/// a task, else `N items` (`1 item`).
-pub fn child_summary(t: &Tree, i: usize) -> Option<String> {
-    let n = &t.nodes[i];
-    if !matches!(n.kind, NodeKind::Item { .. }) || n.children.is_empty() {
-        return None;
-    }
-    let mut tasks = 0usize;
-    let mut done = 0usize;
-    for k in (i + 1)..n.end {
-        if let NodeKind::Item { task, .. } = t.nodes[k].kind
-            && task != Task::None
-        {
-            tasks += 1;
-            if task == Task::Done {
-                done += 1;
-            }
-        }
-    }
-    if tasks > 0 {
-        Some(format!("{done}/{tasks}"))
-    } else {
-        let count = n.end - i - 1;
-        Some(if count == 1 { "1 item".into() } else { format!("{count} items") })
-    }
-}
-
-/// Caption under a section card (a heading under a column, BRD-004): how many nodes it holds.
-pub fn section_summary(t: &Tree, i: usize) -> String {
-    let count = t.nodes[i].end - i - 1;
-    if count == 1 { "1 node".into() } else { format!("{count} nodes") }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn tree(src: &str) -> Tree {
+    fn doc_and_tree(src: &str) -> (Doc, Tree) {
         let doc = crate::blocks::build(src);
-        map::build(&doc, src, "Note.md")
+        let t = map::build(&doc, src, "Board.md");
+        (doc, t)
     }
 
     #[test]
-    fn builds_loose_columns_section_cards_and_skips_footnotes() {
-        let t = tree("# Top\n\nLoose para\n\n## Todo\n\n- [ ] One\n- Two\n  - [x] Sub\n\n### Sub\n\n- Inner\n\n## Done\n\n[^1]: Foot\n");
+    fn kanban_metadata_gate() {
+        let (d1, _) = doc_and_tree("---\nkanban-plugin: board\n---\n\n## Todo\n\n- [ ] One\n");
+        assert!(is_kanban(&d1));
+        let (d2, _) = doc_and_tree("---\nkanban-plugin: basic\n---\n\n## Todo\n");
+        assert!(is_kanban(&d2));
+        let (d3, _) = doc_and_tree("---\ntitle: Regular\n---\n\n## Todo\n\n- [ ] One\n");
+        assert!(!is_kanban(&d3));
+        let (d4, _) = doc_and_tree("## Todo\n\n- [ ] One\n");
+        assert!(!is_kanban(&d4));
+        let (d5, _) = doc_and_tree("---\nkanban-plugin: false\n---\n\n## Todo\n");
+        assert!(!is_kanban(&d5));
+    }
+
+    #[test]
+    fn builds_task_cards_only_with_recursive_subtasks_and_dots() {
+        let src = "---\nkanban-plugin: board\n---\n\nLoose para\n\n## Todo\n\nIntro text\n\n- Plain bullet\n- [ ] Parent\n\n  Notes under parent\n\n  - [x] Done sub\n  - [ ] Todo sub\n    - [x] Deep done\n- [x] Second\n\n### Subheading\n\n- [ ] Hidden under subheading\n\n## Done\n\n[^1]: Footnote\n";
+        let (_, t) = doc_and_tree(src);
         let b = build(&t);
-        assert_eq!(b.columns.len(), 3);
-        assert_eq!(b.columns[0].head, ColumnHead::Loose);
-        assert_eq!(b.columns[0].cards.len(), 1);
-        assert!(matches!(b.columns[1].head, ColumnHead::Heading(_)));
-        assert_eq!(b.columns[1].cards.len(), 3); // One, Two, Sub (section card)
-        assert_eq!(child_summary(&t, b.columns[1].cards[1]).as_deref(), Some("1/1"));
-        assert_eq!(section_summary(&t, b.columns[1].cards[2]), "1 node");
-        assert!(matches!(b.columns[2].head, ColumnHead::Heading(_)));
-        assert_eq!(b.columns[2].cards.len(), 0); // footnote excluded
+        assert_eq!(b.columns.len(), 2);
+        assert_eq!(b.columns[0].cards.len(), 2);
+        assert_eq!(b.columns[1].cards.len(), 0);
+
+        let parent = &b.columns[0].cards[0];
+        assert!(parent.has_body, "non-task paragraph under parent sets has_body");
+        assert_eq!(parent.subtasks.len(), 2);
+        assert_eq!(parent.subtask_dots(&t), vec![true, false]);
+
+        let nested = &parent.subtasks[1];
+        assert_eq!(nested.subtasks.len(), 1);
+        assert_eq!(nested.subtask_dots(&t), vec![true]);
+        assert!(!nested.has_body);
+
+        // Visible cards respect expanded set.
+        let empty = HashSet::new();
+        assert_eq!(b.columns[0].visible_cards(&t, &empty, None).len(), 2);
+        let mut exp = HashSet::new();
+        exp.insert(t.nodes[parent.node].id);
+        let vis = b.columns[0].visible_cards(&t, &exp, None);
+        assert_eq!(vis.len(), 4);
+        assert_eq!(vis[0], (parent.node, 0));
+        assert_eq!(vis[1], (parent.subtasks[0].node, 1));
+        assert_eq!(vis[2], (parent.subtasks[1].node, 1));
+        assert_eq!(vis[3], (b.columns[0].cards[1].node, 0));
     }
 
     #[test]
-    fn nearest_allowed_clamps_text_above_section_and_refuses_section_in_loose() {
-        let t = tree("# Top\n\nLoose\n\n## Todo\n\n- Task\n\n### Sub\n\n- Inner\n");
+    fn subcard_slot_and_column_with_subheading_allowed() {
+        let src = "---\nkanban-plugin: board\n---\n\n## Todo\n\n- [ ] Parent\n  - [ ] Sub A\n  - [x] Sub B\n- [ ] Other\n\n## Done\n\n### Archive\n\n- [x] Old\n";
+        let (_, t) = doc_and_tree(src);
         let b = build(&t);
-        let task = b.columns[1].cards[0];
-        let section = b.columns[1].cards[1];
-        // Dropping text card below section card clamps above section card (index 0 in rest).
-        let clamped = nearest_allowed(&b, &t, task, Slot { column: 1, index: 1 });
-        assert_eq!(clamped, Some(Slot { column: 1, index: 0 }));
-        // Section card in loose column is refused with HEADINGS_ONLY.
-        assert_eq!(nearest_allowed(&b, &t, section, Slot { column: 0, index: 0 }), None);
-        assert_eq!(column_refusal(&b, &t, section, Slot { column: 0, index: 0 }), Some(map::HEADINGS_ONLY));
-    }
+        let parent = b.columns[0].cards[0].node;
+        let sub_a = b.columns[0].cards[0].subtasks[0].node;
+        let other = b.columns[0].cards[1].node;
 
-    #[test]
-    fn build_with_held_reveals_empty_loose_for_non_heading_only() {
-        let t = tree("# Top\n\n## Todo\n\n- Task\n\n### Sub\n\n- Inner\n");
-        let base = build(&t);
-        assert_eq!(base.columns.len(), 1);
-        let task = base.columns[0].cards[0];
-        let section = base.columns[0].cards[1];
-        let with_task = build_with_held(&t, Some(task));
-        assert_eq!(with_task.columns[0].head, ColumnHead::Loose);
-        let with_section = build_with_held(&t, Some(section));
-        assert!(matches!(with_section.columns[0].head, ColumnHead::Heading(_)));
+        // Reorder Sub A after Sub B inside Parent.
+        let add = slot_add(&b, &t, sub_a, Slot { parent: SlotParent::Card(parent), index: 1 });
+        assert!(add.is_ok(), "reorder subtask inside parent: {add:?}");
+
+        // Cannot drop Parent into its own subtask list (cycle).
+        let self_nest = slot_add(&b, &t, parent, Slot { parent: SlotParent::Card(parent), index: 0 });
+        assert!(self_nest.is_err(), "parent cannot drop into itself");
+
+        // Drop Other into Done (which has no direct tasks, only a subheading).
+        let into_done = slot_add(&b, &t, other, Slot { parent: SlotParent::Column(1), index: 0 });
+        assert!(into_done.is_ok(), "drop task into heading column with subheading: {into_done:?}");
     }
 }

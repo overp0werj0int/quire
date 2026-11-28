@@ -197,8 +197,8 @@ pub(crate) mod scroll_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The settings box is as tall as its page, up to the window less a margin, and keeps its
-    /// top when the section changes. A page taller than the box fades out at its bottom edge
+    /// The settings box keeps a fixed height across sections (`min(vh - 48, 720)`) so switching
+    /// sheets never resizes the dialog. A page taller than the box fades out at its bottom edge
     /// until it is scrolled to its end.
     #[test]
     fn the_settings_box_fits_its_page() {
@@ -218,8 +218,8 @@ pub(crate) mod scroll_tests {
         };
         let mcp = show(&mut rt, crate::app::Sec::Mcp);
         let keys = show(&mut rt, crate::app::Sec::Keys);
-        assert!(mcp[3] < 400.0, "a short page gets a short box: {mcp:?}");
-        assert!((keys[3] - 720.0).abs() < 0.5, "a long page fills the box's room: {keys:?}");
+        assert!((mcp[3] - 720.0).abs() < 0.5, "short section keeps fixed dialog height: {mcp:?}");
+        assert!((keys[3] - 720.0).abs() < 0.5, "long section keeps the same fixed dialog height: {keys:?}");
         assert_eq!(mcp[1], keys[1], "the box keeps its top");
         let held = |rt: &Runtime<crate::app::App>, key: &str| rt.elements().into_iter().find(|e| e.key.as_deref() == Some(key)).unwrap().stuck;
         let stuck = |rt: &Runtime<crate::app::App>| held(rt, "set-fade-hold");
@@ -3888,11 +3888,12 @@ mod writer_chrome_tests {
         if !cfg!(target_os = "macos") {
             assert_eq!(left[0], 8.0, "toggle-left sits 8 pt from the left edge: {left:?}");
         }
-        let buttons = ["find", "copy-all", "wide", "help", "mode-source", "mode-preview", "mode-map", "mode-board", "focus", "toggle-right"];
+        let buttons = ["find", "copy-all", "wide", "help", "mode-source", "mode-preview", "mode-map", "focus", "toggle-right"];
         let rects: Vec<[f32; 4]> = buttons.iter().map(|k| info(&rt, k).expect(k).rect).collect();
+        assert!(info(&rt, "mode-board").is_none(), "non-kanban note hides mode-board");
         let right_edge = rects.last().unwrap()[0] + rects.last().unwrap()[2];
         assert!((root_w - right_edge - 8.0).abs() < 0.5, "toggle-right ends 8 pt from right edge: {right_edge} vs {root_w}");
-        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9)] {
+        for pair in [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8)] {
             let gap = rects[pair.1][0] - (rects[pair.0][0] + rects[pair.0][2]);
             assert!((gap - 4.0).abs() < 0.5, "4 pt gap between {} and {}: {gap}", buttons[pair.0], buttons[pair.1]);
         }
@@ -4279,21 +4280,203 @@ mod escape_tests {
         assert!((sh_bar.rect[3] - 28.0).abs() < 0.5, "sheet-actions matches 28 pt zoom HUD scale: {:?}", sh_bar.rect);
         assert!(sh_bar.opacity < 0.05, "sheet-actions hidden until hover: {}", sh_bar.opacity);
         assert!(sh_bar.rect[1] < pop[1] + 48.0 && sh_bar.rect[0] > pop[0] + pop[2] / 2.0, "sheet-actions sits top-right in header: {:?} in {pop:?}", sh_bar.rect);
-        // Hovering the body/card away from the corner zone must keep sheet-actions hidden.
+        // Hovering the body/card away from header/footer must keep sheet-actions hidden.
         rt.pointer_move(body[0] + 40.0, body[1] + 40.0);
         for _ in 0..20 {
             rt.frame(DT);
         }
         let sh_bar_body = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions on body hover");
         assert!(sh_bar_body.opacity < 0.05, "sheet-actions stays hidden on body hover: {}", sh_bar_body.opacity);
-        // Hovering the top-right corner zone reveals sheet-actions.
-        let zone = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions-zone")).expect("sheet-actions-zone").rect;
-        rt.pointer_move(zone[0] + zone[2] / 2.0, zone[1] + zone[3] / 2.0);
+        // Hovering anywhere in the header (even far left) reveals sheet-actions, with × rightmost.
+        rt.pointer_move(header[0] + 24.0, header[1] + header[3] / 2.0);
         for _ in 0..25 {
             rt.frame(DT);
         }
-        let sh_bar_hover = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions hovered");
-        assert!(sh_bar_hover.opacity > 0.99, "sheet-actions shows on corner zone hover: {}", sh_bar_hover.opacity);
+        let els_h = rt.elements();
+        let sh_bar_head = els_h.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions on header hover");
+        assert!(sh_bar_head.opacity > 0.99, "sheet-actions shows on header hover: {}", sh_bar_head.opacity);
+        let save_r = els_h.iter().find(|e| e.key.as_deref() == Some("sheet-btn-save")).expect("sheet-btn-save").rect;
+        let cancel_r = els_h.iter().find(|e| e.key.as_deref() == Some("sheet-btn-cancel")).expect("sheet-btn-cancel").rect;
+        assert!(save_r[0] < cancel_r[0], "Save ✓ sits left of Close/Cancel ×: save={save_r:?}, cancel={cancel_r:?}");
+        // Moving back to body hides it again; hovering anywhere in the footer reveals it again.
+        rt.pointer_move(body[0] + 40.0, body[1] + 40.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        assert!(
+            rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).unwrap().opacity < 0.05,
+            "sheet-actions hides again on body hover"
+        );
+        rt.pointer_move(footer[0] + 24.0, footer[1] + footer[3] / 2.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let sh_bar_foot = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).expect("sheet-actions on footer hover");
+        assert!(sh_bar_foot.opacity > 0.99, "sheet-actions shows on footer hover: {}", sh_bar_foot.opacity);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// MiniCard consistency across Kanban card preview/edit and Map lightbox, Esc return-to-origin
+    /// flow (`Enter`->Preview->`Esc`->Board; `Enter`->Preview->`e`->Edit->`Esc`->Preview;
+    /// Board->`e`->Edit->`Esc`->Board), hidden focus anchor with no corner ring, and
+    /// `PageUp`/`PageDown`/`Home`/`End` inside mini-edit mode.
+    #[test]
+    fn minicard_board_lightbox_keys_and_esc_flow() {
+        use crate::bench::DT;
+        let _env = crate::scroll_tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("quire-minicard-{}", std::process::id()));
+        let mut long_body = String::new();
+        for i in 1..=45 {
+            long_body.push_str(&format!("  Line {i} of card details with enough words to overflow the mini editor.\n"));
+        }
+        let md = format!("---\nkanban-plugin: board\n---\n\n# Sprint\n\n## Todo\n\n- [ ] Alpha task\n\n{long_body}");
+        let (mut rt, _) = crate::bench::open(&dir, &md, crate::app::Mode::Preview);
+        rt.on_key = Some(crate::keys::on_key);
+        rt.update(|s, tx| s.enter_board(tx));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+
+        // Select the card (Down from header), then press Enter -> opens Preview with icon mini-bar.
+        rt.key(rune::KeyEvent { key: rune::Key::Down, mods: rune::Mods::default() });
+        rt.key(rune::KeyEvent { key: rune::Key::Enter, mods: rune::Mods::default() });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        let els = rt.elements();
+        assert!(els.iter().any(|e| e.key.as_deref() == Some("card-sheet-preview")), "Enter opens card preview");
+        // Hidden focus anchor must not draw a corner focus ring artefact.
+        let anchor = els.iter().find(|e| e.key.as_deref() == Some("card-sheet-focus")).expect("card-sheet-focus");
+        assert!(!anchor.focus_visible, "card-sheet-focus must never paint a visible corner ring");
+        // Mini-bar starts hidden, stays hidden on body hover, and reveals on header or footer hover with × rightmost.
+        let head = els.iter().find(|e| e.key.as_deref() == Some("card-sheet-header")).expect("card-sheet-header").rect;
+        let body = els.iter().find(|e| e.key.as_deref() == Some("card-sheet-preview")).expect("card-sheet-preview").rect;
+        let foot = els.iter().find(|e| e.key.as_deref() == Some("sheet-footer")).expect("sheet-footer").rect;
+        rt.pointer_move(body[0] + 40.0, body[1] + 40.0);
+        for _ in 0..20 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).unwrap().opacity < 0.05);
+        rt.pointer_move(head[0] + 24.0, head[1] + 16.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let els_h = rt.elements();
+        assert!(els_h.iter().find(|e| e.key.as_deref() == Some("sheet-actions")).unwrap().opacity > 0.99);
+        let edit_r = els_h.iter().find(|e| e.key.as_deref() == Some("card-sheet-edit")).unwrap().rect;
+        let close_r = els_h.iter().find(|e| e.key.as_deref() == Some("sheet-btn-cancel")).unwrap().rect;
+        assert!(edit_r[0] < close_r[0], "Edit icon sits left of Close ×: edit={edit_r:?}, close={close_r:?}");
+        rt.pointer_move(body[0] + 40.0, body[1] + 40.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        rt.pointer_move(foot[0] + 24.0, foot[1] + foot[3] / 2.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-actions")).unwrap().opacity > 0.99);
+
+        // From Preview: pressing `e` enters Edit; pressing Esc returns to Preview; second Esc exits to Board.
+        rt.key(rune::KeyEvent { key: rune::Key::Text("e".into()), mods: rune::Mods::default() });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("card-sheet-editor")), "e switches Preview -> Edit");
+
+        // Home, End, PageDown, PageUp work inside mini-edit mode.
+        let caret = |rt: &mut Runtime<crate::app::App>| {
+            let mut f = 0;
+            rt.update_if(|s, _| {
+                f = s.sheet().map_or(0, |sh| sh.edit.focus);
+                false
+            });
+            f
+        };
+        let pad_y = |rt: &Runtime<crate::app::App>| rt.elements().into_iter().find(|e| e.key.as_deref() == Some("sheet-pad")).unwrap().rect[1];
+        rt.key(rune::KeyEvent { key: rune::Key::End, mods: rune::Mods::default() });
+        rt.frame(DT);
+        assert!(caret(&mut rt) > 0, "End moves caret to line end in mini-edit");
+        rt.key(rune::KeyEvent { key: rune::Key::Home, mods: rune::Mods::default() });
+        rt.frame(DT);
+        assert_eq!(caret(&mut rt), 0, "Home moves caret back to line start in mini-edit");
+        let y0 = pad_y(&rt);
+        rt.key(rune::KeyEvent { key: rune::Key::PageDown, mods: rune::Mods::default() });
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let y_dn = pad_y(&rt);
+        assert!(y_dn < y0 - 40.0, "PageDown scrolls sheet-scroll in mini-edit: {y0} -> {y_dn}");
+        rt.key(rune::KeyEvent { key: rune::Key::PageUp, mods: rune::Mods::default() });
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let y_up = pad_y(&rt);
+        assert!(y_up > y_dn + 40.0, "PageUp scrolls sheet-scroll back up in mini-edit: {y_dn} -> {y_up}");
+
+        // Esc from Preview->Edit returns to Preview; second Esc exits back to Board.
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("card-sheet-preview")), "Esc returns to Preview when entered from Preview");
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert!(!rt.elements().iter().any(|e| e.key.as_deref() == Some("sheet-pop")), "Esc closes Preview back to Board");
+
+        // Opening directly into Edit via `e` from Board: Esc must exit straight back to Board (NOT Preview).
+        rt.key(rune::KeyEvent { key: rune::Key::Text("e".into()), mods: rune::Mods::default() });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("card-sheet-editor")), "e from Board opens directly in Edit");
+        rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert!(
+            !rt.elements().iter().any(|e| e.key.as_deref() == Some("sheet-pop")),
+            "Esc from direct-Edit exits straight back to Board instead of opening Preview"
+        );
+
+        // Lightbox uses the same MiniCard hover contract (header & footer reveal top-right icon
+        // mini-bar, body hover hides it, and Close × is rightmost).
+        rt.update(|s, tx| {
+            let img = crate::md::Img { alt: "Caption".into(), src: "missing.png".into(), embed: false };
+            s.open_image_lightbox(vec![img], 0, 0..1, tx);
+        });
+        for _ in 0..15 {
+            rt.frame(DT);
+        }
+        let lb_els = rt.elements();
+        let lb_head = lb_els.iter().find(|e| e.key.as_deref() == Some("lightbox-header")).expect("lightbox-header").rect;
+        let lb_body = lb_els.iter().find(|e| e.key.as_deref() == Some("lightbox-body")).expect("lightbox-body").rect;
+        let lb_foot = lb_els.iter().find(|e| e.key.as_deref() == Some("lightbox-bar")).expect("lightbox-bar").rect;
+        rt.pointer_move(lb_body[0] + 40.0, lb_body[1] + 20.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("lightbox-actions")).unwrap().opacity < 0.05);
+        rt.pointer_move(lb_head[0] + 20.0, lb_head[1] + lb_head[3] / 2.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        let lb_h = rt.elements();
+        assert!(lb_h.iter().find(|e| e.key.as_deref() == Some("lightbox-actions")).unwrap().opacity > 0.99);
+        let lb_open = lb_h.iter().find(|e| e.key.as_deref() == Some("lightbox-open")).expect("lightbox-open").rect;
+        let lb_edit = lb_h.iter().find(|e| e.key.as_deref() == Some("lightbox-edit")).expect("lightbox-edit").rect;
+        let lb_close = lb_h.iter().find(|e| e.key.as_deref() == Some("lightbox-close")).expect("lightbox-close").rect;
+        assert!(lb_open[0] < lb_edit[0] && lb_edit[0] < lb_close[0], "Lightbox bar order: open < edit < close ×");
+        rt.pointer_move(lb_body[0] + 40.0, lb_body[1] + 20.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        rt.pointer_move(lb_foot[0] + 20.0, lb_foot[1] + lb_foot[3] / 2.0);
+        for _ in 0..25 {
+            rt.frame(DT);
+        }
+        assert!(rt.elements().into_iter().find(|e| e.key.as_deref() == Some("lightbox-actions")).unwrap().opacity > 0.99);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

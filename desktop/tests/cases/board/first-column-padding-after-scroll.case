@@ -1,0 +1,36 @@
+Returning to the first column after scrolling right keeps the full outer padding and column padding intact.
+state: {"mode": "board", "right_open": false}
+events: key:Right@0.2 key:Right@0.35 key:Right@0.5 key:Right@0.65 key:Home@0.9
+expect: rect:board-row: [248.0, 41.0, 1480.0, 759.0]
+expect: rect:board-col-host:5290096467913515200: [264.0, 57.0, 280.0, {any}]
+expect: rect:board-head:5290096467913515200: [269.0, 65.59, 270.0, 27.81]
+expect: rect:board-selection: [269.0, 64.0, 270.0, 31.0]
+--- before
+---
+kanban-plugin: board
+---
+
+# Wide Board
+
+## Start Here
+
+- [ ] Click card
+- [ ] Unfold subtasks
+  - [ ] Sub 1
+  - [x] Sub 2
+
+## Col 2
+
+- [ ] A
+
+## Col 3
+
+- [ ] B
+
+## Col 4
+
+- [ ] C
+
+## Col 5
+
+- [ ] D

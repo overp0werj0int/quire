@@ -1,0 +1,12 @@
+Keyboard shortcuts opens in the shared MiniCard without version or Esc cap, with an empty hover footer revealing Customize and Close.
+note: Help.md
+events: tap:editor@0.1 key:F1@0.4 hover:help-footer@0.8
+expect: rect:help-version: None
+expect: text:help-header: 'Keyboard shortcuts Source Preview Map Board'
+expect: text:help-search-row: ' ↑↓ select'
+expect: text:help-footer: None
+expect: opacity:help-actions: 1.0
+expect: rect:help-customize: [{any}]
+expect: rect:help-close: [{any}]
+--- before
+hello

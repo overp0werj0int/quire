@@ -1,14 +1,17 @@
-Columns, cards, loose column, child task summary, section cards, and excluded footnotes.
-state: {"mode": "board"}
+Heading columns show only task cards with subtask fold handles and dots, excluding loose text, non-task items, subheadings and footnotes.
+state: {"mode": "board", "right_open": false}
 events: hover:board-canvas@0.2
-expect: rect:board-col:loose: [264.0, 57.0, 280.0, 87.0]
-expect: rect:board-col:10736194977767075865: [556.0, 57.0, 280.0, 252.0]
-expect: rect:board-col:10856064137881781609: [848.0, 57.0, 280.0, 87.0]
-expect: text:board-count:loose: '1'
-expect: text:board-count:10736194977767075865: '4'
-expect: text:board-sub:8887052920360726499: '1/2'
-expect: text:board-card:5666298580418273122: 'Backlog 1 node'
+expect: rect:board-col:loose: None
+expect: text:board-count:10736194977767075865: '3'
+expect: text:board-count:10856064137881781609: '1'
+expect: text:board-count:3797247949787526136: '1'
+expect: label:board-dots:8887052920360726499: '1 of 2 subtasks done'
+expect: rect:board-fold:8887052920360726499: [{any}]
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.[^1]
@@ -17,20 +20,21 @@ Intro note before columns.[^1]
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
+- Non-task note ignored
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 
 [^1]: Footnote text

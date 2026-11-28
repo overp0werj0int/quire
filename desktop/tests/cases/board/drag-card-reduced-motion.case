@@ -4,8 +4,12 @@ env: QUIRE_REDUCED_MOTION=1
 at: 0.65
 events: drag:board-card:9399331354417882438>292,0,0.5@0.3
 expect: tilt:board-card:9399331354417882438: 0.0524
-expect: rect:board-slot: [856.0, 142.0, 264.0, 38.0]
+expect: rect:board-slot: [565.0, 143.0, 262.0, 38.0]
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -14,18 +18,18 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

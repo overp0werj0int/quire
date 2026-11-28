@@ -1,0 +1,32 @@
+Subtask cards start folded with colored dots, unfold recursively via the fold handle, and toggling a subtask updates parent dots live.
+state: {"mode": "board", "right_open": false}
+events: tap:board-fold:8887052920360726499@0.2 tap:board-fold:11120047008437799788@0.5 key:x@0.8 key:s+cmd@1.2
+expect: label:board-dots:8887052920360726499: '2 of 2 subtasks done'
+expect: label:board-dots:11120047008437799788: '0 of 1 subtasks done'
+expect: rect:board-subs:11120047008437799788: [{any}]
+--- before
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Plan drag physics
+  - [ ] Tilt on lift
+    - [ ] Measure angle
+  - [x] Lean with speed
+--- after
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Plan drag physics
+  - [x] Tilt on lift
+    - [ ] Measure angle
+  - [x] Lean with speed

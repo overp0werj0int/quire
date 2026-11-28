@@ -19,12 +19,13 @@ use crate::ui::icons::CHECK;
 use crate::ui::layer::Card;
 use crate::ui::styles::sans;
 use crate::ui::titlebar::BAR_H;
-use crate::ui::components::{Control, kbd, popup_frame};
+use crate::ui::components::{Control, SelectionGlass, kbd, popup_frame};
 use crate::ui::tokens::{motion, radius};
 
 const PAD: f32 = 12.0;
 const GAP: f32 = 8.0;
 const TILE_W: f32 = 112.0;
+const TILE_H: f32 = 99.0;
 const THUMB: [f32; 2] = [100.0, 66.0];
 /// A tile's room round its schematic, and the card's from the window's edge.
 const TILE_PAD: f32 = 5.0;
@@ -44,13 +45,21 @@ pub(in crate::ui) fn layouts(v: V) -> Card {
     let across = ((v.vw - 2.0 * EDGE - 2.0 * PAD + GAP) / (TILE_W + GAP)).floor().clamp(1.0, 5.0) as usize;
     let per = if across >= 5 { 5 } else { across.min(3) };
     let mut grid = col().key("layout-tiles").gap(GAP).role("group").label("Layout").focus_group();
+    let mut sel_idx = None;
     for (row_idx, chunk) in Layout::ALL.chunks(per).enumerate() {
         let mut line = row().gap(GAP);
         for (col_idx, &l) in chunk.iter().enumerate() {
             let idx = row_idx * per + col_idx;
+            if l == now {
+                sel_idx = Some(idx);
+            }
             line = line.child(tile(v, &c, l, idx, l == now));
         }
         grid = grid.child(line);
+    }
+    if let Some(idx) = sel_idx {
+        let rect = SelectionGlass::expanded_rect(SelectionGlass::grid_item_rect(idx, per, TILE_W, TILE_H, GAP, GAP));
+        grid = SelectionGlass::spatial("layout-tiles", v.p, &c, rect).mount(grid);
     }
     let w = per as f32 * TILE_W + (per - 1) as f32 * GAP + 2.0 * PAD;
     let x = (v.s.map.layout_button_right - w).max(EDGE);
@@ -122,17 +131,24 @@ fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
     if current {
         name = name.child(icon(&CHECK, 10.0).color(c.accent_text));
     }
-    col()
-        .key(tile_key(l))
-        .w(TILE_W)
-        .padding(TILE_PAD)
+    let reduced = crate::motion::reduced();
+    let grow = SelectionGlass::scale_for(TILE_W, TILE_H, !current || reduced);
+    let inner = col()
+        .w_full()
         .gap(6.0)
         .items_center()
+        .scale(grow)
+        .child(plate)
+        .child(name);
+    let mut card = col()
+        .key(tile_key(l))
+        .size(TILE_W, TILE_H)
+        .padding(TILE_PAD)
+        .items_center()
+        .justify_center()
         .radius(radius::FIELD)
-        .border(1.5, if current { c.accent } else { Color::TRANSPARENT })
+        .border(1.5, Color::TRANSPARENT)
         .border_layout()
-        .hover(v.p.hover)
-        .hover_group()
         .cursor(rune::Cursor::Pointer)
         .role("button")
         .checked(current)
@@ -141,8 +157,13 @@ fn tile(v: V, c: &Roles, l: Layout, idx: usize, current: bool) -> El {
         .focus_ring(rw, rg, rc)
         .control(move |s: &mut App, tx| s.map_set_layout(l, tx))
         .focus_selected(current)
-        .child(plate)
-        .child(name)
+        .child(inner);
+    if !current {
+        card = card.hover(v.p.hover).hover_group();
+    } else {
+        card = SelectionGlass::lift(card.fill(v.p.bg).paint_order(10), v.p, true);
+    }
+    card
 }
 
 /// The sample under layout `l`, laid out by the map's own pass with sizes of a label's bar, and

@@ -61,7 +61,7 @@ pub(super) fn settings(v: V) -> Card {
     };
     let scroll = col()
         .key("set-scroll")
-        .shrink()
+        .grow(1.0)
         .min_h(0.0)
         .w_full()
         .scroll(ScrollSpec { stick_bottom: false })
@@ -70,7 +70,7 @@ pub(super) fn settings(v: V) -> Card {
     let (set_enter, set_exit) = super::slide_transition_v(s.set_slide);
     let page = col()
         .key(format!("set-page:{}", s.set_gen))
-        .shrink()
+        .grow(1.0)
         .min_h(0.0)
         .w_full()
         .fill(p.bg)
@@ -79,7 +79,7 @@ pub(super) fn settings(v: V) -> Card {
         .child(scroll);
     let stage = col()
         .key("set-stage")
-        .shrink()
+        .grow(1.0)
         .min_h(0.0)
         .w_full()
         .clip_soft(0.0)
@@ -92,13 +92,15 @@ pub(super) fn settings(v: V) -> Card {
         .h_full()
         .child(head)
         .child(stage);
-    // The shadow sits on an outer box: a rounded clip would cut it off.
+    // Fixed height across sections so switching tabs never resizes the dialog. The shadow sits on
+    // an outer box: a rounded clip would cut it off.
     let panel = dialog_frame(p, "settings-frame", Some(size::DIALOG_W_SETTINGS))
-        .max_h(max_h(v))
+        .h(max_h(v))
         .child(
             row()
                 .key("settings")
                 .w_full()
+                .h_full()
                 .radius(radius::DIALOG)
                 .clip_rounded(radius::DIALOG)
                 .role("dialog")
@@ -207,16 +209,23 @@ fn theme_grid(v: V, dark: bool) -> El {
     if theme::omarchy().is_some() {
         items.push(("omarchy", "Omarchy"));
     }
+    const THEME_CARD_H: f32 = 93.0;
     let cols = if body_width(v) >= 380.0 { 3 } else { 2 };
     let cw = ((body_width(v) - 10.0 * (cols as f32 - 1.0)) / cols as f32).floor();
     let slot = if dark { "dark" } else { "light" };
+    let roles = crate::roles::Roles::new(p);
+    let reduced = crate::motion::reduced();
     let mut grid = col().key(format!("{slot}-themes")).w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
     let card_border = crate::roles::mix(p.bg, p.ink, if p.dark { 0.16 } else { 0.18 });
-    for chunk in items.chunks(cols) {
+    let mut sel_idx = None;
+    for (row_idx, chunk) in items.chunks(cols).enumerate() {
         let mut r = row().w_full().gap(10.0);
-        for &(id, name) in chunk {
+        for (col_idx, &(id, name)) in chunk.iter().enumerate() {
             let tp = theme::themed(id, dark, &accent);
             let on = picked == id;
+            if on {
+                sel_idx = Some(row_idx * cols + col_idx);
+            }
             let pic_border = crate::roles::mix(tp.bg, tp.ink, if tp.dark { 0.18 } else { 0.16 });
             let picture = row()
                 .key("picture")
@@ -239,7 +248,14 @@ fn theme_grid(v: V, dark: bool) -> El {
                         .child(el().w(62.0).h(4.0).radius(2.0).fill(tp.mute))
                         .child(row().gap(4.0).child(el().w(20.0).h(4.0).radius(2.0).fill(tp.acc)).child(el().w(28.0).h(4.0).radius(2.0).fill(tp.mark))),
                 );
-            let card = super::components::choice_card(p, format!("theme-{slot}-{id}"), name, on, Some(card_border), move |s: &mut App, _: &mut Tx| {
+            let grow = super::components::SelectionGlass::scale_for(cw, THEME_CARD_H, !on || reduced);
+            let inner = col()
+                .w_full()
+                .gap(space::GAP_CONTROL)
+                .scale(grow)
+                .child(picture)
+                .child(label(name, sans(12.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).truncate());
+            let mut card = super::components::choice_card(p, format!("theme-{slot}-{id}"), name, on, Some(card_border), move |s: &mut App, _: &mut Tx| {
                 let set = s.settings_mut();
                 if dark {
                     set.dark_theme = Some(id.into());
@@ -251,16 +267,25 @@ fn theme_grid(v: V, dark: bool) -> El {
                     set.theme = if dark { "dark".into() } else { "light".into() };
                 }
             })
-            .w(cw)
-            .gap(space::GAP_CONTROL)
+            .size(cw, THEME_CARD_H)
             .padding(space::PX_6)
             .pb(space::PX_8)
-            .hover(p.hover)
-            .child(picture)
-            .child(label(name, sans(12.5, if on { 500.0 } else { 400.0 }), if on { p.ink } else { p.ink2 }).truncate());
+            .fill(p.bg)
+            .child(inner);
+            if !on {
+                card = card.hover(p.hover);
+            } else {
+                card = super::components::SelectionGlass::lift(card.paint_order(10), p, true);
+            }
             r = r.child(card);
         }
         grid = grid.child(r);
+    }
+    if let Some(idx) = sel_idx {
+        let rect = super::components::SelectionGlass::expanded_rect(
+            super::components::SelectionGlass::grid_item_rect(idx, cols, cw, THEME_CARD_H, 10.0, 10.0),
+        );
+        grid = super::components::SelectionGlass::spatial(&format!("{slot}-themes"), p, &roles, rect).mount(grid);
     }
     let (title, desc) = if dark { ("Dark theme", "Used in dark mode.") } else { ("Light theme", "Used in light mode.") };
     block(v, &format!("{slot}-theme"), title, Some(desc)).child(grid)
@@ -335,30 +360,53 @@ fn editor(v: V) -> El {
     let p = v.p;
     let set = v.s.settings();
     let editor_id = theme::editor_font(&set.font).id;
+    const FONT_CARD_H: f32 = 98.0;
+    let roles = crate::roles::Roles::new(p);
+    let reduced = crate::motion::reduced();
     let mut cards = col().key("font-cards").w_full().gap(10.0).mt(14.0).role("radiogroup").focus_group();
     // As many columns as fit cards wide enough for their sample line, up to three.
     let cols = ((body_width(v) + 10.0) / 178.0).floor().clamp(1.0, 3.0) as usize;
+    let card_w = (body_width(v) - 10.0 * (cols as f32 - 1.0)) / cols as f32;
     let mut card_row = row().w_full().gap(10.0);
+    let mut sel_idx = None;
     for (i, f) in EDITOR_FONTS.iter().enumerate() {
         let on = editor_id == f.id;
+        if on {
+            sel_idx = Some(i);
+        }
         let id = f.id;
-        let b = super::components::choice_card(p, format!("font-{id}"), f.label, on, None, move |s: &mut App, _: &mut Tx| {
+        let grow = super::components::SelectionGlass::scale_for(card_w, FONT_CARD_H, !on || reduced);
+        let inner = col()
+            .w_full()
+            .gap(space::GAP_CONTROL)
+            .scale(grow)
+            .child(label(f.label, super::styles::small(), if on { p.acc } else { p.mute }))
+            .child(label("## Field notes", note(f.family, 15.0, 22.5), p.ink))
+            .child(label("Rain until 14:00.", note(f.family, 13.0, 19.5), p.ink2));
+        let mut b = super::components::choice_card(p, format!("font-{id}"), f.label, on, None, move |s: &mut App, _: &mut Tx| {
             s.settings_mut().font = id.into();
         })
-        .grow(1.0)
-        .min_w(0.0)
-        .gap(space::GAP_CONTROL)
+        .size(card_w, FONT_CARD_H)
         .pt(space::PX_12)
         .px(14.0)
         .pb(14.0)
         .fill(p.bg)
-        .child(label(f.label, super::styles::small(), if on { p.acc } else { p.mute }))
-        .child(label("## Field notes", note(f.family, 15.0, 22.5), p.ink))
-        .child(label("Rain until 14:00.", note(f.family, 13.0, 19.5), p.ink2));
+        .child(inner);
+        if !on {
+            b = b.hover(p.hover);
+        } else {
+            b = super::components::SelectionGlass::lift(b.paint_order(10), p, true);
+        }
         card_row = card_row.child(b);
-        if i % cols == cols - 1 {
+        if i % cols == cols - 1 || i + 1 == EDITOR_FONTS.len() {
             cards = cards.child(std::mem::replace(&mut card_row, row().w_full().gap(10.0)));
         }
+    }
+    if let Some(idx) = sel_idx {
+        let rect = super::components::SelectionGlass::expanded_rect(
+            super::components::SelectionGlass::grid_item_rect(idx, cols, card_w, FONT_CARD_H, 10.0, 10.0),
+        );
+        cards = super::components::SelectionGlass::spatial("font-cards", p, &roles, rect).mount(cards);
     }
     let code_id = theme::pick(&theme::CODE_FONTS, &set.code_font).id;
     let code = |f: &theme::FontChoice| {

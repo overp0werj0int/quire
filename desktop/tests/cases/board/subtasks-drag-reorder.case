@@ -1,0 +1,35 @@
+Dragging an unfolded subtask card moves it into another column on disk.
+state: {"mode": "board", "right_open": false}
+events: tap:board-fold:8887052920360726499@0.2 drag:board-card:11120047008437799788>292,0,0.5@0.6 key:s+cmd@1.5
+--- before
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Plan drag physics
+  - [ ] Tilt on lift
+  - [x] Lean with speed
+
+## Done
+
+- [ ] Review design
+--- after
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Plan drag physics
+  - [x] Lean with speed
+
+## Done
+
+- [ ] Review design
+- [ ] Tilt on lift

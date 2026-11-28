@@ -4,11 +4,11 @@
 use rune::{Color, El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text, text_input};
 
 use super::V;
-use super::components::{Button, Control, SCROLL_FADE, bar_edge, dialog_frame, faded, input_focus_ring_when, key_hint, popup_frame, status_dot};
+use super::components::{Button, Control, MiniCard, SCROLL_FADE, bar_edge, faded, input_focus_ring_when, key_hint, mini_button, popup_frame, status_dot};
 use super::layer::Card;
 use super::styles::{self, caption, keys, sans};
 use super::tokens::{FocusRing, radius, size, space};
-use super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CHEVRON_UP, CLOSE, SEARCH};
+use super::icons::{CHEVRON_DOWN, CHEVRON_RIGHT, CHEVRON_UP, CLOSE, GEAR, SEARCH};
 use crate::app::App;
 use crate::keymap::{self, Ctx};
 use crate::roles::Roles;
@@ -298,9 +298,10 @@ pub(super) fn help_sheet(v: V) -> Card {
     let cols = if v.vw > 1040.0 { 2 } else { 1 };
     let content = COL_W * cols as f32 + COL_GAP * (cols - 1) as f32;
     let w = (v.vw - 48.0).min(content + 48.0);
-    let narrow_header = v.vw < 720.0;
+    let narrow_header = v.vw < 600.0;
     let header_h = if narrow_header { 84.0 } else { 48.0 };
     let search_h = 40.0;
+    let footer_h = space::PX_24;
     let help_muted = Roles::readable_on(v.p.mute, c.bg, 5.2);
     let mode_item = |m: crate::app::Mode, key: &'static str, lbl: &'static str| super::components::PillItem {
         key,
@@ -330,49 +331,39 @@ pub(super) fn help_sheet(v: V) -> Card {
             mode_item(crate::app::Mode::Board, "help-mode-board", "Board"),
         ],
     );
-    let version_lbl = text(format!("Quire {}", env!("CARGO_PKG_VERSION")))
-        .key("help-version")
-        .font(sans(11.0, 400.0))
-        .color(super::styles::caption_ink(v.p));
-    let customize_btn = super::components::Button::outline(v.p, "help-customize", "Customize shortcuts").sm().on_press(|s: &mut App, tx: &mut Tx| {
-        s.open_settings(tx);
-        s.set_sec = crate::app::Sec::Keys;
-    });
-    let close_btn = super::components::IconButton::close(v.p, "help-close", km.tip("Close help", "help.close"))
-        .aria_label("Close help")
-        .on_press(|s: &mut App, tx| s.close_layer(tx));
+    let (rw, rg, rc) = super::focus_ring(v.p);
+    let customize_btn = mini_button(v.p, "help-customize", &GEAR, "Customize shortcuts", None)
+        .focus_ring(rw, rg, rc)
+        .control(|s: &mut App, tx: &mut Tx| {
+            s.open_settings(tx);
+            s.set_sec = crate::app::Sec::Keys;
+        });
+    let close_btn = mini_button(v.p, "help-close", &CLOSE, &km.tip("Close help", "help.close"), None)
+        .focus_ring(rw, rg, rc)
+        .control(|s: &mut App, tx: &mut Tx| s.close_layer(tx));
     let header = if narrow_header {
         col()
             .key("help-header")
             .w(w)
             .h(header_h)
             .pl(20.0)
-            .pr(14.0)
+            .pr(20.0)
             .py(8.0)
             .gap(6.0)
-            .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
-            .border_layout()
             .child(
                 row()
                     .w_full()
                     .h(30.0)
-                    .gap(8.0)
+                    .pr(MiniCard::actions_reserve(2))
                     .center_y()
-                    .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
-                    .child(el().grow(1.0))
-                    .child(customize_btn)
-                    .child(cap(keymap::label_of("Esc"), v.p))
-                    .child(close_btn),
+                    .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text)),
             )
             .child(
                 row()
                     .w_full()
                     .h(30.0)
-                    .gap(8.0)
                     .center_y()
-                    .child(mode_pills)
-                    .child(el().grow(1.0))
-                    .child(version_lbl),
+                    .child(mode_pills),
             )
     } else {
         row()
@@ -380,18 +371,11 @@ pub(super) fn help_sheet(v: V) -> Card {
             .w(w)
             .h(header_h)
             .pl(24.0)
-            .pr(14.0)
-            .gap(8.0)
+            .pr(MiniCard::actions_reserve(2) + space::PX_12)
+            .gap(12.0)
             .center_y()
-            .border_sides([0.0, 0.0, 1.0, 0.0], c.hairline)
-            .border_layout()
             .child(text("Keyboard shortcuts").font(sans(13.0, 600.0)).color(c.text))
             .child(mode_pills)
-            .child(version_lbl)
-            .child(el().grow(1.0))
-            .child(customize_btn)
-            .child(cap(keymap::label_of("Esc"), v.p))
-            .child(close_btn)
     };
     // The search (RD-105): it filters the rows as it is typed, Up and Down pick one, and Enter
     // runs what the row's keys run.
@@ -425,8 +409,7 @@ pub(super) fn help_sheet(v: V) -> Card {
                 // The field takes its editing keys before the window's: the sheet's go first.
                 .on_input_key(|s: &mut App, ev: &KeyEvent, tx| s.help_key(ev, tx)),
         )
-        .child(hint("\u{2191}\u{2193}", "select"))
-        .children(pick.and_then(crate::help::action).map(|a| hint("\u{21b5}", a.name)));
+        .child(hint("\u{2191}\u{2193}", "select"));
     let card = col().key("help-body").w(w).px(24.0).py(18.0).gap(18.0);
     let mut columns: Vec<El> = (0..cols).map(|i| col().key(format!("help-col-{i}")).w(COL_W.min(w - 48.0)).gap(18.0)).collect();
     let mut n = 0;
@@ -490,9 +473,9 @@ pub(super) fn help_sheet(v: V) -> Card {
         }
     }
     let live = v.s.reader.help_scroll.clone();
-    let scroll_h = (v.vh - space::DIALOG_MARGIN_BOTH - header_h - search_h).min(620.0).max(80.0);
+    let scroll_h = (v.vh - space::DIALOG_MARGIN_BOTH - header_h - search_h - footer_h).min(620.0).max(80.0);
     // Fixed-size card (2 columns + padding on wide windows, 24 px clear of edges on shorter ones)
-    // so switching between Source / Preview / Map never resizes the modal.
+    // so switching between Source / Preview / Map / Board never resizes the modal.
     let scroll = col()
         .key(crate::reader::HELP_SCROLL)
         .w(w)
@@ -522,10 +505,15 @@ pub(super) fn help_sheet(v: V) -> Card {
         .clip_soft(0.0)
         .child_exit(help_exit)
         .child(page);
-    let card = dialog_frame(v.p, "help-card", None)
-        .role("dialog")
-        .label("Keyboard help")
-        .child(col().w(w).radius(radius::DIALOG).clip_rounded(radius::DIALOG).child(header).child(search_row).child(stage));
+    let body_wrap = col().key("help-content").w(w).child(search_row).child(stage);
+    let footer = el().key("help-footer").w(w).h(footer_h);
+    let card = MiniCard::new(v.p, "help-card", "help-chrome", "Keyboard help")
+        .card_key("help-inner")
+        .actions_keys("help-actions", "help-actions-zone")
+        .width(w)
+        .action(customize_btn)
+        .close(close_btn)
+        .build(header, body_wrap, footer);
     Card { el: card, plane: Some(col().center()) }
 }
 

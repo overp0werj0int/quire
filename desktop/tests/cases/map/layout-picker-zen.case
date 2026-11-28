@@ -3,8 +3,8 @@ note: Trip.md
 state: {"mode": "map", "right_open": true}
 events: key:.+cmd@0.8 hover:640,20@1.4 tap:map-layout@1.8
 at: 2.4
-expect: rect:map-layout: [1035.0, 8.0, 24.0, 24.0]
-expect: rect:layouts: [443.0, 46.0, 616.0, 181.0]
+expect: rect:map-layout: [1063.0, 8.0, 24.0, 24.0]
+expect: rect:layouts: [471.0, 46.0, 616.0, 181.0]
 --- before
 # Trip
 

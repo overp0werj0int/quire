@@ -3,6 +3,10 @@ state: {"mode": "board", "right_open": false}
 events: key:f+cmd@0.2 type:Done@0.5 key:Enter@0.9
 expect: selected: board-head:3797247949787526136
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -11,18 +15,18 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

@@ -1,18 +1,26 @@
-A note with multiple top-level # headings uses a virtual root so each # heading is a column and cards drag between them.
+A kanban note with multiple top-level # headings uses a virtual root so each # heading is a column and task cards drag between them.
 state: {"mode": "board", "right_open": false}
-events: drag:board-card:11333666779116951903>584,0,0.4@0.3 key:s+cmd@1.1
+events: drag:board-card:11333666779116951903>292,0,0.4@0.3 key:s+cmd@1.1
 --- before
+---
+kanban-plugin: board
+---
+
 # Alpha
 
-- One
+- [ ] One
 
 # Beta
 
-- Two
+- [ ] Two
 --- after
+---
+kanban-plugin: board
+---
+
 # Alpha
 
 # Beta
 
-- Two
-- One
+- [ ] Two
+- [ ] One

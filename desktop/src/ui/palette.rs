@@ -4,7 +4,7 @@ use crate::roles::Roles;
 use rune::{Color, Key, KeyEvent, ScrollSpec, Span, Tx, col, el, icon, rich, row, text, text_input};
 
 use super::V;
-use super::components::{dialog_frame, faded_h, kbd, key_hint, label, tag_badge};
+use super::components::{SelectionGlass, dialog_frame, faded_h, kbd, key_hint, label, tag_badge};
 use super::icons::{LOCK, WARNING};
 use super::layer::Card;
 use super::tokens::{radius, size, space};
@@ -126,7 +126,7 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
                 .px(12.0)
                 .center_y()
                 .radius(radius::CONTROL)
-                .fill(if on { p.act } else { Color::TRANSPARENT })
+                .fill(Color::TRANSPARENT)
                 .role("option")
                 .checked(on)
                 .label(row_label)
@@ -153,6 +153,11 @@ fn palette_card(v: V, d: commands::PalData, q: &rune::TextEdit) -> Card {
     }
     if d.items.is_empty() {
         list = list.child(label("Nothing matches.", sans(13.0, 400.0), p.mute).py(14.0).px(12.0));
+    } else if d.idx < d.items.len() {
+        let pal_w = (v.vw - space::DIALOG_MARGIN_BOTH).min(size::DIALOG_W_PALETTE);
+        let row_w = (pal_w - 2.0 * LIST_PAD).max(60.0);
+        let row_rect = [LIST_PAD, LIST_PAD + d.idx as f32 * ROW_H, row_w, ROW_H];
+        list = SelectionGlass::list_row("pal", p, &roles, row_rect).mount(list);
     }
     // The list is at most 392 tall, and less in a short window, snapped to whole rows so no
     // command row is sliced in half across the bottom scrollport edge on open.

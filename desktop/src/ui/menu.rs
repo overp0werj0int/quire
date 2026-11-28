@@ -404,46 +404,60 @@ fn node(v: V, id: crate::map::NodeId) -> Vec<Item> {
     }
 }
 
-/// A board card's menu (BRD-028): Edit, Copy, Move to <Column> (one per other column), and Delete.
+/// A board card's menu (BRD-028): Open, Edit, Fold/Unfold (if subtasks), Copy, Move to <Column>,
+/// and Delete.
 fn board_card(v: V, id: crate::map::NodeId) -> Vec<Item> {
     let t = v.s.map_tree();
     let Some(i) = t.find(id) else { return Vec::new() };
     let model = crate::board::build(&t);
-    let Some((cur_col, _)) = model.find_card(i) else { return Vec::new() };
+    let Some(card) = model.card(i) else { return Vec::new() };
+    let cur_col = model.find_card_column(i);
     let key_of = |act: &str| Some(v.s.keymap.label(act)).filter(|k| !k.is_empty());
 
     let mut items = vec![
         Item {
-            key: Some("menu-board-edit"),
-            keys: key_of("board.edit"),
-            ..item("Edit", Box::new(move |s, tx| {
-                s.board_select(id);
-                s.board_edit_selected(tx);
+            key: Some("menu-board-open"),
+            keys: key_of("board.open"),
+            ..item("Open", Box::new(move |s, tx| {
+                s.board_open_card(id, false, tx);
             }))
         },
         Item {
-            key: Some("menu-board-copy"),
-            keys: key_of("board.copy"),
-            ..item("Copy", Box::new(move |s, tx| {
-                s.board_select(id);
-                s.board_copy(tx);
+            key: Some("menu-board-edit"),
+            keys: key_of("board.edit"),
+            ..item("Edit", Box::new(move |s, tx| {
+                s.board_open_card(id, true, tx);
             }))
         },
     ];
+    if !card.subtasks.is_empty() {
+        let expanded = v.s.board_is_expanded(id);
+        items.push(Item {
+            key: Some("menu-board-fold"),
+            keys: key_of("board.toggle-fold"),
+            ..item(
+                if expanded { "Fold subtasks" } else { "Unfold subtasks" },
+                Box::new(move |s, tx| s.board_toggle_fold(id, tx)),
+            )
+        });
+    }
+    items.push(Item {
+        key: Some("menu-board-copy"),
+        keys: key_of("board.copy"),
+        ..item("Copy", Box::new(move |s, tx| {
+            s.board_select(id);
+            s.board_copy(tx);
+        }))
+    });
 
     for (ci, col) in model.columns.iter().enumerate() {
-        if ci == cur_col {
+        if Some(ci) == cur_col && model.find_card_slot(i).is_some_and(|(p, _)| p == crate::board::SlotParent::Column(ci)) {
             continue;
         }
-        let target_slot = crate::board::Slot { column: ci, index: col.cards.len() };
+        let target_slot = crate::board::Slot { parent: crate::board::SlotParent::Column(ci), index: col.cards.len() };
         let allowed = crate::board::nearest_allowed(&model, &t, i, target_slot).is_some();
-        let target_key = col.head.key_id(&t);
-        let col_name = match col.head {
-            crate::board::ColumnHead::Loose => {
-                if t.root().label.is_empty() { "Loose".to_string() } else { t.root().label.clone() }
-            }
-            crate::board::ColumnHead::Heading(h) => t.nodes[h].label.clone(),
-        };
+        let target_key = col.key_id(&t);
+        let col_name = t.nodes[col.heading].label.clone();
         items.push(Item {
             dyn_key: Some(format!("menu-board-move-{target_key}")),
             enabled: allowed,

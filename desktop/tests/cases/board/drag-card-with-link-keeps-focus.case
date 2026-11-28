@@ -1,0 +1,31 @@
+Dragging a board card on a board that contains URL links keeps keyboard focus on note-keys so Enter opens the selected card instead of focusing a link.
+state: {"mode": "board", "right_open": false}
+events: key:Down@0.2 drag:board-card:1479018360082908634>0,-50,0.3@0.5 key:Enter@1.2
+expect: focus: card-sheet-focus (no ring)
+expect: rect:card-sheet: [{any}]
+--- before
+---
+kanban-plugin: board
+---
+
+## Todo
+
+- [ ] First task
+- [ ] Second task
+
+## Ideas
+
+- [ ] Check [Onyx](https://example.com/onyx)
+--- after
+---
+kanban-plugin: board
+---
+
+## Todo
+
+- [ ] Second task
+- [ ] First task
+
+## Ideas
+
+- [ ] Check [Onyx](https://example.com/onyx)

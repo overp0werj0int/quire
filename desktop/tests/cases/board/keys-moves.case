@@ -2,6 +2,10 @@ Alt+Right on a column header reorders the column past its right neighbour.
 state: {"mode": "board", "right_open": false}
 events: tap:board-head:10736194977767075865@0.2 key:Right+alt@0.5 key:s+cmd@0.9
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -10,42 +14,46 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 --- after
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Todo
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Done
 
-- Review design
+- [ ] Review design

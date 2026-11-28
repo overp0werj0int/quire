@@ -133,7 +133,7 @@ pub fn body(v: V) -> El {
         .min_w(0.0)
         .min_h(0.0)
         .w_full()
-        .children((!writer && !boarding).then(super::focus::note_anchor))
+        .children((!writer).then(super::focus::note_anchor))
         .children(has_find_slot.then(|| super::reader::find_backing(v)))
         .child(view);
     if reading || writer {
@@ -1358,8 +1358,10 @@ fn ac_popover(v: V) -> Option<El> {
 }
 
 fn on_editor_key(s: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    // A caret move that follows a key is not a click (see `App::check_link_click`).
+    // A caret move that follows a key is not a click (see `App::check_link_click`), and
+    // typewriter scrolling follows keyboard caret moves (`App::poll_writer`).
     s.key_moved = true;
+    s.wstate.follow = true;
     // The field would keep Escape, so the writer's Esc order runs here (WR-77), for Esc with
     // a modifier too: the field gives up the keyboard on any Esc.
     if matches!(ev.key, Key::Escape) {

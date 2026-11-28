@@ -11,8 +11,9 @@ use crate::theme::Pal;
 use crate::ui::icons::CHECK;
 use crate::ui::tokens::{FocusRing, radius, size, space};
 
-/// Selectable bordered card (`radius::FIELD`, 1 pt accent ring when selected, `role("radio")`
-/// inside a `radiogroup` `focus_group`).
+/// Selectable bordered card (`radius::FIELD`, `role("radio")` inside a `radiogroup`
+/// `focus_group`). Active selection highlighting is painted by a shared sliding
+/// `components::SelectionGlass` on the containing grid so all spatial pickers share Map's look.
 pub fn choice_card(
     p: &Pal,
     key: impl Into<String>,
@@ -21,20 +22,16 @@ pub fn choice_card(
     border_idle: Option<Color>,
     run: impl Fn(&mut App, &mut Tx) + 'static,
 ) -> El {
-    let mut card = FocusRing::Standard.apply(
+    FocusRing::Standard.apply(
         col()
             .key(key.into())
             .radius(radius::FIELD)
-            .border(1.0, if selected { p.acc } else { border_idle.unwrap_or(p.line) })
+            .border(1.0, border_idle.unwrap_or(p.line))
             .border_layout()
             .label(aria_label.into())
             .choice(selected, run),
         p,
-    );
-    if selected {
-        card = card.box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 0.0, spread: 1.0, color: p.acc, inset: false });
-    }
-    card
+    )
 }
 
 /// Compact `28 pt` selectable pill (`radius::CONTROL`, `space::PAD_INPUT_X`, `FocusRing::Standard`),

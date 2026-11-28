@@ -1,8 +1,12 @@
 h moves selection left into the previous column.
 state: {"mode": "board", "right_open": false}
-events: tap:board-card:10358574669306381026@0.2 key:h@0.4
+events: key:Right@0.2 key:h@0.4
 expect: selected: board-card:9399331354417882438
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -11,18 +15,18 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

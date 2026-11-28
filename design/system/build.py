@@ -191,8 +191,18 @@ def components():
     c.append(comp("bar.mini", "Mini-bar and mini button", "ui/components/mini_bar.rs",
         f'<span class="q-minibar"><span class="q-ibtn q-mini">{G12}</span><span class="q-ibtn q-mini is-hover">{G12}</span><span class="q-ibtn q-mini">{G12}</span></span>',
         [("Bar", "28 tall, padding 2 (PAD_TRACK), gap 1 (GAP_MICRO), radius 6 (CONTROL)"), ("Button", "24 × 24, radius 4 (INNER), icon 12"), ("Surface", "page colour at 94%, 1 line border, Elevation::Toolbar"),
-         ("Icon ink", "Zone::Chrome.icon_rest (>= 3.2:1); ink under the pointer"), ("Scale", "every number times k on the map, so the bar follows zoom"),
-         ("Used by", "block actions in the reader, map cards, edit sheet, map zoom HUD, map add-toolbar")]))
+         ("Icon ink", "Zone::Page.icon_rest (>= 3.2:1); ink under the pointer"), ("Scale", "every number times k on the map, so the bar follows zoom"),
+         ("Used by", "block actions in the reader, map cards, mini-cards (edit sheet, kanban card preview/edit, lightbox), map zoom HUD, map add-toolbar")]))
+    c.append(comp("card.mini", "Mini-card", "ui/components/mini_card.rs MiniCard",
+        f'<span class="q-dialog" style="position:relative;gap:8px"><span class="q-dtitle" style="font-size:13px">Card header<span class="q-minibar" style="float:right"><span class="q-ibtn q-mini">{G12}</span><span class="q-ibtn q-mini">{G12}</span></span></span>'
+        '<span class="q-dtext">Borderless body (hovering content keeps mini-bar hidden).</span>'
+        '<span class="q-pfoot"><span class="q-kbd q-kbd-c">Esc</span> closes</span></span>',
+        [("Frame", "dialog_frame (radius 12 DIALOG, Elevation::Dialog); borderless header, body, footer"),
+         ("Hover areas", "Whole header AND whole footer share one hover_group_shared; body is excluded so reading/typing stays quiet"),
+         ("Actions", "Single top-right mini_bar revealed on motion::zen_spring() (pinned visible while discard is armed or on error/conflict)"),
+         ("Buttons", "All actions are icon-only mini_buttons (24 × 24, 12 pt icon, 'Action · Key' tooltip); no text Buttons, no standalone close ×"),
+         ("Order", "× (Close / Cancel / Discard) is always the rightmost icon (e.g. [✓] [×], [✎] [×], [←] [→] [↗] [✎] [×])"),
+         ("Used by", "Edit sheet, Kanban card preview/edit mini-window, Map image lightbox")]))
     c.append(comp("switch", "Switch", "ui/components/switch.rs switch",
         '<span class="q-switch"><i></i></span><span class="q-switch is-on"><i></i></span><span class="q-switch is-on is-focus"><i></i></span>',
         [("Track", "50 × 28, fully round"), ("Knob", "24, white, 2 from the edge, Elevation::Knob"), ("Off", "mark; 20% toward ink under the pointer"),
@@ -294,17 +304,18 @@ VIEWS = [
     ("Sidebar", "ui/sidebar/", "Top bar with search and New note; the Open shelf of tabs with an inline outline; the folder tree; search results and tags; footer with tags, trash, sync, Settings."),
     ("Outline", "ui/outline.rs", "Headings of the note, backlinks, word count."),
     ("Palette", "ui/palette.rs", "Quick switcher for notes; type '>' or Backspace for commands."),
-    ("Settings", "ui/settings.rs, settings_sync.rs, settings_mcp.rs", "Tabs: Appearance, Editor, Files & links, Sync, MCP, Shortcuts. Rows of a title 14 / 500 with a description and one control."),
+    ("Settings", "ui/settings.rs, settings_sync.rs, settings_mcp.rs", "Fixed-height dialog (min(vh - 48, 720)) with tabs: Appearance, Editor, Files & links, Sync, MCP, Shortcuts. Rows of a title 14 / 500 with a description and one control."),
     ("Lock", "ui/lock.rs", "The locked-note panel and the set, change and remove password dialogs."),
     ("Trash", "ui/trash.rs", "Deleted notes and folders, Restore, two-step Delete and Empty trash."),
     ("Help", "help.rs, ui/reader.rs", "Searchable shortcut list by mode, with key caps."),
-    ("Edit sheet", "ui/sheet.rs, sheet.rs", "A dialog that edits one block or section of the preview in the writer's editor."),
+    ("Edit sheet & card mini-window", "ui/sheet.rs, sheet.rs", "MiniCard modal editing a block/section or previewing/editing a Kanban card, with header/footer hover-revealed icon mini-bar."),
     ("Menus", "ui/menu.rs", "Context menus for tree rows, tabs, blocks and map nodes; the delete-folder confirm."),
-    ("Lightbox, layout picker", "ui/map/lightbox.rs, ui/map/layouts.rs", "A picture from a map card at full size; the map's layout chooser."),
+    ("Lightbox, layout picker", "ui/map/lightbox.rs, ui/map/layouts.rs", "MiniCard full-size image lightbox with icon mini-bar (Prev, Next, Open externally, Edit Markdown, Close); the map's layout chooser."),
 ]
 
 RULES = [
     ("Two chrome families", "The panel family (iA Writer Quattro S, or the system monospace) is for navigation, key names and literal values. Instrument Sans is for everything else. No view sets a family itself (ui/styles.rs, test ui_builders_take_chrome_styles)."),
+    ("Mini-cards", "Edit sheet, Kanban card preview/edit, and Lightbox all compose via components::MiniCard: whole header and footer are hover areas revealing one top-right icon-only mini_bar; no text buttons or standalone close ×; × is always rightmost."),
     ("Colour by role", "Chrome reads the palette (Pal). The page and the side panels read roles derived from it (roles.rs), each lifted until it reads: faint text 4.5:1, rows 1.43 times that, current text 1.15 times that."),
     ("Contrast is computed", "An accent is moved toward white or black until it reaches 3:1 on the page. Text on the accent is whichever of white or black reads better."),
     ("Pixel grid", "Chrome sizes round to device pixels (theme::px); page line boxes round to whole points (page::r)."),

@@ -104,6 +104,9 @@ struct CachedBacklinks {
 pub struct WriterState {
     /// The caret the last frame saw, so typewriter scrolling follows moves (WR-88).
     caret: Option<(String, usize)>,
+    /// Keyboard or edit moved the caret since the last poll; mouse clicks and drag selections
+    /// leave this false so typewriter scrolling does not pull text out from under the pointer.
+    pub follow: bool,
     /// Centre the caret line on the next frame (a forced move).
     pub center: bool,
     /// A source line to hold at the top of the view, and since when.
@@ -1207,11 +1210,13 @@ impl App {
         }
     }
 
-    /// Before each frame: typewriter scrolling follows the caret.
+    /// Before each frame: typewriter scrolling follows keyboard and edit caret moves, never
+    /// mouse presses or drag selections.
     pub(crate) fn poll_writer(&mut self, t: f64, tx: &mut Tx) {
+        let follow = std::mem::take(&mut self.wstate.follow);
         if self.writing() {
             let at = self.active.clone().zip(self.cur_edit_opt().map(|e| e.focus));
-            if self.wstate.center || (self.settings().typewriter_scroll && at != self.wstate.caret) {
+            if self.wstate.center || (self.settings().typewriter_scroll && follow && at != self.wstate.caret) {
                 tx.scroll_center(CARET);
             }
             self.wstate.caret = at;

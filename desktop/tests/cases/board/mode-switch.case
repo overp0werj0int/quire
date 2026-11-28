@@ -1,15 +1,20 @@
-Ctrl+Shift+K switches to Board mode, persists board in state.json, and toggles back to the last linear mode.
+Ctrl+Shift+K switches to Board mode on a kanban note and persists board in state.json.
+state: {"mode": "source", "right_open": false}
 events: key:k+cmd+shift@0.2
 expect: state:mode: "board"
 expect: focus: note-keys (no ring)
 expect: rect:board-canvas: [248.0, 41.0, 1032.0, 759.0]
 --- before
+---
+kanban-plugin: board
+---
+
 # Plan
 
 ## Todo
 
-- First task
+- [ ] First task
 
 ## Done
 
-- Second task
+- [ ] Second task

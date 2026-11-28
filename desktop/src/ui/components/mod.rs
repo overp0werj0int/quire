@@ -12,10 +12,12 @@ pub mod icon_button;
 pub mod input;
 pub mod kbd;
 pub mod mini_bar;
+pub mod mini_card;
 pub mod segmented;
+pub mod selection_glass;
 pub mod switch;
 
-pub use badge::{count_pill, error_line, status_dot, tag_badge};
+pub use badge::{count_pill, error_line, progress_dot, status_dot, tag_badge};
 pub use button::{Button, ButtonVariant};
 pub use choice::{checkbox_box, choice_card, choice_pill};
 pub use chrome::{Control, DOTS_W, MARK, MARK_ON_INK, TIP_WRAP, bar_sep, dots, label, name_tip, padded};
@@ -27,7 +29,9 @@ pub use mini_bar::{
     MINI_BAR_GAP, MINI_BAR_H, MINI_BAR_PX, MINI_BAR_RADIUS, MINI_BTN, MINI_BTN_RADIUS, MINI_DISABLED_ALPHA, MINI_ICON,
     mini_bar, mini_bar_at, mini_bar_w, mini_button, mini_button_at, toolbar_surface,
 };
+pub use mini_card::MiniCard;
 pub use segmented::{PillItem, pill_group, seg, settings_seg, settings_seg_literal};
+pub use selection_glass::{GLASS_R, GlassBackdrop, SelectionGlass};
 pub use switch::switch;
 
 /// Consistent focus-within ring for single-line text inputs (`SB-95`, `KBDA11Y`).

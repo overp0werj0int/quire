@@ -2,6 +2,10 @@ An outside write while a card is held cancels the hold with nothing written by t
 state: {"mode": "board", "right_open": false}
 events: drag:board-card:9399331354417882438>292,0,3.2@0.3 write:Note.md@0.6
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -10,28 +14,36 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 --- outside Note.md
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 ## Todo
 
 - Updated outside
 --- after
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 ## Todo

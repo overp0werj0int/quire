@@ -211,6 +211,7 @@ impl App {
             self.unlock_error = None;
             self.fields.remove("unlock-pass");
             self.reveal.remove("unlock-pass");
+            self.board_enforce_kanban(Some(tx));
             tx.focus(crate::ui::lock::PASS, false);
         }
     }
@@ -228,6 +229,7 @@ impl App {
         self.unlock_error = None;
         self.fields.remove("unlock-pass");
         self.reveal.remove("unlock-pass");
+        self.board_enforce_kanban(None);
     }
 
     /// Clears any inline validation error on the Lock Password dialog once the user edits either field.
@@ -255,6 +257,7 @@ impl App {
         self.fields.remove("unlock-pass");
         self.reveal.remove("unlock-pass");
         if self.active_locked() {
+            self.board_enforce_kanban(Some(tx));
             tx.focus(crate::ui::lock::PASS, false);
         }
     }

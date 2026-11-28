@@ -273,7 +273,9 @@ const BOARD: &[Group] = &[
             h("Move card up / down", &["board.move-up", "board.move-down"]),
             h("Move card or column left / right", &["board.move-left", "board.move-right"]),
             h("Tick the task", &["board.toggle-task"]),
-            h("Edit in sheet", &["board.edit"]),
+            h("Open card", &["board.open"]),
+            h("Edit card", &["board.edit"]),
+            h("Fold or unfold subtasks", &["board.toggle-fold"]),
             k("Card menu", &["board.card-menu"]),
             h("Copy Markdown", &["board.copy"]),
             h("Delete the card", &["board.delete"]),
@@ -442,7 +444,7 @@ impl App {
         let Some(a) = action(r) else { return };
         let help_mode = self.help_search().map_or(self.mode, |h| h.mode);
         let cross_mode = help_mode != self.mode && !a.ctx.contains(&keymap::Ctx::Global);
-        if cross_mode && (self.active.is_none() || self.active_locked()) {
+        if cross_mode && (self.active.is_none() || self.active_locked() || (help_mode == Mode::Board && !self.active_is_kanban())) {
             return;
         }
         self.close_layer(tx);

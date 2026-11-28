@@ -66,10 +66,11 @@ All tokens live in `desktop/src/ui/tokens.rs`:
 
 ## Elevation
 
-`tokens::Elevation` defines five theme-aware elevations (warm brown on light themes, neutral
+`tokens::Elevation` defines six theme-aware elevations (warm brown on light themes, neutral
 black on dark themes): `Toolbar` (mini-bars, formatting toolbar, toasts), `Popup` (menus, find
 bar, layout picker), `Dialog` (Settings, Lock, Trash, Palette, Help, Edit sheet, Lightbox),
-`Segment` (raised segment), and `Knob` (switch knob). Panels have no shadow, only a hairline.
+`Segment` (raised segment), `Knob` (switch knob), and `SelectionGlass` (Map/Board/picker
+sliding glass selection lift). Panels have no shadow, only a hairline.
 
 ## Motion
 
@@ -86,10 +87,31 @@ One module per component in `desktop/src/ui/components/`: `button.rs` (`Primary`
 `icon_button.rs` (`Mini`, `Bar`, `Panel`, `Toolbar` with `ToggleKind`), `input.rs` (`Dialog` 32 /
 r=8, `Panel` 28 / r=6, password, literal, secret and area helpers), `choice.rs` (`choice_card`,
 `choice_pill`, `checkbox_box`), `switch.rs`, `segmented.rs` (`segmented` 28 / r=6 inside 32 track,
-`pill_group` 24 / r=6 inside hairline track), `kbd.rs` (`kbd`, `key_hint`), `badge.rs`
-(`count_pill`, `tag_badge`, `status_dot`, `error_line`), `mini_bar.rs`, `dialog.rs`
+`pill_group` 24 / r=6 inside hairline track), `selection_glass.rs` (`SelectionGlass`, `GlassBackdrop`,
+`GLASS_R` — single sliding glass selection outline + zoom shared by Map, Board, Layout Picker,
+Settings theme/font/provider grids, and Command Palette), `kbd.rs` (`kbd`, `key_hint`), `badge.rs`
+(`count_pill`, `tag_badge`, `status_dot`, `progress_dot`, `error_line`), `mini_bar.rs`, `mini_card.rs`
+(`MiniCard` — modal mini-cards with whole-header & whole-footer hover zones, top-right hover-revealed
+icon-only `mini_bar`, and `×` always rightmost), `dialog.rs`
 (`dialog_frame`, `dialog_plane`, `popup_frame`, `bar_edge`, `faded`, `faded_h`), and `chrome.rs`
 (`Control`, `label`, `padded`, `bar_sep`, `dots`, `name_tip`).
+
+## Mini-card
+
+Modal mini-cards (Edit sheet, Kanban card preview/edit, Keyboard help, and Map lightbox) compose
+through `ui/components/mini_card.rs` (`MiniCard`):
+
+- Three borderless bands inside `dialog_frame`: **header** (hover area), **body** (not a hover area,
+  so reading and typing keep chrome invisible), and **footer** (hover area).
+- Header and footer share one `hover_group_shared` group; hovering anywhere in either band (or the
+  bar itself) reveals a single top-right `mini_bar` on `motion::zen_spring()`. The bar stays pinned
+  visible when discard is armed or an error/conflict line is shown.
+- All actions in the mini-bar are icon-only `mini_button`s (`24 × 24`, `12 pt` icons, `"Action · Key"`
+  tooltips) — never text `Button`s and never a permanently visible standalone close `×`.
+- **`×` (Close / Cancel / Discard) is always the rightmost button** (`MiniCard::close` appends it
+  last: `[✓ Save] [× Cancel/Discard]`, `[✎ Edit] [× Close]`, `[⚙ Customize] [× Close]`,
+  `[←] [→] [↗] [✎] [×]`).
+- Settings uses a fixed height (`min(vh - 48, 720)`) so switching sections never resizes the dialog.
 
 ## Interaction
 

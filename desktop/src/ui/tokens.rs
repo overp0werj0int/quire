@@ -198,6 +198,8 @@ pub enum Elevation {
     Segment,
     /// Switch knob.
     Knob,
+    /// Sliding selection glass lift shadow (`components::SelectionGlass`, `MAP-055`, `BRD-012`).
+    SelectionGlass,
 }
 
 impl Elevation {
@@ -258,6 +260,14 @@ impl Elevation {
                 blur: 2.0 * k,
                 spread: 0.0,
                 color: Color::BLACK.alpha(0.25),
+                inset: false,
+            }],
+            Elevation::SelectionGlass => vec![Shadow {
+                x: 0.0,
+                y: 6.0 * k,
+                blur: 22.0 * k,
+                spread: 0.0,
+                color: Color::BLACK.alpha(0.35),
                 inset: false,
             }],
         }
@@ -403,7 +413,7 @@ mod tests {
     #[test]
     fn dark_elevations_use_neutral_black_shadows() {
         let ink = theme_pal("ink", true);
-        for elev in [Elevation::Toolbar, Elevation::Popup, Elevation::Dialog, Elevation::Segment, Elevation::Knob] {
+        for elev in [Elevation::Toolbar, Elevation::Popup, Elevation::Dialog, Elevation::Segment, Elevation::Knob, Elevation::SelectionGlass] {
             for sh in elev.shadows(ink, 1.0) {
                 assert_eq!((sh.color.r, sh.color.g, sh.color.b), (0.0, 0.0, 0.0), "{elev:?} dark shadow should be neutral black");
             }
@@ -488,13 +498,30 @@ mod tests {
         assert!(hits.is_empty(), "legacy widgets/chip references found:\n{}", hits.join("\n"));
     }
 
-    /// Guardrail: every modal dialog builder uses the unified `dialog_frame` helper.
+    /// Guardrail: every modal dialog builder uses the unified `dialog_frame` (or `MiniCard`, which
+    /// wraps `dialog_frame`).
     #[test]
     fn dialogs_use_shared_dialog_frame() {
         let ui_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui");
         for rel in ["lock.rs", "trash.rs", "settings.rs", "palette.rs", "reader.rs", "sheet.rs", "map/lightbox.rs"] {
             let src = std::fs::read_to_string(ui_dir.join(rel)).unwrap();
-            assert!(src.contains("dialog_frame("), "{rel} must build its modal frame via components::dialog_frame");
+            assert!(
+                src.contains("dialog_frame(") || src.contains("MiniCard::new("),
+                "{rel} must build its modal frame via components::dialog_frame or components::MiniCard"
+            );
+        }
+    }
+
+    /// Guardrail: modal mini-cards (`sheet.rs`, `map/lightbox.rs`) use the shared `MiniCard`
+    /// component with icon-only `mini_button`s (no text `Button::` or standalone `IconButton::close`).
+    #[test]
+    fn mini_cards_use_shared_mini_card_component() {
+        let ui_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui");
+        for rel in ["sheet.rs", "map/lightbox.rs"] {
+            let src = std::fs::read_to_string(ui_dir.join(rel)).unwrap();
+            assert!(src.contains("MiniCard::new("), "{rel} must build mini-cards via components::MiniCard");
+            assert!(!src.contains("Button::"), "{rel} must use icon-only mini_buttons, not text Button::");
+            assert!(!src.contains("IconButton::close("), "{rel} must put close × in MiniCard::close, not standalone IconButton::close");
         }
     }
 

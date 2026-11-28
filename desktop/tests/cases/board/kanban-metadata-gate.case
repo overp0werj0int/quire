@@ -1,0 +1,12 @@
+A note without kanban-plugin front matter hides the Board button and refuses Ctrl+Shift+K.
+state: {"mode": "source"}
+events: key:k+cmd+shift@0.3
+expect: rect:mode-board: None
+expect: state:mode: "source"
+expect: text:toast: 'Add kanban-plugin to front matter to use Board'
+--- before
+# Regular Note
+
+## Todo
+
+- [ ] Task one

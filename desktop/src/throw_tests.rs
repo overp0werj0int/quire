@@ -246,3 +246,247 @@ fn fingers_landing_stop_the_map() {
     assert_eq!(pan(&mut rt), held, "it stops where the fingers landed");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn wide_board() -> String {
+    let mut s = String::from("---\nkanban-plugin: board\n---\n\n# Board\n\n");
+    for c in 1..=22 {
+        s.push_str(&format!("## Column {c}\n\n- [ ] Task {c}.1\n- [ ] Task {c}.2\n\n"));
+    }
+    s
+}
+
+fn tall_board() -> String {
+    let mut s = String::from("---\nkanban-plugin: board\n---\n\n# Board\n\n## Tall\n\n");
+    for i in 1..=65 {
+        s.push_str(&format!("- [ ] Task {i}\n"));
+    }
+    s.push_str("\n## Side\n\n- [ ] Other\n");
+    s
+}
+
+fn board_rt(name: &str, text: &str) -> (Runtime<App>, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("quire-throw-board-{name}-{}", std::process::id()));
+    let (mut rt, _) = open(&dir, text, Mode::Preview);
+    rt.set_on_touchpad_hold(Some(App::touchpad_hold));
+    rt.update(|s, tx| s.enter_board(tx));
+    for _ in 0..10 {
+        rt.frame(DT);
+    }
+    (rt, dir)
+}
+
+fn board_x(rt: &mut Runtime<App>) -> f32 {
+    let mut x = 0.0;
+    rt.update_if(|s, _| {
+        x = s.board.scroll_x.get();
+        false
+    });
+    x
+}
+
+fn settle_board_x(rt: &mut Runtime<App>) -> f32 {
+    let mut last = board_x(rt);
+    let mut still = 0;
+    for _ in 0..180 {
+        rt.frame(DT);
+        let now = board_x(rt);
+        still = if now == last { still + 1 } else { 0 };
+        last = now;
+        if still == 5 {
+            break;
+        }
+    }
+    last
+}
+
+/// BRD-007 + decision 0012: horizontal touchpad swipes on the Kanban board flow through Rune's
+/// native scroll/throw path — coasting `v²/2a`, stopping when fingers land (`touchpad_hold`),
+/// and boosting on a quick second swipe within 50 ms identically to Preview.
+#[test]
+fn board_horizontal_swipe_throws_boosts_and_stops_on_hold() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let wide = wide_board();
+    let (mut rt, dir) = board_rt("horiz", &wide);
+    let at = rt.find("board-scroll").expect("board-scroll is drawn");
+    rt.pointer_move(at.0, at.1);
+    rt.frame(DT);
+
+    // 1. Single swipe coasts v²/2a.
+    swipe(&mut rt, at, (-20.0, 0.0), 8, 10.0, 0.008, true);
+    let lifted = board_x(&mut rt);
+    assert!((lifted - 160.0).abs() < 0.5, "swipe moves board 8x20: {lifted}");
+    let travel = settle_board_x(&mut rt) - lifted;
+    assert!((travel - THROW_2400).abs() < 2.0, "board horizontal throw v²/2a: {travel}");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // 2. Fingers landing stop the board coast immediately.
+    let (mut rt, dir) = board_rt("horiz-hold", &wide);
+    let at = rt.find("board-scroll").expect("board-scroll is drawn");
+    rt.pointer_move(at.0, at.1);
+    rt.frame(DT);
+    let lift = swipe(&mut rt, at, (-20.0, 0.0), 8, 10.0, 0.008, true);
+    for _ in 0..10 {
+        rt.frame(DT);
+    }
+    rt.touchpad_hold(Some(lift + 10.0 * DT));
+    let held = board_x(&mut rt);
+    assert!(held > 160.0 + 100.0, "board was coasting: {held}");
+    assert_eq!(settle_board_x(&mut rt), held, "board stops where fingers landed");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // 3. Quick second swipe within 50 ms boosts 4x; after 80 ms throws alone.
+    let run_boost = |name: &str, after: f64| {
+        let (mut rt, dir) = board_rt(name, &wide);
+        let at = rt.find("board-scroll").expect("board-scroll is drawn");
+        rt.pointer_move(at.0, at.1);
+        rt.frame(DT);
+        let lift = swipe(&mut rt, at, (-20.0, 0.0), 8, 10.0, 0.008, true);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let hold = lift + 6.0 * DT;
+        rt.touchpad_hold(Some(hold));
+        swipe(&mut rt, at, (-20.0, 0.0), 8, hold + after, 0.008, true);
+        let lifted = board_x(&mut rt);
+        let travel = settle_board_x(&mut rt) - lifted;
+        let _ = std::fs::remove_dir_all(&dir);
+        travel
+    };
+    let boosted = run_boost("horiz-boost", 0.03);
+    assert!((boosted - 4.0 * THROW_2400).abs() < 6.0, "30 ms after stop board boosts 4x: {boosted}");
+    let alone = run_boost("horiz-noboost", 0.08);
+    assert!((alone - THROW_2400).abs() < 2.0, "80 ms after stop board throws alone: {alone}");
+}
+
+/// Shift + mouse wheel on the Kanban board routes through Rune's native `shift_scroll_delta`
+/// and eases horizontally via `XMotion::Wheel` (no custom `on_wheel` hijack or instant jump).
+#[test]
+fn board_shift_wheel_eases_horizontally() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let wide = wide_board();
+    let (mut rt, dir) = board_rt("shift", &wide);
+    let at = rt.find("board-scroll").expect("board-scroll is drawn");
+    rt.pointer_move(at.0, at.1);
+    rt.frame(DT);
+
+    let shift = rune::Mods { shift: true, ..Default::default() };
+    rt.wheel_event(WheelEvent::new(0.0, -120.0).at(at.0, at.1).mods(shift).notch(true));
+    rt.frame(DT);
+    rt.frame(DT);
+    rt.frame(DT);
+    let mid = board_x(&mut rt);
+    assert!(mid > 0.0 && mid < 115.0, "shift wheel eases instead of jumping: {mid}");
+    let settled = settle_board_x(&mut rt);
+    assert!((settled - 120.0).abs() < 1.0, "shift wheel lands at full notch: {settled}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Vertical touchpad swipes inside a tall Kanban column coast `v²/2a`, stop on `touchpad_hold`,
+/// and keep `board-selection` tracking the selected card live without rebuilding the view.
+#[test]
+fn board_vertical_swipe_over_column_throws_and_stops_on_hold() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let tall = tall_board();
+    let (mut rt, dir) = board_rt("vert", &tall);
+    let col_key = rt
+        .elements()
+        .into_iter()
+        .find_map(|e| e.key.filter(|k| k.starts_with("board-col-scroll:")))
+        .expect("column scroll exists");
+    let col_id: u64 = col_key.strip_prefix("board-col-scroll:").unwrap().parse().unwrap();
+    let at = rt.find(&col_key).expect("column scroll drawn");
+    rt.pointer_move(at.0, at.1);
+    rt.frame(DT);
+    let col_y = |rt: &mut Runtime<App>| {
+        let mut y = 0.0;
+        rt.update_if(|s, _| {
+            y = s.board.col_scroll.borrow().get(&col_id).copied().unwrap_or(0.0);
+            false
+        });
+        y
+    };
+    let settle_y = |rt: &mut Runtime<App>| {
+        let mut last = col_y(rt);
+        let mut still = 0;
+        for _ in 0..180 {
+            rt.frame(DT);
+            let now = col_y(rt);
+            still = if now == last { still + 1 } else { 0 };
+            last = now;
+            if still == 5 {
+                break;
+            }
+        }
+        last
+    };
+    swipe(&mut rt, at, (0.0, -20.0), 8, 10.0, 0.008, true);
+    let lifted = col_y(&mut rt);
+    let travel = settle_y(&mut rt) - lifted;
+    assert!((lifted - 160.0).abs() < 0.5, "swipe moves col 8x20: {lifted}");
+    assert!((travel - THROW_2400).abs() < 2.0, "col throw v²/2a: {travel}");
+
+    // Fingers landing stop a vertical column coast too.
+    let start = col_y(&mut rt);
+    let lift = swipe(&mut rt, at, (0.0, 20.0), 8, 20.0, 0.008, true);
+    for _ in 0..8 {
+        rt.frame(DT);
+    }
+    rt.touchpad_hold(Some(lift + 8.0 * DT));
+    let held = col_y(&mut rt);
+    assert!(start - held > 160.0 + 60.0, "col was coasting back: {start} to {held}");
+    assert_eq!(settle_y(&mut rt), held, "col stops where fingers landed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// MAP-033 + decision 0012: Map's touchpad throw uses the same Chrome fling booster as Preview
+/// and Board — a quick second swipe within 50 ms of a stop adds up, while one at 80 ms throws alone.
+#[test]
+fn map_quick_second_swipe_boosts_like_preview() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let run_map = |name: &str, after: f64| {
+        let dir = std::env::temp_dir().join(format!("quire-throw-map-{name}-{}", std::process::id()));
+        let text = (1..=200).map(|i| format!("- item {i}\n")).collect::<String>();
+        let (mut rt, _) = open(&dir, &format!("# Map\n\n{text}"), Mode::Preview);
+        rt.set_on_touchpad_hold(Some(App::touchpad_hold));
+        rt.update(|s, tx| s.enter_map(tx));
+        for _ in 0..30 {
+            rt.frame(DT);
+        }
+        let at = rt.find("map-canvas").expect("map-canvas drawn");
+        rt.pointer_move(at.0, at.1);
+        rt.frame(DT);
+        let pan_y = |rt: &mut Runtime<App>| {
+            let mut y = 0.0;
+            rt.update_if(|s, _| {
+                y = s.map_camera().0[1];
+                false
+            });
+            y
+        };
+        let lift = swipe(&mut rt, at, (0.0, -20.0), 8, 10.0, 0.008, true);
+        for _ in 0..6 {
+            rt.frame(DT);
+        }
+        let hold = lift + 6.0 * DT;
+        rt.touchpad_hold(Some(hold));
+        swipe(&mut rt, at, (0.0, -20.0), 8, hold + after, 0.008, true);
+        let lifted = pan_y(&mut rt);
+        let mut last = lifted;
+        let mut still = 0;
+        for _ in 0..180 {
+            rt.frame(DT);
+            let now = pan_y(&mut rt);
+            still = if now == last { still + 1 } else { 0 };
+            last = now;
+            if still == 5 {
+                break;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        lifted - last
+    };
+    let boosted = run_map("boost", 0.03);
+    assert!((boosted - 4.0 * THROW_2400).abs() < 40.0, "30 ms after stop map boosts 4x: {boosted}");
+    let alone = run_map("noboost", 0.08);
+    assert!((alone - THROW_2400).abs() < 10.0, "80 ms after stop map throws alone: {alone}");
+}

@@ -1,8 +1,12 @@
 l moves right to the next column and falls back to its last card when that column is shorter.
 state: {"mode": "board", "right_open": false}
-events: tap:board-card:8887052920360726499@0.2 key:l@0.4
+events: key:Down@0.2 key:Down@0.35 key:l@0.5
 expect: selected: board-card:10358574669306381026
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -11,18 +15,18 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

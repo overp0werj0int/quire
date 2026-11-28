@@ -3,6 +3,10 @@ state: {"mode": "preview", "right_open": false}
 events: key:m+cmd@0.2 key:k+cmd+shift@0.5 key:k+cmd+shift@0.8
 expect: state:mode: "preview"
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 ## Todo

@@ -201,6 +201,33 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if kind == Kind::Help {
         return s.help_key(ev, tx);
     }
+    if kind == Kind::Sheet
+        && let Some(card) = s.sheet().and_then(|sh| sh.card)
+        && !card.editing
+    {
+        if matches!(ev.key, rune::Key::Escape) {
+            s.close_layer(tx);
+            return true;
+        }
+        if ev.mods == rune::Mods::default() {
+            match &ev.key {
+                rune::Key::Function(2) => {
+                    s.sheet_enter_edit(tx);
+                    return true;
+                }
+                rune::Key::Text(t) if t == "e" => {
+                    s.sheet_enter_edit(tx);
+                    return true;
+                }
+                rune::Key::Text(t) if t == "x" => {
+                    s.board_toggle_task(card.node, tx);
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        return false;
+    }
     if kind == Kind::Lightbox && ev.mods == rune::Mods::default() {
         match ev.key {
             rune::Key::Left => {
@@ -264,8 +291,14 @@ fn layer_key(s: &mut App, kind: Kind, ev: &KeyEvent, tx: &mut Tx) -> bool {
         run(s, tx);
         return true;
     }
-    // The edit sheet swallows every other key (SHEET-014).
-    kind == Kind::Sheet
+    // The edit sheet swallows every other key (SHEET-014), except plain paging/jump keys so
+    // Rune's `page_scroll` scrolls `sheet-scroll` / `card-sheet-preview` cleanly.
+    let page_key = matches!(ev.key, rune::Key::PageUp | rune::Key::PageDown | rune::Key::Home | rune::Key::End)
+        && !ev.mods.ctrl
+        && !ev.mods.cmd
+        && !ev.mods.alt
+        && !ev.mods.logo;
+    kind == Kind::Sheet && !page_key
 }
 
 /// A heavy layer's own contexts, and the window's it takes: help and the edit sheet take
@@ -495,6 +528,8 @@ pub fn handler(id: &str) -> Option<Run> {
         "board.move-left" => |s, tx| s.board_move_h(-1, tx),
         "board.move-right" => |s, tx| s.board_move_h(1, tx),
         "board.toggle-task" => |s, tx| s.board_toggle_selected_task(tx),
+        "board.open" => |s, tx| s.board_open_selected(tx),
+        "board.toggle-fold" => |s, tx| s.board_toggle_selected_fold(tx),
         "board.edit" => |s, tx| s.board_edit_selected(tx),
         "board.delete" => |s, tx| s.board_delete(tx),
         "board.copy" => |s, tx| s.board_copy(tx),

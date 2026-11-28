@@ -1,0 +1,14 @@
+In mini edit cards, the Modified state appears in the right corner of the footer instead of the header.
+state: {"mode": "board", "right_open": false}
+events: key:Down@0.2 key:e@0.5 type:X@0.8
+expect: text:card-sheet-header: 'Todo Open'
+expect: text:sheet-footer: 'Esc cancels Ctrl+Enter saves Modified'
+expect: text:sheet-dirty: 'Modified'
+--- before
+---
+kanban-plugin: board
+---
+
+## Todo
+
+- [ ] Write spec

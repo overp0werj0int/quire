@@ -270,7 +270,9 @@ Inline formatting actions (`KEY-50` to `KEY-54`, `KEY-170`) also act in `mapedit
 - **KEY-203** [adapted: 0015] [verify: unit, script] board.move-left (board): `Alt+Left`. Moves the selected card to the end of the previous column, or moves the selected column left (BRD-026).
 - **KEY-204** [adapted: 0015] [verify: unit, script] board.move-right (board): `Alt+Right`. Moves the selected card to the end of the next column, or moves the selected column right (BRD-026).
 - **KEY-205** [adapted: 0015] [verify: unit, script] board.toggle-task (board): `x`. Toggles the task checkbox on the selected task card (BRD-027).
-- **KEY-206** [adapted: 0015] [verify: unit, script] board.edit (board): `Enter`, `e` or `F2`. Opens the Edit Sheet on the card's subtree or column header's own line (BRD-027).
+- **KEY-206** [adapted: 0015] [verify: unit, script] board.edit (board): `e` or `F2`. Opens the card mini window directly in Edit mode on the card's subtree, or edits the column header's own line in the Edit Sheet (BRD-027).
+- **KEY-218** [adapted: 0015] [verify: unit, script] board.open (board): `Enter`. Opens the card mini window in Preview mode on the selected task card, or edits the selected column header (BRD-027).
+- **KEY-219** [adapted: 0015] [verify: unit, script] board.toggle-fold (board): `Space`. Folds or unfolds the selected task card's subtasks as sub-cards (BRD-004, BRD-027).
 - **KEY-207** [adapted: 0015] [verify: unit, script] board.delete (board): `Delete` or `Backspace`. Deletes the selected card as the map does, and refuses on a column header (BRD-027).
 - **KEY-208** [adapted: 0015] [verify: unit, script] board.copy (board): `Ctrl+C`. Copies the selected card's Markdown (BRD-027).
 - **KEY-209** [adapted: 0015] [verify: unit, script] board.undo (board): `Ctrl+Z`. Undoes one edit in the note's shared history (BRD-027).

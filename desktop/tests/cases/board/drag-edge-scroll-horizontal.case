@@ -2,49 +2,57 @@ Holding a dragged card within 36 px of the board's right edge auto-scrolls the b
 state: {"mode": "board", "right_open": false}
 events: drag:1220,115>55,0,1.2@0.3 key:s+cmd@1.8
 --- before
+---
+kanban-plugin: board
+---
+
 # Wide
 
 Intro
 
 ## A
 
-- Card A
+- [ ] Card A
 
 ## B
 
-- Card B
+- [ ] Card B
 
 ## C
 
-- Card C
+- [ ] Card C
 
 ## D
 
-- Card D
+- [ ] Card D
 
 ## E
 
-- Card E
+- [ ] Card E
 --- after
+---
+kanban-plugin: board
+---
+
 # Wide
 
 Intro
 
 ## A
 
-- Card A
+- [ ] Card A
 
 ## B
 
-- Card B
+- [ ] Card B
 
 ## C
 
-## D
+- [ ] Card C
 
-- Card D
-- Card C
+## D
 
 ## E
 
-- Card E
+- [ ] Card E
+- [ ] Card D

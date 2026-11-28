@@ -1,0 +1,30 @@
+Clicking a task card opens its mini window in Preview showing content under the node, Edit switches to the editor, and saving returns to Preview with the updated note on disk.
+state: {"mode": "board", "right_open": false}
+events: tap:board-card:9399331354417882438@0.2 tap:card-sheet-edit@0.6 key:End+cmd@0.9 key:Enter@1.0 type:Updated_details@1.2 key:s+cmd@2.0
+expect: focus: card-sheet-focus (no ring)
+expect: rect:card-sheet-preview: [{any}]
+--- before
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Write board spec
+
+  Initial body paragraph.
+--- after
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Write board spec
+
+  Initial body paragraph.
+Updated details

@@ -2,15 +2,15 @@
 //! BRD-014 to BRD-023).
 //!
 //! One state machine (`Hold`) owns the lifecycle of pressing, lifting, carrying with tilt, and
-//! settling a card or a column. The tilt rule is a pure function so tests and probes read the
-//! exact angle in radians.
+//! settling a card (top-level or sub-card) or a column. The tilt rule is a pure function so tests
+//! and probes read the exact angle in radians.
 
 use std::time::Duration;
 
 use rune::{Drag, Phase, Tx};
 
 use crate::app::{App, Mode};
-use crate::board::{self, Board, ColumnHead, Slot};
+use crate::board::{self, Board, Slot, SlotParent};
 use crate::board_app::{card_key, head_key};
 use crate::map::{self, NodeId};
 
@@ -77,7 +77,7 @@ pub enum Hold {
         slot: Option<Slot>,
         /// Target column index among remaining heading columns for a column drag.
         col_slot: Option<usize>,
-        /// Refusal reason when the hovered column allows no slot.
+        /// Refusal reason when the hovered target allows no slot.
         refused: Option<&'static str>,
         /// Signed tilt in radians (clockwise positive).
         lean: f32,
@@ -234,7 +234,7 @@ impl App {
         }
     }
 
-    /// Drag handler on a board card (BRD-014 to BRD-020, BRD-022, BRD-023).
+    /// Drag handler on a board card or sub-card (BRD-014 to BRD-020, BRD-022, BRD-023).
     pub fn board_card_drag(&mut self, id: NodeId, d: &Drag, tx: &mut Tx) {
         let pt = self.board_point(d);
         let now = self.now.get();
@@ -309,7 +309,6 @@ impl App {
                 }
             }
             Phase::Up => {
-                // Leave `Hold::Settling` untouched so a mouse-up after Esc lets the glide finish (A5).
                 match &self.board.hold {
                     Hold::Pressed { what: Held::Card(cid), .. } if *cid == id => {
                         self.board.hold = Hold::None;
@@ -326,16 +325,12 @@ impl App {
                 }
                 let from = [at[0] - grab[0], at[1] - grab[1]];
                 if d.cancelled() {
-                    // Rune's `queue_key` intercepts Escape during a drag and emits a cancelled
-                    // `Phase::Up` instead of reaching `keys::on_key`; when the page underneath is
-                    // unchanged, glide back over 180 ms (BRD-019). Stale cancels (tab/mode/note/layer
-                    // changes) already exited above in `Hold::None` (A2).
                     self.start_settle(Held::Card(cid), from, origin_pos, size, grab, lean, tx);
                     return;
                 }
                 let t = self.map_tree();
                 let Some(held_idx) = t.find(cid) else { return };
-                let model = board::build_with_held(&t, Some(held_idx));
+                let model = board::build(&t);
                 if let Some(slot) = slot {
                     let target_to = self.slot_local_pos(&model, &t, held_idx, slot).unwrap_or(origin_pos);
                     let mut final_id = cid;
@@ -396,30 +391,31 @@ impl App {
         }
     }
 
-    /// Updates `slot` and `refused` for the currently held card (BRD-017).
+    /// Updates `slot` and `refused` for the currently held card (supports both top-level columns
+    /// and expanded parent cards' subtask lists).
     pub(crate) fn board_aim_card(&mut self) {
         let &Hold::Held { what: Held::Card(id), grab, at, size, .. } = &self.board.hold else { return };
         let t = self.map_tree();
         let Some(held_idx) = t.find(id) else { return };
-        let model = board::build_with_held(&t, Some(held_idx));
+        let model = board::build(&t);
         if model.columns.is_empty() {
             return;
         }
+        let expanded = self.board_expanded();
         let layout = self.board.layout.borrow();
         let view = layout.view;
         let px = view[0] + at[0];
         let mid_y = view[1] + (at[1] - grab[1]) + size[1] * 0.5;
 
-        // Pick column under pointer's x, or nearest when between or past columns (BRD-017).
+        // 1. Pick column under pointer's x, or nearest when between or past columns.
         let b = self.settings().size as f32;
         let col_w = crate::page::r(b * 20.0);
         let col_gap = crate::page::r(b * 12.0 / 14.0);
         let outer_pad = crate::page::r(b * 16.0 / 14.0);
         let col_rect = |ci: usize, col: &board::Column| -> [f32; 4] {
-            if let Some(&r) = layout.cols.get(&col.head.key_id(&t)) {
+            if let Some(&r) = layout.cols.get(&col.key_id(&t)) {
                 return r;
             }
-            // Fallback for a just-appeared empty Loose column before its first layout report.
             let x = view[0] + outer_pad - self.board.scroll_x.get() + ci as f32 * (col_w + col_gap);
             [x, view[1] + outer_pad, col_w, 80.0]
         };
@@ -441,8 +437,30 @@ impl App {
             }
         }
 
-        // In that column, pick the first remaining card whose middle is below the held card's middle.
-        let rest = model.rest(best_col, Some(held_idx));
+        // 2. Check if pointer sits inside an expanded parent card's subtask container in `best_col`
+        // (excluding `held_idx` and its own subtree). Pick deepest matching container so recursive
+        // subtasks can be targeted cleanly.
+        let held_end = t.nodes[held_idx].end;
+        let mut target_parent = SlotParent::Column(best_col);
+        let mut best_depth = 0usize;
+        for &(node, depth) in &model.columns[best_col].visible_cards(&t, &expanded, Some(held_idx)) {
+            if node >= held_idx && node < held_end {
+                continue;
+            }
+            let nid = t.nodes[node].id;
+            if expanded.contains(&nid)
+                && let Some(&sr) = layout.sub_lists.get(&nid)
+                && mid_y >= sr[1] - 4.0
+                && mid_y <= sr[1] + sr[3] + 4.0
+                && depth + 1 >= best_depth
+            {
+                best_depth = depth + 1;
+                target_parent = SlotParent::Card(node);
+            }
+        }
+
+        // 3. Inside `target_parent`, pick the first remaining card whose middle is below `mid_y`.
+        let rest = model.rest(target_parent, Some(held_idx));
         let mut idx = rest.len();
         for (k, &ci) in rest.iter().enumerate() {
             if let Some(&cr) = layout.cards.get(&t.nodes[ci].id) {
@@ -455,9 +473,9 @@ impl App {
         }
         drop(layout);
 
-        let want = Slot { column: best_col, index: idx };
+        let want = Slot { parent: target_parent, index: idx };
         let allowed = board::nearest_allowed(&model, &t, held_idx, want);
-        let refused = if allowed.is_none() { board::column_refusal(&model, &t, held_idx, want) } else { None };
+        let refused = if allowed.is_none() { board::slot_refusal(&model, &t, held_idx, want) } else { None };
         if let Hold::Held { slot, refused: r, .. } = &mut self.board.hold {
             *slot = allowed;
             *r = refused;
@@ -468,9 +486,7 @@ impl App {
     fn slot_local_pos(&self, model: &Board, t: &map::Tree, held_idx: usize, slot: Slot) -> Option<[f32; 2]> {
         let layout = self.board.layout.borrow();
         let view = layout.view;
-        let col = model.columns.get(slot.column)?;
-        let key_id = col.head.key_id(t);
-        let rest = model.rest(slot.column, Some(held_idx));
+        let rest = model.rest(slot.parent, Some(held_idx));
         if let Some(&after_idx) = rest.get(slot.index)
             && let Some(&r) = layout.cards.get(&t.nodes[after_idx].id)
         {
@@ -481,11 +497,26 @@ impl App {
         {
             return Some([r[0] - view[0], r[1] + r[3] + 6.0 - view[1]]);
         }
-        if let Some(&cv) = layout.col_views.get(&key_id) {
-            return Some([cv[0] - view[0], cv[1] + 6.0 - view[1]]);
-        }
-        if let Some(&cr) = layout.cols.get(&key_id) {
-            return Some([cr[0] + 8.0 - view[0], cr[1] + 40.0 - view[1]]);
+        match slot.parent {
+            SlotParent::Column(ci) => {
+                let col = model.columns.get(ci)?;
+                let key_id = col.key_id(t);
+                if let Some(&cv) = layout.col_views.get(&key_id) {
+                    return Some([cv[0] - view[0], cv[1] + 6.0 - view[1]]);
+                }
+                if let Some(&cr) = layout.cols.get(&key_id) {
+                    return Some([cr[0] + 8.0 - view[0], cr[1] + 40.0 - view[1]]);
+                }
+            }
+            SlotParent::Card(parent_node) => {
+                let pid = t.nodes[parent_node].id;
+                if let Some(&sr) = layout.sub_lists.get(&pid) {
+                    return Some([sr[0] - view[0], sr[1] - view[1]]);
+                }
+                if let Some(&pr) = layout.cards.get(&pid) {
+                    return Some([pr[0] + 12.0 - view[0], pr[1] + pr[3] + 6.0 - view[1]]);
+                }
+            }
         }
         None
     }
@@ -565,7 +596,6 @@ impl App {
                 }
             }
             Phase::Up => {
-                // Leave `Hold::Settling` untouched so a mouse-up after Esc lets the glide finish (A5).
                 match &self.board.hold {
                     Hold::Pressed { what: Held::Column(cid), .. } if *cid == id => {
                         self.board.hold = Hold::None;
@@ -599,10 +629,7 @@ impl App {
                                 self.board_apply(&t, &splice, tx);
                                 if let Some(sel) = self.board_selected() {
                                     final_id = sel;
-                                    let t2 = self.map_tree();
-                                    if let Some(hi) = t2.find(sel) {
-                                        tx.scroll_into_view(head_key(ColumnHead::Heading(hi), &t2));
-                                    }
+                                    tx.scroll_into_view(head_key(sel));
                                 }
                             }
                             Err(Some(why)) => {
@@ -630,14 +657,7 @@ impl App {
         let t = self.map_tree();
         let Some(held_idx) = t.find(id) else { return };
         let model = board::build(&t);
-        let heads: Vec<usize> = model
-            .columns
-            .iter()
-            .filter_map(|c| match c.head {
-                ColumnHead::Heading(h) if h != held_idx => Some(h),
-                _ => None,
-            })
-            .collect();
+        let heads: Vec<usize> = model.columns.iter().map(|c| c.heading).filter(|&h| h != held_idx).collect();
         if heads.is_empty() {
             if let Hold::Held { col_slot, refused, .. } = &mut self.board.hold {
                 *col_slot = Some(0);
@@ -681,14 +701,7 @@ impl App {
         let b = self.settings().size as f32;
         let col_gap = crate::page::r(b * 12.0 / 14.0);
         let outer_pad = crate::page::r(b * 16.0 / 14.0);
-        let heads: Vec<usize> = model
-            .columns
-            .iter()
-            .filter_map(|c| match c.head {
-                ColumnHead::Heading(h) if h != held_idx => Some(h),
-                _ => None,
-            })
-            .collect();
+        let heads: Vec<usize> = model.columns.iter().map(|c| c.heading).filter(|&h| h != held_idx).collect();
         if let Some(&after_h) = heads.get(target_col)
             && let Some(&r) = layout.cols.get(&t.nodes[after_h].id)
         {
@@ -698,9 +711,6 @@ impl App {
             && let Some(&r) = layout.cols.get(&t.nodes[before_h].id)
         {
             return Some([r[0] + r[2] + col_gap - view[0], r[1] - view[1]]);
-        }
-        if let Some(&loose_r) = layout.cols.get(&0) {
-            return Some([loose_r[0] + loose_r[2] + col_gap - view[0], loose_r[1] - view[1]]);
         }
         Some([outer_pad, outer_pad])
     }
@@ -897,26 +907,20 @@ mod tests {
 
     #[test]
     fn tilt_rule_matches_brd_015_021_022() {
-        // Rest: 3 deg clockwise with last sign +1.
         let (rad, sign) = tilt_radians(1.0, 0.0, 0.0, false, false);
         assert!((rad - 3.0f32.to_radians()).abs() < 1e-5);
         assert_eq!(sign, 1.0);
-        // Full speed right: 6 deg clockwise.
         let (rad, sign) = tilt_radians(1.0, 20.0, 1500.0, false, false);
         assert!((rad - 6.0f32.to_radians()).abs() < 1e-5);
         assert_eq!(sign, 1.0);
-        // Full speed left: -6 deg counter-clockwise.
         let (rad, sign) = tilt_radians(1.0, -20.0, -1500.0, false, false);
         assert!((rad + 6.0f32.to_radians()).abs() < 1e-5);
         assert_eq!(sign, -1.0);
-        // Small jitter under 4 px keeps last sign.
         let (rad, sign) = tilt_radians(-1.0, 2.0, 0.0, false, false);
         assert!((rad + 3.0f32.to_radians()).abs() < 1e-5);
         assert_eq!(sign, -1.0);
-        // Column uses half angles (1.5..3 deg).
         let (rad, _) = tilt_radians(1.0, 20.0, 1500.0, false, true);
         assert!((rad - 3.0f32.to_radians()).abs() < 1e-5);
-        // Reduced motion: fixed 3 deg for card, 1.5 deg for column.
         let (card_red, _) = tilt_radians(-1.0, -20.0, -1500.0, true, false);
         assert!((card_red - 3.0f32.to_radians()).abs() < 1e-5);
         let (col_red, _) = tilt_radians(-1.0, -20.0, -1500.0, true, true);
@@ -927,19 +931,14 @@ mod tests {
     fn slow_leftward_travel_accumulates_past_sign_eps() {
         let mut sign = 1.0;
         let mut anchor = 200.0;
-        // 2 px left: under 4 px, keeps +1.
         (sign, anchor) = advance_sign(sign, anchor, 198.0);
         assert_eq!((sign, anchor), (1.0, 200.0));
-        // Another 2 px left: cumulative -4 px flips to -1 and anchors at 196.
         (sign, anchor) = advance_sign(sign, anchor, 196.0);
         assert_eq!((sign, anchor), (-1.0, 196.0));
-        // Continuing left moves anchor forward with the drag.
         (sign, anchor) = advance_sign(sign, anchor, 194.0);
         assert_eq!((sign, anchor), (-1.0, 194.0));
-        // Small rightward jitter (+2 px) holds -1.
         (sign, anchor) = advance_sign(sign, anchor, 196.0);
         assert_eq!((sign, anchor), (-1.0, 194.0));
-        // Reversing right by 4 px from anchor flips back to +1.
         (sign, anchor) = advance_sign(sign, anchor, 198.0);
         assert_eq!((sign, anchor), (1.0, 198.0));
     }

@@ -1,8 +1,12 @@
 Home jumps from another column to the first column header.
 state: {"mode": "board", "right_open": false}
-events: tap:board-card:10358574669306381026@0.2 key:Home@0.4
+events: key:Right@0.2 key:Home@0.4
 expect: selected: board-head:10736194977767075865
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -11,18 +15,18 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

@@ -3,8 +3,12 @@ state: {"mode": "preview"}
 events: key:k+cmd+shift@0.2 key:k+cmd+shift@0.6
 expect: state:mode: "preview"
 --- before
+---
+kanban-plugin: board
+---
+
 # Plan
 
 ## Todo
 
-- First task
+- [ ] First task

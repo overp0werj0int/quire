@@ -1,12 +1,15 @@
 The command palette switches to Board via Switch to Board, and zooming text size widens columns live.
+state: {"mode": "source"}
 events: key:k+cmd@0.2 type:Switch_to_Board@0.4 key:Enter@1.0 key:=+cmd@1.4
 expect: state:mode: "board"
-expect: rect:board-col:loose: [266.0, 59.0, 320.0, {any}]
+expect: rect:board-col:10736194977767075865: [267.0, 60.0, 318.0, {any}]
 --- before
-# Plan
+---
+kanban-plugin: board
+---
 
-Loose note.
+# Plan
 
 ## Todo
 
-- Item
+- [ ] Item

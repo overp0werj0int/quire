@@ -1,0 +1,67 @@
+In typewriter mode, starting a mouse drag selection does not scroll the page or jump the caret away from the dragged text.
+note: Typewriter.md
+state: {"mode": "source", "right_open": false, "settings": {"typewriter_scroll": true}}
+events: tap:editor@0.1 key:End+cmd@0.4 drag:400,200>90,0,0.4@1.0 type:REPLACED@1.6 key:s+cmd@2.1
+expect: focus: editor (no ring)
+--- before
+Line 01 alpha beta gamma delta
+Line 02 alpha beta gamma delta
+Line 03 alpha beta gamma delta
+Line 04 alpha beta gamma delta
+Line 05 alpha beta gamma delta
+Line 06 alpha beta gamma delta
+Line 07 alpha beta gamma delta
+Line 08 alpha beta gamma delta
+Line 09 alpha beta gamma delta
+Line 10 alpha beta gamma delta
+Line 11 alpha beta gamma delta
+Line 12 alpha beta gamma delta
+Line 13 alpha beta gamma delta
+Line 14 alpha beta gamma delta
+Line 15 alpha beta gamma delta
+Line 16 alpha beta gamma delta
+Line 17 alpha beta gamma delta
+Line 18 alpha beta gamma delta
+Line 19 alpha beta gamma delta
+Line 20 alpha beta gamma delta
+Line 21 alpha beta gamma delta
+Line 22 alpha beta gamma delta
+Line 23 alpha beta gamma delta
+Line 24 alpha beta gamma delta
+Line 25 alpha beta gamma delta
+Line 26 alpha beta gamma delta
+Line 27 alpha beta gamma delta
+Line 28 alpha beta gamma delta
+Line 29 alpha beta gamma delta
+Line 30 alpha beta gamma delta
+--- after
+Line 01 alpha beta gamma delta
+Line 02 alpha beta gamma delta
+Line 03 alpha beta gamma delta
+Line 04 alpha beta gamma delta
+Line 05 alpha beta gamma delta
+Line 06 alpha beta gamma delta
+Line 07 alpha beta gamma delta
+Line 08 alpha beta gamma delta
+Line 09 alpha beta gamma delta
+Line 10 alpha beta gamma delta
+Line 11 alpha beta gamma delta
+Line 12 alpha beta gamma delta
+Line 13 alpha beta gamma delta
+Line 14 alpha beta gamma delta
+Line 15 alpha beta gamma delta
+Line 16 alpha beta gamma delta
+Line 17 alpha beta gamma delta
+Line 18 alpha beta gamma delta
+Line 19 alpha beta gamma delta
+Line 20 alpha beta gamma delta
+REPLACEDlpha beta gamma delta
+Line 22 alpha beta gamma delta
+Line 23 alpha beta gamma delta
+Line 24 alpha beta gamma delta
+Line 25 alpha beta gamma delta
+Line 26 alpha beta gamma delta
+Line 27 alpha beta gamma delta
+Line 28 alpha beta gamma delta
+Line 29 alpha beta gamma delta
+Line 30 alpha beta gamma delta

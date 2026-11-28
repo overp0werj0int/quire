@@ -1,41 +1,37 @@
-# 0015 Board mode: a note as a kanban board
+# 0015 Board mode: a `kanban-plugin` note as a kanban board
 
-Status: proposed, 2026-11-27.
+Status: revised, 2026-11-27.
 
-A note that tracks work is often a few headings with a list under each: Todo, Doing, Done.
-Moving an item from one list to the next is the edit such a note gets most, and in Source it is
-a cut and a paste. Map mode can do it with a drag, but a map spends its room on the tree's
-shape, not on the lists.
+A kanban note tracks tasks across heading columns (`## Todo`, `## Doing`, `## Done`) with task items
+(`- [ ]` / `- [x]`), indented detail blocks, and nested subtasks. Moving a task between columns is
+the edit such a note gets most, while non-kanban prose notes are not structured as boards.
 
-Decision: add **Board** as a fourth mode beside Source, Preview and Map (`Mode::Board`). It
-shows the note as columns of cards and moves a card by a drag. `behavior/board.md` (`BRD-001`
-onwards) defines the behaviour.
+Decision: add **Board** as a fourth mode beside Source, Preview and Map (`Mode::Board`), gated to
+notes whose front matter declares `kanban-plugin`. `behavior/board.md` (`BRD-001` onwards) defines
+the behaviour.
 
 ## What the board is
 
-- **A view of the map's tree.** The board reads `map::Tree` and adds no parser. A column is a
-  heading child of the tree's root. A card is a child of a column that is not a heading. So any
-  note is a board, with no front matter and no special format, and a note written for Obsidian's
-  Kanban plugin (`## Column`, `- [ ] card`) reads as the same board.
-- **The map's moves.** A drop is `map::move_to` to a `map::Add`, applied by `App::map_apply`. The
-  rules for where a node may go are `map::zone`'s. The board adds no rewrite of its own, so undo,
-  the save path, locked notes, sync and outside changes work as they do on the map.
-- **One selection.** The tab's selected node is the map's (`MapView::selected`). A card selected
-  on the board is selected on the map, and a switch of modes keeps the place.
+- **Gated to `kanban-plugin` notes.** `board::is_kanban` reads `blocks::Kind::FrontMatter` from the
+  note's parsed `Doc`. Regular notes hide Board mode; kanban notes without a saved per-note mode
+  override enter Board mode automatically.
+- **Task cards with recursive subtasks.** Root heading children become columns; only task items
+  (`- [ ]` / `- [x]`) become cards. Nested task items stay folded behind a folding handle with
+  colored progress dots (solid for done, outlined for incomplete) and unfold recursively as
+  sub-cards obeying the same rules.
+- **Card mini window on click.** Clicking a card opens a modal mini window (`Layer::Sheet` with
+  `CardView`) in Preview mode rendering everything under the task node through `ui::preview`'s own
+  block renderer, with a header `Edit` button that switches in-place into the shared Edit Sheet
+  editor and returns to Preview mode on save.
+- **The map's tree and moves.** The board reads `map::Tree` and adds no parser. Every drop or move
+  maps a board `Slot` (`SlotParent::Column` or `SlotParent::Card`) to a `map::Add`, validates via
+  `map::zone`, and applies `map::move_to` through `App::map_apply` as one undo step.
+- **One selection.** The tab's selected node is the map's (`MapView::selected`), synced across
+  modes.
 
 ## What is the board's own
 
-- **The held card.** The map drags a small ghost and marks drop zones on its targets. The board
-  drags the card itself, lifted and tilted, and opens a slot where it would land while the other
-  cards make room. A board is a set of lists, and a list shows a drop best by making the room.
-- **Flow layout.** The map lays its world out itself. The board is rows and columns, so Rune
-  lays it out, and the board asks Rune where its cards are.
-
-## What was not chosen
-
-- **A board format in front matter** (`kanban-plugin: board`). It would make a board a kind of
-  note. Here it is a way to look at any note, as the map is.
-- **A board of the map's folds, or of deeper levels.** The columns are one level. A board of a
-  subheading's children can come later, as a board rooted at the selected heading.
-- **Adding and renaming on the board.** The first pass shows and moves. A card is edited in the
-  Edit Sheet, which exists. An inline field for a new card comes with the next pass.
+- **The held card.** The board drags the card itself, scaled gently, elevated, and tilted with
+  speed-sensitive spring physics, opening an animated drop slot while sibling cards glide aside.
+- **Flow layout.** Columns and cards use Rune flow layout and design-system tokens/components
+  (`ui/tokens.rs`, `ui/styles.rs`, `ui/components/`), reporting element rects via `El::on_layout`.

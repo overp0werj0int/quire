@@ -78,6 +78,9 @@ pub fn commands(s: &App, dark: bool) -> Vec<Cmd> {
     ];
     if has {
         for m in [Mode::Source, Mode::Preview, Mode::Map, Mode::Board] {
+            if m == Mode::Board && !s.active_is_kanban() {
+                continue;
+            }
             if m != s.mode {
                 v.push(cmd(show_name(m), mode_action(m), show(m)));
             }

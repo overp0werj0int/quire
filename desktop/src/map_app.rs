@@ -589,10 +589,14 @@ impl App {
 
     /// Moves the camera at once, running no view unless what is mounted changes.
     pub fn map_move(&mut self, pan: [f32; 2], zoom: f32, tx: &mut Tx) {
+        self.map.throw.stop();
+        self.map_move_inner(pan, zoom, tx);
+    }
+
+    fn map_move_inner(&mut self, pan: [f32; 2], zoom: f32, tx: &mut Tx) {
         let before = self.map_signature();
         self.map.glide = None;
         self.map.zoom_edit = None;
-        self.map.throw.stop();
         self.map.drawer_return_pan = None;
         if let Some(e) = &mut self.map.inline {
             e.edit_return_cam = None;
@@ -642,7 +646,7 @@ impl App {
             let ([px, py], z) = self.map_camera();
             self.set_camera([px + dx, py + dy], z);
             if running {
-                tx.wake_after(Duration::from_millis(16));
+                tx.wake_after(Duration::ZERO);
             }
             committed |= self.map_signature() != before;
         }
@@ -668,23 +672,25 @@ impl App {
         let t = e.time.unwrap_or_else(|| tx.clock());
         let (dx, dy) = if e.mods.shift && e.dx == 0.0 { (e.dy, 0.0) } else { (e.dx, e.dy) };
         if e.phase == rune::GesturePhase::Ended && (dx, dy) == (0.0, 0.0) {
-            if self.map.throw.released(t, tx.clock(), self.map_size()) {
-                tx.wake_after(Duration::from_millis(0));
+            if self.map.throw.released(t, tx.clock(), self.map_size(), e.mods) {
+                tx.wake_after(Duration::ZERO);
             }
+            tx.live_only();
             return;
         }
-        let ([px, py], z) = self.map_camera();
-        self.map_move([px + dx, py + dy], z, tx);
         if e.precise {
-            self.map.throw.moved((dx, dy), t);
+            self.map.throw.moved((dx, dy), e.phase, t);
         } else {
             self.map.throw.stepped();
         }
+        let ([px, py], z) = self.map_camera();
+        self.map_move_inner([px + dx, py + dy], z, tx);
     }
 
-    /// A trackpad's fingers landed: the map's coast stops where it is, as Rune's flings do.
+    /// A trackpad's fingers landed: the map's coast stops where it is and opens the 50 ms fling
+    /// boost window, matching Rune's built-in flings.
     pub fn touchpad_hold(&mut self) {
-        self.map.throw.stop();
+        self.map.throw.hold(self.now.get());
     }
 
     /// Scales the camera by `f` about canvas point `(x, y)`: the world point under it stays.
@@ -1149,8 +1155,10 @@ impl App {
     /// it is. A double click edits it (MAP-016).
     pub fn map_click(&mut self, i: usize, double: bool, tx: &mut Tx) {
         if self.mode == Mode::Board {
-            let id = self.map_tree().nodes[i].id;
-            self.board_click(id, double, tx);
+            let t = self.map_tree();
+            let id = t.nodes[i].id;
+            let is_head = t.nodes[i].parent == Some(ROOT) && crate::board::is_heading(&t, i);
+            self.board_click(id, is_head, double, tx);
             return;
         }
         if std::mem::take(&mut self.map.dropped) || self.map_editing() == Some(i) {
@@ -1429,7 +1437,10 @@ impl App {
         let t = self.map_follow(old, s);
         let focus = s.focus.map_or(ROOT, |l| t.at_line(l));
         if self.mode == Mode::Board {
-            if let Some(item) = crate::board::item_of(&t, focus)
+            self.board_follow_expanded(&rel, old, &t, s);
+            let model = crate::board::build(&t);
+            let expanded = self.board_expanded();
+            if let Some(item) = crate::board::item_of(&t, &model, &expanded, focus)
                 && let Some(v) = self.map_view_mut()
             {
                 v.selected = t.nodes[item].id;
@@ -1553,6 +1564,7 @@ impl App {
         }
         let tree = |text: &str| map::build(&crate::blocks::build(text), text, rel);
         let (was, now, s) = (tree(old), tree(&new), map::diff(old, &new));
+        self.board_reloaded(rel, &now);
         let Some(v) = self.map.views.get_mut(rel) else { return };
         let picked = v.selected;
         // A selected node the change removed gives way to the nearest node at or above where

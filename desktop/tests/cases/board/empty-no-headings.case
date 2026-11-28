@@ -1,9 +1,13 @@
-A note with no column headings shows the loose column and the quiet hint beside it.
+A kanban note with no column headings shows the quiet hint and no columns.
 state: {"mode": "board"}
 events: hover:board-canvas@0.2
-expect: rect:board-col:loose: [264.0, 57.0, 280.0, 87.0]
-expect: text:board-empty-hint: 'Headings become columns. Add one in Source to start a board.'
+expect: rect:board-col:loose: None
+expect: text:board-empty-hint: 'Headings become columns and tasks become cards. Add one in Source to start a board.'
 --- before
+---
+kanban-plugin: board
+---
+
 # Scratchpad
 
 Just a loose note.

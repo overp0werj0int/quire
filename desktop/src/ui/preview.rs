@@ -394,6 +394,46 @@ pub fn context(v: V, doc: &Doc, i: usize) -> El {
     cx.block(bl, tone).w_full()
 }
 
+/// Finds the list item starting at 0-based source `line` anywhere in `blocks` and returns its
+/// child content blocks (everything under the item's own title paragraph, matching `map::build`).
+pub fn item_content_blocks(blocks: &[Block], line: usize) -> Option<&[Block]> {
+    for bl in blocks {
+        match &bl.kind {
+            Kind::List(l) => {
+                for it in &l.items {
+                    if it.line == line {
+                        let start = match it.blocks.first().map(|b| &b.kind) {
+                            Some(Kind::Paragraph { .. } | Kind::Heading { .. }) => 1,
+                            _ => 0,
+                        };
+                        return Some(&it.blocks[start..]);
+                    }
+                    if let Some(found) = item_content_blocks(&it.blocks, line) {
+                        return Some(found);
+                    }
+                }
+            }
+            Kind::Quote { blocks: inner } | Kind::Alert { blocks: inner, .. } => {
+                if let Some(found) = item_content_blocks(inner, line) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Renders `blocks` at `width` using the exact reader renderer (interactive checkboxes, links,
+/// syntax-highlighted code/diffs, tables, quotes, alerts, images), contained so top-level lists
+/// indent cleanly inside a card mini window.
+pub fn render_blocks(v: V, doc: &Doc, blocks: &[Block], width: f32) -> El {
+    let look = look_at(v, width);
+    let cx = Cx { v, look: &look, doc: Some(doc), find: None, selectable: true };
+    let tone = Tone { color: look.c.text, size: look.b, lead: 1.6, contained: true, quote_depth: 0 };
+    cx.stack(blocks, tone, false).w_full()
+}
+
 /// The find query, lower-cased, and the current match as (piece, match in the piece).
 pub(super) struct Hl {
     q: String,

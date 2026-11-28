@@ -23,7 +23,7 @@ pub(super) fn stop(el: El) -> El {
 /// window's shortcuts, as the reader does with nothing focused. Tab goes on from it into the
 /// note's links.
 pub(super) fn note_anchor() -> El {
-    el().key(NOTE).absolute(0.0, 0.0).size(1.0, 1.0).focusable(true).tab_index(-1).no_focus_ring().label("Note").on_key(|s: &mut App, ev: &KeyEvent, tx: &mut Tx| crate::keys::on_key(s, ev, tx))
+    el().key(NOTE).absolute(0.0, 0.0).size(1.0, 1.0).focusable(true).tab_index(-1).no_focus_ring().focus_return(NOTE).label("Note").on_key(|s: &mut App, ev: &KeyEvent, tx: &mut Tx| crate::keys::on_key(s, ev, tx))
 }
 
 /// The editor's box in the writer, keyed as the note's anchor so focus comes back to the

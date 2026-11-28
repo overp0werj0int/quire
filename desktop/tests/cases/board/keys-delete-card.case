@@ -1,7 +1,11 @@
 Delete on a selected card removes it from the note on disk.
 state: {"mode": "board", "right_open": false}
-events: tap:board-card:9399331354417882438@0.2 key:Delete@0.5 key:s+cmd@0.9
+events: key:Delete@0.3 key:s+cmd@0.7
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -10,22 +14,26 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 --- after
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -33,18 +41,18 @@ Intro note before columns.
 ## Todo
 
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design

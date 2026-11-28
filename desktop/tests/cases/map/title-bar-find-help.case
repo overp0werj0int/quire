@@ -1,11 +1,11 @@
 In Map mode the title bar has Find, Layout, Fit and Help left of the hairline: Find toggles the bar and Help opens the sheet.
 note: Trip.md
 events: key:m+cmd@0.3 tap:find@0.8 type:trip@1.0 tap:find@1.8 tap:help@2.2
-expect: rect:find: [991.0, 8.0, 24.0, 24.0]
-expect: rect:map-layout: [1019.0, 8.0, 24.0, 24.0]
-expect: rect:map-fit: [1047.0, 8.0, 24.0, 24.0]
-expect: rect:help: [1075.0, 8.0, 24.0, 24.0]
-expect: rect:bar-sep: [1103.0, 12.0, 1.0, 16.0]
+expect: rect:find: [1019.0, 8.0, 24.0, 24.0]
+expect: rect:map-layout: [1047.0, 8.0, 24.0, 24.0]
+expect: rect:map-fit: [1075.0, 8.0, 24.0, 24.0]
+expect: rect:help: [1103.0, 8.0, 24.0, 24.0]
+expect: rect:bar-sep: [1131.0, 12.0, 1.0, 16.0]
 expect: rect:find-bar: None
 expect: focus: help-search (no ring)
 --- before

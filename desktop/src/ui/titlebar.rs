@@ -200,14 +200,18 @@ fn actions(v: V, mut r: El) -> El {
     }
     if v.has_doc() {
         r = r.child(super::components::bar_sep(p, "bar-sep", 16.0));
-        // Source, Preview, Map and Board, the shown one marked (MAP-064, BRD-029).
+        // Source, Preview, Map and (for kanban notes) Board, the shown one marked (MAP-064, BRD-029).
         let mut modes = row().key("modes").gap(4.0).center_y().role("radiogroup").label("Mode");
+        let is_kanban = s.active_is_kanban();
         for (m, key, glyph, name) in [
             (Mode::Source, "mode-source", &CODE, "Source"),
             (Mode::Preview, "mode-preview", &EYE, "Preview"),
             (Mode::Map, "mode-map", &MAP, "Map"),
             (Mode::Board, "mode-board", &KANBAN, "Board"),
         ] {
+            if m == Mode::Board && !is_kanban {
+                continue;
+            }
             let on = s.mode == m;
             let help = if on { name.to_string() } else { tip(crate::commands::show_name(m), crate::commands::mode_action(m)) };
             modes = modes.child(

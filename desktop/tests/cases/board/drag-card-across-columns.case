@@ -4,6 +4,10 @@ events: drag:board-card:9399331354417882438>292,0,0.5@0.3 key:s+cmd@1.2
 expect: selected: board-card:3031994135120554004
 expect: tilt:board-card:3031994135120554004: 0.0000
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -12,22 +16,26 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 --- after
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -35,19 +43,19 @@ Intro note before columns.
 ## Todo
 
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 - [ ] Write board spec
 
 ## Done
 
-- Review design
+- [ ] Review design

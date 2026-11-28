@@ -14,11 +14,6 @@ use rune::{Color, Drag, El, LineCap, MagnifyEvent, Path, PointerButton, Shape, T
 use super::preview::{Cx, Hl, Look, Rich, Tone, look_at};
 pub(super) use layouts::layouts;
 pub(super) use lightbox::lightbox;
-
-/// Builds a map block card for reuse in Board mode (`BRD-010`).
-pub(super) fn block_card(cx: &Cx, bl: &crate::blocks::Block, i: usize, tail: &str) -> Option<(El, [f32; 2])> {
-    card::card(cx, bl, i, tail, None)
-}
 use super::components::Control;
 use super::{V, styles};
 use crate::app::App;
@@ -209,10 +204,21 @@ pub(super) fn canvas(v: V) -> El {
         };
         let [px, py] = crate::map_layout::GLASS_PAD;
         let r = [g.x - px, g.y - py, w + 2.0 * px, h + lw + 2.0 * py];
-        (r, GLASS_R.min(r[3] / 2.0))
+        (r, super::components::GLASS_R.min(r[3] / 2.0))
     });
-    if let Some((r, rad)) = glass {
-        world = world.child(glass_base(c, r, rad));
+    let lit = if s.map.canvas_focused { 1.0 } else { 0.6 };
+    let rim = (1.0 / cam.1.max(map_app::ZOOM_MIN)).max(1.0);
+    let sel_glass = glass.map(|([x, y, w, h], rad)| {
+        super::components::SelectionGlass::spatial("map", v.p, c, [x + W, y + W, w, h])
+            .keys("map-glass", "map-selection")
+            .backdrop(super::components::GlassBackdrop::OpaqueBase)
+            .radius(rad)
+            .rim(rim)
+            .lit(lit)
+            .orders(None, None)
+    });
+    if let Some(base) = sel_glass.as_ref().and_then(|g| g.base_el()) {
+        world = world.child(base);
     }
     // The add toolbar over a new node's glass (MAP-087), at Source's size on screen.
     let bar = s.map_new_node().zip(glass).map(|(new, ([x, y, _, _], _))| {
@@ -255,19 +261,8 @@ pub(super) fn canvas(v: V) -> El {
     }
     // The glass's top-lit rim, over the node. Paint it BEFORE fold targets so hover-revealed fold
     // controls sit above it. The rim stays at least a pixel wide on screen when zoomed out.
-    if let Some(([x, y, w, h], rad)) = glass {
-        let lit = if s.map.canvas_focused { 1.0 } else { 0.6 };
-        let rim = (1.0 / cam.1.max(map_app::ZOOM_MIN)).max(1.0);
-        world = world.child(
-            el().key("map-selection")
-                .pin(Some(x + W), Some(y + W), None, None)
-                .size(w, h)
-                .radius(rad)
-                .gradient(c.text.alpha(0.07 * lit), c.text.alpha(0.0))
-                .border_gradient(rim, c.text.alpha(0.55 * lit), c.text.alpha(0.12 * lit))
-                .box_shadow(rune::Shadow { x: 0.0, y: 0.0, blur: 10.0, spread: 0.0, color: c.text.alpha(0.08 * lit), inset: true })
-                .inert(),
-        );
+    if let Some(g) = sel_glass {
+        world = world.child(g.rim_el());
     }
     let ring_spec = super::focus_ring(v.p);
     for &i in &nodes {
@@ -443,29 +438,6 @@ fn link(t: &Tree, l: &Laid, i: usize, c: &Roles, alpha: f32, plain: bool) -> El 
         .opacity(alpha)
         .inert()
         .child(shape)
-}
-
-/// The selection glass's corner radius (MAP-055); its padding is `map_layout::GLASS_PAD`.
-const GLASS_R: f32 = 10.0;
-/// How much the selected node's content grows under the glass, and at most how far each side
-/// moves out, so a tall table or wide card still sits inside the glass's padding.
-const GLASS_K: f32 = 1.035;
-const GLASS_GROW: f32 = 4.0;
-
-/// The scale the selected node's content takes under the glass, for content `w` by `h`.
-fn glass_k(w: f32, h: f32) -> f32 {
-    GLASS_K.min(1.0 + 2.0 * GLASS_GROW / w.max(h).max(1.0))
-}
-
-/// The glass's body, under the links and nodes: a faint sheen and the card's shadow.
-fn glass_base(c: &Roles, [x, y, w, h]: [f32; 4], rad: f32) -> El {
-    el().key("map-glass")
-        .pin(Some(x + W), Some(y + W), None, None)
-        .size(w, h)
-        .radius(rad)
-        .fill(crate::roles::mix(c.bg, c.text, 0.035))
-        .box_shadow(rune::Shadow { x: 0.0, y: 6.0, blur: 22.0, spread: 0.0, color: Color::BLACK.alpha(0.35), inset: false })
-        .inert()
 }
 
 /// How far one piece of a branch turns at most: 2 degrees, so a bend stays round at 400%, each
@@ -723,7 +695,7 @@ fn node(cx: &Cx, t: &Tree, l: &Laid, i: usize, st: State) -> El {
     p.dir.hash(&mut h);
     let body_key = format!("map-body:{tail}");
     let body_tail = tail.clone();
-    let grow = if selected && !lite { glass_k(p.w, p.h) } else { 1.0 };
+    let grow = super::components::SelectionGlass::scale_for(p.w, p.h, !selected || lite);
     let body = rune::memo(body_key.clone(), h.finish(), move || {
         let st = map_app::style(tier, b, cx.look.family, cx.look.mono);
         let hl = found.map(|f| Hl::new(f.q, f.cur.and_then(|(pid, k)| Some((pid?, k)))));

@@ -34,6 +34,17 @@ pub fn status_dot(color: Color) -> El {
     el().size(space::PX_6, space::PX_6).radius(radius::PILL).fill(color)
 }
 
+/// Subtask progress indicator dot (6 pt circle): solid fill when `done`, 1.5 pt outlined circle
+/// when incomplete.
+pub fn progress_dot(color: Color, done: bool) -> El {
+    let dot = el().size(space::PX_6, space::PX_6).radius(radius::PILL);
+    if done {
+        dot.fill(color)
+    } else {
+        dot.border(1.5, color).border_layout()
+    }
+}
+
 /// Unified readable error line (`LK-09`): `styles::control()` (12.5 pt) in `error_ink(p)`
 /// (`>= 5.0:1` across all 15 themes), wrapped.
 pub fn error_line(p: &Pal, msg: impl Into<String>) -> El {

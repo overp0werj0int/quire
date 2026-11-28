@@ -182,6 +182,9 @@ pub struct Session {
     pub active: Option<String>,
     pub recent: Vec<String>,
     pub expanded: Vec<String>,
+    /// Explicit per-note mode overrides (so kanban notes without saved state auto-enter Board).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub note_modes: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -203,6 +206,9 @@ pub struct Persist {
     pub seeded: bool,
     /// The sidebar's fold and handle, once for every folder (SB-46, SB-47).
     pub sidebar: crate::sidebar::Layout,
+    /// True when loaded from an existing `state.json` on disk (not fresh default state).
+    #[serde(skip)]
+    pub loaded_from_disk: bool,
 }
 
 impl Default for Persist {
@@ -219,6 +225,7 @@ impl Default for Persist {
             settings: Settings::default(),
             seeded: false,
             sidebar: crate::sidebar::Layout::default(),
+            loaded_from_disk: false,
         }
     }
 }
@@ -280,8 +287,13 @@ pub fn zoom_step(size: u32, up: bool) -> u32 {
 
 pub fn load() -> Persist {
     let Some(p) = state_path() else { return Persist::default() };
-    let mut st: Persist = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let Ok(bytes) = std::fs::read(&p) else { return Persist::default() };
+    let mut st: Persist = match serde_json::from_slice(&bytes) {
+        Ok(st) => st,
+        Err(_) => return Persist::default(),
+    };
     st.settings.size = st.settings.size.clamp(SIZE_MIN, SIZE_MAX);
+    st.loaded_from_disk = true;
     st
 }
 

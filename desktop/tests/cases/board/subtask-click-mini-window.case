@@ -1,0 +1,19 @@
+Clicking an unfolded subtask card opens that subtask's mini window in Preview showing its own content.
+state: {"mode": "board", "right_open": false}
+events: tap:board-fold:8887052920360726499@0.2 tap:board-card:11120047008437799788@0.6
+expect: focus: card-sheet-focus (no ring)
+expect: rect:card-sheet-preview: [{any}]
+--- before
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] Plan drag physics
+  - [ ] Tilt on lift
+
+    Subtask body details.
+  - [x] Lean with speed

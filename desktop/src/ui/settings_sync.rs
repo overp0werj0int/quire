@@ -221,35 +221,58 @@ pub fn sync(v: V) -> El {
     let s = v.s;
     let sy = &s.settings().sync;
     let pid = sy.provider.clone();
+    const PROVIDER_CARD_H: f32 = 58.0;
     let w = body_width(v);
     let cols = (((w + 8.0) / 158.0).floor() as usize).max(1);
     let card_w = (w - 8.0 * (cols as f32 - 1.0)) / cols as f32;
+    let roles = crate::roles::Roles::new(p);
+    let reduced = crate::motion::reduced();
     let mut grid = col().key("providers").w_full().gap(8.0).mt(14.0).role("radiogroup").focus_group();
     let mut line = row().key("prow-0").w_full().gap(8.0);
+    let mut sel_idx = None;
     for (i, pv) in PROVIDERS.iter().enumerate() {
         if i > 0 && i % cols == 0 {
             grid = grid.child(line);
             line = row().key(format!("prow-{}", i / cols)).w_full().gap(8.0);
         }
         let on = pv.id == pid;
+        if on {
+            sel_idx = Some(i);
+        }
         let id = pv.id;
-        let card = super::components::choice_card(p, format!("pv-{id}"), pv.name, on, None, move |s: &mut App, _: &mut Tx| {
+        let grow = super::components::SelectionGlass::scale_for(card_w, PROVIDER_CARD_H, !on || reduced);
+        let inner = col()
+            .w_full()
+            .gap(3.0)
+            .scale(grow)
+            .child(text(pv.name).font(sans(13.0, 500.0)).color(p.ink).truncate().max_w(card_w - 26.0))
+            .child(text(pv.kind).font(sans(11.0, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
+        let mut card = super::components::choice_card(p, format!("pv-{id}"), pv.name, on, None, move |s: &mut App, _: &mut Tx| {
             if s.settings().sync.provider != id {
                 s.settings_mut().sync.provider = id.into();
                 s.sync_changed();
                 s.sync_status = SyncStatus::Idle;
             }
         })
-        .w(card_w)
-        .gap(3.0)
+        .size(card_w, PROVIDER_CARD_H)
         .py(super::tokens::space::PX_10)
         .px(super::tokens::space::PX_12)
         .fill(p.bg)
-        .child(text(pv.name).font(sans(13.0, 500.0)).color(p.ink).truncate().max_w(card_w - 26.0))
-        .child(text(pv.kind).font(sans(11.0, 400.0)).color(if on { p.acc } else { p.mute }).truncate().max_w(card_w - 26.0));
+        .child(inner);
+        if !on {
+            card = card.hover(p.hover);
+        } else {
+            card = super::components::SelectionGlass::lift(card.paint_order(10), p, true);
+        }
         line = line.child(card);
     }
     grid = grid.child(line);
+    if let Some(idx) = sel_idx {
+        let rect = super::components::SelectionGlass::expanded_rect(
+            super::components::SelectionGlass::grid_item_rect(idx, cols, card_w, PROVIDER_CARD_H, 8.0, 8.0),
+        );
+        grid = super::components::SelectionGlass::spatial("providers", p, &roles, rect).mount(grid);
+    }
     let mut c = col().key("sync-set").w_full().child(
         block(v, "backend", "Storage backend", Some(&crate::md::pretty("Notes always live on this computer first. A backend keeps a copy in object storage you control."))).child(grid),
     );

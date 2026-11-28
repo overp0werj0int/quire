@@ -101,6 +101,17 @@ pub fn splice(text: &str, lines: &Range<usize>, with: &str) -> String {
     format!("{}{with}{}", &text[..r.start], &text[r.end..])
 }
 
+/// Card mini-window state when the sheet is opened on a Board task card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CardView {
+    pub node: crate::map::NodeId,
+    pub editing: bool,
+    /// True when Edit mode was entered from Preview mode (`Enter`/click -> Edit), so `Esc` and
+    /// `Save` return to Preview; false when opened directly in Edit mode (`e`/`F2`/menu), so
+    /// `Esc` and `Save` return straight to the board.
+    pub return_to_preview: bool,
+}
+
 /// An open sheet.
 pub struct Sheet {
     /// The note it edits.
@@ -119,6 +130,8 @@ pub struct Sheet {
     pub problem: Option<&'static str>,
     /// When Esc armed a discard, paired with the text snapshot at arm time (SHEET-038).
     pub armed: Option<(f64, String)>,
+    /// Present when opened from a Board task card: supports Preview <-> Edit toggle in the header.
+    pub card: Option<CardView>,
 }
 
 impl App {
@@ -160,6 +173,77 @@ impl App {
         self.show_sheet(pick, scope, tx);
     }
 
+    /// Opens the Board card mini window on task card `node` covering `lines`, starting in either
+    /// Preview mode (`editing = false`) or Edit mode (`editing = true`).
+    pub fn open_card_sheet(&mut self, node: crate::map::NodeId, lines: Range<usize>, editing: bool, tx: &mut Tx) {
+        if self.mode != Mode::Board || !self.active_is_kanban() {
+            return;
+        }
+        let Some(rel) = self.active.clone() else { return };
+        let doc = self.doc();
+        let base = self.active_text().to_string();
+        let pick = Pick { lines, before: None, after: None };
+        let orig = base[line_bytes(&base, &pick.lines)].to_string();
+        let mut edit = TextEdit::new(orig.clone());
+        edit.set_selection(0, 0);
+        self.reader.pending = None;
+        self.open_layer(
+            Layer::Sheet(Box::new(Sheet {
+                rel,
+                scope: Scope::Block,
+                pick,
+                doc,
+                base,
+                orig,
+                edit,
+                problem: None,
+                armed: None,
+                card: Some(CardView { node, editing, return_to_preview: false }),
+            })),
+            tx,
+        );
+        tx.clear_text_selection();
+        if editing {
+            tx.focus(EDITOR, false);
+        } else {
+            tx.focus("card-sheet-focus", false);
+        }
+    }
+
+    /// Switches an open Board card mini window from Preview mode into Edit mode, snapshotting the
+    /// live node lines so conflict checks and undo stay exact.
+    pub fn sheet_enter_edit(&mut self, tx: &mut Tx) {
+        let Some(node_id) = self.sheet().and_then(|sh| sh.card.filter(|c| !c.editing).map(|c| c.node)) else {
+            return;
+        };
+        let t = self.map_tree();
+        let Some(i) = t.find(node_id) else {
+            self.close_layer(tx);
+            return;
+        };
+        let lines = t.nodes[i].span.clone();
+        let base = self.active_text().to_string();
+        let orig = base[line_bytes(&base, &lines)].to_string();
+        let mut edit = TextEdit::new(orig.clone());
+        edit.set_selection(0, 0);
+        let doc = self.doc();
+        if let Some(sh) = self.sheet_mut() {
+            sh.pick.lines = lines;
+            sh.doc = doc;
+            sh.base = base;
+            sh.orig = orig;
+            sh.edit = edit;
+            sh.problem = None;
+            sh.armed = None;
+            if let Some(c) = sh.card.as_mut() {
+                c.editing = true;
+                c.return_to_preview = true;
+            }
+        }
+        tx.clear_text_selection();
+        tx.focus(EDITOR, false);
+    }
+
     fn show_sheet(&mut self, pick: Pick, scope: Scope, tx: &mut Tx) {
         let Some(rel) = self.active.clone() else { return };
         let doc = self.doc();
@@ -168,7 +252,7 @@ impl App {
         let mut edit = TextEdit::new(orig.clone());
         edit.set_selection(0, 0);
         self.reader.pending = None;
-        self.open_layer(Layer::Sheet(Box::new(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None })), tx);
+        self.open_layer(Layer::Sheet(Box::new(Sheet { rel, scope, pick, doc, base, orig, edit, problem: None, armed: None, card: None })), tx);
         tx.clear_text_selection();
         tx.focus(EDITOR, false);
     }
@@ -187,9 +271,14 @@ impl App {
         Some(self.top()).filter(|&i| i < doc.blocks.len()).map(|i| (i, i))
     }
 
-    /// Ctrl+Enter and Ctrl+S (SHEET-033, SHEET-044 to SHEET-048).
+    /// Ctrl+Enter and Ctrl+S (SHEET-033, SHEET-044 to SHEET-048). For a Board card mini window,
+    /// saves through the exact `map_replace` + `flush_notes` path and returns to Preview mode on
+    /// the updated card.
     pub fn sheet_save(&mut self, tx: &mut Tx) {
-        let Some(rel) = self.sheet().map(|sh| sh.rel.clone()) else { return };
+        let Some((rel, card)) = self.sheet().map(|sh| (sh.rel.clone(), sh.card)) else { return };
+        if card.is_some_and(|c| !c.editing) {
+            return;
+        }
         let gone = !self.files().contains_key(&rel) || !self.tabs.contains(&rel);
         let now = self.note_text(&rel).map(str::to_string);
         let Some(sh) = self.sheet_mut() else { return };
@@ -203,6 +292,57 @@ impl App {
         }
         let (lines, r) = (sh.pick.lines.clone(), line_bytes(&sh.base, &sh.pick.lines));
         let with = sh.edit.text.clone();
+        if let Some(card) = card {
+            let old_tree = self.map_tree();
+            let old_text = self.active_text().to_string();
+            self.map_replace(lines.clone(), &with, tx);
+            self.flush_notes();
+            let new_text = self.active_text().to_string();
+            let new_tree = self.map_tree();
+            let diff = crate::map::diff(&old_text, &new_text);
+            self.board_follow_expanded(&rel, &old_tree, &new_tree, &diff);
+            self.board_enforce_kanban(Some(tx));
+            self.toast("Saved", tx);
+            if self.mode != Mode::Board {
+                self.close_layer(tx);
+                return;
+            }
+            let next_node = crate::map::follow(&old_tree, &new_tree, &diff, card.node)
+                .and_then(|id| new_tree.find(id))
+                .or_else(|| {
+                    let at = new_tree.at_line(lines.start);
+                    crate::board::is_task(&new_tree, at).then_some(at)
+                });
+            if let Some(ni) = next_node
+                && crate::board::is_task(&new_tree, ni)
+            {
+                let next_id = new_tree.nodes[ni].id;
+                self.board_select(next_id);
+                if card.return_to_preview {
+                    let next_lines = new_tree.nodes[ni].span.clone();
+                    let next_orig = new_text[line_bytes(&new_text, &next_lines)].to_string();
+                    let doc = self.doc();
+                    if let Some(sh) = self.sheet_mut() {
+                        sh.pick.lines = next_lines;
+                        sh.doc = doc;
+                        sh.base = new_text;
+                        sh.orig = next_orig.clone();
+                        sh.edit = TextEdit::new(next_orig);
+                        sh.problem = None;
+                        sh.armed = None;
+                        sh.card = Some(CardView { node: next_id, editing: false, return_to_preview: false });
+                    }
+                    tx.focus("card-sheet-focus", false);
+                } else {
+                    self.close_layer(tx);
+                    self.keys_to_note(tx);
+                }
+            } else {
+                self.close_layer(tx);
+                self.keys_to_note(tx);
+            }
+            return;
+        }
         self.close_layer(tx);
         // One step in the note's source history (edit-sheet.md, open questions).
         if matches!(self.mode, Mode::Map | Mode::Board) && self.active.as_deref() == Some(rel.as_str()) {
@@ -220,11 +360,36 @@ impl App {
         }
     }
 
-    /// Esc (SHEET-037 to SHEET-039): close an unchanged sheet, else arm a discard, else
-    /// discard.
+    /// Esc (SHEET-037 to SHEET-039): closes a preview card mini window or unchanged sheet; in a
+    /// card mini window's Edit mode, discards (after arming if dirty) back to Preview when entered
+    /// from Preview, or straight back to the board when opened directly in Edit mode.
     pub fn sheet_escape(&mut self, tx: &mut Tx) {
         let now = self.now.get();
         let Some(sh) = self.sheet_mut() else { return };
+        if let Some(card) = sh.card {
+            if !card.editing {
+                self.close_layer(tx);
+                self.keys_to_note(tx);
+                return;
+            }
+            let armed = sh.armed.as_ref().is_some_and(|(at, txt)| now - *at < DISCARD && *txt == sh.edit.text);
+            if sh.edit.text == sh.orig || armed {
+                if card.return_to_preview {
+                    sh.edit = TextEdit::new(sh.orig.clone());
+                    sh.armed = None;
+                    sh.problem = None;
+                    sh.card = Some(CardView { node: card.node, editing: false, return_to_preview: false });
+                    tx.focus("card-sheet-focus", false);
+                } else {
+                    self.close_layer(tx);
+                    self.keys_to_note(tx);
+                }
+            } else {
+                sh.armed = Some((now, sh.edit.text.clone()));
+                tx.wake_after(std::time::Duration::from_secs_f64(DISCARD + 0.05));
+            }
+            return;
+        }
         let armed = sh.armed.as_ref().is_some_and(|(at, txt)| now - *at < DISCARD && *txt == sh.edit.text);
         if sh.edit.text == sh.orig || armed {
             self.close_layer(tx);
@@ -362,6 +527,93 @@ mod tests {
         let sh = rt.state.sheet().expect("lightbox_edit in Preview must open Edit Sheet");
         assert_eq!(sh.pick.lines, 2..3);
         assert_eq!(sh.edit.text, "![alt](attachments/a.png)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn board_card_mini_window_preview_edit_save_returns_to_preview() {
+        let dir = std::env::temp_dir().join(format!("quire-card-mini-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = "---\nkanban-plugin: board\n---\n\n# Sprint\n\n## Todo\n\n- [ ] Write spec\n\n  Initial details.\n";
+        std::fs::write(dir.join("Sprint.md"), src).unwrap();
+
+        let mut app = crate::app::init();
+        app.persist.loaded_from_disk = false;
+        app.mode = Mode::Preview;
+        app.board.back = Mode::Preview;
+        app.board.note_modes.clear();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Sprint.md", None, tx);
+        });
+        assert_eq!(rt.state.mode, Mode::Board, "kanban note with no saved state auto-enters Board");
+        let card_id = {
+            let (t, b) = rt.state.board_model();
+            let id = t.nodes[b.columns[0].cards[0].node].id;
+            id
+        };
+        rt.update(|s, tx| s.board_open_card(card_id, false, tx));
+        let card = rt.state.sheet().and_then(|sh| sh.card).expect("card mini window open");
+        assert_eq!(card, CardView { node: card_id, editing: false, return_to_preview: false });
+
+        rt.update(|s, tx| s.sheet_enter_edit(tx));
+        assert!(rt.state.sheet().unwrap().card.unwrap().editing, "Edit button enters editing mode");
+
+        rt.update(|s, tx| {
+            if let Some(sh) = s.sheet_mut() {
+                sh.edit.text.push_str("\n  Updated details.");
+            }
+            s.sheet_save(tx);
+        });
+        let after_save = rt.state.sheet().and_then(|sh| sh.card).expect("save returns to Preview in mini window");
+        assert!(!after_save.editing, "save returns card mini window to Preview mode");
+        assert!(rt.state.active_text().contains("Updated details."));
+        rt.state.flush_all();
+        assert!(std::fs::read_to_string(dir.join("Sprint.md")).unwrap().contains("Updated details."));
+
+        rt.update(|s, tx| s.sheet_escape(tx));
+        assert!(rt.state.sheet().is_none(), "Esc closes Preview mini window");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn board_mode_gating_and_explicit_note_mode_memory() {
+        let dir = std::env::temp_dir().join(format!("quire-board-gate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Board.md"), "---\nkanban-plugin: board\n---\n\n# Board\n\n## Todo\n\n- [ ] Task\n").unwrap();
+        std::fs::write(dir.join("Plain.md"), "# Plain\n\n## Todo\n\n- [ ] Task\n").unwrap();
+
+        let mut app = crate::app::init();
+        app.persist.loaded_from_disk = false;
+        app.mode = Mode::Preview;
+        app.board.back = Mode::Preview;
+        app.board.note_modes.clear();
+        let mut rt = rune::Runtime::new(app, crate::ui::view, (1280.0, 800.0), rune::Env { system_dark: false, scale: 1.0 });
+        rt.update(|s, tx| {
+            s.open_vault(dir.clone(), tx);
+            s.open_file("Board.md", None, tx);
+        });
+        assert_eq!(rt.state.mode, Mode::Board);
+        assert!(rt.state.active_is_kanban());
+
+        rt.update(|s, tx| s.open_file("Plain.md", None, tx));
+        assert_eq!(rt.state.mode, Mode::Preview, "switching to non-kanban note exits Board to last linear mode");
+        assert!(!rt.state.active_is_kanban());
+
+        rt.update(|s, tx| s.show_mode(Mode::Board, tx));
+        assert_eq!(rt.state.mode, Mode::Preview, "non-kanban note refuses Board mode");
+
+        rt.update(|s, tx| s.open_file("Board.md", None, tx));
+        assert_eq!(rt.state.mode, Mode::Board, "switching back to kanban note restores Board");
+
+        rt.update(|s, tx| s.show_mode(Mode::Source, tx));
+        assert_eq!(rt.state.mode, Mode::Source);
+        rt.update(|s, tx| s.open_file("Plain.md", None, tx));
+        rt.update(|s, tx| s.open_file("Board.md", None, tx));
+        assert_eq!(rt.state.mode, Mode::Source, "explicit user mode choice on kanban note is respected");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

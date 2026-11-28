@@ -1,22 +1,30 @@
-Dropping a card into an empty column makes it that column's first child.
+Dropping a task card into an empty column makes it that column's first child.
 state: {"mode": "board", "right_open": false}
-events: drag:404,117>584,0,0.4@0.3 key:s+cmd@1.2
+events: drag:board-card:7124037596853684519>292,0,0.4@0.3 key:s+cmd@1.2
 --- before
+---
+kanban-plugin: board
+---
+
 # Board
 
 ## Todo
 
-- First item
-- Second item
+- [ ] First item
+- [ ] Second item
 
 ## Done
 --- after
+---
+kanban-plugin: board
+---
+
 # Board
 
 ## Todo
 
-- Second item
+- [ ] Second item
 
 ## Done
 
-- First item
+- [ ] First item

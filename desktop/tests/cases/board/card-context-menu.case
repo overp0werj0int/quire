@@ -2,6 +2,10 @@ Right-clicking a card opens the card menu with Edit, Copy, Move to <Column>, and
 state: {"mode": "board", "right_open": false}
 events: rtap:board-card:9399331354417882438@0.2 tap:menu-board-move-3797247949787526136@0.6 key:s+cmd@1.1
 --- before
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -10,22 +14,26 @@ Intro note before columns.
 
 - [ ] Write board spec
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 --- after
+---
+kanban-plugin: board
+---
+
 # Sprint
 
 Intro note before columns.
@@ -33,19 +41,19 @@ Intro note before columns.
 ## Todo
 
 - [x] Ship map mode
-- Plan drag physics
+- [ ] Plan drag physics
   - [ ] Tilt on lift
   - [x] Lean with speed
 
 ### Backlog
 
-- Deferred item
+- [ ] Deferred item
 
 ## Doing
 
-- Build kanban board
+- [ ] Build kanban board
 
 ## Done
 
-- Review design
+- [ ] Review design
 - [ ] Write board spec

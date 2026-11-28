@@ -1,0 +1,14 @@
+Opening a kanban-plugin note with no saved mode state automatically enters Board mode.
+events: hover:board-canvas@0.2
+expect: state:mode: "board"
+expect: rect:board-canvas: [248.0, 41.0, 1032.0, 759.0]
+--- before
+---
+kanban-plugin: board
+---
+
+# Sprint
+
+## Todo
+
+- [ ] First task

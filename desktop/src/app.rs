@@ -558,7 +558,7 @@ fn seed_sample(p: &mut Persist) {
     let tabs: Vec<String> = crate::sample::TABS.iter().map(|s| s.to_string()).collect();
     p.sessions.insert(
         path.to_string_lossy().into_owned(),
-        Session { tabs: tabs.clone(), active: Some(tabs[0].clone()), recent: tabs, expanded: vec!["Drafts".into(), "Journal".into()] },
+        Session { tabs: tabs.clone(), active: Some(tabs[0].clone()), recent: tabs, expanded: vec!["Drafts".into(), "Journal".into()], ..Default::default() },
     );
     p.last = Some(path);
     let _ = store::save(p);
@@ -749,11 +749,19 @@ impl App {
     }
 
     fn session(&self) -> Session {
+        let note_modes = self
+            .board
+            .note_modes
+            .iter()
+            .filter(|(p, _)| self.files().contains_key(p.as_str()))
+            .map(|(p, m)| (p.clone(), m.id().to_string()))
+            .collect();
         Session {
             tabs: self.tabs.clone(),
             active: self.active.clone(),
             recent: self.recent.iter().take(30).cloned().collect(),
             expanded: self.expanded.iter().cloned().collect(),
+            note_modes,
         }
     }
 
@@ -960,6 +968,7 @@ impl App {
         }
         if any {
             self.rebuild_names();
+            self.board_enforce_kanban(None);
         }
         any
     }
@@ -1201,6 +1210,8 @@ impl App {
                 if self.mode == Mode::Map {
                     self.place_due();
                 }
+                self.sync_mode_for_active_note(false, !new, None);
+                self.want_editor_focus = self.mode == Mode::Source || (matches!(self.mode, Mode::Map | Mode::Board) && self.active_locked());
                 true
             }
             Err(e) => {
@@ -1458,6 +1469,13 @@ impl App {
             self.recent = self.tabs.clone();
         }
         self.expanded = ses.expanded.into_iter().collect();
+        self.board.expanded.clear();
+        self.board.note_modes = ses
+            .note_modes
+            .into_iter()
+            .filter(|(p, _)| v.files().contains_key(p))
+            .map(|(p, m)| (p, Mode::from_id(&m)))
+            .collect();
         self.tree_reveal = None;
         // Preserve a saved session's explicitly empty `expanded: []` (SB-134). Only auto-expand
         // ancestors when no saved session exists for this vault (or via `open_startup` / `open_file`).
@@ -1495,6 +1513,7 @@ impl App {
         self.layers.clear();
         self.renaming = None;
         self.ensure_edit();
+        self.sync_mode_for_active_note(false, has_saved || self.persist.loaded_from_disk, None);
         if self.mode == Mode::Source {
             if let Some(e) = self.cur_edit_opt() {
                 e.focused = true;
@@ -1599,7 +1618,7 @@ impl App {
         let tabs: Vec<String> = crate::sample::TABS.iter().map(|s| s.to_string()).collect();
         self.persist.sessions.insert(
             path.to_string_lossy().into_owned(),
-            Session { tabs: tabs.clone(), active: Some(tabs[0].clone()), recent: tabs, expanded: vec!["Drafts".into(), "Journal".into()] },
+            Session { tabs: tabs.clone(), active: Some(tabs[0].clone()), recent: tabs, expanded: vec!["Drafts".into(), "Journal".into()], ..Default::default() },
         );
         // Load without storing the current session over the one just written.
         self.vault = None;
@@ -1668,6 +1687,7 @@ impl App {
 
     pub fn after_edit(&mut self) {
         self.touch_activity();
+        self.wstate.follow = true;
         let writing_with_foot = self.writing() && self.foot_shows();
         let typewriter = self.settings().typewriter_scroll;
         self.reader.reveal.on_editor_edit(writing_with_foot, typewriter);
@@ -1693,6 +1713,7 @@ impl App {
                 let new_key = self.active_text_key().to_owned();
                 self.on_single_line_edit(old_key, new_key, &old_text, self.active_text());
             }
+            self.board_enforce_kanban(None);
         }
     }
 
@@ -1718,6 +1739,7 @@ impl App {
             self.active = Some(n.to_string());
             self.tree_reveal = Some(n.to_string());
             self.ensure_edit();
+            self.sync_mode_for_active_note(false, self.persist.loaded_from_disk, None);
             self.want_editor_focus = self.mode == Mode::Source || self.active_locked();
         }
     }
@@ -1808,10 +1830,14 @@ impl App {
         self.recent.insert(0, path.to_string());
         self.recent.truncate(30);
         self.renaming = None;
-        if sel.is_some_and(|s| s.force_source) {
+        let force_source = sel.is_some_and(|s| s.force_source);
+        if force_source {
             self.mode = Mode::Source;
         }
         self.ensure_edit();
+        if changed || force_source {
+            self.sync_mode_for_active_note(force_source, false, Some(tx));
+        }
         if changed && self.mode == Mode::Map {
             self.place_due();
         }
@@ -1846,6 +1872,7 @@ impl App {
         self.reorder = None;
         self.edits.remove(p);
         self.drop_map(p);
+        self.board.expanded.remove(p);
         // A closed note locks again.
         self.unlocked.remove(p);
         if self.active.as_deref() == Some(p) {
@@ -1862,6 +1889,7 @@ impl App {
             }
             // The note that shows now has its editor, so its text shows at once.
             self.ensure_edit();
+            self.sync_mode_for_active_note(false, false, None);
             if self.mode == Mode::Map {
                 self.place_due();
             }
@@ -2411,7 +2439,14 @@ impl App {
     /// Shows `to`, keeping the place: the mode buttons, the palette and the mode keys
     /// (MAP-064, MAP-065).
     pub fn show_mode(&mut self, to: Mode, tx: &mut Tx) {
+        self.show_mode_inner(to, true, tx);
+    }
+
+    pub(crate) fn show_mode_inner(&mut self, to: Mode, record: bool, tx: &mut Tx) {
         if self.active.is_none() || self.mode == to {
+            return;
+        }
+        if to == Mode::Board && !self.active_is_kanban() {
             return;
         }
         self.mode_swapped = true;
@@ -2425,6 +2460,9 @@ impl App {
             self.enter_map(tx);
         } else {
             self.switch_mode(tx);
+        }
+        if record {
+            self.record_note_mode(self.mode);
         }
         self.persist_later();
     }
